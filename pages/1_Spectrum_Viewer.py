@@ -4,12 +4,6 @@ import matplotlib.pyplot as plt
 import os
 from adjustText import adjust_text
 
-# Set page config
-st.set_page_config(page_title="Spectrum Visualizer", page_icon="📈")
-
-# Set page title
-st.title("Spectrum Visualizer")
-
 # Fixed parameters
 DATA_PATH = os.path.join(os.path.dirname(__file__), '../data')
 DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__), '../plots')
