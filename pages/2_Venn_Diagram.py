@@ -2,6 +2,4 @@
 
 import streamlit as st
 
-st.write(
-    """Placeholder for Venn Plot."""
-)
+st.write("""Placeholder for Venn Plot.""")
