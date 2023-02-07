@@ -3,11 +3,23 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 from adjustText import adjust_text
+from sys import platform
+import numpy as np
+from sklearn.linear_model import LinearRegression
 
-# Fixed parameters
-DATA_PATH = os.path.join(os.path.dirname(__file__), "../data")
-DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__), "../plots")
-ION_LABELS = ["b", "y", "[M"]  # labels used for pattern matching
+# Determine platform for path
+if "win" in platform:
+    slash = "\\"
+else:
+    slash = "/"
+# Fix import and download paths
+global DATA_PATH
+global DOWNLOAD_PATH
+global ION_LABELS
+DATA_PATH = os.path.join(os.path.dirname(__file__).rstrip("pages"), "data")
+DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__).rstrip("pages"), "plots")
+# Determine ion labels of interest
+ION_LABELS = ["b", "y", "[M"]
 
 
 # Read in uploaded file
@@ -58,6 +70,52 @@ def get_colors(target_ions, exp_matching_ions):
 # Compute relative intensity of each ion
 def get_relative_intensities(intensities):
     return [intensity / max(intensities) for intensity in intensities]
+
+
+# Compute correlation between two spectra
+def spectrum_correlation(matching_ions_target1, matching_ions_target2):
+    """
+    Fit linear regression model onto overlapping matching ions between two spectra.
+    Process two matplotlib ax.text objects and return the goodness of fit.
+    :param matching_ions_target1:
+    :param matching_ions_target2:
+    :return: r2
+    """
+    # Strip ion mass and get overlapping ion labels
+    overlapping_ions = set(
+        [ion.get_text().split("\n")[0] for ion in matching_ions_target1]
+    ) & set([ion.get_text().split("\n")[0] for ion in matching_ions_target2])
+    if len(overlapping_ions) == 0:
+        st.warning("No overlapping ions found. Cannot compute correlation.")
+        return 0
+
+    # Access labels and intensities of matplotlib text objects
+    target1_intensities = np.array(
+        [
+            ion.get_position()[1]
+            for ion in matching_ions_target1
+            if ion.get_text().split("\n")[0] in overlapping_ions
+        ]
+    )
+    target2_intensities = np.array(
+        [
+            ion.get_position()[1]
+            for ion in matching_ions_target2
+            if ion.get_text().split("\n")[0] in overlapping_ions
+        ]
+    )
+    # Fit a linear regression model
+    reg = LinearRegression().fit(
+        target1_intensities.reshape(-1, 1), target2_intensities
+    )
+
+    # predict y values using the model ->  For future visualization
+    # y_pred = reg.predict(x.reshape(-1, 1))
+
+    # calculate R-squared (coefficient of determination) as a measure of goodness of fit
+    r2 = reg.score(target1_intensities.reshape(-1, 1), target2_intensities)
+
+    return r2
 
 
 # Plot single spectrum
@@ -112,7 +170,7 @@ def plot_spectrum(df_all_peaks, df_matching_ions, peptide_of_interest, column):
                             fontsize=st.session_state["tick_label_size_slider"],
                         )
                     )
-                # Adjust text to avoid overlapping
+        # Adjust text to avoid overlapping
         adjust_text(
             ion_labels,
             only_move={"points": "y", "texts": "y"},
@@ -200,7 +258,8 @@ def plot_mirror_plot(
             # Add horizontal line at 0
             ax.axhline(0, color="grey", linewidth=0.8, alpha=0.3)
             # Get labels
-            ion_labels = []
+            ion_labels_target1 = []
+            ion_labels_target2 = []
             for i, ion in rep_target1_all_ions.iterrows():
                 if ion["Is_matching_ion"]:
                     x = ion["Experimental_mass"]
@@ -213,7 +272,7 @@ def plot_mirror_plot(
                         and y >= st.session_state["show_label_slider"]
                     ):
                         label_and_mass = f"{label}\n{x:.3f}"
-                        ion_labels.append(
+                        ion_labels_target1.append(
                             ax.text(
                                 x,
                                 y,
@@ -223,19 +282,19 @@ def plot_mirror_plot(
                             )
                         )
 
-            for i, ion in rep_target2_all_ions.iterrows():
+            for j, ion in rep_target2_all_ions.iterrows():
                 if ion["Is_matching_ion"]:
                     x = ion["Experimental_mass"]
                     y = ion["Relative_Intensity"] * -1
                     label = df_target2_matching_ions["Ion_name"][
-                        df_target2_matching_ions["Ion_ID"] == i
+                        df_target2_matching_ions["Ion_ID"] == j
                     ].values[0]
                     if (
                         any(valid_label in label for valid_label in ION_LABELS)
-                        and y >= st.session_state["show_label_slider"]
+                        and y <= st.session_state["show_label_slider"] * -1
                     ):
                         label_and_mass = f"{label}\n{x:.3f}"
-                        ion_labels.append(
+                        ion_labels_target2.append(
                             ax.text(
                                 x,
                                 y,
@@ -244,7 +303,9 @@ def plot_mirror_plot(
                                 fontsize=st.session_state["tick_label_size_slider"],
                             )
                         )
-
+            # Compute correlation coefficient of matching ions
+            # cor_coeff =
+            ion_labels = ion_labels_target1 + ion_labels_target2
             adjust_text(
                 ion_labels,
                 only_move={"points": "y", "texts": "y"},
@@ -272,6 +333,9 @@ def plot_mirror_plot(
                 )
                 + 10
             )
+            ax.title.set_text(
+                f"Mirror plot of {peptide_of_interest} in {replicate_target1} and {replicate_target2}"
+            )
             ax.set_xlim([min_x, max_x])
             ax.set_ylabel(
                 "Relative Intensity",
@@ -280,11 +344,19 @@ def plot_mirror_plot(
             ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-            ax.title.set_text(
-                f"Mirror plot of {peptide_of_interest} in {replicate_target1} and {replicate_target2}"
-            )
-            # plot this to streamlit
 
+            # Add goodness of fit to lower right of plot
+            ax.text(
+                0.95,
+                0.05,
+                f"R² = {spectrum_correlation(ion_labels_target1, ion_labels_target2):.2f}",
+                transform=ax.transAxes,
+                fontsize=st.session_state["tick_label_size_slider"],
+                verticalalignment="bottom",
+                horizontalalignment="right",
+            )
+
+            # plot this to streamlit
             with column:
                 st.pyplot(fig)
                 # Add download button
@@ -388,9 +460,10 @@ def main():
                 df2_all_peaks = read_tsv(st.session_state["file2_all_peaks"])
                 df2_matching_ions = read_tsv(st.session_state["file2_matching_ions"])
 
-                peptide_selection = set(df1_all_peaks["Peptide"]).intersection(
-                    set(df2_all_peaks["Peptide"])
+                peptide_selection = set(df1_all_peaks["Peptide"]) & set(
+                    df2_all_peaks["Peptide"]
                 )
+
                 # Select peptide of interest
                 st.selectbox(
                     f"Choose a peptide out of {len(peptide_selection)}",
