@@ -3,11 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import os
 from adjustText import adjust_text
+from sys import platform
 
-# Fixed parameters
-DATA_PATH = os.path.join(os.path.dirname(__file__), "../data")
-DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__), "../plots")
-ION_LABELS = ["b", "y", "[M"]  # labels used for pattern matching
+# Determine platform for path
+if "win" in platform:
+    slash = "\\"
+else:
+    slash = "/"
+# Fix import and download paths
+DATA_PATH = os.path.join(os.path.dirname(__file__), f"..{slash}data")
+DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__), f"..{slash}plots")
+# Determine ion labels of interest
+ION_LABELS = ["b", "y", "[M"]
 
 
 # Read in uploaded file
