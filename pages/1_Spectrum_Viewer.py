@@ -6,6 +6,7 @@ from adjustText import adjust_text
 from sys import platform
 import numpy as np
 from sklearn.linear_model import LinearRegression
+from typing import List
 
 # Determine platform for path
 if "win" in platform:
@@ -24,22 +25,39 @@ ION_LABELS = ["b", "y", "[M"]
 
 # Read in uploaded file
 @st.cache
-def read_tsv(file):
+def read_tsv(file: str) -> pd.DataFrame:
+    """
+    Read in tsv file
+    :param file: str
+    :return: df: pd.DataFrame
+    """
     df = pd.read_csv(f"{DATA_PATH}/{file}", sep="\t")
     return df
 
 
-def get_peaks_of_interest(all_peaks, matching_ions, peptide_of_interest):
-    # Get peaks of the peptide of interest
-    run_matching_ions = matching_ions.loc[
-        matching_ions["Peptide"] == peptide_of_interest
+def get_peaks_of_interest(all_peaks: pd.DataFrame, matching_ions: pd.DataFrame, target_peptide: str) -> List[pd.DataFrame]:
+    """
+    Get peaks of target peptide
+    :param all_peaks: pd.DataFrame
+    :param matching_ions: pd.DataFrame
+    :param peptide_of_interest: str
+    :return: list of target peaks and matching ions
+    """
+    all_peaks_target = all_peaks.loc[all_peaks["Peptide"] == target_peptide]
+    matching_ions_target = matching_ions.loc[
+        matching_ions["Peptide"] == target_peptide
     ]
-    run_all_peaks = all_peaks.loc[all_peaks["Peptide"] == peptide_of_interest]
 
-    return [run_all_peaks, run_matching_ions]
+    return [all_peaks_target, matching_ions_target]
 
 
-def get_colors(target_ions, exp_matching_ions):
+def get_colors(target_ions: pd.DataFrame, exp_matching_ions: pd.DataFrame) -> List[tuple]:
+    """
+    Get colors for each ion. Red for b-ions, blue for y-ions, green for precursor
+    :param target_ions:
+    :param exp_matching_ions:
+    :return: list of colors
+    """
     red = (1, 0, 0, 1)  # b-ions
     green = (0.2, 1, 0.5, 1)  # Precursor
     blue = (0, 0, 1, 1)  # y-ions
@@ -68,18 +86,23 @@ def get_colors(target_ions, exp_matching_ions):
 
 
 # Compute relative intensity of each ion
-def get_relative_intensities(intensities):
+def get_relative_intensities(intensities: List[float]) -> List[float]:
+    """
+    Compute relative intensity of each ion
+    :param intensities: List[float]
+    :return: List[float]
+    """
     return [intensity / max(intensities) for intensity in intensities]
 
 
 # Compute correlation between two spectra
-def spectrum_correlation(matching_ions_target1, matching_ions_target2):
+def spectrum_correlation(matching_ions_target1: tuple, matching_ions_target2: tuple) -> tuple:
     """
     Fit linear regression model onto overlapping matching ions between two spectra.
     Process two tuple of (x, y, ion_label) and compute the goodness of fit (R2).
-    :param matching_ions_target1:
-    :param matching_ions_target2:
-    :return: r2
+    :param matching_ions_target1: tuple of x, y, ion_label
+    :param matching_ions_target2: tuple of x, y, ion_label
+    :return: tuple of Goodness of fit (R2), predicted y values, training x and y values
     """
     # Strip ion mass and get overlapping ion labels
     overlapping_ions = set(
@@ -109,20 +132,27 @@ def spectrum_correlation(matching_ions_target1, matching_ions_target2):
         target1_intensities.reshape(-1, 1), target2_intensities
     )
 
-    # predict y values using the model ->  For future visualization
-    # y_pred = reg.predict(x.reshape(-1, 1))
+    # predict y values using the model
+    y_pred = reg.predict(target1_intensities.reshape(-1, 1))
 
     # calculate R-squared (coefficient of determination) as a measure of goodness of fit
     r2 = reg.score(target1_intensities.reshape(-1, 1), target2_intensities)
 
-    return r2
+    return r2, y_pred, reg, target1_intensities, target2_intensities
 
 
-# Plot single spectrum
-def plot_spectrum(df_all_peaks, df_matching_ions, peptide_of_interest, column):
+def plot_spectrum(df_all_peaks: pd.DataFrame, df_matching_ions: pd.DataFrame, target_peptide: str, column: st.beta_columns) -> None:
+    """
+    Plot spectrum of target peptide in streamlit plot column
+    :param df_all_peaks: pd.DataFrame
+    :param df_matching_ions: pd.DataFrame
+    :param target_peptide: str
+    :param column: st.beta_columns
+    :return: None
+    """
     # Get peaks of interest
     df_target_all_ions, df_target_matching_ions = get_peaks_of_interest(
-        df_all_peaks, df_matching_ions, peptide_of_interest
+        df_all_peaks, df_matching_ions, target_peptide
     )
 
     for replicate in df_target_all_ions["filename"].unique():
@@ -187,34 +217,44 @@ def plot_spectrum(df_all_peaks, df_matching_ions, peptide_of_interest, column):
         ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
         ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
         ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-        ax.title.set_text(f"MS2 Spectrum of {peptide_of_interest} in {replicate}")
+        ax.title.set_text(f"MS2 Spectrum of {target_peptide} in {replicate}")
 
         # plot this to streamlit
         with column:
             st.pyplot(fig)
             st.button(
                 "Download",
-                key=f"download_button_peptide_{peptide_of_interest}_{replicate}",
+                key=f"download_button_peptide_{target_peptide}_{replicate}",
                 on_click=handle_download_button,
-                args=(fig, peptide_of_interest, replicate),
+                args=(fig, target_peptide, replicate),
             )
 
 
 # Plot mirror plot
 def plot_mirror_plot(
-    df1_all_peaks,
-    df1_matching_ions,
-    df2_all_peaks,
-    df2_matching_ions,
-    peptide_of_interest,
-    column,
-):
+    df1_all_peaks: pd.DataFrame,
+    df1_matching_ions: pd.DataFrame,
+    df2_all_peaks: pd.DataFrame,
+    df2_matching_ions: pd.DataFrame,
+    target_peptide: str,
+    column: st.beta_columns
+) -> None:
+    """
+    Plot mirror plot of target peptide in streamlit plot column
+    :param df1_all_peaks: pd.DataFrame
+    :param df1_matching_ions: pd.DataFrame
+    :param df2_all_peaks: pd.DataFrame
+    :param df2_matching_ions: pd.DataFrame
+    :param target_peptide: str
+    :param column: st.beta_columns
+    :return: None
+    """
     # Get peaks of interest
     df_target1_all_ions, df_target1_matching_ions = get_peaks_of_interest(
-        df1_all_peaks, df1_matching_ions, peptide_of_interest
+        df1_all_peaks, df1_matching_ions, target_peptide
     )
     df_target2_all_ions, df_target2_matching_ions = get_peaks_of_interest(
-        df2_all_peaks, df2_matching_ions, peptide_of_interest
+        df2_all_peaks, df2_matching_ions, target_peptide
     )
 
     for i, replicate_target1 in enumerate(df_target1_all_ions["filename"].unique()):
@@ -291,7 +331,7 @@ def plot_mirror_plot(
                     ].values[0]
                     if any(valid_label in label for valid_label in ION_LABELS):
                         ion_labels_target2_for_pcc.append((x, y, label))
-                        if y >= st.session_state["show_label_slider"]:
+                        if y <= st.session_state["show_label_slider"] * -1:
                             label_and_mass = f"{label}\n{x:.3f}"
                             ion_labels_to_plot.append(
                                 ax.text(
@@ -332,7 +372,7 @@ def plot_mirror_plot(
                 + 10
             )
             ax.title.set_text(
-                f"Mirror plot of {peptide_of_interest} in {replicate_target1} and {replicate_target2}"
+                f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
             )
             ax.set_xlim([min_x, max_x])
             ax.set_ylabel(
@@ -347,7 +387,7 @@ def plot_mirror_plot(
             ax.text(
                 0.95,
                 0.05,
-                f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc):.2f}",
+                f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc)[0]:.2f}",
                 transform=ax.transAxes,
                 fontsize=st.session_state["tick_label_size_slider"],
                 verticalalignment="bottom",
@@ -360,38 +400,45 @@ def plot_mirror_plot(
                 # Add download button
                 st.button(
                     "Download",
-                    key=f"download_button_peptide_{peptide_of_interest}_{replicate_target1}_{replicate_target2}",
+                    key=f"download_button_peptide_{target_peptide}_{replicate_target1}_{replicate_target2}",
                     on_click=handle_download_button,
                     args=(
                         fig,
-                        peptide_of_interest,
+                        target_peptide,
                         replicate_target1,
                         replicate_target2,
                     ),
                 )
 
 
-def handle_download_button(fig, peptide_of_interest, target1, target2=None):
+def handle_download_button(fig: plt.figure, target_peptide: str, target1: str, target2: str = None) -> None:
+    """
+    Handles the download button for the mirror plot.
+    :param fig: The figure to download
+    :param target_peptide: The peptide name
+    :param target1: The first replicate name
+    :param target2: The second replicate name (optional)
+    :return: None
+    """
     if target2 is not None:
         fig.savefig(
-            f"{DOWNLOAD_PATH}/{peptide_of_interest}_{target1}_{target2}.{st.session_state['export_format']}",
+            f"{DOWNLOAD_PATH}/{target_peptide}_{target1}_{target2}.{st.session_state['export_format']}",
             dpi=300,
         )
         st.success(
-            f"Downloaded to {DOWNLOAD_PATH}/{peptide_of_interest}_{target1}_{target2}.{st.session_state['export_format']}"
+            f"Downloaded to {DOWNLOAD_PATH}/{target_peptide}_{target1}_{target2}.{st.session_state['export_format']}"
         )
     else:
         fig.savefig(
-            f"{DOWNLOAD_PATH}/{peptide_of_interest}_{target1}.{st.session_state['export_format']}",
+            f"{DOWNLOAD_PATH}/{target_peptide}_{target1}.{st.session_state['export_format']}",
             dpi=300,
         )
         st.success(
-            f"Downloaded to {DOWNLOAD_PATH}/{peptide_of_interest}_{target1}.{st.session_state['export_format']}"
+            f"Downloaded to {DOWNLOAD_PATH}/{target_peptide}_{target1}.{st.session_state['export_format']}"
         )
 
 
 def main():
-    # TODO: set page icon
     st.set_page_config(
         page_title="Spectrum Viewer",
         layout="wide",
