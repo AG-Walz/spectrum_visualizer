@@ -35,7 +35,9 @@ def read_tsv(file: str) -> pd.DataFrame:
     return df
 
 
-def get_peaks_of_interest(all_peaks: pd.DataFrame, matching_ions: pd.DataFrame, target_peptide: str) -> List[pd.DataFrame]:
+def get_peaks_of_interest(
+    all_peaks: pd.DataFrame, matching_ions: pd.DataFrame, target_peptide: str
+) -> List[pd.DataFrame]:
     """
     Get peaks of target peptide
     :param all_peaks: pd.DataFrame
@@ -44,14 +46,14 @@ def get_peaks_of_interest(all_peaks: pd.DataFrame, matching_ions: pd.DataFrame, 
     :return: list of target peaks and matching ions
     """
     all_peaks_target = all_peaks.loc[all_peaks["Peptide"] == target_peptide]
-    matching_ions_target = matching_ions.loc[
-        matching_ions["Peptide"] == target_peptide
-    ]
+    matching_ions_target = matching_ions.loc[matching_ions["Peptide"] == target_peptide]
 
     return [all_peaks_target, matching_ions_target]
 
 
-def get_colors(target_ions: pd.DataFrame, exp_matching_ions: pd.DataFrame) -> List[tuple]:
+def get_colors(
+    target_ions: pd.DataFrame, exp_matching_ions: pd.DataFrame
+) -> List[tuple]:
     """
     Get colors for each ion. Red for b-ions, blue for y-ions, green for precursor
     :param target_ions:
@@ -96,7 +98,9 @@ def get_relative_intensities(intensities: List[float]) -> List[float]:
 
 
 # Compute correlation between two spectra
-def spectrum_correlation(matching_ions_target1: tuple, matching_ions_target2: tuple) -> tuple:
+def spectrum_correlation(
+    matching_ions_target1: tuple, matching_ions_target2: tuple
+) -> tuple:
     """
     Fit linear regression model onto overlapping matching ions between two spectra.
     Process two tuple of (x, y, ion_label) and compute the goodness of fit (R2).
@@ -105,27 +109,19 @@ def spectrum_correlation(matching_ions_target1: tuple, matching_ions_target2: tu
     :return: tuple of Goodness of fit (R2), predicted y values, training x and y values
     """
     # Strip ion mass and get overlapping ion labels
-    overlapping_ions = set(
-        [ion[2] for ion in matching_ions_target1]
-    ) & set([ion[2] for ion in matching_ions_target2])
+    overlapping_ions = set([ion[2] for ion in matching_ions_target1]) & set(
+        [ion[2] for ion in matching_ions_target2]
+    )
     if len(overlapping_ions) == 0:
         st.warning("No overlapping ions found. Cannot compute correlation.")
         return 0
 
     # Access labels and intensities of matplotlib text objects
     target1_intensities = np.array(
-        [
-            ion[1]
-            for ion in matching_ions_target1
-            if ion[2] in overlapping_ions
-        ]
+        [ion[1] for ion in matching_ions_target1 if ion[2] in overlapping_ions]
     )
     target2_intensities = np.array(
-        [
-            ion[1]
-            for ion in matching_ions_target2
-            if ion[2] in overlapping_ions
-        ]
+        [ion[1] for ion in matching_ions_target2 if ion[2] in overlapping_ions]
     )
     # Fit a linear regression model
     reg = LinearRegression().fit(
@@ -141,7 +137,12 @@ def spectrum_correlation(matching_ions_target1: tuple, matching_ions_target2: tu
     return r2, y_pred, reg, target1_intensities, target2_intensities
 
 
-def plot_spectrum(df_all_peaks: pd.DataFrame, df_matching_ions: pd.DataFrame, target_peptide: str, column: st.beta_columns) -> None:
+def plot_spectrum(
+    df_all_peaks: pd.DataFrame,
+    df_matching_ions: pd.DataFrame,
+    target_peptide: str,
+    column: st.beta_columns,
+) -> None:
     """
     Plot spectrum of target peptide in streamlit plot column
     :param df_all_peaks: pd.DataFrame
@@ -237,7 +238,7 @@ def plot_mirror_plot(
     df2_all_peaks: pd.DataFrame,
     df2_matching_ions: pd.DataFrame,
     target_peptide: str,
-    column: st.beta_columns
+    column: st.beta_columns,
 ) -> None:
     """
     Plot mirror plot of target peptide in streamlit plot column
@@ -411,7 +412,9 @@ def plot_mirror_plot(
                 )
 
 
-def handle_download_button(fig: plt.figure, target_peptide: str, target1: str, target2: str = None) -> None:
+def handle_download_button(
+    fig: plt.figure, target_peptide: str, target1: str, target2: str = None
+) -> None:
     """
     Handles the download button for the mirror plot.
     :param fig: The figure to download
