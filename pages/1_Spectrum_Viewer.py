@@ -76,15 +76,15 @@ def get_relative_intensities(intensities):
 def spectrum_correlation(matching_ions_target1, matching_ions_target2):
     """
     Fit linear regression model onto overlapping matching ions between two spectra.
-    Process two matplotlib ax.text objects and return the goodness of fit.
+    Process two tuple of (x, y, ion_label) and compute the goodness of fit (R2).
     :param matching_ions_target1:
     :param matching_ions_target2:
     :return: r2
     """
     # Strip ion mass and get overlapping ion labels
     overlapping_ions = set(
-        [ion.get_text().split("\n")[0] for ion in matching_ions_target1]
-    ) & set([ion.get_text().split("\n")[0] for ion in matching_ions_target2])
+        [ion[2] for ion in matching_ions_target1]
+    ) & set([ion[2] for ion in matching_ions_target2])
     if len(overlapping_ions) == 0:
         st.warning("No overlapping ions found. Cannot compute correlation.")
         return 0
@@ -92,16 +92,16 @@ def spectrum_correlation(matching_ions_target1, matching_ions_target2):
     # Access labels and intensities of matplotlib text objects
     target1_intensities = np.array(
         [
-            ion.get_position()[1]
+            ion[1]
             for ion in matching_ions_target1
-            if ion.get_text().split("\n")[0] in overlapping_ions
+            if ion[2] in overlapping_ions
         ]
     )
     target2_intensities = np.array(
         [
-            ion.get_position()[1]
+            ion[1]
             for ion in matching_ions_target2
-            if ion.get_text().split("\n")[0] in overlapping_ions
+            if ion[2] in overlapping_ions
         ]
     )
     # Fit a linear regression model
@@ -148,7 +148,8 @@ def plot_spectrum(df_all_peaks, df_matching_ions, peptide_of_interest, column):
             width=st.session_state["bar_width_slider"],
         )
         # Get ion labels
-        ion_labels = []
+        ion_labels_for_pcc = []
+        ion_labels_to_plot = []
         for i, ion in rep_target_all_ions.iterrows():
             if ion["Is_matching_ion"]:
                 x = ion["Experimental_mass"]
@@ -156,23 +157,22 @@ def plot_spectrum(df_all_peaks, df_matching_ions, peptide_of_interest, column):
                 label = df_target_matching_ions["Ion_name"][
                     df_target_matching_ions["Ion_ID"] == i
                 ].values[0]
-                if (
-                    any(valid_label in label for valid_label in ION_LABELS)
-                    and y >= st.session_state["show_label_slider"]
-                ):
-                    label_and_mass = f"{label}\n{x:.3f}"
-                    ion_labels.append(
-                        ax.text(
-                            x,
-                            y,
-                            label_and_mass,
-                            color=ion["color"],
-                            fontsize=st.session_state["tick_label_size_slider"],
+                if any(valid_label in label for valid_label in ION_LABELS):
+                    ion_labels_for_pcc.append((x, y, label))
+                    if y >= st.session_state["show_label_slider"]:
+                        label_and_mass = f"{label}\n{x:.3f}"
+                        ion_labels_to_plot.append(
+                            ax.text(
+                                x,
+                                y,
+                                label_and_mass,
+                                color=ion["color"],
+                                fontsize=st.session_state["tick_label_size_slider"],
+                            )
                         )
-                    )
         # Adjust text to avoid overlapping
         adjust_text(
-            ion_labels,
+            ion_labels_to_plot,
             only_move={"points": "y", "texts": "y"},
             arrowprops=dict(arrowstyle="-", color="black", lw=1),
             color="red",
@@ -258,8 +258,9 @@ def plot_mirror_plot(
             # Add horizontal line at 0
             ax.axhline(0, color="grey", linewidth=0.8, alpha=0.3)
             # Get labels
-            ion_labels_target1 = []
-            ion_labels_target2 = []
+            ion_labels_target1_for_pcc = []
+            ion_labels_target2_for_pcc = []
+            ion_labels_to_plot = []
             for i, ion in rep_target1_all_ions.iterrows():
                 if ion["Is_matching_ion"]:
                     x = ion["Experimental_mass"]
@@ -267,20 +268,19 @@ def plot_mirror_plot(
                     label = df_target1_matching_ions["Ion_name"][
                         df_target1_matching_ions["Ion_ID"] == i
                     ].values[0]
-                    if (
-                        any(valid_label in label for valid_label in ION_LABELS)
-                        and y >= st.session_state["show_label_slider"]
-                    ):
-                        label_and_mass = f"{label}\n{x:.3f}"
-                        ion_labels_target1.append(
-                            ax.text(
-                                x,
-                                y,
-                                label_and_mass,
-                                color=ion["color"],
-                                fontsize=st.session_state["tick_label_size_slider"],
+                    if any(valid_label in label for valid_label in ION_LABELS):
+                        ion_labels_target1_for_pcc.append((x, y, label))
+                        if y >= st.session_state["show_label_slider"]:
+                            label_and_mass = f"{label}\n{x:.3f}"
+                            ion_labels_to_plot.append(
+                                ax.text(
+                                    x,
+                                    y,
+                                    label_and_mass,
+                                    color=ion["color"],
+                                    fontsize=st.session_state["tick_label_size_slider"],
+                                )
                             )
-                        )
 
             for j, ion in rep_target2_all_ions.iterrows():
                 if ion["Is_matching_ion"]:
@@ -289,25 +289,23 @@ def plot_mirror_plot(
                     label = df_target2_matching_ions["Ion_name"][
                         df_target2_matching_ions["Ion_ID"] == j
                     ].values[0]
-                    if (
-                        any(valid_label in label for valid_label in ION_LABELS)
-                        and y <= st.session_state["show_label_slider"] * -1
-                    ):
-                        label_and_mass = f"{label}\n{x:.3f}"
-                        ion_labels_target2.append(
-                            ax.text(
-                                x,
-                                y,
-                                label_and_mass,
-                                color=ion["color"],
-                                fontsize=st.session_state["tick_label_size_slider"],
+                    if any(valid_label in label for valid_label in ION_LABELS):
+                        ion_labels_target2_for_pcc.append((x, y, label))
+                        if y >= st.session_state["show_label_slider"]:
+                            label_and_mass = f"{label}\n{x:.3f}"
+                            ion_labels_to_plot.append(
+                                ax.text(
+                                    x,
+                                    y,
+                                    label_and_mass,
+                                    color=ion["color"],
+                                    fontsize=st.session_state["tick_label_size_slider"],
+                                )
                             )
-                        )
             # Compute correlation coefficient of matching ions
             # cor_coeff =
-            ion_labels = ion_labels_target1 + ion_labels_target2
             adjust_text(
-                ion_labels,
+                ion_labels_to_plot,
                 only_move={"points": "y", "texts": "y"},
                 arrowprops=dict(arrowstyle="-", color="black", lw=1),
                 color="red",
@@ -349,7 +347,7 @@ def plot_mirror_plot(
             ax.text(
                 0.95,
                 0.05,
-                f"R² = {spectrum_correlation(ion_labels_target1, ion_labels_target2):.2f}",
+                f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc):.2f}",
                 transform=ax.transAxes,
                 fontsize=st.session_state["tick_label_size_slider"],
                 verticalalignment="bottom",
@@ -411,7 +409,7 @@ def main():
             "Threshold for displaying ion annotation",
             0.0,
             1.0,
-            value=0.1,
+            value=0.3,
             step=0.05,
             key="show_label_slider",
         )
