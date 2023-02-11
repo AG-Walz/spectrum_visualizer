@@ -21,6 +21,8 @@ DATA_PATH = os.path.join(os.path.dirname(__file__).rstrip("pages"), "data")
 DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__).rstrip("pages"), "plots")
 # Determine ion labels of interest
 ION_LABELS = ["b", "y", "[M"]
+# Fix matplotlib fontstyle to avoid issues with svg
+plt.rcParams["svg.fonttype"] = "none"
 
 
 # Read in uploaded file
@@ -140,177 +142,57 @@ def spectrum_correlation(
 def plot_spectrum(
     df_all_peaks: pd.DataFrame,
     df_matching_ions: pd.DataFrame,
-    target_peptide: str,
+    target_peptides: str,
     column: st.beta_columns,
 ) -> None:
     """
     Plot spectrum of target peptide in streamlit plot column
     :param df_all_peaks: pd.DataFrame
     :param df_matching_ions: pd.DataFrame
-    :param target_peptide: str
+    :param target_peptides: str
     :param column: st.beta_columns
     :return: None
     """
-    # Get peaks of interest
-    df_target_all_ions, df_target_matching_ions = get_peaks_of_interest(
-        df_all_peaks, df_matching_ions, target_peptide
-    )
-
-    for replicate in df_target_all_ions["filename"].unique():
-        rep_target_all_ions = df_target_all_ions[
-            df_target_all_ions["filename"] == replicate
-        ]
-        # Compute relative intensities
-        rep_target_all_ions["Relative_Intensity"] = get_relative_intensities(
-            rep_target_all_ions["Intensity"]
-        )
-        # Get colors for each annotated ion. Blue for b-ions, red for y-ions, green for precursor
-        rep_target_all_ions["color"] = get_colors(
-            rep_target_all_ions, df_target_matching_ions
+    for target_peptide in target_peptides:
+        # Get peaks of interest
+        df_target_all_ions, df_target_matching_ions = get_peaks_of_interest(
+            df_all_peaks, df_matching_ions, target_peptide
         )
 
-        # Plot spectrum
-        fig, ax = plt.subplots(figsize=(15, 10))
-        # Plot experimental spectrum
-        ax.bar(
-            rep_target_all_ions["Experimental_mass"],
-            rep_target_all_ions["Relative_Intensity"],
-            color=rep_target_all_ions["color"],
-            width=st.session_state["bar_width_slider"],
-        )
-        # Get ion labels
-        ion_labels_for_pcc = []
-        ion_labels_to_plot = []
-        for i, ion in rep_target_all_ions.iterrows():
-            if ion["Is_matching_ion"]:
-                x = ion["Experimental_mass"]
-                y = ion["Relative_Intensity"]
-                label = df_target_matching_ions["Ion_name"][
-                    df_target_matching_ions["Ion_ID"] == i
-                ].values[0]
-                if any(valid_label in label for valid_label in ION_LABELS):
-                    ion_labels_for_pcc.append((x, y, label))
-                    if y >= st.session_state["show_label_slider"]:
-                        label_and_mass = f"{label}\n{x:.3f}"
-                        ion_labels_to_plot.append(
-                            ax.text(
-                                x,
-                                y,
-                                label_and_mass,
-                                color=ion["color"],
-                                fontsize=st.session_state["tick_label_size_slider"],
-                            )
-                        )
-        # Adjust text to avoid overlapping
-        adjust_text(
-            ion_labels_to_plot,
-            only_move={"points": "y", "texts": "y"},
-            arrowprops=dict(arrowstyle="-", color="black", lw=1),
-            color="red",
-        )
-
-        min_x = round(min(rep_target_all_ions["Experimental_mass"]), 0) - 10
-        max_x = round(max(rep_target_all_ions["Experimental_mass"]), 0) + 10
-        ax.set_xlim([min_x, max_x])
-        ax.set_ylabel(
-            "Relative Intensity", fontsize=st.session_state["legend_label_size_slider"]
-        )
-        ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
-        ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-        ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-        ax.title.set_text(f"MS2 Spectrum of {target_peptide} in {replicate}")
-
-        # plot this to streamlit
-        with column:
-            st.pyplot(fig)
-            st.button(
-                "Download",
-                key=f"download_button_peptide_{target_peptide}_{replicate}",
-                on_click=handle_download_button,
-                args=(fig, target_peptide, replicate),
-            )
-
-
-# Plot mirror plot
-def plot_mirror_plot(
-    df1_all_peaks: pd.DataFrame,
-    df1_matching_ions: pd.DataFrame,
-    df2_all_peaks: pd.DataFrame,
-    df2_matching_ions: pd.DataFrame,
-    target_peptide: str,
-    column: st.beta_columns,
-) -> None:
-    """
-    Plot mirror plot of target peptide in streamlit plot column
-    :param df1_all_peaks: pd.DataFrame
-    :param df1_matching_ions: pd.DataFrame
-    :param df2_all_peaks: pd.DataFrame
-    :param df2_matching_ions: pd.DataFrame
-    :param target_peptide: str
-    :param column: st.beta_columns
-    :return: None
-    """
-    # Get peaks of interest
-    df_target1_all_ions, df_target1_matching_ions = get_peaks_of_interest(
-        df1_all_peaks, df1_matching_ions, target_peptide
-    )
-    df_target2_all_ions, df_target2_matching_ions = get_peaks_of_interest(
-        df2_all_peaks, df2_matching_ions, target_peptide
-    )
-
-    for i, replicate_target1 in enumerate(df_target1_all_ions["filename"].unique()):
-        for y, replicate_target2 in enumerate(df_target2_all_ions["filename"].unique()):
-            rep_target1_all_ions = df_target1_all_ions[
-                df_target1_all_ions["filename"] == replicate_target1
-            ]
-            rep_target2_all_ions = df_target2_all_ions[
-                df_target2_all_ions["filename"] == replicate_target2
+        for replicate in df_target_all_ions["filename"].unique():
+            rep_target_all_ions = df_target_all_ions[
+                df_target_all_ions["filename"] == replicate
             ]
             # Compute relative intensities
-            rep_target1_all_ions["Relative_Intensity"] = get_relative_intensities(
-                rep_target1_all_ions["Intensity"]
-            )
-            rep_target2_all_ions["Relative_Intensity"] = get_relative_intensities(
-                rep_target2_all_ions["Intensity"]
+            rep_target_all_ions["Relative_Intensity"] = get_relative_intensities(
+                rep_target_all_ions["Intensity"]
             )
             # Get colors for each annotated ion. Blue for b-ions, red for y-ions, green for precursor
-            rep_target1_all_ions["color"] = get_colors(
-                rep_target1_all_ions, df_target1_matching_ions
-            )
-            rep_target2_all_ions["color"] = get_colors(
-                rep_target2_all_ions, df_target2_matching_ions
+            rep_target_all_ions["color"] = get_colors(
+                rep_target_all_ions, df_target_matching_ions
             )
 
-            # Plot mirror plot
+            # Plot spectrum
             fig, ax = plt.subplots(figsize=(15, 10))
             # Plot experimental spectrum
             ax.bar(
-                rep_target1_all_ions["Experimental_mass"],
-                rep_target1_all_ions["Relative_Intensity"],
-                color=rep_target1_all_ions["color"],
+                rep_target_all_ions["Experimental_mass"],
+                rep_target_all_ions["Relative_Intensity"],
+                color=rep_target_all_ions["color"],
                 width=st.session_state["bar_width_slider"],
             )
-            ax.bar(
-                rep_target2_all_ions["Experimental_mass"],
-                rep_target2_all_ions["Relative_Intensity"] * -1,
-                color=rep_target2_all_ions["color"],
-                width=st.session_state["bar_width_slider"],
-            )
-            # Add horizontal line at 0
-            ax.axhline(0, color="grey", linewidth=0.8, alpha=0.3)
-            # Get labels
-            ion_labels_target1_for_pcc = []
-            ion_labels_target2_for_pcc = []
+            # Get ion labels
+            ion_labels_for_pcc = []
             ion_labels_to_plot = []
-            for i, ion in rep_target1_all_ions.iterrows():
+            for i, ion in rep_target_all_ions.iterrows():
                 if ion["Is_matching_ion"]:
                     x = ion["Experimental_mass"]
                     y = ion["Relative_Intensity"]
-                    label = df_target1_matching_ions["Ion_name"][
-                        df_target1_matching_ions["Ion_ID"] == i
+                    label = df_target_matching_ions["Ion_name"][
+                        df_target_matching_ions["Ion_ID"] == i
                     ].values[0]
                     if any(valid_label in label for valid_label in ION_LABELS):
-                        ion_labels_target1_for_pcc.append((x, y, label))
+                        ion_labels_for_pcc.append((x, y, label))
                         if y >= st.session_state["show_label_slider"]:
                             label_and_mass = f"{label}\n{x:.3f}"
                             ion_labels_to_plot.append(
@@ -322,29 +204,7 @@ def plot_mirror_plot(
                                     fontsize=st.session_state["tick_label_size_slider"],
                                 )
                             )
-
-            for j, ion in rep_target2_all_ions.iterrows():
-                if ion["Is_matching_ion"]:
-                    x = ion["Experimental_mass"]
-                    y = ion["Relative_Intensity"] * -1
-                    label = df_target2_matching_ions["Ion_name"][
-                        df_target2_matching_ions["Ion_ID"] == j
-                    ].values[0]
-                    if any(valid_label in label for valid_label in ION_LABELS):
-                        ion_labels_target2_for_pcc.append((x, y, label))
-                        if y <= st.session_state["show_label_slider"] * -1:
-                            label_and_mass = f"{label}\n{x:.3f}"
-                            ion_labels_to_plot.append(
-                                ax.text(
-                                    x,
-                                    y,
-                                    label_and_mass,
-                                    color=ion["color"],
-                                    fontsize=st.session_state["tick_label_size_slider"],
-                                )
-                            )
-            # Compute correlation coefficient of matching ions
-            # cor_coeff =
+            # Adjust text to avoid overlapping
             adjust_text(
                 ion_labels_to_plot,
                 only_move={"points": "y", "texts": "y"},
@@ -352,29 +212,8 @@ def plot_mirror_plot(
                 color="red",
             )
 
-            min_x = (
-                round(
-                    min(
-                        min(rep_target1_all_ions["Experimental_mass"]),
-                        min(df_target2_all_ions["Experimental_mass"]),
-                    ),
-                    0,
-                )
-                - 10
-            )
-            max_x = (
-                round(
-                    max(
-                        max(rep_target1_all_ions["Experimental_mass"]),
-                        max(df_target2_all_ions["Experimental_mass"]),
-                    ),
-                    0,
-                )
-                + 10
-            )
-            ax.title.set_text(
-                f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
-            )
+            min_x = round(min(rep_target_all_ions["Experimental_mass"]), 0) - 10
+            max_x = round(max(rep_target_all_ions["Experimental_mass"]), 0) + 10
             ax.set_xlim([min_x, max_x])
             ax.set_ylabel(
                 "Relative Intensity",
@@ -383,33 +222,207 @@ def plot_mirror_plot(
             ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-
-            # Add goodness of fit to lower right of plot
-            ax.text(
-                0.95,
-                0.05,
-                f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc)[0]:.2f}",
-                transform=ax.transAxes,
-                fontsize=st.session_state["tick_label_size_slider"],
-                verticalalignment="bottom",
-                horizontalalignment="right",
-            )
+            ax.title.set_text(f"MS2 Spectrum of {target_peptide} in {replicate}")
 
             # plot this to streamlit
             with column:
                 st.pyplot(fig)
-                # Add download button
                 st.button(
                     "Download",
-                    key=f"download_button_peptide_{target_peptide}_{replicate_target1}_{replicate_target2}",
+                    key=f"download_button_peptide_{target_peptide}_{replicate}",
                     on_click=handle_download_button,
-                    args=(
-                        fig,
-                        target_peptide,
-                        replicate_target1,
-                        replicate_target2,
-                    ),
+                    args=(fig, target_peptide, replicate),
                 )
+
+
+# Plot mirror plot
+def plot_mirror_plot(
+    df1_all_peaks: pd.DataFrame,
+    df1_matching_ions: pd.DataFrame,
+    df2_all_peaks: pd.DataFrame,
+    df2_matching_ions: pd.DataFrame,
+    target_peptides: List[str],
+    column: st.beta_columns,
+) -> None:
+    """
+    Plot mirror plot of target peptide in streamlit plot column
+    :param df1_all_peaks: pd.DataFrame
+    :param df1_matching_ions: pd.DataFrame
+    :param df2_all_peaks: pd.DataFrame
+    :param df2_matching_ions: pd.DataFrame
+    :param target_peptides: str
+    :param column: st.beta_columns
+    :return: None
+    """
+    # Get peaks of interest
+    for target_peptide in target_peptides:
+        df_target1_all_ions, df_target1_matching_ions = get_peaks_of_interest(
+            df1_all_peaks, df1_matching_ions, target_peptide
+        )
+        df_target2_all_ions, df_target2_matching_ions = get_peaks_of_interest(
+            df2_all_peaks, df2_matching_ions, target_peptide
+        )
+
+        for i, replicate_target1 in enumerate(df_target1_all_ions["filename"].unique()):
+            for y, replicate_target2 in enumerate(
+                df_target2_all_ions["filename"].unique()
+            ):
+                rep_target1_all_ions = df_target1_all_ions[
+                    df_target1_all_ions["filename"] == replicate_target1
+                ]
+                rep_target2_all_ions = df_target2_all_ions[
+                    df_target2_all_ions["filename"] == replicate_target2
+                ]
+                # Compute relative intensities
+                rep_target1_all_ions["Relative_Intensity"] = get_relative_intensities(
+                    rep_target1_all_ions["Intensity"]
+                )
+                rep_target2_all_ions["Relative_Intensity"] = get_relative_intensities(
+                    rep_target2_all_ions["Intensity"]
+                )
+                # Get colors for each annotated ion. Blue for b-ions, red for y-ions, green for precursor
+                rep_target1_all_ions["color"] = get_colors(
+                    rep_target1_all_ions, df_target1_matching_ions
+                )
+                rep_target2_all_ions["color"] = get_colors(
+                    rep_target2_all_ions, df_target2_matching_ions
+                )
+
+                # Plot mirror plot
+                fig, ax = plt.subplots(figsize=(15, 10))
+                # Plot experimental spectrum
+                ax.bar(
+                    rep_target1_all_ions["Experimental_mass"],
+                    rep_target1_all_ions["Relative_Intensity"],
+                    color=rep_target1_all_ions["color"],
+                    width=st.session_state["bar_width_slider"],
+                )
+                ax.bar(
+                    rep_target2_all_ions["Experimental_mass"],
+                    rep_target2_all_ions["Relative_Intensity"] * -1,
+                    color=rep_target2_all_ions["color"],
+                    width=st.session_state["bar_width_slider"],
+                )
+                # Add horizontal line at 0
+                ax.axhline(0, color="grey", linewidth=0.8, alpha=0.3)
+                # Get labels
+                ion_labels_target1_for_pcc = []
+                ion_labels_target2_for_pcc = []
+                ion_labels_to_plot = []
+                for i, ion in rep_target1_all_ions.iterrows():
+                    if ion["Is_matching_ion"]:
+                        x = ion["Experimental_mass"]
+                        y = ion["Relative_Intensity"]
+                        label = df_target1_matching_ions["Ion_name"][
+                            df_target1_matching_ions["Ion_ID"] == i
+                        ].values[0]
+                        if any(valid_label in label for valid_label in ION_LABELS):
+                            ion_labels_target1_for_pcc.append((x, y, label))
+                            if y >= st.session_state["show_label_slider"]:
+                                label_and_mass = f"{label}\n{x:.3f}"
+                                ion_labels_to_plot.append(
+                                    ax.text(
+                                        x,
+                                        y,
+                                        label_and_mass,
+                                        color=ion["color"],
+                                        fontsize=st.session_state[
+                                            "tick_label_size_slider"
+                                        ],
+                                    )
+                                )
+
+                for j, ion in rep_target2_all_ions.iterrows():
+                    if ion["Is_matching_ion"]:
+                        x = ion["Experimental_mass"]
+                        y = ion["Relative_Intensity"] * -1
+                        label = df_target2_matching_ions["Ion_name"][
+                            df_target2_matching_ions["Ion_ID"] == j
+                        ].values[0]
+                        if any(valid_label in label for valid_label in ION_LABELS):
+                            ion_labels_target2_for_pcc.append((x, y, label))
+                            if y <= st.session_state["show_label_slider"] * -1:
+                                label_and_mass = f"{label}\n{x:.3f}"
+                                ion_labels_to_plot.append(
+                                    ax.text(
+                                        x,
+                                        y,
+                                        label_and_mass,
+                                        color=ion["color"],
+                                        fontsize=st.session_state[
+                                            "tick_label_size_slider"
+                                        ],
+                                    )
+                                )
+                # Compute correlation coefficient of matching ions
+                # cor_coeff =
+                adjust_text(
+                    ion_labels_to_plot,
+                    only_move={"points": "y", "texts": "y"},
+                    arrowprops=dict(arrowstyle="-", color="black", lw=1),
+                    color="red",
+                )
+
+                min_x = (
+                    round(
+                        min(
+                            min(rep_target1_all_ions["Experimental_mass"]),
+                            min(df_target2_all_ions["Experimental_mass"]),
+                        ),
+                        0,
+                    )
+                    - 10
+                )
+                max_x = (
+                    round(
+                        max(
+                            max(rep_target1_all_ions["Experimental_mass"]),
+                            max(df_target2_all_ions["Experimental_mass"]),
+                        ),
+                        0,
+                    )
+                    + 10
+                )
+                ax.title.set_text(
+                    f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
+                )
+                ax.set_xlim([min_x, max_x])
+                ax.set_ylabel(
+                    "Relative Intensity",
+                    fontsize=st.session_state["legend_label_size_slider"],
+                )
+                ax.set_xlabel(
+                    "m/z", fontsize=st.session_state["legend_label_size_slider"]
+                )
+                ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
+                ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
+
+                # Add goodness of fit to lower right of plot
+                ax.text(
+                    0.95,
+                    0.05,
+                    f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc)[0]:.2f}",
+                    transform=ax.transAxes,
+                    fontsize=st.session_state["tick_label_size_slider"],
+                    verticalalignment="bottom",
+                    horizontalalignment="right",
+                )
+
+                # plot this to streamlit
+                with column:
+                    st.pyplot(fig)
+                    # Add download button
+                    st.button(
+                        "Download",
+                        key=f"download_button_peptide_{target_peptide}_{replicate_target1}_{replicate_target2}",
+                        on_click=handle_download_button,
+                        args=(
+                            fig,
+                            target_peptide,
+                            replicate_target1,
+                            replicate_target2,
+                        ),
+                    )
 
 
 def handle_download_button(
@@ -464,7 +477,7 @@ def main():
             key="show_label_slider",
         )
         st.slider(
-            "Axis label size", 0, 30, value=15, step=1, key="legend_label_size_slider"
+            "Axis label size", 0, 20, value=15, step=1, key="legend_label_size_slider"
         )
         st.slider(
             "Tick label size", 0, 20, value=10, step=1, key="tick_label_size_slider"
@@ -513,7 +526,7 @@ def main():
                 )
 
                 # Select peptide of interest
-                st.selectbox(
+                st.multiselect(
                     f"Choose a peptide out of {len(peptide_selection)}",
                     peptide_selection,
                     key="peptide_of_interest",
@@ -535,7 +548,7 @@ def main():
             else:
                 peptide_selection = set(df1_all_peaks["Peptide"])
                 # Select peptide of interest
-                st.selectbox(
+                st.multiselect(
                     f"Choose a peptide out of {len(peptide_selection)}",
                     peptide_selection,
                     key="peptide_of_interest",
