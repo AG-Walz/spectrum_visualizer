@@ -22,7 +22,8 @@ DOWNLOAD_PATH = os.path.join(os.path.dirname(__file__).rstrip("pages"), "plots")
 # Determine ion labels of interest
 ION_LABELS = ["b", "y", "[M"]
 # Fix matplotlib fontstyle to avoid issues with svg
-plt.rcParams["svg.fonttype"] = 'none'
+plt.rcParams["svg.fonttype"] = "none"
+
 
 # Read in uploaded file
 @st.cache
@@ -215,7 +216,8 @@ def plot_spectrum(
             max_x = round(max(rep_target_all_ions["Experimental_mass"]), 0) + 10
             ax.set_xlim([min_x, max_x])
             ax.set_ylabel(
-                "Relative Intensity", fontsize=st.session_state["legend_label_size_slider"]
+                "Relative Intensity",
+                fontsize=st.session_state["legend_label_size_slider"],
             )
             ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
@@ -262,7 +264,9 @@ def plot_mirror_plot(
         )
 
         for i, replicate_target1 in enumerate(df_target1_all_ions["filename"].unique()):
-            for y, replicate_target2 in enumerate(df_target2_all_ions["filename"].unique()):
+            for y, replicate_target2 in enumerate(
+                df_target2_all_ions["filename"].unique()
+            ):
                 rep_target1_all_ions = df_target1_all_ions[
                     df_target1_all_ions["filename"] == replicate_target1
                 ]
@@ -322,7 +326,9 @@ def plot_mirror_plot(
                                         y,
                                         label_and_mass,
                                         color=ion["color"],
-                                        fontsize=st.session_state["tick_label_size_slider"],
+                                        fontsize=st.session_state[
+                                            "tick_label_size_slider"
+                                        ],
                                     )
                                 )
 
@@ -343,7 +349,9 @@ def plot_mirror_plot(
                                         y,
                                         label_and_mass,
                                         color=ion["color"],
-                                        fontsize=st.session_state["tick_label_size_slider"],
+                                        fontsize=st.session_state[
+                                            "tick_label_size_slider"
+                                        ],
                                     )
                                 )
                 # Compute correlation coefficient of matching ions
@@ -383,7 +391,9 @@ def plot_mirror_plot(
                     "Relative Intensity",
                     fontsize=st.session_state["legend_label_size_slider"],
                 )
-                ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
+                ax.set_xlabel(
+                    "m/z", fontsize=st.session_state["legend_label_size_slider"]
+                )
                 ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
                 ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
 
