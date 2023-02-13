@@ -477,10 +477,10 @@ def main():
             key="show_label_slider",
         )
         st.slider(
-            "Axis label size", 0, 50, value=15, step=1, key="legend_label_size_slider"
+            "Axis label size", 0, 100, value=15, step=1, key="legend_label_size_slider"
         )
         st.slider(
-            "Tick label size", 0, 50, value=10, step=1, key="tick_label_size_slider"
+            "Tick label size", 0, 100, value=10, step=1, key="tick_label_size_slider"
         )
         st.slider("Bar width", 0.0, 4.0, value=2.0, step=0.1, key="bar_width_slider")
         st.selectbox(
