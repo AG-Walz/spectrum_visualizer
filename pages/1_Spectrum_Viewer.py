@@ -218,7 +218,7 @@ def plot_spectrum(
                 0.95,
                 f"{target_peptide}",
                 transform=ax.transAxes,
-                fontsize=st.session_state["pep_r_label_size_slider"],
+                fontsize=st.session_state["seq_r_label_size_slider"],
                 verticalalignment="top",
                 horizontalalignment="left",
             )
