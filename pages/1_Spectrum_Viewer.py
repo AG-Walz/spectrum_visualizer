@@ -212,6 +212,17 @@ def plot_spectrum(
                 color="red",
             )
 
+            # Add Peptide to upper left of plot
+            ax.text(
+                0.05,
+                0.95,
+                f"{target_peptide}",
+                transform=ax.transAxes,
+                fontsize=st.session_state["tick_label_size_slider"],
+                verticalalignment="top",
+                horizontalalignment="left",
+            )
+
             min_x = round(min(rep_target_all_ions["Experimental_mass"]), 0) - 10
             max_x = round(max(rep_target_all_ions["Experimental_mass"]), 0) + 10
             ax.set_xlim([min_x, max_x])
@@ -222,7 +233,11 @@ def plot_spectrum(
             ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
-            ax.title.set_text(f"MS2 Spectrum of {target_peptide} in {replicate}")
+
+            if st.session_state['show_title_checkbox']:
+                ax.title.set_text(
+                    f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
+                )
 
             # plot this to streamlit
             with column:
@@ -383,9 +398,11 @@ def plot_mirror_plot(
                     )
                     + 10
                 )
-                ax.title.set_text(
-                    f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
-                )
+
+                if st.session_state['show_title_checkbox']:
+                    ax.title.set_text(
+                        f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
+                    )
                 ax.set_xlim([min_x, max_x])
                 ax.set_ylabel(
                     "Relative Intensity",
@@ -406,6 +423,17 @@ def plot_mirror_plot(
                     fontsize=st.session_state["tick_label_size_slider"],
                     verticalalignment="bottom",
                     horizontalalignment="right",
+                )
+
+                # Add Peptide to upper left of plot
+                ax.text(
+                    0.05,
+                    0.95,
+                    f"{target_peptide}",
+                    transform=ax.transAxes,
+                    fontsize=st.session_state["tick_label_size_slider"],
+                    verticalalignment="top",
+                    horizontalalignment="left",
                 )
 
                 # plot this to streamlit
@@ -477,15 +505,16 @@ def main():
             key="show_label_slider",
         )
         st.slider(
-            "Axis label size", 0, 20, value=15, step=1, key="legend_label_size_slider"
+            "Axis label size", 0, 100, value=15, step=1, key="legend_label_size_slider"
         )
         st.slider(
-            "Tick label size", 0, 20, value=10, step=1, key="tick_label_size_slider"
+            "Tick label size", 0, 100, value=10, step=1, key="tick_label_size_slider"
         )
         st.slider("Bar width", 0.0, 4.0, value=2.0, step=0.1, key="bar_width_slider")
         st.selectbox(
             "Export format", ["svg", "png", "jpeg", "pdf"], key="export_format"
         )
+        st.checkbox("Show Title", value=False, key="show_title_checkbox")
     with col_plot:
         st.title("Plot")
         # Only start if files are uploaded
