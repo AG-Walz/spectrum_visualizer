@@ -201,7 +201,7 @@ def plot_spectrum(
                                     y,
                                     label_and_mass,
                                     color=ion["color"],
-                                    fontsize=st.session_state["tick_label_size_slider"],
+                                    fontsize=st.session_state["ion_label_size_slider"],
                                 )
                             )
             # Adjust text to avoid overlapping
@@ -218,7 +218,7 @@ def plot_spectrum(
                 0.95,
                 f"{target_peptide}",
                 transform=ax.transAxes,
-                fontsize=st.session_state["tick_label_size_slider"],
+                fontsize=st.session_state["pep_r_label_size_slider"],
                 verticalalignment="top",
                 horizontalalignment="left",
             )
@@ -236,7 +236,7 @@ def plot_spectrum(
 
             if st.session_state['show_title_checkbox']:
                 ax.title.set_text(
-                    f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
+                    f"Spectrum of {target_peptide} in {replicate}"
                 )
 
             # plot this to streamlit
@@ -342,7 +342,7 @@ def plot_mirror_plot(
                                         label_and_mass,
                                         color=ion["color"],
                                         fontsize=st.session_state[
-                                            "tick_label_size_slider"
+                                            "ion_label_size_slider"
                                         ],
                                     )
                                 )
@@ -365,7 +365,7 @@ def plot_mirror_plot(
                                         label_and_mass,
                                         color=ion["color"],
                                         fontsize=st.session_state[
-                                            "tick_label_size_slider"
+                                            "ion_label_size_slider"
                                         ],
                                     )
                                 )
@@ -420,7 +420,7 @@ def plot_mirror_plot(
                     0.05,
                     f"R² = {spectrum_correlation(ion_labels_target1_for_pcc, ion_labels_target2_for_pcc)[0]:.2f}",
                     transform=ax.transAxes,
-                    fontsize=st.session_state["tick_label_size_slider"],
+                    fontsize=st.session_state["seq_r_label_size_slider"],
                     verticalalignment="bottom",
                     horizontalalignment="right",
                 )
@@ -431,7 +431,7 @@ def plot_mirror_plot(
                     0.95,
                     f"{target_peptide}",
                     transform=ax.transAxes,
-                    fontsize=st.session_state["tick_label_size_slider"],
+                    fontsize=st.session_state["seq_r_label_size_slider"],
                     verticalalignment="top",
                     horizontalalignment="left",
                 )
@@ -509,6 +509,12 @@ def main():
         )
         st.slider(
             "Tick label size", 0, 100, value=10, step=1, key="tick_label_size_slider"
+        )
+        st.slider(
+            "Sequence and R2 size", 0, 100, value=10, step=1, key="seq_r_label_size_slider"
+        )
+        st.slider(
+            "Ion label size", 0, 100, value=10, step=1, key="ion_label_size_slider"
         )
         st.slider("Bar width", 0.0, 4.0, value=2.0, step=0.1, key="bar_width_slider")
         st.selectbox(
