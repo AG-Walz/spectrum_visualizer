@@ -150,6 +150,7 @@ def new_spectrum_correlation(
     :param all_peaks_target2: tuple of x, y, ion_label
     :return: tuple of Goodness of fit (R2), predicted y values, training x and y values
     """
+
     def bin_intensity(df: pd.DataFrame, bins: int, min_mz: int, max_mz: int) -> dict:
         """
         Iterate over m/z according to bin size, catch the peak values for each bin and take
@@ -157,7 +158,9 @@ def new_spectrum_correlation(
         or sum up -> https://link.springer.com/content/pdf/10.1007/978-1-4939-6740-7_7.pdf
         """
         bin_dict = defaultdict(list)
-        bin_idx = np.digitize(df["Experimental_mass"].values, np.linspace(min_mz, max_mz, bins))
+        bin_idx = np.digitize(
+            df["Experimental_mass"].values, np.linspace(min_mz, max_mz, bins)
+        )
         # Create a dictionary, where the keys are the bins and the values are an array of binned mz values
         for b, mz in zip(bin_idx, df["Relative_Intensity"].values):
             bin_dict[b].append(mz)
@@ -167,10 +170,26 @@ def new_spectrum_correlation(
         return sum_bins
 
     # Get bin intensities
-    min_mz = round(min(all_peaks_target1["Experimental_mass"].min(), all_peaks_target2["Experimental_mass"].min()), 0)
-    max_mz = round(max(all_peaks_target1["Experimental_mass"].max(), all_peaks_target2["Experimental_mass"].max()), 0)
-    bins_target1 = bin_intensity(all_peaks_target1, st.session_state['bins_lr_slider'], min_mz, max_mz)
-    bins_target2 = bin_intensity(all_peaks_target2, st.session_state['bins_lr_slider'], min_mz, max_mz)
+    min_mz = round(
+        min(
+            all_peaks_target1["Experimental_mass"].min(),
+            all_peaks_target2["Experimental_mass"].min(),
+        ),
+        0,
+    )
+    max_mz = round(
+        max(
+            all_peaks_target1["Experimental_mass"].max(),
+            all_peaks_target2["Experimental_mass"].max(),
+        ),
+        0,
+    )
+    bins_target1 = bin_intensity(
+        all_peaks_target1, st.session_state["bins_lr_slider"], min_mz, max_mz
+    )
+    bins_target2 = bin_intensity(
+        all_peaks_target2, st.session_state["bins_lr_slider"], min_mz, max_mz
+    )
 
     # Get intersection of bins
     bin_intersect = set(bins_target1.keys()).intersection(bins_target2.keys())
@@ -195,7 +214,12 @@ def new_spectrum_correlation(
     return r2, y_pred, target1_intensities, target2_intensities
 
 
-def plot_linear_regression(r2:float, y_pred: np.array, target1_intensities: np.array, target2_intensities: np.array):
+def plot_linear_regression(
+    r2: float,
+    y_pred: np.array,
+    target1_intensities: np.array,
+    target2_intensities: np.array,
+):
     """
     Plot linear regression model
     :param r2: float
@@ -207,8 +231,14 @@ def plot_linear_regression(r2:float, y_pred: np.array, target1_intensities: np.a
     fig, ax = plt.subplots()
     ax.scatter(target1_intensities, target2_intensities, color="black")
     ax.plot(target1_intensities, y_pred, color="red", linewidth=3)
-    ax.set_xlabel("Relative intensity (upper spectrum)", fontsize=st.session_state["legend_label_size_slider"])
-    ax.set_ylabel("Relative intensity (lower spectrum)", fontsize=st.session_state["legend_label_size_slider"])
+    ax.set_xlabel(
+        "Relative intensity (upper spectrum)",
+        fontsize=st.session_state["legend_label_size_slider"],
+    )
+    ax.set_ylabel(
+        "Relative intensity (lower spectrum)",
+        fontsize=st.session_state["legend_label_size_slider"],
+    )
     ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
     ax.text(
         0.95,
@@ -220,6 +250,7 @@ def plot_linear_regression(r2:float, y_pred: np.array, target1_intensities: np.a
         horizontalalignment="right",
     )
     return fig
+
 
 def plot_spectrum(
     df_all_peaks: pd.DataFrame,
@@ -315,10 +346,8 @@ def plot_spectrum(
             ax.set_xlabel("m/z", fontsize=st.session_state["legend_label_size_slider"])
             ax.tick_params(labelsize=st.session_state["tick_label_size_slider"])
 
-            if st.session_state['show_title_checkbox']:
-                ax.title.set_text(
-                    f"Spectrum of {target_peptide} in {replicate}"
-                )
+            if st.session_state["show_title_checkbox"]:
+                ax.title.set_text(f"Spectrum of {target_peptide} in {replicate}")
 
             # plot this to streamlit
             with column:
@@ -480,7 +509,7 @@ def plot_mirror_plot(
                     + 10
                 )
 
-                if st.session_state['show_title_checkbox']:
+                if st.session_state["show_title_checkbox"]:
                     ax.title.set_text(
                         f"Mirror plot of {target_peptide} in {replicate_target1} and {replicate_target2}"
                     )
@@ -519,17 +548,36 @@ def plot_mirror_plot(
 
                 # plot this to streamlit
                 with column:
-                    tab1, tab2, tab3 = st.tabs(["Mirror Plot", "Linear Regression", "Linear Regression (new)"])
+                    tab1, tab2, tab3 = st.tabs(
+                        ["Mirror Plot", "Linear Regression", "Linear Regression (new)"]
+                    )
                     with tab1:
                         st.pyplot(fig)
                     with tab2:
-                        r2, y_pred, target1_intensities, target2_intensities = spectrum_correlation(ion_labels_target1_for_pcc,
-                                                                                                ion_labels_target2_for_pcc)
-                        fig_linreg = plot_linear_regression(r2, y_pred, target1_intensities, target2_intensities)
+                        (
+                            r2,
+                            y_pred,
+                            target1_intensities,
+                            target2_intensities,
+                        ) = spectrum_correlation(
+                            ion_labels_target1_for_pcc, ion_labels_target2_for_pcc
+                        )
+                        fig_linreg = plot_linear_regression(
+                            r2, y_pred, target1_intensities, target2_intensities
+                        )
                         st.pyplot(fig_linreg)
                     with tab3:
-                        r2, y_pred, target1_intensities, target2_intensities = new_spectrum_correlation(rep_target1_all_ions, rep_target2_all_ions)
-                        fig_linreg_new = plot_linear_regression(r2, y_pred, target1_intensities, target2_intensities)
+                        (
+                            r2,
+                            y_pred,
+                            target1_intensities,
+                            target2_intensities,
+                        ) = new_spectrum_correlation(
+                            rep_target1_all_ions, rep_target2_all_ions
+                        )
+                        fig_linreg_new = plot_linear_regression(
+                            r2, y_pred, target1_intensities, target2_intensities
+                        )
                         st.pyplot(fig_linreg_new)
                     # Add download button
                     st.button(
@@ -543,7 +591,6 @@ def plot_mirror_plot(
                             replicate_target2,
                         ),
                     )
-
 
 
 def handle_download_button(
@@ -599,23 +646,47 @@ def main():
                 key="show_label_slider",
             )
             st.slider(
-                "Axis label size", 0, 100, value=15, step=1, key="legend_label_size_slider"
+                "Axis label size",
+                0,
+                100,
+                value=15,
+                step=1,
+                key="legend_label_size_slider",
             )
             st.slider(
-                "Tick label size", 0, 100, value=10, step=1, key="tick_label_size_slider"
+                "Tick label size",
+                0,
+                100,
+                value=10,
+                step=1,
+                key="tick_label_size_slider",
             )
             st.slider(
-                "Sequence and R2 size", 0, 100, value=10, step=1, key="seq_r_label_size_slider"
+                "Sequence and R2 size",
+                0,
+                100,
+                value=10,
+                step=1,
+                key="seq_r_label_size_slider",
             )
             st.slider(
                 "Ion label size", 0, 100, value=10, step=1, key="ion_label_size_slider"
             )
-            st.slider("Bar width", 0.0, 4.0, value=2.0, step=0.1, key="bar_width_slider")
+            st.slider(
+                "Bar width", 0.0, 4.0, value=2.0, step=0.1, key="bar_width_slider"
+            )
             st.selectbox(
                 "Export format", ["svg", "png", "jpeg", "pdf"], key="export_format"
             )
             st.checkbox("Show Title", value=False, key="show_title_checkbox")
-            st.slider("Number of Bins (LR new)", 500, 5000, value=1000, step=1, key="bins_lr_slider")
+            st.slider(
+                "Number of Bins (LR new)",
+                500,
+                5000,
+                value=1000,
+                step=1,
+                key="bins_lr_slider",
+            )
     with col_plot:
         st.title("Plot")
         # Only start if files are uploaded
