@@ -27,7 +27,7 @@ plt.rcParams["svg.fonttype"] = "none"
 
 
 # Read in uploaded file
-@st.cache
+@st.cache_data
 def read_tsv(file: str) -> pd.DataFrame:
     """
     Read in tsv file
@@ -255,17 +255,17 @@ def plot_linear_regression(
 def plot_spectrum(
     df_all_peaks: pd.DataFrame,
     df_matching_ions: pd.DataFrame,
-    target_peptides: str,
-    column: st.beta_columns,
-) -> None:
+    target_peptides: str
+) -> plt.figure:
     """
     Plot spectrum of target peptide in streamlit plot column
     :param df_all_peaks: pd.DataFrame
     :param df_matching_ions: pd.DataFrame
     :param target_peptides: str
-    :param column: st.beta_columns
+    :param column: st.columns
     :return: None
     """
+    figs = []
     for target_peptide in target_peptides:
         # Get peaks of interest
         df_target_all_ions, df_target_matching_ions = get_peaks_of_interest(
@@ -349,15 +349,22 @@ def plot_spectrum(
             if st.session_state["show_title_checkbox"]:
                 ax.title.set_text(f"Spectrum of {target_peptide} in {replicate}")
 
-            # plot this to streamlit
-            with column:
-                st.pyplot(fig)
-                st.button(
-                    "Download",
-                    key=f"download_button_peptide_{target_peptide}_{replicate}",
-                    on_click=handle_download_button,
-                    args=(fig, target_peptide, replicate),
-                )
+            figs.append((fig, target_peptide, replicate))
+
+    return figs
+
+
+def plot_spectrum_handler(df_all_peaks: pd.DataFrame, df_matching_ions: pd.DataFrame, target_peptides: str, column: st.columns) -> None:
+    figs = plot_spectrum(df_all_peaks, df_matching_ions, target_peptides)
+    with column:
+        for fig, target_peptide, replicate in figs:
+            st.pyplot(fig)
+            st.button(
+                "Download",
+                key=f"download_button_peptide_{target_peptide}_{replicate}",
+                on_click=handle_download_button,
+                args=(fig, target_peptide, replicate),
+                    )
 
 
 # Plot mirror plot
@@ -367,7 +374,7 @@ def plot_mirror_plot(
     df2_all_peaks: pd.DataFrame,
     df2_matching_ions: pd.DataFrame,
     target_peptides: List[str],
-    column: st.beta_columns,
+    column: st.columns,
 ) -> None:
     """
     Plot mirror plot of target peptide in streamlit plot column
@@ -376,7 +383,7 @@ def plot_mirror_plot(
     :param df2_all_peaks: pd.DataFrame
     :param df2_matching_ions: pd.DataFrame
     :param target_peptides: str
-    :param column: st.beta_columns
+    :param column: st.columns
     :return: None
     """
     # Get peaks of interest
@@ -626,7 +633,6 @@ def main():
     st.set_page_config(
         page_title="Spectrum Viewer",
         layout="wide",
-        page_icon="simple-icons:soundcharts",
     )
     st.sidebar.title("Upload files")
     uploaded_files = st.sidebar.file_uploader(
@@ -758,7 +764,7 @@ def main():
                 st.button(
                     "Plot",
                     key="button_plot_spectrum",
-                    on_click=plot_spectrum,
+                    on_click=plot_spectrum_handler,
                     args=(
                         df1_all_peaks,
                         df1_matching_ions,
