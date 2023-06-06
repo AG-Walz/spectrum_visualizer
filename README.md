@@ -10,7 +10,6 @@ If this is the first time that you are running this pipeline, please look at the
 - Once you downloaded and installed miniconda, open the Command Prompt
 - Create a new conda environment using the following command:
 ```bash
-  conda install git # Install git in your base environment if you don't have it yet
   conda create -n spectrum_visualizer -c conda-forge -c anaconda git pandas adjusttext streamlit scikit-learn
 ```
 ### Running the app
