@@ -18,7 +18,7 @@ If this is the first time that you are running this pipeline, please look at the
   # Navigate to the directory where you want to clone the repository
   cd \path\to\directory
   # Clone the repository in the current directory
-  git clone https://github.com/AG-Walz/spectrum_visualizer
+  git clone git@github.com:AG-Walz/spectrum_visualizer.git
   # Navigate to the cloned repository
   cd spectrum_visualizer
   # Run the app
