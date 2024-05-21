@@ -71,7 +71,7 @@ def get_colors(
     for index, ion in target_ions.iterrows():
         if ion["Is_matching_ion"]:
             label = exp_matching_ions["Ion_name"][
-                exp_matching_ions["Ion_ID"] == index
+                exp_matching_ions["Ion_ID"] == ion["Ion_ID"]
             ].values[0]
             color = (
                 red
@@ -302,7 +302,7 @@ def plot_spectrum(
                     x = ion["Experimental_mass"]
                     y = ion["Relative_Intensity"]
                     label = df_target_matching_ions["Ion_name"][
-                        df_target_matching_ions["Ion_ID"] == i
+                        df_target_matching_ions["Ion_ID"] == ion["Ion_ID"]
                     ].values[0]
                     if any(valid_label in label for valid_label in ION_LABELS):
                         ion_labels_for_pcc.append((x, y, label))
