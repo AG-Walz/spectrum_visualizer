@@ -1,0 +1,16 @@
+name: openms_viz
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - pip
+  - pyopenms
+  - pandas
+  - numpy
+  - streamlit
+  - bokeh=2.4.3
+  - pip:
+    - psm_utils
+    - koinapy
+    - streamlit-bokeh
