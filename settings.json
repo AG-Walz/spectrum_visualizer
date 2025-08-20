@@ -1,0 +1,44 @@
+{
+    "app-name": "immunuXplore",
+    "github-user": "axelwalter",
+    "version": "0.0.1",
+    "repository-name": "immunoxplorer-gui",
+    "enable_workspaces": true,
+    "ui": {
+        "theme": "light",
+        "sidebar_expanded": true,
+        "debug_mode": false
+    },
+    "models": {
+        "default": "ms2pip_timsTOF2024",
+        "available": [
+            "ms2pip_timsTOF2024",
+            "ms2pip_HCD2021",
+            "Prosit_2019_intensity",
+            "Prosit_2020_intensity",
+            "AlphaPept_ms2_generic"
+        ]
+    },
+    "performance": {
+        "cache_size_mb": 500,
+        "max_file_size_gb": 2,
+        "chunk_size": 5000,
+        "enable_monitoring": true
+    },
+    "analytics": {
+        "enabled": false,
+        "google-analytics": {
+            "enabled": false,
+            "tag": ""
+        },
+        "piwik-pro": {
+            "enabled": false,
+            "tag": "57690c44-d635-43b0-ab43-f8bd3064ca06"
+        }
+    },
+    "advanced": {
+        "test": true,
+        "workspaces_dir": "..",
+        "online_deployment": false
+    }
+}

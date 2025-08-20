@@ -1,0 +1,33 @@
+[browser]
+gatherUsageStats = false
+
+[global]
+developmentMode = false
+
+[server]
+maxUploadSize = 2048 #MB (2 GB for large mzML files)
+port = 8503 # Changed to avoid conflicts
+address = "localhost"
+headless = false
+enableCORS = true
+enableXsrfProtection = false
+
+[theme]
+# The preset Streamlit theme that your custom theme inherits from. One of "light" or "dark".
+# base =
+
+# Primary accent color for interactive elements.
+# primaryColor = "#6603fc"
+primaryColor = "#a28a5d"
+
+# Background color for the main content area.
+# backgroundColor =
+
+# Background color used for the sidebar and most interactive widgets.
+# secondaryBackgroundColor = "#fff8ed"
+
+# Color used for almost all text.
+# textColor =
+
+# Font family for all text in the app, except code blocks. One of "sans serif", "serif", or "monospace".
+# font =
