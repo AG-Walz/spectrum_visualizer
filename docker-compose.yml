@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  immunoexplore:
+  specviz:
     build: .
     ports:
       - "8501:8501"
     volumes:
       - ./data:/app/data
-      - ./workspaces-immunoxplorer-gui:/app/workspaces-immunoxplorer-gui
+      - ./workspaces-specviz-gui:/app/workspaces-specviz-gui
     environment:
       - BOKEH_ALLOW_WS_ORIGIN=*
     restart: unless-stopped
