@@ -1,18 +1,19 @@
-import json
-import os
-import shutil
-import sys
-import uuid
-import time
-from typing import Any
-from pathlib import Path
-from streamlit.components.v1 import html
+"""Shared utilities - Cross-workspace helper functions.
 
+Provides file operations, parameter management (load/save params.json), hardware
+monitoring, validation, and UI helpers. Used by Spectrum Analysis and Filter Datasets.
+"""
 import streamlit as st
-import pandas as pd
-import psutil
-from io import BytesIO
-import zipfile
+from streamlit.components.v1 import html
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+
+from shared_imports import (
+    json, os, sys, Path, pd, psutil, PSUTIL_AVAILABLE,
+    Any, List, Dict, Optional, StringIO, BytesIO,
+    shutil, uuid, time, zipfile
+)
 
 try:
     from tkinter import Tk, filedialog
@@ -29,13 +30,10 @@ OS_PLATFORM = sys.platform
 def monitor_hardware():
     cpu_progress = psutil.cpu_percent(interval=None) / 100
     ram_progress = 1 - psutil.virtual_memory().available / psutil.virtual_memory().total
-
     st.text(f"Ram ({ram_progress * 100:.2f}%)")
     st.progress(ram_progress)
-
     st.text(f"CPU ({cpu_progress * 100:.2f}%)")
     st.progress(cpu_progress)
-
     st.caption(f"Last fetched at: {time.strftime('%H:%M:%S')}")
 
 
@@ -137,7 +135,7 @@ def page_setup() -> dict[str, Any]:
 
     # Set Streamlit page configurations
     st.set_page_config(
-        page_title=st.session_state.settings.get("app-name", "immunuXplore"),
+        page_title=st.session_state.settings.get("app-name", "SpecViz"),
         # page_icon="assets/OpenMS.png",
         # layout="wide",
         initial_sidebar_state="auto",
@@ -232,7 +230,7 @@ def page_setup() -> dict[str, Any]:
             st.session_state.location = "online"
         # if we run the packaged windows version, we start within the Python directory -> need to change working directory to ..\st.session_state.settings["repository-name"]
         if "windows" in sys.argv:
-            repo_name = st.session_state.settings.get("repository-name", "immunoxplorer-gui")
+            repo_name = st.session_state.settings.get("repository-name", "specviz-gui")
             os.chdir(Path("..", repo_name))
         # Define the directory where all workspaces will be stored
         workspaces_dir_setting = st.session_state.settings.get("workspaces_dir", "..")
@@ -240,7 +238,7 @@ def page_setup() -> dict[str, Any]:
             workspaces_dir_setting
             and st.session_state.location == "local"
         ):
-            repo_name = st.session_state.settings.get("repository-name", "immunoxplorer-gui")
+            repo_name = st.session_state.settings.get("repository-name", "specviz-gui")
             workspaces_dir = Path(
                 workspaces_dir_setting,
                 "workspaces-" + repo_name,
@@ -303,7 +301,7 @@ def render_sidebar() -> None:
                     workspaces_dir_setting
                     and st.session_state.location == "local"
                 ):
-                    repo_name = st.session_state.settings.get("repository-name", "immunoxplorer-gui")
+                    repo_name = st.session_state.settings.get("repository-name", "specviz-gui")
                     workspaces_dir = Path(
                         workspaces_dir_setting,
                         "workspaces-" + repo_name,
@@ -388,7 +386,7 @@ def render_sidebar() -> None:
                 unsafe_allow_html=True,
             )
             version_info = st.session_state.settings.get("version", "0.0.1")
-            app_name = st.session_state.settings.get("app-name", "immunuXplore")
+            app_name = st.session_state.settings.get("app-name", "SpecViz")
             st.markdown(
                 f'<div class="version-box">{app_name}<br>Version: {version_info}</div>',
                 unsafe_allow_html=True,
@@ -397,21 +395,9 @@ def render_sidebar() -> None:
 
 
 def v_space(n: int, col=None) -> None:
-    """
-    Prints empty strings to create vertical space in the Streamlit app.
-
-    Args:
-        n (int): An integer representing the number of empty lines to print.
-        col: A streamlit column can be passed to add vertical space there.
-
-    Returns:
-        None
-    """
+    """Add vertical space."""
     for _ in range(n):
-        if col:
-            col.write("#")
-        else:
-            st.write("#")
+        (col or st).write("#")
 
 
 def display_large_dataframe(
@@ -466,7 +452,6 @@ def display_large_dataframe(
     else:
         # Calculate the index based on the current page and chunk size
         base_index = (page - 1) * chunk_size
-        print(base_index)
         return base_index + rows[0]
 
 
@@ -562,15 +547,7 @@ def show_fig(
 
 
 def reset_directory(path: Path) -> None:
-    """
-    Remove the given directory and re-create it.
-
-    Args:
-        path (Path): Path to the directory to be reset.
-
-    Returns:
-        None
-    """
+    """Remove and re-create directory."""
     path = Path(path)
     if path.exists():
         shutil.rmtree(path)
@@ -578,20 +555,8 @@ def reset_directory(path: Path) -> None:
 
 
 def get_dataframe_mem_useage(df):
-    """
-    Get the memory usage of a pandas DataFrame in megabytes.
-
-    Args:
-        df (pd.DataFrame): The DataFrame to calculate the memory usage for.
-
-    Returns:
-        float: The memory usage of the DataFrame in megabytes.
-    """
-    # Calculate the memory usage of the DataFrame in bytes
-    memory_usage_bytes = df.memory_usage(deep=True).sum()
-    # Convert bytes to megabytes
-    memory_usage_mb = memory_usage_bytes / (1024**2)
-    return memory_usage_mb
+    """Get DataFrame memory usage in MB."""
+    return df.memory_usage(deep=True).sum() / (1024**2)
 
 
 def tk_directory_dialog(title: str = "Select Directory", parent_dir: str = os.getcwd()):
@@ -701,3 +666,93 @@ def load_sample_sheet():
         else:
             st.error("Please upload and validate a dataset first in the **Dataset Selection** section.")
             st.stop()
+
+
+def create_file_options_with_sizes(file_paths):
+    """
+    Create file options list with file sizes for Streamlit multiselect.
+    
+    Args:
+        file_paths (List[str]): List of file paths
+        
+    Returns:
+        List[str]: List of display options with file sizes
+    """
+    file_options = []
+    for file_path in file_paths:
+        try:
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
+            file_options.append(f"{Path(file_path).name} ({file_size:.1f} MB)")
+        except:
+            file_options.append(Path(file_path).name)
+    return file_options
+
+
+def map_display_names_to_paths(selected_display_names, file_paths):
+    """
+    Map display names (with size info) back to actual file paths.
+    
+    Args:
+        selected_display_names (List[str]): List of selected display names
+        file_paths (List[str]): List of actual file paths
+        
+    Returns:
+        List[str]: List of selected file paths
+    """
+    selected_paths = []
+    for display_name in selected_display_names:
+        file_name = display_name.split(" (")[0]  # Remove size info
+        for file_path in file_paths:
+            if Path(file_path).name == file_name:
+                selected_paths.append(file_path)
+                break
+    return selected_paths
+
+# ================================================================
+# HELPER FUNCTIONS FOR REPETITIVE PATTERNS
+# ================================================================
+
+def extract_filename(path: str) -> str:
+    """Extract filename from path - common pattern across all files."""
+    return Path(path).name
+
+def extract_filenames(paths: List[str]) -> List[str]:
+    """Extract filenames from list of paths."""
+    return [Path(p).name for p in paths]
+
+def is_empty_collection(obj) -> bool:
+    """Check if DataFrame, list, or other collection is empty."""
+    if hasattr(obj, 'empty'):
+        return obj.empty
+    return len(obj) == 0
+
+def safe_concat_dataframes(dfs: List, **kwargs) -> pd.DataFrame:
+    """Safely concatenate DataFrames with common default parameters."""
+    if not dfs:
+        return pd.DataFrame()
+    return pd.concat(dfs, ignore_index=True, sort=False, **kwargs)
+
+def show_status_message(status: str, message: str, icon_map: Optional[dict] = None):
+    """Show standardized status messages with icons."""
+    if icon_map is None:
+        icon_map = {"success": "✅", "error": "❌", "warning": "⚠️", "info": "ℹ️"}
+    
+    icon = icon_map.get(status, "")
+    full_message = f"{icon} {message}" if icon else message
+    
+    getattr(st, status, st.info)(full_message)
+
+def validate_file_list(files: List, file_type: str = "files") -> bool:
+    """Validate that file list is not empty with user feedback."""
+    if is_empty_collection(files):
+        show_status_message("error", f"No {file_type} provided")
+        return False
+    return True
+
+def create_validation_info_dict(expected: List[str], uploaded: List[str], 
+                               matched: List[str], missing: List[str], extra: List[str]) -> Dict:
+    """Create standardized validation info dictionary."""
+    return {
+        "expected_files": expected, "uploaded_files": uploaded,
+        "matched_files": matched, "missing_files": missing, "extra_files": extra
+    }

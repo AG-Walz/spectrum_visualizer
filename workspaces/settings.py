@@ -1,20 +1,13 @@
+"""Settings interface - Configure app defaults and preferences.
+
+Manages settings.json: data directories, AI model selections, analysis thresholds,
+UI preferences (theme, layout). Changes persist across sessions.
+"""
 import streamlit as st
-import json
+import sys
 from pathlib import Path
-
-def page_setup():
-    """Common page setup function."""
-    if "settings" not in st.session_state:
-        try:
-            with open("settings.json", "r") as f:
-                st.session_state.settings = json.load(f)
-        except FileNotFoundError:
-            st.session_state.settings = {
-                "app-name": "SpecViz",
-                "version": "0.0.1"
-            }
-
-page_setup()
+sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
+from shared_imports import json
 
 st.title("⚙️ Settings & Configuration")
 st.markdown("Configure SpecViz application settings and preferences.")
@@ -85,7 +78,6 @@ with col1:
         "ms2pip_timsTOF2024",
         "ms2pip_HCD2021", 
         "Prosit_2019_intensity",
-        "Prosit_2020_intensity",
         "AlphaPept_ms2_generic"
     ]
     
@@ -140,7 +132,7 @@ with col2:
         "Max File Size (GB)",
         min_value=1,
         max_value=10,
-        value=settings.get("performance", {}).get("max_file_size_gb", 2),
+        value=settings.get("performance", {}).get("max_file_size_gb", 3),
         help="Maximum allowed file upload size (requires app restart to apply)"
     )
     

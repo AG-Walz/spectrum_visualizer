@@ -1,13 +1,22 @@
 {
-    "app-name": "immunuXplore",
-    "github-user": "axelwalter",
+    "app-name": "SpecViz",
+    "github-user": "ngarciar24",
     "version": "0.0.1",
-    "repository-name": "immunoxplorer-gui",
+    "repository-name": "specviz-gui",
     "enable_workspaces": true,
     "ui": {
         "theme": "light",
         "sidebar_expanded": true,
         "debug_mode": false
+    },
+    "data_directories": {
+        "default": "/mnt/volume"
+    },
+    "file_browser": {
+        "enable_server_browser": true,
+        "enable_upload": true,
+        "default_tab": "server",
+        "unrestricted_access": true
     },
     "models": {
         "default": "ms2pip_timsTOF2024",
@@ -15,13 +24,30 @@
             "ms2pip_timsTOF2024",
             "ms2pip_HCD2021",
             "Prosit_2019_intensity",
-            "Prosit_2020_intensity",
             "AlphaPept_ms2_generic"
         ]
     },
+    "spectrum_analysis": {
+        "default_ion_types": {
+            "a": false,
+            "b": true,
+            "c": false,
+            "x": false,
+            "y": true,
+            "z": false,
+            "loss": false,
+            "precursor": false,
+            "prefix": false,
+            "immonium": false
+        },
+        "default_fragment_mass_tolerance": 0.02,
+        "default_max_fragment_charge": 2,
+        "default_collision_energy": 35,
+        "default_instrument_type": "TIMSTOF"
+    },
     "performance": {
         "cache_size_mb": 500,
-        "max_file_size_gb": 2,
+        "max_file_size_gb": 3,
         "chunk_size": 5000,
         "enable_monitoring": true
     },

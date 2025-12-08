@@ -1,36 +1,50 @@
-"""
-spectrum_tools.py - Compatibility layer for existing Streamlit app
-"""
+"""Streamlit compatibility layer - Bridges SpecViz backend with UI.
 
-import logging
-from typing import List, Dict, Optional, Any, Tuple
-import pyopenms as oms
-import pandas as pd
-from pathlib import Path
-import tempfile
-import itertools
+Re-exports SpecViz functions with st.cache_data decorators and progress bars.
+Adds UI-specific helpers (get_available_models, etc.) for Streamlit interface.
+Prevents redundant computation through caching.
+"""
+import sys; from pathlib import Path as P; sys.path.insert(0, str(P(__file__).parent.parent / "utils"))
+from shared_imports import (logging, oms, pd, Path, read_file, Peptidoform, 
+                            List, Dict, Optional, Any, Tuple, BOKEH_AVAILABLE)
+if BOKEH_AVAILABLE:
+    from shared_imports import figure; from bokeh.models import HoverTool, ColumnDataSource, Range1d
 
-# Import all functions from SpecViz
-from .SpecViz import (
-    filter_psms_by_peptide,
-    attach_spectrum_to_psm,
-    generate_theoretical_spectrum,
-    align_spectra,
-    annotate_peaks,
-    extract_annotations,
-    load_mzml_experiments,
-    create_spectrum_lookup,
-    convert_spectrum_to_df,
-    predict_koina_ions,
-    create_mirror_plot,
-    INCLUDED_IONS,
-    EXP_COLORS,
-    PRED_COLORS
-)
+# Import all functions from spectrum_engine as a module to avoid massive import lists
+try:
+    from . import spectrum_engine as sv
+    from .correlation import spectrum_correlation, new_spectrum_correlation
+except ImportError:
+    import spectrum_engine as sv
+    from correlation import spectrum_correlation, new_spectrum_correlation
 
 logger = logging.getLogger(__name__)
 
-# Default parameters - inherit from SpecViz
+# Re-export commonly used functions for backward compatibility
+filter_psms_by_peptide = sv.filter_psms_by_peptide
+attach_spectrum_to_psm = sv.attach_spectrum_to_psm
+generate_theoretical_spectrum = sv.generate_theoretical_spectrum
+align_spectra = sv.align_spectra
+annotate_peaks = sv.annotate_peaks
+extract_annotations = sv.extract_annotations
+load_mzml_experiments = sv.load_mzml_experiments
+load_mzml_experiments_indexed = sv.load_mzml_experiments_indexed
+create_spectrum_lookup = sv.create_spectrum_lookup
+convert_spectrum_to_df = sv.convert_spectrum_to_df
+predict_koina_ions = sv.predict_koina_ions
+create_mirror_plot = sv.create_mirror_plot
+create_mirror_plot_for_export = sv.create_mirror_plot_for_export
+export_plot = sv.export_plot
+assign_ion_color = sv.assign_ion_color
+render_spectrum_peaks = sv.render_spectrum_peaks
+get_ion_family = sv.get_ion_family
+create_peptide_overview_plot = sv.create_peptide_overview_plot
+export_overview_plot = sv.export_overview_plot
+
+# Constants
+INCLUDED_IONS = sv.INCLUDED_IONS
+EXP_COLORS = sv.EXP_COLORS
+PRED_COLORS = sv.PRED_COLORS
 DEFAULT_MODEL = "ms2pip_timsTOF2024"
 
 # ================================================================
@@ -41,19 +55,16 @@ def get_available_models() -> Dict[str, str]:
     """Get available models for Streamlit interface."""
     return {
         "MS2PIP TimsTOF 2024": "ms2pip_timsTOF2024",
-        "Prosit Transformer": "Prosit_2023_intensity_timsTOF",
+        "Prosit Transformer": "Prosit_2019_intensity",
         "AlphaPept": "AlphaPept_ms2_generic"
     }
 
-
 # ================================================================
-# LEGACY COMPATIBILITY FUNCTIONS
+# COMPATIBILITY FUNCTIONS
 # ================================================================
 def create_comparative_spectrum_mirror_plot(upper_data, lower_data, title):
     """Create comparative spectrum mirror plot."""
     try:
-        from bokeh.plotting import figure
-        from bokeh.models import HoverTool, ColumnDataSource, Range1d
         # Setup plot with custom hover tool
         hover = HoverTool(tooltips=[
             ("m/z", "@mz{0.000}"),
@@ -110,7 +121,6 @@ def create_single_spectrum_plot(mzml_path: str, idxml_path: str, spectrum_index:
                                model: str = DEFAULT_MODEL) -> Optional[Any]:
     """Create a single spectrum plot for Streamlit integration."""
     try:
-        from psm_utils.io import read_file
         
         # Load experiment
         exp = oms.MSExperiment()
@@ -165,46 +175,22 @@ def create_single_spectrum_plot(mzml_path: str, idxml_path: str, spectrum_index:
 
 logger = logging.getLogger(__name__)
 
-# Legacy function names for backward compatibility
-def load_experiments(file_paths: List[str]) -> Dict[str, oms.MSExperiment]:
-    """Legacy wrapper for load_mzml_experiments."""
-    return load_mzml_experiments(file_paths)
-
-def create_lookups(experiments: Dict[str, oms.MSExperiment]) -> Dict[str, oms.SpectrumLookup]:
-    """Legacy wrapper for create_spectrum_lookup."""
-    return create_spectrum_lookup(experiments)
-
-def get_spectrum_data(spectrum: oms.MSSpectrum) -> pd.DataFrame:
-    """Legacy wrapper for convert_spectrum_to_df."""
-    return convert_spectrum_to_df(spectrum)
-
-def create_plot(exp_data: pd.DataFrame, pred_data: pd.DataFrame, title: str = "Spectrum Plot") -> Any:
-    """Legacy wrapper for create_mirror_plot."""
-    return create_mirror_plot(exp_data, pred_data, title=title)
-
-def get_koina_predictions(peptide: str, charge: int, model: str = DEFAULT_MODEL) -> pd.DataFrame:
-    """Legacy wrapper for predict_koina_ions."""
-    return predict_koina_ions(peptide, charge, model)
-
 # Additional utility functions that might be needed by the Streamlit app
 def validate_mzml_file(file_path: str) -> bool:
-    """Validate if a file is a valid mzML file."""
+    """Validate if file is a valid mzML file."""
     try:
         exp = oms.MSExperiment()
         oms.MzMLFile().load(file_path, exp)
         return exp.size() > 0
-    except Exception as e:
-        logger.error(f"Invalid mzML file {file_path}: {e}")
+    except Exception:
         return False
 
 def validate_idxml_file(file_path: str) -> bool:
-    """Validate if a file is a valid idXML file."""
+    """Validate if file is a valid idXML file."""
     try:
-        from psm_utils.io import read_file
         psm_list = read_file(file_path, file_format="idXML")
         return len(psm_list) > 0
-    except Exception as e:
-        logger.error(f"Invalid idXML file {file_path}: {e}")
+    except Exception:
         return False
 
 def get_file_info(file_path: str) -> Dict[str, Any]:
@@ -214,25 +200,13 @@ def get_file_info(file_path: str) -> Dict[str, Any]:
         if path.suffix.lower() == '.mzml':
             exp = oms.MSExperiment()
             oms.MzMLFile().load(file_path, exp)
-            return {
-                "type": "mzML",
-                "size": exp.size(),
-                "valid": True,
-                "spectra_count": exp.size()
-            }
+            return {"type": "mzML", "size": exp.size(), "valid": True, "spectra_count": exp.size()}
         elif path.suffix.lower() == '.idxml':
-            from psm_utils.io import read_file
             psm_list = read_file(file_path, file_format="idXML")
-            return {
-                "type": "idXML",
-                "size": len(psm_list),
-                "valid": True,
-                "psm_count": len(psm_list)
-            }
+            return {"type": "idXML", "size": len(psm_list), "valid": True, "psm_count": len(psm_list)}
         else:
             return {"type": "unknown", "valid": False}
     except Exception as e:
-        logger.error(f"Error getting file info for {file_path}: {e}")
         return {"type": "error", "valid": False, "error": str(e)}
 
 def get_available_models_list() -> List[str]:
@@ -287,38 +261,59 @@ def get_spectrum_count(file_path: str) -> int:
 def get_psm_count(file_path: str) -> int:
     """Get number of PSMs in an idXML file."""
     try:
-        from psm_utils.io import read_file
         psm_list = read_file(file_path, file_format="idXML")
         return len(psm_list)
     except Exception:
         return 0
 
 def extract_unique_peptides(file_path: str) -> List[str]:
-    """Extract unique peptide sequences from idXML file."""
-    try:
-        from psm_utils.io import read_file
-        from psm_utils import Peptidoform
-        
+    """Extract unique modified peptidoforms from idXML file."""
+    try:        
         psm_list = read_file(file_path, file_format="idXML")
-        unique_peptides = set()
+        unique_peptidoforms = set()
         
         for psm in psm_list:
             try:
-                peptide_seq = Peptidoform(str(psm.peptidoform)).sequence
-                unique_peptides.add(peptide_seq)
+                # Store the full peptidoform with modifications
+                peptidoform_str = str(psm.peptidoform)
+                unique_peptidoforms.add(peptidoform_str)
             except Exception:
                 continue
         
-        return sorted(list(unique_peptides))
-    except Exception as e:
-        logger.error(f"Error extracting peptides from {file_path}: {e}")
+        return sorted(list(unique_peptidoforms))
+    except Exception:
+        return []
+
+
+def extract_unique_peptidoforms_with_display(file_path: str) -> List[dict]:
+    """Extract unique peptidoforms with both full form and display sequence."""
+    try:        
+        psm_list = read_file(file_path, file_format="idXML")
+        unique_peptidoforms = {}
+        
+        for psm in psm_list:
+            try:
+                peptidoform_str = str(psm.peptidoform)
+                unmodified_seq = Peptidoform(peptidoform_str).sequence
+                display_label = f"{unmodified_seq} [{peptidoform_str}]" if peptidoform_str != unmodified_seq else unmodified_seq
+                
+                unique_peptidoforms[peptidoform_str] = {
+                    'peptidoform': peptidoform_str,
+                    'sequence': unmodified_seq,
+                    'display_label': display_label
+                }
+            except Exception:
+                continue
+        
+        return sorted(list(unique_peptidoforms.values()), 
+                     key=lambda x: (x['sequence'], x['peptidoform']))
+    except Exception:
         return []
 
 # Additional functions required by the Streamlit app
 def extract_mzml_files_from_idxml(idxml_path: str) -> List[str]:
     """Extract mzML file names referenced in idXML file."""
     try:
-        from psm_utils.io import read_file
         psm_list = read_file(idxml_path, file_format="idXML")
         
         # Extract unique run names from PSMs
@@ -328,8 +323,7 @@ def extract_mzml_files_from_idxml(idxml_path: str) -> List[str]:
                 run_names.add(f"{psm.run}.mzML")
         
         return sorted(list(run_names))
-    except Exception as e:
-        logger.error(f"Error extracting mzML files from idXML: {e}")
+    except Exception:
         return []
 
 def validate_mzml_files_mapping(uploaded_files: List[str], expected_files: List[str]) -> tuple:
@@ -346,35 +340,29 @@ def validate_mzml_files_mapping(uploaded_files: List[str], expected_files: List[
 def load_identifications(idxml_path: str) -> tuple:
     """Load protein and peptide identifications from idXML file."""
     try:
-        from psm_utils.io import read_file
         psm_list = read_file(idxml_path, file_format="idXML")
-        
-        # Extract protein IDs (simplified - just unique proteins)
         protein_ids = set()
         peptide_ids = []
         
         for psm in psm_list:
             if hasattr(psm, 'peptidoform'):
                 peptide_ids.append(psm)
-                # Try to extract protein info if available
                 if hasattr(psm, 'protein'):
                     protein_ids.add(psm.protein)
         
         return list(protein_ids), peptide_ids
-    except Exception as e:
-        logger.error(f"Error loading identifications: {e}")
+    except Exception:
         return [], []
 
 def load_experiment(mzml_path: str) -> oms.MSExperiment:
-    """Load single mzML experiment."""
-    exp = oms.MSExperiment()
-    oms.MzMLFile().load(mzml_path, exp)
-    return exp
+    """Load single mzML experiment using common loading function."""
+    # Use the common loading function from SpecViz.py
+    experiments = load_mzml_experiments([mzml_path])
+    return list(experiments.values())[0]
 
 def extract_spectrum_mapping_multi(mzml_paths: List[str], idxml_path: str) -> pd.DataFrame:
     """Extract spectrum-peptide mapping from multiple mzML files and idXML."""
     try:
-        from psm_utils.io import read_file
         psm_list = read_file(idxml_path, file_format="idXML")
         
         # Load experiments to get spectrum information
@@ -426,7 +414,7 @@ def visualize_spectrum(mzml_path: str, id_path: str, spectrum_index: int,
                       height: int = 500, debug: bool = False) -> Optional[Any]:
     """Create spectrum visualization for Streamlit app."""
     try:
-        # Use the create_single_spectrum_plot function from SpecViz
+        # Use the create_single_spectrum_plot function from spectrum_engine
         plot = create_single_spectrum_plot(mzml_path, id_path, spectrum_index, model_name)
         return plot
     except Exception as e:
@@ -437,26 +425,26 @@ def visualize_spectrum(mzml_path: str, id_path: str, spectrum_index: int,
 
 # Export functions that actually exist in this module
 __all__ = [
-    # Core functions from SpecViz (imported)
+    # Core SpecViz functions (re-exported)
     'filter_psms_by_peptide', 'attach_spectrum_to_psm', 'generate_theoretical_spectrum',
-    'align_spectra', 'annotate_peaks', 'extract_annotations',
-    'load_mzml_experiments', 'create_spectrum_lookup', 'convert_spectrum_to_df',
-    'predict_koina_ions', 'create_mirror_plot',
+    'align_spectra', 'annotate_peaks', 'extract_annotations', 'load_mzml_experiments', 
+    'load_mzml_experiments_indexed', 'create_spectrum_lookup', 'convert_spectrum_to_df', 'predict_koina_ions', 
+    'create_mirror_plot', 'assign_ion_color', 'render_spectrum_peaks', 'get_ion_family',
     
-    # Legacy compatibility
-    'load_experiments', 'create_lookups', 'get_spectrum_data', 'create_plot',
-    'get_koina_predictions',
+    # R² calculation functions
+    'spectrum_correlation', 'new_spectrum_correlation',
     
-    # Streamlit app functions
+    # Streamlit utility functions
     'extract_mzml_files_from_idxml', 'validate_mzml_files_mapping', 'load_identifications',
     'load_experiment', 'extract_spectrum_mapping_multi', 'convert_to_mass_shift_format',
-    'visualize_spectrum', 'ensure_streamlit_compatible_dataframe',
+    'visualize_spectrum', 'ensure_streamlit_compatible_dataframe', 'get_available_models',
+    'get_spectrum_count', 'get_psm_count', 'extract_unique_peptides', 
+    'extract_unique_peptidoforms_with_display', 'validate_mzml_file', 'validate_idxml_file',
+    'get_file_info', 'get_available_models_list',
     
-    # Utility functions
-    'validate_mzml_file', 'validate_idxml_file', 'get_file_info',
-    'get_available_models', 'get_spectrum_count', 'get_psm_count',
-    'extract_unique_peptides',
+    # Compatibility functions
+    'create_comparative_spectrum_mirror_plot', 'create_single_spectrum_plot',
     
-    # Constants from SpecViz (imported)
+    # Constants
     'EXP_COLORS', 'PRED_COLORS', 'INCLUDED_IONS', 'DEFAULT_MODEL'
 ]

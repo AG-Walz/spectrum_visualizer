@@ -1,13 +1,13 @@
 #!/bin/bash
 
-# immunuXplore Application Launcher
-# Simplified run script for the immunoXplore Streamlit application
+# SpecViz Application Launcher
+# Simplified run script for the SpecViz Streamlit application
 
-echo "Starting immunuXplore..."
+echo "Starting SpecViz..."
 
 # Check if we're in the right directory
 if [ ! -f "app.py" ]; then
-    echo "Error: app.py not found. Please run this script from the immunoexplore directory."
+    echo "Error: app.py not found. Please run this script from the SpecViz directory."
     exit 1
 fi
 
@@ -17,7 +17,7 @@ export BOKEH_ALLOW_WS_ORIGIN="*"
 # Default port
 PORT=${1:-8501}
 
-echo "Launching immunuXplore on port $PORT..."
+echo "Launching SpecViz on port $PORT..."
 echo "Open your browser to: http://localhost:$PORT"
 
 # Run the application
