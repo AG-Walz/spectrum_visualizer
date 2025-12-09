@@ -37,6 +37,9 @@ from file_selection_components import (
     get_files_with_substring
 )
 
+# Import shared data input UI
+from data_input_components import render_mzml_idxml_file_selector
+
 # Import refactoring utilities for code deduplication
 try:
     from workspace_utils import (
@@ -1243,52 +1246,15 @@ def render_server_directory_selector(default_path: Optional[str] = None):
     )
 
 def render_server_file_browser():
-    """Render server-side file browser with substring filtering."""
-    default_dir = st.session_state.settings.get("data_directories", {}).get("default", "/mnt/volume/")
-    
-    # Use shared directory browser
-    current_dir = render_directory_browser(
-        session_key="spectrum_browser",
-        default_path=default_dir,
-        show_subdirs=True,
-        compact=False
+    """Render server-side file browser - uses shared data input component."""
+    selected_mzml, selected_idxml, current_dir = render_mzml_idxml_file_selector(
+        session_key_prefix="spectrum",
+        require_both=True,
+        show_mzml=True,
+        show_idxml=True,
+        header_text="📁 Select Data Files",
+        description="Select mzML spectra files and idXML identification files from the server."
     )
-    
-    st.markdown("---")
-    
-    # File selection in two columns
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("📊 mzML Files")
-        selected_mzml, _, _ = render_file_filter_and_selection(
-            directory=current_dir,
-            file_type="mzML",
-            extensions=['.mzml', '.mzML'],
-            session_key="spectrum_mzml",
-            default_substring="",
-            include_subdirs=True,
-            show_select_all=True,
-            multiselect=True
-        )
-    
-    with col2:
-        st.subheader("🔍 idXML Files")
-        selected_idxml, _, _ = render_file_filter_and_selection(
-            directory=current_dir,
-            file_type="ID",
-            extensions=['.idxml', '.idXML', '.mzid', '.mzidentml'],
-            session_key="spectrum_idxml",
-            default_substring="",
-            include_subdirs=True,
-            show_select_all=True,
-            multiselect=True
-        )
-    
-    # Show selection summary
-    if selected_mzml or selected_idxml:
-        st.markdown("---")
-        st.success(f"✅ {len(selected_mzml)} mzML and {len(selected_idxml)} identification files selected")
     
     return selected_mzml, selected_idxml
 

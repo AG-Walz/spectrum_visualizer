@@ -32,6 +32,9 @@ from file_selection_components import (
     get_files_with_substring
 )
 
+# Import shared data input UI
+from data_input_components import render_idxml_only_selector
+
 # Import mzml_processor module for peptide-based filtering
 try:
     from mzml_processor import extract_peptide_relevant_spectra, filter_mzml
@@ -150,29 +153,11 @@ def create_filtered_mzmls(mzml_to_spectra: Dict[str, List[str]],
 # ================================================================
 
 def render_idxml_selection():
-    """Simplified file selection - idXML only."""
-    st.header("📁 Step 1: Select idXML Files")
-    
-    default_dir = st.session_state.settings.get("data_directories", {}).get("default", "/mnt/volume/")
-    
-    # Use shared directory browser
-    current_dir = render_directory_browser(
-        session_key="filter",
-        default_path=default_dir,
-        show_subdirs=True,
-        compact=True
-    )
-    
-    # Use shared file filter and selection
-    selected, _, _ = render_file_filter_and_selection(
-        directory=current_dir,
-        file_type="idXML",
-        extensions=['.idxml', '.idXML'],
-        session_key="idxml",
-        default_substring="",
-        include_subdirs=True,
-        show_select_all=True,
-        multiselect=True
+    """Simplified file selection - uses shared data input component."""
+    selected, current_dir = render_idxml_only_selector(
+        session_key_prefix="filter",
+        header_text="📁 Step 1: Select idXML Files",
+        description="Select peptide identification files to filter. The corresponding mzML files will be detected automatically."
     )
     
     return selected, current_dir
