@@ -4,22 +4,20 @@ SpecViz App is designed to help you analyze and visualize your mass spectrometry
 
 This app is built based on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/streamlit-template/) [1].
 
-## Features
+## Installation
 
-### 1. Spectrum Visualization Workspace
-- **Spectral alignment analysis**: Compare MS/MS spectra across samples
-- **Peptide comparison modes**: One-vs-One, All-vs-All, One-vs-All
-- **R-squared metrics**: Matching ions and binned intensity correlation
-- **Export functionality**: Excel reports with overview plots
-- **Smart file matching**: Automatic PSM to mzML file association
-- **Progress tracking**: Real-time feedback for uploads and validation
+### Requirements
+Ensure python \leq 3.11+ is installed. Sufficient RAM to load the largest file. Required packages are listed under [environment.yml](environment.yml)
 
-### 2. mzML Filter Workspace (NEW)
-- **Peptide-based filtering**: Create compact mzML files with only relevant spectra
-- **Batch processing**: Process multiple idXML and mzML files automatically
-- **Modified peptide matching**: Automatically includes all modifications
-- **File consolidation**: Append spectra across runs into single files
-- **Web interface and CLI**: Choose your preferred workflow
+### Setup
+```bash
+# Create conda environment
+conda env create -f environment.yml
+conda activate specviz
+
+# Install dependencies
+pip install pyopenms streamlit psm_utils pandas numpy matplotlib openpyxl
+```
 
 ## Quick Start
 
@@ -30,48 +28,10 @@ streamlit run app.py
 ```
 Access at http://localhost:8501
 
-### mzML Filtering
-
-**Web Interface:**
-```bash
-cd specviz
-./cli/run_mzml_filter.sh
-```
-Access at http://localhost:8502
-
-**Command Line:**
-```bash
-cd specviz
-python cli/filter_mzml.py \
-    -i path/to/idxml \
-    -m path/to/mzml \
-    -o path/to/output \
-    -p PEPTIDEK,SEQUENCEM,PROTEINR
-```
-
 ## Documentation
 
 - **Quickstart Guide**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started quickly
 - **Full Documentation**: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) - Comprehensive guide
-
-## Installation
-
-### Requirements
-- Python 3.8+
-- PyOpenMS 3.4.0+
-- Streamlit
-- psm_utils
-- pandas, numpy, matplotlib
-
-### Setup
-```bash
-# Create conda environment
-conda create -n specviz python=3.11
-conda activate specviz
-
-# Install dependencies
-pip install pyopenms streamlit psm_utils pandas numpy matplotlib openpyxl
-```
 
 ## Project Structure
 

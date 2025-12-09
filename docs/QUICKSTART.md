@@ -67,15 +67,10 @@ The primary workspace for visualizing and analyzing MS/MS spectra.
 
 ```
 1. Upload idXML files
-   ↓
 2. Select peptides of interest
-   ↓
 3. Load associated spectra from mzML
-   ↓
 4. Choose AI model for predictions
-   ↓
 5. Generate comparisons (Exp vs Pred, All-vs-All)
-   ↓
 6. Export results to Excel/HTML
 ```
 
@@ -101,11 +96,8 @@ Preprocessing workspace for extracting relevant spectra from large mzML files.
 
 ```
 1. Select idXML files
-   ↓
 2. Define peptide filter
-   ↓
 3. Process (auto-discovers mzML files)
-   ↓
 4. Export filtered mzML files
 ```
 
