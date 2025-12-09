@@ -45,9 +45,6 @@ from data_input_components import (
     get_available_servers
 )
 
-# Import shared data input UI
-from data_input_components import render_mzml_idxml_file_selector
-
 # Import refactoring utilities for code deduplication
 try:
     from workspace_utils import (
