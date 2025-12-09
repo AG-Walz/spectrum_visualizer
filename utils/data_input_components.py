@@ -154,8 +154,13 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
         # Common folder approach with filtering (same for both local and server)
         st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
         
-        # Always use the server-style folder browser interface
-        default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
+        # Set default path based on source
+        if source == "local":
+            # For local computer, start from user's home directory
+            default_path = str(Path.home())
+        else:
+            # For servers, use the configured server path
+            default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
         
         # Allow multiple folder selection (use session_key_prefix for isolation)
         folders_key = f'{session_key_prefix}_selected_folders'
