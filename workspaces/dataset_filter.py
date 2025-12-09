@@ -4,13 +4,14 @@
 Memory-efficient: Processes 10GB files using 200MB RAM via selective spectrum extraction.
 Reduces file sizes by 90-99%. Output ready for Spectrum Analysis workspace.
 """
+import sys as _sys
+from pathlib import Path as _Path
+
 import streamlit as st
-import sys
-from pathlib import Path
 
 # Add paths
-sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+_sys.path.insert(0, str(_Path(__file__).parent.parent / "utils"))
+_sys.path.insert(0, str(_Path(__file__).parent.parent / "core"))
 
 # Import all heavy packages from shared module (loaded once at app startup)
 from shared_imports import (

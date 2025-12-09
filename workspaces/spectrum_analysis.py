@@ -4,13 +4,14 @@
 Automated analysis (Exp vs Predicted, All-vs-All, One-vs-All modes) → Export plots.
 Memory-optimized: Only loads mzML files containing selected spectra. Supports Koina AI.
 """
+import sys as _sys
+from pathlib import Path as _Path
+
 import streamlit as st
-import sys
-from pathlib import Path
 
 # Add paths
-sys.path.insert(0, str(Path(__file__).parent.parent / "utils"))
-sys.path.insert(0, str(Path(__file__).parent.parent / "core"))
+_sys.path.insert(0, str(_Path(__file__).parent.parent / "utils"))
+_sys.path.insert(0, str(_Path(__file__).parent.parent / "core"))
 
 # Import all heavy packages from shared module (loaded once at app startup)
 # This replaces individual imports of pandas, numpy, pyopenms, psm_utils, etc.
