@@ -174,8 +174,8 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                 session_key=session_key_prefix
             )
         with col_b:
-            st.write("")  # Spacing
-            st.write("")  # Spacing
+            # Add spacing to align with directory browser (accounts for back button row)
+            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
             if current_folder and st.button("➕ Add Folder", key=f"{session_key_prefix}_add_folder_btn", use_container_width=True):
                 if current_folder not in st.session_state[folders_key]:
                     st.session_state[folders_key].append(current_folder)

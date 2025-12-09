@@ -88,7 +88,8 @@ def render_directory_browser(
             help="Currently selected directory"
         )
     with col2:
-        st.write("")  # Spacing to align with text input
+        # Add spacing to align button with text input (label + input height)
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
         parent_dir = str(Path(current_dir).parent)
         # Only show back button if we're not at root and parent exists
         if parent_dir != current_dir and Path(parent_dir).exists():
