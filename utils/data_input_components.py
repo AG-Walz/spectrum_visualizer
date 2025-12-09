@@ -114,14 +114,23 @@ def get_available_servers() -> Dict[str, Dict[str, Any]]:
     return servers
 
 
-def render_server_directory_selector(default_path: Optional[str] = None, session_key: str = 'server_default'):
-    """Render a directory selector for server files with folder browsing."""
+def render_server_directory_selector(default_path: Optional[str] = None, session_key: str = 'server_default', server_name: Optional[str] = None):
+    """Render a directory selector for server files with folder browsing.
+    
+    Args:
+        default_path: Default directory path to start from
+        session_key: Base session key for the directory browser
+        server_name: Server name to append to session key (for server-specific state)
+    """
     if default_path is None:
         default_path = st.session_state.settings.get("data_directories", {}).get("default", "/mnt/volume/")
     
-    server_name = st.session_state.get('selected_server_name', 'default')
+    # Use provided server_name or fall back to session state
+    if server_name is None:
+        server_name = st.session_state.get(f'{session_key}_selected_server_name', 'default')
+    
     return render_directory_browser(
-        session_key=f'{session_key}_{server_name}',
+        session_key=f'{session_key}_dir_{server_name}',
         default_path=default_path,
         show_subdirs=True,
         compact=True
@@ -169,9 +178,12 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
         
         col_a, col_b = st.columns([4, 1])
         with col_a:
+            # Get current server name from session state
+            current_server_name = st.session_state.get(f'{session_key_prefix}_selected_server_name', 'default')
             current_folder = render_server_directory_selector(
                 default_path=default_path, 
-                session_key=session_key_prefix
+                session_key=session_key_prefix,
+                server_name=current_server_name
             )
         with col_b:
             # Add spacing to align with directory browser (accounts for back button row)
@@ -484,6 +496,18 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
                 if key in st.session_state:
                     del st.session_state[key]
             st.rerun()
+    
+    # Check if server changed and clear directory state if so
+    previous_server = st.session_state.get(f'{session_key_prefix}_selected_server_name')
+    if previous_server and previous_server != selected_server_name:
+        # Clear directory browser state when switching servers
+        old_dir_key = f'{session_key_prefix}_dir_{previous_server}'
+        if old_dir_key in st.session_state:
+            del st.session_state[old_dir_key]
+        # Also clear selected folders when switching servers
+        folders_key = f'{session_key_prefix}_selected_folders'
+        if folders_key in st.session_state:
+            st.session_state[folders_key] = []
     
     # Store selected server in session state (with prefix for isolation)
     st.session_state[f'{session_key_prefix}_selected_server'] = selected_server
