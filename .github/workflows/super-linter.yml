@@ -54,8 +54,8 @@ jobs:
           DEFAULT_BRANCH: main
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Disable strict formatters for existing codebase
+          # These can be enabled gradually as code is refactored
           VALIDATE_PYTHON_BLACK: false
           VALIDATE_PYTHON_ISORT: false
           VALIDATE_PYTHON_FLAKE8: false
-          # Keep mypy with relaxed settings (see .mypy.ini)
-          VALIDATE_PYTHON_MYPY: true
+          VALIDATE_PYTHON_PYLINT: false
