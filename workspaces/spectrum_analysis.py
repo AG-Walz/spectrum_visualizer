@@ -38,7 +38,7 @@ from file_selection_components import (
 )
 
 # Import shared data input UI
-from data_input_components import render_mzml_idxml_file_selector
+from data_input_components import render_complete_data_input_section
 
 # Import refactoring utilities for code deduplication
 try:
@@ -940,62 +940,20 @@ def get_available_servers():
 
 
 def render_data_input_section():
-    """Render the unified data input section with server selection."""
-    st.header("📁 Data Input")
+    """Render the unified data input section - uses shared component."""
+    # Use the complete shared data input workflow
+    mzml_files, idxml_files, base_dir, server_info = render_complete_data_input_section(
+        session_key_prefix="spectrum_analysis",
+        require_both=True,
+        show_mzml=True,
+        show_idxml=True,
+        allow_upload=True,
+        main_header="📁 Data Input"
+    )
     
-    # Get available servers (cached, but show loading on first call)
-    with st.spinner("Loading server list..."):
-        available_servers = get_available_servers()
-    
-    # Server Selection
-    st.subheader("🌐 Select Server")
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        # Create server options with display names
-        server_options = [info["display"] for info in available_servers.values()]
-        server_names = list(available_servers.keys())
-        
-        selected_display = st.selectbox(
-            "Choose server from which to upload files:",
-            options=server_options,
-            key="server_selector",
-            help="Select from available servers (SSH config) or local computer"
-        )
-        
-        # Map back to server name
-        selected_server_name = server_names[server_options.index(selected_display)]
-        selected_server = available_servers[selected_server_name]
-        
-        # Show server description
-        st.caption(selected_server["description"])
-    
-    with col2:
-        if st.button("🔄 Reset", help="Clear selection and start over"):
-            # Clear relevant session state
-            for key in ['current_directory', 'selected_mzml_files', 'selected_idxml_files', 'selected_server', 'selected_folders']:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-    
-    # Store selected server in session state
-    st.session_state['selected_server'] = selected_server
-    st.session_state['selected_server_name'] = selected_server_name
-    
-    st.markdown("---")
-    
-    # Unified File Browser/Selector (same interface for all sources)
-    server_type = selected_server["type"]
-    
-    if server_type == "local":
-        st.subheader("Select Local Files")
-        mzml_files, idxml_files = render_unified_file_browser(source="local", server_info=selected_server)
-    else:  # current or ssh
-        st.subheader(f"Browse Files on {selected_server_name}")
-        if server_type == "ssh":
-            st.warning("⚠️ SSH remote browsing requires additional setup. Files must be mounted or accessible via filesystem.")
-            st.info("💡 If files are mounted, browse them below. Otherwise, use Local Computer to upload.")
-        mzml_files, idxml_files = render_unified_file_browser(source="server", server_info=selected_server)
+    # Store server info in session state for compatibility
+    st.session_state['selected_server'] = server_info
+    st.session_state['selected_server_name'] = st.session_state.get('data_input_server_name', 'current')
     
     # Process files if both are available (from either source)
     if mzml_files and idxml_files:
