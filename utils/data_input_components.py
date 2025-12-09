@@ -193,22 +193,22 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     st.session_state[folders_key].append(current_folder)
                     st.rerun()
         
-        # Display selected folders with remove option
+        # Display selected folders with remove option in a collapsible section
         if st.session_state[folders_key]:
-            st.markdown("**📁 Selected Folders:**")
-            folders_to_remove = []
-            for idx, folder in enumerate(st.session_state[folders_key]):
-                col_folder, col_remove = st.columns([5, 1])
-                with col_folder:
-                    st.text(folder)
-                with col_remove:
-                    if st.button("❌", key=f"{session_key_prefix}_remove_folder_{idx}", help="Remove this folder"):
-                        folders_to_remove.append(folder)
-            
-            # Remove folders after iteration
-            for folder in folders_to_remove:
-                st.session_state[folders_key].remove(folder)
-                st.rerun()
+            with st.expander(f"📁 Selected Folders ({len(st.session_state[folders_key])})", expanded=False):
+                folders_to_remove = []
+                for idx, folder in enumerate(st.session_state[folders_key]):
+                    col_folder, col_remove = st.columns([9, 1])
+                    with col_folder:
+                        st.text(folder)
+                    with col_remove:
+                        if st.button("✕", key=f"{session_key_prefix}_remove_folder_{idx}", help="Remove this folder"):
+                            folders_to_remove.append(folder)
+                
+                # Remove folders after iteration
+                for folder in folders_to_remove:
+                    st.session_state[folders_key].remove(folder)
+                    st.rerun()
         
         selected_folders = st.session_state[folders_key]
         
