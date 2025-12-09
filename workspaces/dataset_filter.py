@@ -32,8 +32,12 @@ from file_selection_components import (
     get_files_with_substring
 )
 
-# Import shared data input UI
-from data_input_components import render_complete_data_input_section
+# Import shared data input UI (single source of truth for file selection interface)
+from data_input_components import (
+    render_data_input_section,
+    render_unified_file_browser,
+    render_server_directory_selector
+)
 
 # Import mzml_processor module for peptide-based filtering
 try:
@@ -153,18 +157,23 @@ def create_filtered_mzmls(mzml_to_spectra: Dict[str, List[str]],
 # ================================================================
 
 def render_idxml_selection():
-    """Unified file selection - uses shared data input component."""
-    # Use the complete shared data input workflow (idXML only)
-    _, selected_idxml, base_dir, server_info = render_complete_data_input_section(
+    """File selection using shared data_input_components.py - filters only need idXML files."""
+    
+    # Custom header for filter workspace
+    st.header("📁 Step 1: Select idXML Files")
+    st.caption("Select peptide identification files to filter. The corresponding mzML files will be detected automatically from the idXML metadata.")
+    
+    # Use shared data input section (but we'll only take idXML files)
+    mzml_files, idxml_files = render_data_input_section(
         session_key_prefix="dataset_filter",
-        require_both=False,
-        show_mzml=False,  # Filter workspace only needs idXML
-        show_idxml=True,
-        allow_upload=True,
-        main_header="📁 Step 1: Select idXML Files"
+        show_process_button=False,  # We handle processing separately
+        process_callback=None
     )
     
-    return selected_idxml, base_dir
+    # Get base directory from session state
+    current_dir = st.session_state.get('dataset_filter_selected_folders', ['/mnt/volume/'])[0] if st.session_state.get('dataset_filter_selected_folders') else '/mnt/volume/'
+    
+    return idxml_files, current_dir
 
 
 def render_peptide_filter():

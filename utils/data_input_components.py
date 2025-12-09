@@ -1,301 +1,400 @@
 """Shared data input UI components for mzML and idXML file selection.
 
-This module provides consistent file selection interfaces used by:
+This module provides the unified file selection interface used by both:
 - spectrum_analysis.py: Select files for spectral comparison
 - dataset_filter.py: Select files for filtering operations
 
-The data input flow is separated into two independent steps:
-1. Server/Source Selection (where files are located)
-2. File Selection (which specific files to use)
+The interface supports multiple input methods:
+- Server file browsing with folder selection
+- Local file upload (individual files)
+- Multi-folder aggregation with filtering
 
-Usage:
-    from data_input_components import render_complete_data_input_section
-    
-    # Complete workflow (server + files)
-    mzml_files, idxml_files, base_dir = render_complete_data_input_section(...)
-    
-    # Or use individual components
-    selected_server = render_server_selection_section()
-    mzml_files, idxml_files = render_file_selection_section(server_info)
+IMPORTANT: This is the single source of truth for file input UI.
+Edit once here, affects all workspaces.
 """
 
 import streamlit as st
-from pathlib import Path
-from typing import Tuple, List, Optional, Dict, Any
+import os
 import socket
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple, Any
 
-# Import shared components
+# Import shared utility functions
 from file_selection_components import (
     render_directory_browser,
-    render_file_filter_and_selection
+    get_files_with_substring
 )
 
+from shared_imports import (
+    create_file_options_with_sizes,
+    map_display_names_to_paths
+)
 
-def render_mzml_idxml_file_selector(
-    session_key_prefix: str = "data_input",
-    require_both: bool = False,
-    show_mzml: bool = True,
-    show_idxml: bool = True,
-    header_text: Optional[str] = None,
-    description: Optional[str] = None
-) -> Tuple[List[str], List[str], str]:
-    """
-    Render unified file selection interface for mzML and idXML files.
-    
-    This provides a consistent UI across all workspaces:
-    1. Directory browser to navigate filesystem
-    2. Side-by-side mzML and idXML file selection with filtering
-    3. Selection summary
-    
-    Args:
-        session_key_prefix: Prefix for session state keys (ensures isolation between workspaces)
-        require_both: If True, shows warning when only one file type is selected
-        show_mzml: Whether to show mzML file selection column
-        show_idxml: Whether to show idXML file selection column
-        header_text: Custom header text (default: "📁 Select Data Files")
-        description: Optional description text shown below header
-    
-    Returns:
-        (selected_mzml_paths, selected_idxml_paths, current_directory)
-    """
-    
-    # Header
-    if header_text:
-        st.header(header_text)
-    else:
-        st.header("📁 Select Data Files")
-    
-    if description:
-        st.markdown(description)
-    
-    # Get default directory from settings
-    default_dir = st.session_state.settings.get("data_directories", {}).get("default", "/mnt/volume/")
-    
-    # Directory browser (shared across both file types)
-    current_dir = render_directory_browser(
-        session_key=f'{session_key_prefix}_browser',
-        default_path=default_dir,
-        show_subdirs=True,
-        compact=True
-    )
-    
-    st.markdown("---")
-    
-    # Determine column layout
-    if show_mzml and show_idxml:
-        col1, col2 = st.columns(2)
-    elif show_mzml:
-        col1 = st.container()
-        col2 = None
-    elif show_idxml:
-        col1 = None
-        col2 = st.container()
-    else:
-        st.error("⚠️ Must show at least one file type (mzML or idXML)")
-        return [], [], current_dir
-    
-    selected_mzml = []
-    selected_idxml = []
-    
-    # mzML file selection
-    if show_mzml and col1:
-        with col1:
-            st.subheader("📊 mzML Files")
-            st.caption("Mass spectrometry data files")
-            
-            selected_mzml, _, _ = render_file_filter_and_selection(
-                directory=current_dir,
-                file_type="mzML",
-                extensions=['.mzml', '.mzML'],
-                session_key=f"{session_key_prefix}_mzml",
-                default_substring="",
-                include_subdirs=True,
-                show_select_all=True,
-                multiselect=True
-            )
-    
-    # idXML file selection
-    if show_idxml and col2:
-        with col2:
-            st.subheader("🔍 idXML Files")
-            st.caption("Peptide identification files")
-            
-            selected_idxml, _, _ = render_file_filter_and_selection(
-                directory=current_dir,
-                file_type="idXML",
-                extensions=['.idxml', '.idXML', '.mzid', '.mzidentml'],
-                session_key=f"{session_key_prefix}_idxml",
-                default_substring="",
-                include_subdirs=True,
-                show_select_all=True,
-                multiselect=True
-            )
-    
-    # Selection summary
-    st.markdown("---")
-    
-    if selected_mzml and selected_idxml:
-        st.success(f"✅ **Selected:** {len(selected_mzml)} mzML file(s) and {len(selected_idxml)} idXML file(s)")
-    elif selected_mzml:
-        if require_both:
-            st.warning(f"⚠️ Selected {len(selected_mzml)} mzML file(s) — idXML files also required")
-        else:
-            st.info(f"📊 Selected {len(selected_mzml)} mzML file(s)")
-    elif selected_idxml:
-        if require_both:
-            st.warning(f"⚠️ Selected {len(selected_idxml)} idXML file(s) — mzML files also required")
-        else:
-            st.info(f"🔍 Selected {len(selected_idxml)} idXML file(s)")
-    else:
-        st.info("👆 Select files from the directory above to continue")
-    
-    return selected_mzml, selected_idxml, current_dir
+logger = logging.getLogger(__name__)
 
-
-def render_idxml_only_selector(
-    session_key_prefix: str = "idxml_input",
-    header_text: Optional[str] = None,
-    description: Optional[str] = None
-) -> Tuple[List[str], str]:
-    """
-    Simplified interface for idXML-only selection (wrapper for consistency).
-    
-    Args:
-        session_key_prefix: Prefix for session state keys
-        header_text: Custom header text
-        description: Optional description text
-    
-    Returns:
-        (selected_idxml_paths, current_directory)
-    """
-    _, selected_idxml, current_dir = render_mzml_idxml_file_selector(
-        session_key_prefix=session_key_prefix,
-        require_both=False,
-        show_mzml=False,
-        show_idxml=True,
-        header_text=header_text or "📁 Select idXML Files",
-        description=description
-    )
-    
-    return selected_idxml, current_dir
-
-
-def render_mzml_only_selector(
-    session_key_prefix: str = "mzml_input",
-    header_text: Optional[str] = None,
-    description: Optional[str] = None
-) -> Tuple[List[str], str]:
-    """
-    Simplified interface for mzML-only selection (wrapper for consistency).
-    
-    Args:
-        session_key_prefix: Prefix for session state keys
-        header_text: Custom header text
-        description: Optional description text
-    
-    Returns:
-        (selected_mzml_paths, current_directory)
-    """
-    selected_mzml, _, current_dir = render_mzml_idxml_file_selector(
-        session_key_prefix=session_key_prefix,
-        require_both=False,
-        show_mzml=True,
-        show_idxml=False,
-        header_text=header_text or "📁 Select mzML Files",
-        description=description
-    )
-    
-    return selected_mzml, current_dir
-
-
-# ================================================================
-# COMPLETE DATA INPUT WORKFLOW (SERVER + FILE SELECTION)
-# ================================================================
 
 def get_available_servers() -> Dict[str, Dict[str, Any]]:
     """
-    Get list of available servers/data sources.
-    
-    Returns:
-        Dictionary of server configurations:
-        {
-            'server_key': {
-                'display': 'Display Name',
-                'description': 'Server description',
-                'type': 'current'|'local'|'ssh',
-                'path': '/default/path'
-            }
-        }
+    Get list of available servers for file access.
+    Returns dict of server configurations with display names.
     """
     servers = {}
     
-    # Current server (always available)
-    hostname = socket.gethostname()
-    servers['current'] = {
-        'display': f'📡 Current Server ({hostname})',
-        'description': f'Files on this server: {hostname}',
-        'type': 'current',
-        'path': '/mnt/volume/'
+    # Local computer option (for file upload)
+    servers["Local Computer"] = {
+        "type": "local",
+        "path": None,
+        "display": "💻 Local Computer",
+        "description": "Upload files from your local machine"
     }
     
-    # Local computer upload
-    servers['local'] = {
-        'display': '💻 Local Computer',
-        'description': 'Upload files from your local computer',
-        'type': 'local',
-        'path': None
-    }
+    # Try to read SSH config for remote servers
+    ssh_config_path = Path.home() / ".ssh" / "config"
+    if ssh_config_path.exists():
+        try:
+            with open(ssh_config_path, 'r') as f:
+                config_lines = f.readlines()
+                
+            current_host = None
+            current_config = {}
+            
+            for line in config_lines:
+                line = line.strip()
+                if line.startswith("Host ") and not line.startswith("Host *"):
+                    # Save previous host config
+                    if current_host and current_host not in ["*", "github.com"]:
+                        servers[current_host] = {
+                            "type": "ssh",
+                            "path": current_config.get("path", "/mnt/volume/"),
+                            "hostname": current_config.get("hostname", current_host),
+                            "user": current_config.get("user", os.getenv("USER", "user")),
+                            "display": f"🖥️ {current_host}",
+                            "description": f"SSH: {current_config.get('hostname', current_host)}"
+                        }
+                    
+                    # Start new host
+                    current_host = line.split()[1]
+                    current_config = {}
+                
+                elif current_host:
+                    if line.startswith("HostName "):
+                        current_config["hostname"] = line.split()[1]
+                    elif line.startswith("User "):
+                        current_config["user"] = line.split()[1]
+            
+            # Save last host
+            if current_host and current_host not in ["*", "github.com"]:
+                servers[current_host] = {
+                    "type": "ssh",
+                    "path": current_config.get("path", "/mnt/volume/"),
+                    "hostname": current_config.get("hostname", current_host),
+                    "user": current_config.get("user", os.getenv("USER", "user")),
+                    "display": f"🖥️ {current_host}",
+                    "description": f"SSH: {current_config.get('hostname', current_host)}"
+                }
+        
+        except Exception as e:
+            logger.warning(f"Could not read SSH config from {ssh_config_path}: {e}")
     
-    # TODO: Add SSH servers from config if available
-    # This could read from ~/.ssh/config or a custom configuration file
+    # Add current server (where script is running)
+    current_hostname = socket.gethostname()
+    if "Current Server" not in servers:
+        servers["Current Server"] = {
+            "type": "current",
+            "path": "/mnt/volume/",  # Default from settings
+            "display": f"🌐 Current Server ({current_hostname})",
+            "description": f"Server where this script is running: {current_hostname}"
+        }
     
     return servers
 
 
-def render_server_selection_section(
-    session_key: str = "server_selection",
-    header_text: Optional[str] = None
-) -> Dict[str, Any]:
-    """
-    Render server/source selection interface (Step 1).
+def render_server_directory_selector(default_path: Optional[str] = None, session_key: str = 'server_default'):
+    """Render a directory selector for server files with folder browsing."""
+    if default_path is None:
+        default_path = st.session_state.settings.get("data_directories", {}).get("default", "/mnt/volume/")
     
-    This is the first step in the data input workflow, separate from file selection.
-    User chooses WHERE the data is located (current server, local computer, remote server).
+    server_name = st.session_state.get('selected_server_name', 'default')
+    return render_directory_browser(
+        session_key=f'{session_key}_{server_name}',
+        default_path=default_path,
+        show_subdirs=True,
+        compact=True
+    )
+
+
+def render_unified_file_browser(source: str = "server", server_info: Optional[Dict] = None, session_key_prefix: str = "unified"):
+    """
+    Unified file browser interface that works for all server types.
+    For server files: Only shows folder browsing (no individual upload option).
+    For local files: Shows both individual upload and folder browsing tabs.
     
     Args:
-        session_key: Session state key for storing selection
-        header_text: Custom header text
+        source: "server" for remote/current server files, "local" for local uploads
+        server_info: Dictionary with server connection information
+        session_key_prefix: Prefix for session state keys to avoid conflicts between workspaces
     
     Returns:
-        Selected server information dictionary
+        (mzml_files, idxml_files) - Lists of file paths or file objects
     """
-    if header_text:
-        st.header(header_text)
+    
+    mzml_files = []
+    idxml_files = []
+    
+    # Server source: Only show folder browser (no tabs needed)
+    if source == "server":
+        browse_tab = st.container()
+        individual_tab = None
     else:
-        st.header("🌐 Step 1: Select Data Source")
+        # Local source: Show both options in tabs
+        tab1, tab2 = st.tabs(["📋 Select Files Individually", "📂 Browse Common Folder"])
+        individual_tab = tab1
+        browse_tab = tab2
     
-    st.caption("Choose where your data files are located")
+    with browse_tab:
+        # Common folder approach with filtering (same for both local and server)
+        st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
+        
+        # Always use the server-style folder browser interface
+        default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
+        
+        # Allow multiple folder selection (use session_key_prefix for isolation)
+        folders_key = f'{session_key_prefix}_selected_folders'
+        if folders_key not in st.session_state:
+            st.session_state[folders_key] = []
+        
+        col_a, col_b = st.columns([4, 1])
+        with col_a:
+            current_folder = render_server_directory_selector(
+                default_path=default_path, 
+                session_key=session_key_prefix
+            )
+        with col_b:
+            st.write("")  # Spacing
+            st.write("")  # Spacing
+            if current_folder and st.button("➕ Add Folder", key=f"{session_key_prefix}_add_folder_btn", use_container_width=True):
+                if current_folder not in st.session_state[folders_key]:
+                    st.session_state[folders_key].append(current_folder)
+                    st.rerun()
+        
+        # Display selected folders with remove option
+        if st.session_state[folders_key]:
+            st.markdown("**📁 Selected Folders:**")
+            folders_to_remove = []
+            for idx, folder in enumerate(st.session_state[folders_key]):
+                col_folder, col_remove = st.columns([5, 1])
+                with col_folder:
+                    st.text(folder)
+                with col_remove:
+                    if st.button("❌", key=f"{session_key_prefix}_remove_folder_{idx}", help="Remove this folder"):
+                        folders_to_remove.append(folder)
+            
+            # Remove folders after iteration
+            for folder in folders_to_remove:
+                st.session_state[folders_key].remove(folder)
+                st.rerun()
+        
+        selected_folders = st.session_state[folders_key]
+        
+        if selected_folders:
+            
+            # Show filtering options
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown("**📊 mzML Files**")
+                mzml_substring = st.text_input(
+                    "Filter mzML files (optional)",
+                    value="",
+                    key=f"{session_key_prefix}_mzml_filter",
+                    placeholder="e.g., HNSCC, Rep1",
+                    help="Filter by substring in filename"
+                )
+                
+                mzml_include_subdirs = st.checkbox(
+                    "Include subdirectories",
+                    value=True,
+                    key=f"{session_key_prefix}_mzml_subdirs"
+                )
+            
+            with col2:
+                st.markdown("**🔍 idXML Files**")
+                idxml_substring = st.text_input(
+                    "Filter idXML files (optional)",
+                    value="",
+                    key=f"{session_key_prefix}_idxml_filter",
+                    placeholder="e.g., HNSCC, Rep1",
+                    help="Filter by substring in filename"
+                )
+                
+                idxml_include_subdirs = st.checkbox(
+                    "Include subdirectories",
+                    value=True,
+                    key=f"{session_key_prefix}_idxml_subdirs"
+                )
+            
+            # Find files with filters from all selected folders
+            mzml_files_found = []
+            idxml_files_found = []
+            
+            for folder in selected_folders:
+                folder_mzml = get_files_with_substring(
+                    folder, 
+                    mzml_substring, 
+                    ['.mzML']
+                )
+                folder_idxml = get_files_with_substring(
+                    folder,
+                    idxml_substring,
+                    ['.idXML', '.mzid', '.mzidentml']
+                )
+                mzml_files_found.extend(folder_mzml)
+                idxml_files_found.extend(folder_idxml)
+            
+            # Remove duplicates while preserving order
+            mzml_files_found = list(dict.fromkeys(mzml_files_found))
+            idxml_files_found = list(dict.fromkeys(idxml_files_found))
+            
+            # Show results with folder breakdown
+            if len(selected_folders) > 1:
+                with st.expander(f"📊 Files by Folder (Total: {len(mzml_files_found)} mzML, {len(idxml_files_found)} idXML)", expanded=False):
+                    for folder in selected_folders:
+                        folder_mzml_count = len([f for f in mzml_files_found if f.startswith(folder)])
+                        folder_idxml_count = len([f for f in idxml_files_found if f.startswith(folder)])
+                        st.text(f"📁 {folder}")
+                        st.text(f"   └─ {folder_mzml_count} mzML, {folder_idxml_count} idXML")
+            
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if mzml_files_found:
+                    count_msg = f"Found {len(mzml_files_found)} mzML files across {len(selected_folders)} folder(s)"
+                    if len(mzml_files_found) >= 10000:
+                        st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
+                    else:
+                        st.info(count_msg)
+                    
+                    select_all_mzml = st.checkbox(
+                        f"Select all {len(mzml_files_found)} mzML files",
+                        key=f"{session_key_prefix}_select_all_mzml"
+                    )
+                    
+                    if select_all_mzml:
+                        mzml_files = mzml_files_found
+                    else:
+                        file_options = create_file_options_with_sizes(mzml_files_found)
+                        selected_display = st.multiselect(
+                            "Select mzML files",
+                            options=file_options,
+                            key=f"{session_key_prefix}_mzml_select"
+                        )
+                        mzml_files = map_display_names_to_paths(selected_display, mzml_files_found)
+                else:
+                    st.warning("No mzML files found")
+            
+            with col2:
+                if idxml_files_found:
+                    count_msg = f"Found {len(idxml_files_found)} idXML files across {len(selected_folders)} folder(s)"
+                    if len(idxml_files_found) >= 10000:
+                        st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
+                    else:
+                        st.info(count_msg)
+                    
+                    select_all_idxml = st.checkbox(
+                        f"Select all {len(idxml_files_found)} idXML files",
+                        key=f"{session_key_prefix}_select_all_idxml"
+                    )
+                    
+                    if select_all_idxml:
+                        idxml_files = idxml_files_found
+                    else:
+                        file_options = create_file_options_with_sizes(idxml_files_found)
+                        selected_display = st.multiselect(
+                            "Select idXML files",
+                            options=file_options,
+                            key=f"{session_key_prefix}_idxml_select"
+                        )
+                        idxml_files = map_display_names_to_paths(selected_display, idxml_files_found)
+                else:
+                    st.warning("No idXML files found")
     
-    # Get available servers
-    available_servers = get_available_servers()
+    # Individual file upload (only for local source)
+    if individual_tab is not None:
+        with individual_tab:
+            
+            # Single line layout for faster rendering
+            max_size_gb = st.session_state.settings.get("performance", {}).get("max_file_size_gb", 2)
+            
+            # mzML uploader
+            st.markdown("**📊 mzML Files**")
+            mzml_uploads = st.file_uploader(
+                "Select mzML files",
+                type=["mzML"],
+                accept_multiple_files=True,
+                help=f"MS/MS spectra files (up to {max_size_gb} GB each)",
+                key=f"{session_key_prefix}_individual_mzml_upload",
+                label_visibility="collapsed"
+            )
+            if mzml_uploads:
+                total_mb = sum(f.size for f in mzml_uploads) / 1024 / 1024
+                st.success(f"✅ {len(mzml_uploads)} mzML files ({total_mb:.1f} MB)")
+                mzml_files = list(mzml_uploads)
+            
+            st.markdown("---")
+            
+            # idXML uploader
+            st.markdown("**🔍 idXML Files**")
+            idxml_uploads = st.file_uploader(
+                "Select idXML files",
+                type=["idXML", "mzid", "mzidentml"],
+                accept_multiple_files=True,
+                help=f"Peptide IDs (up to {max_size_gb} GB each)",
+                key=f"{session_key_prefix}_individual_idxml_upload",
+                label_visibility="collapsed"
+            )
+            if idxml_uploads:
+                total_mb = sum(f.size for f in idxml_uploads) / 1024 / 1024
+                st.success(f"✅ {len(idxml_uploads)} idXML files ({total_mb:.1f} MB)")
+                idxml_files = list(idxml_uploads)
+    
+    return mzml_files, idxml_files
+
+
+def render_data_input_section(session_key_prefix: str = "data_input", show_process_button: bool = True, process_callback = None):
+    """
+    Render the unified data input section with server selection.
+    
+    This is the main entry point for file selection UI used by all workspaces.
+    
+    Args:
+        session_key_prefix: Unique prefix for session state keys (prevents conflicts between workspaces)
+        show_process_button: Whether to show the "Confirm File Selection" button
+        process_callback: Optional callback function(mzml_files, idxml_files) called when files are confirmed
+    
+    Returns:
+        (mzml_files, idxml_files) - Lists of selected files
+    """
+    st.header("📁 Data Input")
+    
+    # Get available servers (cached, but show loading on first call)
+    with st.spinner("Loading server list..."):
+        available_servers = get_available_servers()
+    
+    # Server Selection
+    st.subheader("🌐 Select Server")
     
     col1, col2 = st.columns([3, 1])
-    
     with col1:
         # Create server options with display names
         server_options = [info["display"] for info in available_servers.values()]
         server_names = list(available_servers.keys())
         
-        # Check if we have a previous selection
-        previous_selection = st.session_state.get(f'{session_key}_name', 'current')
-        default_index = server_names.index(previous_selection) if previous_selection in server_names else 0
-        
         selected_display = st.selectbox(
-            "Data source:",
+            "Choose server from which to upload files:",
             options=server_options,
-            index=default_index,
-            key=f"{session_key}_selector",
-            help="Select where your mzML and idXML files are located"
+            key=f"{session_key_prefix}_server_selector",
+            help="Select from available servers (SSH config) or local computer"
         )
         
         # Map back to server name
@@ -303,188 +402,51 @@ def render_server_selection_section(
         selected_server = available_servers[selected_server_name]
         
         # Show server description
-        st.caption(f"ℹ️ {selected_server['description']}")
+        st.caption(selected_server["description"])
     
     with col2:
-        st.write("")  # Spacing
-        if st.button("🔄 Reset All", key=f"{session_key}_reset", help="Clear all selections and start over"):
-            # Clear all data input related session state
-            keys_to_clear = [k for k in st.session_state.keys() if 
-                           any(x in k for x in ['_mzml', '_idxml', '_browser', '_filter', 
-                                               'selected_', 'current_dir', session_key])]
+        if st.button("🔄 Reset", key=f"{session_key_prefix}_reset", help="Clear selection and start over"):
+            # Clear relevant session state for this workspace
+            keys_to_clear = [
+                f'{session_key_prefix}_selected_folders',
+                f'{session_key_prefix}_selected_server',
+                f'{session_key_prefix}_selected_server_name'
+            ]
             for key in keys_to_clear:
-                del st.session_state[key]
+                if key in st.session_state:
+                    del st.session_state[key]
             st.rerun()
     
-    # Store selected server in session state
-    st.session_state[f'{session_key}_name'] = selected_server_name
-    st.session_state[f'{session_key}_info'] = selected_server
+    # Store selected server in session state (with prefix for isolation)
+    st.session_state[f'{session_key_prefix}_selected_server'] = selected_server
+    st.session_state[f'{session_key_prefix}_selected_server_name'] = selected_server_name
     
-    # Show warning for local uploads if needed
-    if selected_server['type'] == 'local':
-        st.info("💡 **Local Upload Mode**: You'll upload files from your computer in the next step")
-    elif selected_server['type'] == 'ssh':
-        st.warning("⚠️ **SSH Server**: Requires files to be mounted or accessible via filesystem")
+    st.markdown("---")
     
-    return selected_server
-
-
-def render_file_selection_section(
-    server_info: Dict[str, Any],
-    session_key_prefix: str = "file_selection",
-    require_both: bool = False,
-    show_mzml: bool = True,
-    show_idxml: bool = True,
-    header_text: Optional[str] = None,
-    allow_upload: bool = True
-) -> Tuple[List[str], List[str], str]:
-    """
-    Render file selection interface (Step 2) based on selected server.
+    # Unified File Browser/Selector (same interface for all sources)
+    server_type = selected_server["type"]
     
-    This is the second step, independent from server selection.
-    Shows appropriate file selection UI based on the server type:
-    - Local: File upload interface
-    - Current/SSH: File browser interface
-    
-    Args:
-        server_info: Server configuration from render_server_selection_section()
-        session_key_prefix: Prefix for session state keys
-        require_both: Whether both mzML and idXML are required
-        show_mzml: Show mzML selection
-        show_idxml: Show idXML selection
-        header_text: Custom header text
-        allow_upload: For local mode, whether to allow file uploads
-    
-    Returns:
-        (selected_mzml_paths, selected_idxml_paths, base_directory)
-    """
-    if header_text:
-        st.header(header_text)
-    else:
-        st.header("📁 Step 2: Select Files")
-    
-    server_type = server_info.get('type', 'current')
-    
-    # LOCAL UPLOAD MODE
-    if server_type == 'local' and allow_upload:
-        st.caption("Upload files from your local computer")
-        
-        max_size_gb = st.session_state.settings.get("performance", {}).get("max_file_size_gb", 2) if 'settings' in st.session_state else 2
-        
-        selected_mzml = []
-        selected_idxml = []
-        base_dir = None
-        
-        if show_mzml and show_idxml:
-            col1, col2 = st.columns(2)
-        elif show_mzml:
-            col1 = st.container()
-            col2 = None
-        else:
-            col1 = None
-            col2 = st.container()
-        
-        if show_mzml and col1:
-            with col1:
-                st.subheader("📊 mzML Files")
-                uploaded_mzml = st.file_uploader(
-                    "Select mzML files",
-                    type=["mzml", "mzML"],
-                    accept_multiple_files=True,
-                    key=f"{session_key_prefix}_mzml_upload",
-                    help=f"MS/MS spectra files (up to {max_size_gb} GB each)"
-                )
-                
-                if uploaded_mzml:
-                    # Store uploaded files (would need to save to temp in actual processing)
-                    selected_mzml = uploaded_mzml  # Returns file objects
-                    total_size_mb = sum(f.size for f in uploaded_mzml) / 1024 / 1024
-                    st.success(f"✅ {len(uploaded_mzml)} file(s) ({total_size_mb:.1f} MB)")
-        
-        if show_idxml and col2:
-            with col2:
-                st.subheader("🔍 idXML Files")
-                uploaded_idxml = st.file_uploader(
-                    "Select identification files",
-                    type=["idxml", "idXML", "mzid", "mzidentml"],
-                    accept_multiple_files=True,
-                    key=f"{session_key_prefix}_idxml_upload",
-                    help=f"Peptide IDs (up to {max_size_gb} GB each)"
-                )
-                
-                if uploaded_idxml:
-                    selected_idxml = uploaded_idxml  # Returns file objects
-                    total_size_mb = sum(f.size for f in uploaded_idxml) / 1024 / 1024
-                    st.success(f"✅ {len(uploaded_idxml)} file(s) ({total_size_mb:.1f} MB)")
-        
-        return selected_mzml, selected_idxml, base_dir
-    
-    # SERVER BROWSER MODE (current or ssh servers)
-    else:
-        st.caption(f"Browse and select files on {server_info.get('display', 'server')}")
-        
-        # Use the unified file selector (which includes directory browser)
-        selected_mzml, selected_idxml, current_dir = render_mzml_idxml_file_selector(
-            session_key_prefix=session_key_prefix,
-            require_both=require_both,
-            show_mzml=show_mzml,
-            show_idxml=show_idxml,
-            header_text=None,  # We already have a header
-            description=None
+    if server_type == "local":
+        st.subheader("Select Local Files")
+        mzml_files, idxml_files = render_unified_file_browser(
+            source="local", 
+            server_info=selected_server,
+            session_key_prefix=session_key_prefix
         )
-        
-        return selected_mzml, selected_idxml, current_dir
-
-
-def render_complete_data_input_section(
-    session_key_prefix: str = "data_input",
-    require_both: bool = False,
-    show_mzml: bool = True,
-    show_idxml: bool = True,
-    allow_upload: bool = True,
-    main_header: Optional[str] = None
-) -> Tuple[List[str], List[str], str, Dict[str, Any]]:
-    """
-    Complete data input workflow: Server selection + File selection.
+    else:  # current or ssh
+        st.subheader(f"Browse Files on {selected_server_name}")
+        if server_type == "ssh":
+            st.warning("⚠️ SSH remote browsing requires additional setup. Files must be mounted or accessible via filesystem.")
+            st.info("💡 If files are mounted, browse them below. Otherwise, use Local Computer to upload.")
+        mzml_files, idxml_files = render_unified_file_browser(
+            source="server", 
+            server_info=selected_server,
+            session_key_prefix=session_key_prefix
+        )
     
-    This combines both steps into a unified interface that looks identical
-    across all workspaces. Use this for a complete, consistent data input flow.
+    # Process files if callback provided and button shown
+    if show_process_button and mzml_files and idxml_files:
+        if process_callback:
+            process_callback(mzml_files, idxml_files)
     
-    Args:
-        session_key_prefix: Prefix for all session state keys
-        require_both: Whether both mzML and idXML are required
-        show_mzml: Show mzML file selection
-        show_idxml: Show idXML file selection
-        allow_upload: Allow file uploads for local mode
-        main_header: Main section header
-    
-    Returns:
-        (selected_mzml, selected_idxml, base_directory, server_info)
-    """
-    if main_header:
-        st.header(main_header)
-    else:
-        st.header("📁 Data Input")
-    
-    st.markdown("---")
-    
-    # STEP 1: Server Selection (independent)
-    server_info = render_server_selection_section(
-        session_key=f"{session_key_prefix}_server",
-        header_text="🌐 Step 1: Select Data Source"
-    )
-    
-    st.markdown("---")
-    
-    # STEP 2: File Selection (independent, based on server)
-    selected_mzml, selected_idxml, base_dir = render_file_selection_section(
-        server_info=server_info,
-        session_key_prefix=f"{session_key_prefix}_files",
-        require_both=require_both,
-        show_mzml=show_mzml,
-        show_idxml=show_idxml,
-        header_text="📁 Step 2: Select Files",
-        allow_upload=allow_upload
-    )
-    
-    return selected_mzml, selected_idxml, base_dir, server_info
+    return mzml_files, idxml_files
