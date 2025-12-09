@@ -5,7 +5,7 @@
 
 echo "Starting SpecViz..."
 
-# Check if we're in the right directory
+# Check if in the right directory
 if [ ! -f "app.py" ]; then
     echo "Error: app.py not found. Please run this script from the SpecViz directory."
     exit 1
