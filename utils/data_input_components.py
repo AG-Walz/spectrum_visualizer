@@ -4,10 +4,14 @@ This module provides the unified file selection interface used by both:
 - spectrum_analysis.py: Select files for spectral comparison
 - dataset_filter.py: Select files for filtering operations
 
-The interface supports multiple input methods:
-- Server file browsing with folder selection
-- Local file upload (individual files)
-- Multi-folder aggregation with filtering
+DESIGN:
+Two independent steps:
+1. Server Selection: Choose data source (Local Computer / Current Server / SSH servers)
+2. File Selection: Choose method (Individual files / Folder browsing)
+
+Both file selection methods work for ALL server types:
+- Local: Upload files individually OR browse local folders
+- Server: Enter paths individually OR browse server folders
 
 IMPORTANT: This is the single source of truth for file input UI.
 Edit once here, affects all workspaces.
@@ -127,8 +131,7 @@ def render_server_directory_selector(default_path: Optional[str] = None, session
 def render_unified_file_browser(source: str = "server", server_info: Optional[Dict] = None, session_key_prefix: str = "unified"):
     """
     Unified file browser interface that works for all server types.
-    For server files: Only shows folder browsing (no individual upload option).
-    For local files: Shows both individual upload and folder browsing tabs.
+    Shows both file selection methods (individual + folder browsing) regardless of source.
     
     Args:
         source: "server" for remote/current server files, "local" for local uploads
@@ -142,15 +145,10 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     mzml_files = []
     idxml_files = []
     
-    # Server source: Only show folder browser (no tabs needed)
-    if source == "server":
-        browse_tab = st.container()
-        individual_tab = None
-    else:
-        # Local source: Show both options in tabs
-        tab1, tab2 = st.tabs(["📋 Select Files Individually", "📂 Browse Common Folder"])
-        individual_tab = tab1
-        browse_tab = tab2
+    # Both local and server sources show the same two options
+    tab1, tab2 = st.tabs(["📋 Select Files Individually", "📂 Browse Common Folder"])
+    individual_tab = tab1
+    browse_tab = tab2
     
     with browse_tab:
         # Common folder approach with filtering (same for both local and server)
@@ -319,17 +317,16 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                 else:
                     st.warning("No idXML files found")
     
-    # Individual file upload (only for local source)
-    if individual_tab is not None:
-        with individual_tab:
-            
-            # Single line layout for faster rendering
+    # Individual file selection
+    with individual_tab:
+        if source == "local":
+            # Local: File uploader
             max_size_gb = st.session_state.settings.get("performance", {}).get("max_file_size_gb", 2)
             
             # mzML uploader
             st.markdown("**📊 mzML Files**")
             mzml_uploads = st.file_uploader(
-                "Select mzML files",
+                "Select mzML files from your computer",
                 type=["mzML"],
                 accept_multiple_files=True,
                 help=f"MS/MS spectra files (up to {max_size_gb} GB each)",
@@ -346,7 +343,7 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
             # idXML uploader
             st.markdown("**🔍 idXML Files**")
             idxml_uploads = st.file_uploader(
-                "Select idXML files",
+                "Select idXML files from your computer",
                 type=["idXML", "mzid", "mzidentml"],
                 accept_multiple_files=True,
                 help=f"Peptide IDs (up to {max_size_gb} GB each)",
@@ -357,15 +354,75 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                 total_mb = sum(f.size for f in idxml_uploads) / 1024 / 1024
                 st.success(f"✅ {len(idxml_uploads)} idXML files ({total_mb:.1f} MB)")
                 idxml_files = list(idxml_uploads)
+        
+        else:  # source == "server"
+            # Server: Text input for direct file paths
+            st.info("💡 Enter complete file paths on the server, one per line")
+            
+            # mzML paths
+            st.markdown("**📊 mzML Files**")
+            mzml_paths_text = st.text_area(
+                "Enter mzML file paths (one per line)",
+                height=150,
+                placeholder="/mnt/volume/data/file1.mzML\n/mnt/volume/data/file2.mzML",
+                key=f"{session_key_prefix}_individual_mzml_paths",
+                label_visibility="collapsed"
+            )
+            if mzml_paths_text.strip():
+                mzml_paths = [line.strip() for line in mzml_paths_text.strip().split('\n') if line.strip()]
+                # Validate paths exist
+                valid_mzml = []
+                invalid_mzml = []
+                for path in mzml_paths:
+                    if os.path.exists(path) and path.lower().endswith('.mzml'):
+                        valid_mzml.append(path)
+                    else:
+                        invalid_mzml.append(path)
+                
+                if valid_mzml:
+                    st.success(f"✅ {len(valid_mzml)} valid mzML files")
+                    mzml_files = valid_mzml
+                if invalid_mzml:
+                    st.error(f"❌ {len(invalid_mzml)} invalid paths: {', '.join(invalid_mzml[:3])}{'...' if len(invalid_mzml) > 3 else ''}")
+            
+            st.markdown("---")
+            
+            # idXML paths
+            st.markdown("**🔍 idXML Files**")
+            idxml_paths_text = st.text_area(
+                "Enter idXML file paths (one per line)",
+                height=150,
+                placeholder="/mnt/volume/data/file1.idXML\n/mnt/volume/data/file2.idXML",
+                key=f"{session_key_prefix}_individual_idxml_paths",
+                label_visibility="collapsed"
+            )
+            if idxml_paths_text.strip():
+                idxml_paths = [line.strip() for line in idxml_paths_text.strip().split('\n') if line.strip()]
+                # Validate paths exist
+                valid_idxml = []
+                invalid_idxml = []
+                for path in idxml_paths:
+                    if os.path.exists(path) and any(path.lower().endswith(ext) for ext in ['.idxml', '.mzid', '.mzidentml']):
+                        valid_idxml.append(path)
+                    else:
+                        invalid_idxml.append(path)
+                
+                if valid_idxml:
+                    st.success(f"✅ {len(valid_idxml)} valid idXML files")
+                    idxml_files = valid_idxml
+                if invalid_idxml:
+                    st.error(f"❌ {len(invalid_idxml)} invalid paths: {', '.join(invalid_idxml[:3])}{'...' if len(invalid_idxml) > 3 else ''}")
     
     return mzml_files, idxml_files
 
 
 def render_data_input_section(session_key_prefix: str = "data_input", show_process_button: bool = True, process_callback = None):
     """
-    Render the unified data input section with server selection.
+    Render the unified data input section with independent server and file selection.
     
     This is the main entry point for file selection UI used by all workspaces.
+    Server selection is done first and saved independently. File selection method
+    (individual vs folder browsing) is then available regardless of server choice.
     
     Args:
         session_key_prefix: Unique prefix for session state keys (prevents conflicts between workspaces)
@@ -377,12 +434,14 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
     """
     st.header("📁 Data Input")
     
-    # Get available servers (cached, but show loading on first call)
+    # Get available servers
     with st.spinner("Loading server list..."):
         available_servers = get_available_servers()
     
-    # Server Selection
-    st.subheader("🌐 Select Server")
+    # ========================================================================
+    # STEP 1: Server Selection (Independent)
+    # ========================================================================
+    st.subheader("🌐 Step 1: Select Server")
     
     col1, col2 = st.columns([3, 1])
     with col1:
@@ -391,10 +450,10 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
         server_names = list(available_servers.keys())
         
         selected_display = st.selectbox(
-            "Choose server from which to upload files:",
+            "Choose data source:",
             options=server_options,
             key=f"{session_key_prefix}_server_selector",
-            help="Select from available servers (SSH config) or local computer"
+            help="Select where your files are located - this choice is independent of how you select files below"
         )
         
         # Map back to server name
@@ -405,12 +464,16 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
         st.caption(selected_server["description"])
     
     with col2:
-        if st.button("🔄 Reset", key=f"{session_key_prefix}_reset", help="Clear selection and start over"):
+        if st.button("🔄 Reset", key=f"{session_key_prefix}_reset", help="Clear all selections and start over"):
             # Clear relevant session state for this workspace
             keys_to_clear = [
                 f'{session_key_prefix}_selected_folders',
                 f'{session_key_prefix}_selected_server',
-                f'{session_key_prefix}_selected_server_name'
+                f'{session_key_prefix}_selected_server_name',
+                f'{session_key_prefix}_individual_mzml_upload',
+                f'{session_key_prefix}_individual_idxml_upload',
+                f'{session_key_prefix}_individual_mzml_paths',
+                f'{session_key_prefix}_individual_idxml_paths',
             ]
             for key in keys_to_clear:
                 if key in st.session_state:
@@ -423,26 +486,28 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
     
     st.markdown("---")
     
-    # Unified File Browser/Selector (same interface for all sources)
-    server_type = selected_server["type"]
+    # ========================================================================
+    # STEP 2: File Selection (Independent of server choice)
+    # ========================================================================
+    st.subheader("📂 Step 2: Select Files")
     
+    server_type = selected_server["type"]
+    source = "local" if server_type == "local" else "server"
+    
+    # Show info about what methods are available based on server type
     if server_type == "local":
-        st.subheader("Select Local Files")
-        mzml_files, idxml_files = render_unified_file_browser(
-            source="local", 
-            server_info=selected_server,
-            session_key_prefix=session_key_prefix
-        )
-    else:  # current or ssh
-        st.subheader(f"Browse Files on {selected_server_name}")
+        st.info("💡 You can upload individual files or browse a folder on your local computer")
+    else:
+        st.info(f"💡 You can enter file paths directly or browse folders on **{selected_server_name}**")
         if server_type == "ssh":
-            st.warning("⚠️ SSH remote browsing requires additional setup. Files must be mounted or accessible via filesystem.")
-            st.info("💡 If files are mounted, browse them below. Otherwise, use Local Computer to upload.")
-        mzml_files, idxml_files = render_unified_file_browser(
-            source="server", 
-            server_info=selected_server,
-            session_key_prefix=session_key_prefix
-        )
+            st.warning("⚠️ SSH remote browsing requires files to be mounted or accessible via filesystem")
+    
+    # Render unified file browser (same two-tab interface for all sources)
+    mzml_files, idxml_files = render_unified_file_browser(
+        source=source, 
+        server_info=selected_server,
+        session_key_prefix=session_key_prefix
+    )
     
     # Process files if callback provided and button shown
     if show_process_button and mzml_files and idxml_files:
