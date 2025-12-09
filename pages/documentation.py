@@ -4,100 +4,24 @@ Covers file formats, AI models, workflows, troubleshooting, and technical detail
 Accessed via: App sidebar → Home → Documentation
 """
 import streamlit as st
+from pathlib import Path
 
-# Simple setup - no need for complex utils/helpers.py
+# Simple setup
 st.set_page_config(
-    page_title="SpecViz - Documentation (under construction)",
+    page_title="SpecViz - Documentation",
     initial_sidebar_state="expanded"
 )
 
-st.title("📖 SpecViz Documentation")
-st.markdown("*Comprehensive guide to every feature, option, and decision in the application*")
+# Load markdown documentation (single source of truth)
+docs_path = Path(__file__).parent.parent / "docs" / "DOCUMENTATION.md"
 
-# Table of Contents
-st.sidebar.markdown("## 📋 Table of Contents")
-sections = [
-    "Overview",
-    "File Upload",
-    "idXML Processing",
-    "Peptide Selection",
-    "mzML Loading",
-    "Analysis Configuration",
-    "Automated Analysis",
-    "Visualization",
-    "Export Options",
-    "File Formats",
-    "AI Models",
-    "Troubleshooting",
-    "Advanced Features",
-    "Technical Details",
-    "API Reference"
-]
-
-for section in sections:
-    st.sidebar.markdown(f"- [{section}](#{section.lower().replace(' ', '-')})")
-
-# Main documentation content
-st.markdown("---")
-
-# Start with Overview section
-st.markdown("""
-## Overview
-
-SpecViz is a streamlined web application for MS/MS spectrum visualization with AI-powered fragmentation predictions. It compares experimental mass spectrometry data against predictions from state-of-the-art machine learning models (MS2PIP, Prosit, AlphaPept) via the Koina API.
-
-**Core Capabilities:**
-- Load peptide identifications from idXML/mzIdentML files
-- Extract and filter peptidoforms (sequences with modifications)
-- Match spectra to mzML files efficiently
-- Generate AI-based fragmentation predictions
-- Create interactive mirror plots with ion annotations
-- Perform multi-spectrum comparisons (replicate analysis)
-- Export results to Excel and HTML formats
-
----
-""", unsafe_allow_html=True)
-
-# File Upload Section
-st.markdown("""
-<a id="file-upload-section"></a>
-## File Upload
-
-The first step in any analysis is uploading your data. SpecViz uses a two-phase approach to optimize memory usage.
-
-<a id="upload-methods"></a>
-### Upload Methods
-
-**Option 1: Browser Upload**
-- Click **"🔍 Upload Identification Files"**
-- Select files from your computer
-- Best for: Small to medium files (<500 MB)
-- Limitation: Browser memory limits may apply
-
-**Option 2: Server Browser**
-- Click **"📂 Browse Server Files"**
-- Navigate to data directory
-- Select files directly from server filesystem
-- Best for: Large files, batch processing, shared datasets
-
-**What happens when you click "Browse":**
-1. File picker dialog opens
-2. You can select single or multiple files (hold Shift/Ctrl)
-3. Files are validated for correct format
-4. File sizes are displayed
-5. Upload begins when you confirm selection
-
-**What happens when you click "Upload":**
-- Browser files: Transferred to temporary directory on server
-- Server files: Referenced directly (no copy needed)
-- Progress bar shows upload status
-- Checkmark ✅ appears when complete
-
-<a id="supported-file-formats"></a>
-### Supported File Formats
-
-**Identification Files (Required):**
-- `.idxml` - OpenMS identification format (recommended)
+try:
+    with open(docs_path, "r", encoding="utf-8") as f:
+        documentation_content = f.read()
+    st.markdown(documentation_content, unsafe_allow_html=True)
+except FileNotFoundError:
+    st.error(f"❌ Documentation file not found: {docs_path}")
+    st.info("Please ensure docs/DOCUMENTATION.md exists in the project root.")
 - `.mzid` / `.mzidentml` - PSI mzIdentML standard
 - Contains: Peptide sequences, modifications, spectrum references
 

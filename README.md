@@ -51,8 +51,8 @@ python cli/filter_mzml.py \
 
 ## Documentation
 
-- **Spectrum Workspace**: See [docs/SPECTRUM_WORKSPACE.md](docs/SPECTRUM_WORKSPACE.md) (if exists)
-- **mzML Filter**: See [docs/MZML_FILTER.md](docs/MZML_FILTER.md)
+- **Quickstart Guide**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started quickly
+- **Full Documentation**: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) - Comprehensive guide
 
 ## Installation
 
