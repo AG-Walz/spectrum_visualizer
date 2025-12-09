@@ -42,11 +42,13 @@ Thumbs.db
 __marimo__/
 
 # Project specific
+cli/
 testing/results/
 debug.py
 debug/
 build.log
 clean-up-workspaces.log
+.gitignore
 
 # External dependencies
 *-embed-amd64
