@@ -159,10 +159,6 @@ def create_filtered_mzmls(mzml_to_spectra: Dict[str, List[str]],
 def render_idxml_selection():
     """File selection using shared data_input_components.py - filters only need idXML files."""
     
-    # Custom header for filter workspace
-    st.header("📁 Step 1: Select idXML Files")
-    st.caption("Select peptide identification files to filter. The corresponding mzML files will be detected automatically from the idXML metadata.")
-    
     # Use shared data input section (but we'll only take idXML files)
     mzml_files, idxml_files = render_data_input_section(
         session_key_prefix="dataset_filter",

@@ -8,11 +8,8 @@ Welcome to **SpecViz**, an MS/MS spectrum visualization tool for comparing exper
 
 ```bash
 # Create conda environment
-conda create -n specviz python=3.11
+conda create -n specviz environment.yml
 conda activate specviz
-
-# Install dependencies
-pip install -r requirements.txt
 ```
 
 ### Running the App
@@ -40,7 +37,7 @@ Interactive environments for analysis:
 - **Filter Large Datasets**: Preprocess mzML files before analysis
 - **Settings**: Configure application preferences
 
-**⚠️ Important**: Workspaces maintain state during your session. Complete your analysis in one session or export results before navigating away.
+**⚠️ Important**: Workspaces maintain state only during your session, unlike pages. Complete your analysis in one session or export results before navigating away, otherwise your progress will be overwritten.
 
 ---
 
