@@ -77,14 +77,24 @@ def render_directory_browser(
     
     current_dir = st.session_state[session_key]
     
-    # Display current directory (always shown)
-    st.text_input(
-        "Current Directory",
-        value=current_dir,
-        key=f"{session_key}_display",
-        disabled=True,
-        help="Currently selected directory"
-    )
+    # Display current directory with back button
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        st.text_input(
+            "Current Directory",
+            value=current_dir,
+            key=f"{session_key}_display",
+            disabled=True,
+            help="Currently selected directory"
+        )
+    with col2:
+        st.write("")  # Spacing to align with text input
+        parent_dir = str(Path(current_dir).parent)
+        # Only show back button if we're not at root and parent exists
+        if parent_dir != current_dir and Path(parent_dir).exists():
+            if st.button("⬆️ Back", key=f"{session_key}_back_btn", use_container_width=True, help="Go to parent directory"):
+                st.session_state[session_key] = parent_dir
+                st.rerun()
     
     # Show subdirectories as clickable buttons in a compact grid
     if show_subdirs:
