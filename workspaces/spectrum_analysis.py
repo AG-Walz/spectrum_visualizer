@@ -1126,11 +1126,9 @@ def render_peptide_filter_and_spectrum_selector(mapping_df: pd.DataFrame) -> Opt
             else:
                 display_df["mzML"] = "N/A"
             
-            # Extract unmodified peptide sequence (remove modifications for cleaner display)
+            # Show full peptidoform with modifications
             if "peptide_sequence" in display_df.columns:
-                display_df["Peptide"] = display_df["peptide_sequence"].apply(
-                    lambda x: ''.join([c for c in str(x) if c.isalpha()]).upper()
-                )
+                display_df["Peptide"] = display_df["peptide_sequence"]
             else:
                 display_df["Peptide"] = "N/A"
             
@@ -1296,11 +1294,9 @@ def render_spectrum_selector_only(mapping_df: pd.DataFrame):
     else:
         display_df["mzML"] = "N/A"
     
-    # Extract unmodified peptide sequence
+    # Show full peptidoform with modifications
     if "peptide_sequence" in display_df.columns:
-        display_df["Peptide"] = display_df["peptide_sequence"].apply(
-            lambda x: ''.join([c for c in str(x) if c.isalpha()]).upper()
-        )
+        display_df["Peptide"] = display_df["peptide_sequence"]
     else:
         display_df["Peptide"] = "N/A"
     
