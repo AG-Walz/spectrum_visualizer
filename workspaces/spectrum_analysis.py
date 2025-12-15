@@ -126,8 +126,13 @@ def extract_idxml_metadata(idxml_paths: List[str]) -> Tuple[Dict[str, List[str]]
         messages.append(f"📋 Processing {idxml_name}")
         
         try:
-            # Extract expected mzML files
-            expected_files = st_tools.extract_mzml_files_from_idxml(idxml_path)
+            # Extract expected mzML files (optional - skip if st_tools not available)
+            expected_files = []
+            if st_tools:
+                try:
+                    expected_files = st_tools.extract_mzml_files_from_idxml(idxml_path)
+                except:
+                    pass  # Skip if extraction fails
             expected_mzmls_by_idxml[idxml_name] = expected_files
             messages.append(f"  Expected mzML files: {len(expected_files)}")
             
@@ -704,63 +709,51 @@ def process_idxml_files_only(idxml_files):
 
 
 def render_data_input_section_local():
-    """Wrapper for render_data_input_section with spectrum_analysis specific settings."""
+    """Wrapper for render_data_input_section with spectrum_analysis specific settings.
+    Shows file selection UI and confirmation button.
+    """
     mzml_files, idxml_files = render_data_input_section(
         session_key_prefix="spectrum_analysis",
         show_process_button=False,  # We handle processing separately
         process_callback=None
     )
     
-    # Files are already converted to paths by data_input_components.py
-    # Process them directly if both are available
+    # Show confirmation button only if both file types are selected
     if mzml_files and idxml_files:
-        process_selected_files(mzml_files, idxml_files)
+        st.markdown("---")
+        if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files", use_container_width=True):
+            st.info("📋 Extracting available peptides from idXML files (fast)...")
+            
+            # Extract peptides without loading mzML files
+            try:
+                expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files = extract_idxml_metadata(idxml_files)
+                
+                # Store paths and extracted peptides in session state
+                st.session_state.update({
+                    'files_confirmed': True,
+                    'mzml_paths': mzml_files,
+                    'idxml_paths': idxml_files,
+                    'all_peptidoforms_data': all_peptidoforms_data,
+                    'expected_mzmls_by_idxml': expected_mzmls_by_idxml,
+                    'empty_idxml_files': empty_files,
+                    'files_loaded': False  # Explicitly set to False until peptides are selected
+                })
+                
+                st.success(f"✅ Found {len(all_peptidoforms_data)} unique peptidoforms")
+                st.info("👇 **Next: Select peptides below to filter before loading spectra**")
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"❌ Error extracting peptides: {e}")
+                logger.error(f"Peptide extraction failed: {e}")
+                import traceback
+                st.code(traceback.format_exc())
+                return
     
     return mzml_files, idxml_files
 
 # NOTE: render_unified_file_browser and render_server_directory_selector
 # are now imported from data_input_components.py (single source of truth)
-
-def process_selected_files(mzml_paths, idxml_paths):
-    """Process selected files with peptide selection FIRST to avoid loading unnecessary data.
-    
-    Args:
-        mzml_paths: List of mzML file paths (already converted from UploadedFile if needed)
-        idxml_paths: List of idXML file paths (already converted from UploadedFile if needed)
-    """
-    
-    # STEP 3: Extract peptides from idXML (button to confirm and extract)
-    if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files"):
-        st.info("📋 Extracting available peptides from idXML files (fast)...")
-        
-        # PHASE 1: Extract peptides without loading mzML files
-        try:
-            expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files = extract_idxml_metadata(idxml_paths)
-            
-            # Store paths and extracted peptides in session state
-            st.session_state.update({
-                'files_confirmed': True,
-                'mzml_paths': mzml_paths,
-                'idxml_paths': idxml_paths,
-                'all_peptidoforms_data': all_peptidoforms_data,
-                'expected_mzmls_by_idxml': expected_mzmls_by_idxml,
-                'empty_idxml_files': empty_files,
-                'files_loaded': False  # Explicitly set to False until peptides are selected
-            })
-            
-            st.success(f"✅ Found {len(all_peptidoforms_data)} unique peptidoforms")
-            st.info("👇 **Next: Select peptides below to filter before loading spectra**")
-            st.rerun()
-            
-        except Exception as e:
-            st.error(f"❌ Error extracting peptides: {e}")
-            logger.error(f"Peptide extraction failed: {e}")
-            return
-    
-    # STEP 4: Show peptide selection AFTER peptides are extracted
-    if st.session_state.get('files_confirmed', False) and not st.session_state.get('files_loaded', False):
-        st.markdown("---")
-        render_peptide_filter_for_preloading()
 
 def render_peptide_filter_for_preloading():
     """
@@ -1502,12 +1495,20 @@ def main():
     st.title("🔬 Spectrum Analysis Workspace")
     st.markdown("---")
     
-    # STEP 1: File Input (uses shared data_input_components.py)
-    render_data_input_section_local()
+    # STEP 1 & 2: File Input (only show if not yet confirmed)
+    if not st.session_state.get('files_confirmed', False):
+        render_data_input_section_local()
+        st.info("👆 Select files and click 'Confirm File Selection & Extract Peptides' to continue.")
+        return
     
-    # Only proceed if files are loaded
+    # STEP 3 & 4: Show peptide selection after files are confirmed
     if not st.session_state.get('files_loaded', False):
-        st.info("👆 Please upload both mzML and idXML files to get started.")
+        render_peptide_filter_for_preloading()
+        return
+    
+    # STEP 5+: Only proceed if files are fully loaded with selected peptides
+    if not st.session_state.get('files_loaded', False):
+        st.info("👆 Please select peptides and load spectra to continue.")
         return
     
     # Step 2: Spectrum Selection (peptides already filtered during pre-loading)
