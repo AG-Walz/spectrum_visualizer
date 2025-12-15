@@ -186,12 +186,16 @@ def extract_idxml_metadata(idxml_paths: List[str]) -> Tuple[Dict[str, List[str]]
 
 
 def filter_idxml_by_selected_peptides(idxml_paths: List[str], 
-                                      selected_peptidoforms: List[str]) -> Tuple[Dict[str, Dict[str, List[str]]], List[str], List[str]]:
+                                      selected_peptidoforms: List[str],
+                                      progress_callback=None) -> Tuple[Dict[str, Dict[str, List[str]]], List[str], List[str]]:
     """
     PHASE 2: Filter idXML files to get only spectrum IDs matching selected peptides.
     NO mzML loading at this stage!
     OPTIMIZED: Uses PyOpenMS directly for consistency with extraction phase.
     MATCHES: Both modified peptidoforms (e.g., "GEADIM(Oxidation)ISF") AND unmodified sequences (e.g., "GEADIMISF")
+    
+    Args:
+        progress_callback: Optional function(current, total, message) for progress updates
     
     Returns:
         ({idxml_name: {mzml_file: [spec_ids]}}, messages, empty_files)
@@ -207,7 +211,10 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     messages.append(f"Filtering for {len(selected_set)} selected peptidoforms...")
     messages.append(f"Sample selected (first 3): {list(selected_set)[:3]}")
     
-    for idxml_path in idxml_paths:
+    total_files = len(idxml_paths)
+    for idx, idxml_path in enumerate(idxml_paths):
+        if progress_callback:
+            progress_callback(idx, total_files, f"Filtering idXML {idx+1}/{total_files}: {extract_filename(idxml_path)}")
         idxml_name = extract_filename(idxml_path)
         messages.append(f"🔍 Filtering {idxml_name}")
         
@@ -331,6 +338,10 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                 logger.error(f"Error filtering {idxml_path}: {e}")
             continue
     
+    # Final progress update
+    if progress_callback:
+        progress_callback(total_files, total_files, f"✅ Filtered all {total_files} idXML files")
+    
     return idxml_to_mzml_spectra, messages, empty_files
 
 
@@ -347,21 +358,18 @@ def _load_indexed_mzml(mzml_path: str):
     try:
         # Use OnDiscMSExperiment for indexed access without loading all spectra
         indexed_file = oms.OnDiscMSExperiment()
-        indexed_file.openFile(mzml_path)
-        return indexed_file
-    except Exception as e:
-        logger.error(f"Failed to create indexed access for {mzml_path}: {e}")
-        return None
-
-
 def load_only_needed_spectra(idxml_paths: List[str],
                              mzml_paths: List[str],
-                             idxml_to_mzml_spectra: Dict[str, Dict[str, List[str]]]) -> Tuple[pd.DataFrame, Dict, List[str], List[str]]:
+                             idxml_to_mzml_spectra: Dict[str, Dict[str, List[str]]],
+                             progress_callback=None) -> Tuple[pd.DataFrame, Dict, List[str], List[str]]:
     """
     PHASE 3: Load ONLY the needed spectra from mzML files using indexed access.
     
     OPTIMIZED: Uses OnDiscMSExperiment for selective spectrum loading.
     Only loads requested spectra into memory, not entire mzML files.
+    
+    Args:
+        progress_callback: Optional function(current, total, message) for progress updates
     
     Returns:
         (mapping_df, validation_info, messages, empty_files)
@@ -381,17 +389,32 @@ def load_only_needed_spectra(idxml_paths: List[str],
         "idxml_mappings": {}
     }
     
-    for idxml_path in idxml_paths:
-        idxml_name = extract_filename(idxml_path)
-        
-        if idxml_name not in idxml_to_mzml_spectra:
-            messages.append(f"⚠️ {idxml_name}: No spectra to load")
-            continue
-        
-        mzml_spectra = idxml_to_mzml_spectra[idxml_name]
-        messages.append(f"📊 Loading spectra for {idxml_name}")
-        
-        # Track expected files for this idXML
+    # Count total mzML files to process for progress tracking
+    total_mzmls = sum(len(mzml_dict) for mzml_dict in idxml_to_mzml_spectra.values())
+    mzml_counter = 0
+    
+    for idxml_path in idxml_paths:l_name_to_path.keys()),
+        "matched_files": [],
+        "missing_files": [],
+        "extra_files": [],
+        "idxml_mappings": {}
+    }
+    
+        # Load only matching mzML files
+        for mzml_file, spec_ids in mzml_spectra.items():
+            mzml_counter += 1
+            if progress_callback:
+                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
+            
+            if mzml_file not in mzml_name_to_path:
+                messages.append(f"  ⚠️ Missing: {mzml_file}")
+                validation_info["missing_files"].append(mzml_file)
+                continue
+            
+            mzml_path = mzml_name_to_path[mzml_file]
+            messages.append(f"  Loading {mzml_file}: {len(spec_ids)} spectra (indexed)")
+            
+            try:expected files for this idXML
         expected_mzml_files = list(mzml_spectra.keys())
         validation_info["expected_files"].extend(expected_mzml_files)
         validation_info["idxml_mappings"][idxml_name] = expected_mzml_files
@@ -884,20 +907,43 @@ def render_peptide_filter_for_preloading():
         if st.button("🚀 Load Spectra for Selected Peptides", type="primary", key="load_spectra"):
             st.session_state['selected_peptidoforms_for_loading'] = selected_peptidoforms
             
-            # PHASE 2: Filter idXML by selected peptides (still no mzML loading)
-            with st.spinner("🔍 Filtering idXML files by selected peptides..."):
-                idxml_to_mzml_spectra, filter_messages, filter_empty = filter_idxml_by_selected_peptides(
-                    st.session_state['idxml_paths'],
-                    selected_peptidoforms
-                )
+            # PHASE 2: Filter idXML by selected peptides (with progress tracking)
+            idxml_paths = st.session_state['idxml_paths']
+            st.info(f"🔍 Filtering {len(idxml_paths)} idXML file(s) by {len(selected_peptidoforms)} selected peptide(s)...")
             
-            # PHASE 3: Load ONLY needed spectra from mzML files
-            with st.spinner("📊 Loading only needed spectra from mzML files..."):
-                mapping_df, validation_info, load_messages, load_empty = load_only_needed_spectra(
-                    st.session_state['idxml_paths'],
-                    st.session_state['mzml_paths'],
-                    idxml_to_mzml_spectra
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            idxml_to_mzml_spectra, filter_messages, filter_empty = filter_idxml_by_selected_peptides(
+                idxml_paths,
+                selected_peptidoforms,
+                progress_callback=lambda i, total, msg: (
+                    progress_bar.progress(i / total),
+                    status_text.text(msg)
                 )
+            )
+            
+            progress_bar.empty()
+            status_text.empty()
+            
+            # PHASE 3: Load ONLY needed spectra from mzML files (with progress tracking)
+            st.info(f"📊 Loading filtered spectra from mzML files...")
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            mapping_df, validation_info, load_messages, load_empty = load_only_needed_spectra(
+                idxml_paths,
+                st.session_state['mzml_paths'],
+                idxml_to_mzml_spectra,
+                progress_callback=lambda i, total, msg: (
+                    progress_bar.progress(i / total),
+                    status_text.text(msg)
+                )
+            )
+            
+            progress_bar.empty()
+            status_text.empty()
             
             if not mapping_df.empty:
                 st.success(f"✅ Loaded {len(mapping_df)} spectra for {len(selected_peptidoforms)} peptides")
