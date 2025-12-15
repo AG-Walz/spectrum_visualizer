@@ -219,18 +219,6 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
         messages.append(f"🔍 Filtering {idxml_name}")
         
         try:
-            # First, use psm_utils to load PSMs and build spectrum_id → run mapping
-            from psm_utils.io import read_file as psm_read_file
-            spectrum_to_run = {}  # {spectrum_id: run_name}
-            try:
-                psm_list = psm_read_file(idxml_path, file_format="idXML")
-                for psm in psm_list:
-                    if hasattr(psm, 'spectrum_id') and hasattr(psm, 'run') and psm.run:
-                        spectrum_to_run[psm.spectrum_id] = psm.run
-                messages.append(f"  → Built run mapping for {len(spectrum_to_run)} spectra")
-            except Exception as e:
-                logger.warning(f"Could not build spectrum→run mapping with psm_utils: {e}")
-            
             # OPTIMIZED: Use PyOpenMS directly (same as extraction phase)
             protein_ids = []
             peptide_ids = []
@@ -244,17 +232,31 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
             debug_samples = 0  # Counter for debug output
             debug_spec_ids = []  # Track first few spectrum IDs for debugging
             
+            # OPTIMIZATION: Pre-build unmodified set for faster lookup
+            unmodified_selected = set()
+            for pep in selected_set:
+                # Remove modification annotations to create unmodified version
+                unmod = ''.join([c for c in pep if c.isalpha()])
+                unmodified_selected.add(unmod)
+            
             for pep_id in peptide_ids:
                 hits = pep_id.getHits()
                 if not hits:
                     continue
                 
-                # Check if ANY hit matches selected peptides
+                # OPTIMIZATION: Check if ANY hit matches selected peptides (early exit)
+                match_found = False
                 for hit in hits:
                     try:
                         sequence = hit.getSequence()
-                        peptidoform_str = sequence.toString()
                         unmodified_seq = sequence.toUnmodifiedString()
+                        
+                        # OPTIMIZATION: Check unmodified first (faster, no string manipulation)
+                        if unmodified_seq not in unmodified_selected:
+                            continue  # Skip this hit entirely
+                        
+                        # Now check the full peptidoform (only if unmodified matches)
+                        peptidoform_str = sequence.toString()
                         
                         # Debug: Show first few peptides being checked
                         if debug_samples < 3:
@@ -263,6 +265,7 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                         
                         # Check if this peptidoform is selected (match either modified or unmodified)
                         if peptidoform_str in selected_set or unmodified_seq in selected_set:
+                            match_found = True
                             # Get spectrum ID - try multiple metadata fields
                             spectrum_id = None
                             if pep_id.metaValueExists("spectrum_reference"):
@@ -273,17 +276,15 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                                 # Use native ID from spectrum reference
                                 spectrum_id = str(pep_id.getSpectrumReference())
                             
-                            # Get run name from psm_utils mapping (actual mzML file)
+                            # OPTIMIZED: Get run name from metadata (skip slow psm_utils loading)
                             run = None
-                            if spectrum_id and spectrum_id in spectrum_to_run:
-                                run = spectrum_to_run[spectrum_id]
                             
-                            # Fallback: try to extract from spectra_data metadata
-                            if not run and pep_id.metaValueExists("spectra_data"):
+                            # Try to extract from spectra_data metadata
+                            if pep_id.metaValueExists("spectra_data"):
                                 spectra_data = str(pep_id.getMetaValue("spectra_data"))
                                 run = Path(spectra_data).stem
                             
-                            # Last resort: use idXML filename (but log warning)
+                            # Fallback: use idXML filename
                             if not run:
                                 run = Path(idxml_path).stem
                                 if matched_count == 0:  # Only warn once per file
@@ -313,6 +314,9 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                     except Exception as e:
                         logger.warning(f"Error processing hit: {e}")
                         continue
+                    
+                    if match_found:
+                        break  # Exit hits loop early if match found
             
             if mzml_spectra:
                 total_specs = sum(len(ids) for ids in mzml_spectra.values())
