@@ -1180,20 +1180,25 @@ def render_peptide_filter_and_spectrum_selector(mapping_df: pd.DataFrame) -> Opt
                     st.session_state['selected_spectra_indices'] = set()
                     st.rerun()
             
-            # Display editable dataframe
+            # Display editable dataframe (include peptide_sequence for matching, but hide it)
+            editor_columns = condensed_columns + ["spec_idx"]
+            if "peptide_sequence" in display_df.columns:
+                editor_columns.append("peptide_sequence")
+            
             edited_df = st.data_editor(
-                display_df[condensed_columns + ["spec_idx"]],
+                display_df[editor_columns],
                 width="stretch",
                 height=400,
                 hide_index=True,
-                disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx"],
+                disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx", "peptide_sequence"],
                 column_config={
                     "Select": st.column_config.CheckboxColumn(
                         "Select",
                         help="Check to include spectrum in analysis",
                         default=True,
                     ),
-                    "spec_idx": None  # Hide the index column
+                    "spec_idx": None,  # Hide the index column
+                    "peptide_sequence": None  # Hide but preserve the full peptidoform
                 },
                 key="spectrum_selector"
             )
@@ -1343,20 +1348,25 @@ def render_spectrum_selector_only(mapping_df: pd.DataFrame):
             st.session_state['selected_spectra_indices'] = set()
             st.rerun()
     
-    # Display editable dataframe
+    # Display editable dataframe (include peptide_sequence for matching, but hide it)
+    editor_columns = condensed_columns + ["spec_idx"]
+    if "peptide_sequence" in display_df.columns:
+        editor_columns.append("peptide_sequence")
+    
     edited_df = st.data_editor(
-        display_df[condensed_columns + ["spec_idx"]],
+        display_df[editor_columns],
         width="stretch",
         height=400,
         hide_index=True,
-        disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx"],
+        disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx", "peptide_sequence"],
         column_config={
             "Select": st.column_config.CheckboxColumn(
                 "Select",
                 help="Check to include spectrum in analysis",
                 default=True,
             ),
-            "spec_idx": None  # Hide the index column
+            "spec_idx": None,  # Hide the index column
+            "peptide_sequence": None  # Hide but preserve the full peptidoform
         },
         key="spectrum_selector_only"
     )
