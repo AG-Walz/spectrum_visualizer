@@ -711,7 +711,8 @@ def render_data_input_section_local():
         process_callback=None
     )
     
-    # Process files if both are available
+    # Files are already converted to paths by data_input_components.py
+    # Process them directly if both are available
     if mzml_files and idxml_files:
         process_selected_files(mzml_files, idxml_files)
     
@@ -720,49 +721,16 @@ def render_data_input_section_local():
 # NOTE: render_unified_file_browser and render_server_directory_selector
 # are now imported from data_input_components.py (single source of truth)
 
-def process_selected_files(mzml_files, idxml_files):
-    """Process selected files with peptide selection FIRST to avoid loading unnecessary data."""
+def process_selected_files(mzml_paths, idxml_paths):
+    """Process selected files with peptide selection FIRST to avoid loading unnecessary data.
     
-    # STEP 1: Confirm file selection (don't load yet!)
-    if st.button("✅ Confirm File Selection", type="primary", key="confirm_files"):
-        # Check if files are server paths (strings) or uploaded files (objects)
-        is_server_files = mzml_files and isinstance(mzml_files[0], str)
-        
-        if is_server_files:
-            # Server files - use paths directly (no upload needed)
-            st.info("Processing files from server...")
-            mzml_paths = mzml_files
-            idxml_paths = idxml_files
-        else:
-            # Uploaded files - save to temp directory with progress tracking
-            
-            total_files = len(mzml_files) + len(idxml_files)
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-            files_processed = 0
-            
-            # Save all mzML files with progress
-            mzml_paths = []
-            for i, mzml_file in enumerate(mzml_files):
-                status_text.text(f"📊 Uploading mzML file {i+1}/{len(mzml_files)}: {mzml_file.name}")
-                mzml_path = save_uploaded_file(mzml_file)
-                mzml_paths.append(mzml_path)
-                files_processed += 1
-                progress_bar.progress(files_processed / total_files)
-            
-            # Save all idXML files with progress
-            idxml_paths = []
-            for i, idxml_file in enumerate(idxml_files):
-                status_text.text(f"🔍 Uploading ID file {i+1}/{len(idxml_files)}: {idxml_file.name}")
-                idxml_path = save_uploaded_file(idxml_file)
-                idxml_paths.append(idxml_path)
-                files_processed += 1
-                progress_bar.progress(files_processed / total_files)
-            
-            status_text.text(f"✅ Uploaded {total_files} files successfully")
-            progress_bar.progress(1.0)
-        
-        # DON'T load mzML files yet! Just extract peptides from idXML
+    Args:
+        mzml_paths: List of mzML file paths (already converted from UploadedFile if needed)
+        idxml_paths: List of idXML file paths (already converted from UploadedFile if needed)
+    """
+    
+    # STEP 3: Extract peptides from idXML (button to confirm and extract)
+    if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files"):
         st.info("📋 Extracting available peptides from idXML files (fast)...")
         
         # PHASE 1: Extract peptides without loading mzML files
@@ -789,7 +757,7 @@ def process_selected_files(mzml_files, idxml_files):
             logger.error(f"Peptide extraction failed: {e}")
             return
     
-    # STEP 2: Show peptide selection AFTER files are confirmed (using the advanced Peptide Filter UI)
+    # STEP 4: Show peptide selection AFTER peptides are extracted
     if st.session_state.get('files_confirmed', False) and not st.session_state.get('files_loaded', False):
         st.markdown("---")
         render_peptide_filter_for_preloading()
