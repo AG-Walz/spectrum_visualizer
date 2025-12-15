@@ -21,6 +21,7 @@ import streamlit as st
 import os
 import socket
 import logging
+import tempfile
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
@@ -36,6 +37,34 @@ from shared_imports import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def convert_uploaded_file_to_path(file_obj) -> str:
+    """Convert UploadedFile object to temporary file path.
+    
+    For UploadedFile objects, saves to temp directory only when needed.
+    For path strings, returns as-is.
+    
+    Args:
+        file_obj: Either an UploadedFile object or a file path string
+        
+    Returns:
+        File path string
+    """
+    if hasattr(file_obj, 'read') and hasattr(file_obj, 'name'):
+        # It's an UploadedFile - save to temp directory
+        temp_dir = tempfile.gettempdir()
+        temp_path = os.path.join(temp_dir, file_obj.name)
+        
+        # Save the uploaded file
+        with open(temp_path, 'wb') as f:
+            f.write(file_obj.getvalue())
+        
+        logger.info(f"Saved uploaded file to: {temp_path}")
+        return temp_path
+    else:
+        # Already a path string
+        return str(file_obj)
 
 
 def get_available_servers() -> Dict[str, Dict[str, Any]]:
@@ -141,6 +170,7 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     """
     Unified file browser interface that works for all server types.
     Shows both file selection methods (individual + folder browsing) regardless of source.
+    Files from both tabs are merged and accumulated in session state.
     
     Args:
         source: "server" for remote/current server files, "local" for local uploads
@@ -148,9 +178,18 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
         session_key_prefix: Prefix for session state keys to avoid conflicts between workspaces
     
     Returns:
-        (mzml_files, idxml_files) - Lists of file paths or file objects
+        (mzml_files, idxml_files) - Lists of file paths (UploadedFile objects converted to temp paths)
     """
+    # Initialize session state for accumulated files
+    mzml_session_key = f"{session_key_prefix}_accumulated_mzml"
+    idxml_session_key = f"{session_key_prefix}_accumulated_idxml"
     
+    if mzml_session_key not in st.session_state:
+        st.session_state[mzml_session_key] = []
+    if idxml_session_key not in st.session_state:
+        st.session_state[idxml_session_key] = []
+    
+    # Collect files from current selection
     mzml_files = []
     idxml_files = []
     
@@ -333,6 +372,18 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                         idxml_files = map_display_names_to_paths(selected_display, idxml_files_found)
                 else:
                     st.warning("No idXML files found")
+            
+            # Add button to accumulate folder selections
+            if mzml_files or idxml_files:
+                if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_folder_files", type="primary"):
+                    for f in mzml_files:
+                        if f not in st.session_state[mzml_session_key]:
+                            st.session_state[mzml_session_key].append(f)
+                    for f in idxml_files:
+                        if f not in st.session_state[idxml_session_key]:
+                            st.session_state[idxml_session_key].append(f)
+                    st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
+                    st.rerun()
     
     # Individual file selection
     with individual_tab:
@@ -340,20 +391,33 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
             # Local: File uploader
             max_size_gb = st.session_state.settings.get("performance", {}).get("max_file_size_gb", 2)
             
+            st.info("💡 Files will be uploaded and saved temporarily for processing")
+            
             # mzML uploader
             st.markdown("**📊 mzML Files**")
             mzml_uploads = st.file_uploader(
                 "Select mzML files from your computer",
                 type=["mzML"],
                 accept_multiple_files=True,
-                help=f"MS/MS spectra files (up to {max_size_gb} GB each)",
+                help=f"MS/MS spectra files (up to {max_size_gb} GB each) - will be saved temporarily",
                 key=f"{session_key_prefix}_individual_mzml_upload",
                 label_visibility="collapsed"
             )
             if mzml_uploads:
                 total_mb = sum(f.size for f in mzml_uploads) / 1024 / 1024
                 st.success(f"✅ {len(mzml_uploads)} mzML files ({total_mb:.1f} MB)")
-                mzml_files = list(mzml_uploads)
+                
+                # Add button to save uploaded files
+                if st.button("➕ Add mzML Files to Selection", key=f"{session_key_prefix}_add_mzml_files", type="primary"):
+                    with st.spinner("Saving mzML files..."):
+                        for upload in mzml_uploads:
+                            # Convert UploadedFile to temp path
+                            temp_path = convert_uploaded_file_to_path(upload)
+                            # Add to session state if not already there
+                            if temp_path not in st.session_state[mzml_session_key]:
+                                st.session_state[mzml_session_key].append(temp_path)
+                    st.success(f"✅ Added {len(mzml_uploads)} mzML files")
+                    st.rerun()
             
             st.markdown("---")
             
@@ -363,14 +427,25 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                 "Select idXML files from your computer",
                 type=["idXML", "mzid", "mzidentml"],
                 accept_multiple_files=True,
-                help=f"Peptide IDs (up to {max_size_gb} GB each)",
+                help=f"Peptide IDs (up to {max_size_gb} GB each) - will be saved temporarily",
                 key=f"{session_key_prefix}_individual_idxml_upload",
                 label_visibility="collapsed"
             )
             if idxml_uploads:
                 total_mb = sum(f.size for f in idxml_uploads) / 1024 / 1024
                 st.success(f"✅ {len(idxml_uploads)} idXML files ({total_mb:.1f} MB)")
-                idxml_files = list(idxml_uploads)
+                
+                # Add button to save uploaded files
+                if st.button("➕ Add idXML Files to Selection", key=f"{session_key_prefix}_add_idxml_files", type="primary"):
+                    with st.spinner("Saving idXML files..."):
+                        for upload in idxml_uploads:
+                            # Convert UploadedFile to temp path
+                            temp_path = convert_uploaded_file_to_path(upload)
+                            # Add to session state if not already there
+                            if temp_path not in st.session_state[idxml_session_key]:
+                                st.session_state[idxml_session_key].append(temp_path)
+                    st.success(f"✅ Added {len(idxml_uploads)} idXML files")
+                    st.rerun()
         
         else:  # source == "server"
             # Server: Text input for direct file paths
@@ -429,8 +504,21 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     idxml_files = valid_idxml
                 if invalid_idxml:
                     st.error(f"❌ {len(invalid_idxml)} invalid paths: {', '.join(invalid_idxml[:3])}{'...' if len(invalid_idxml) > 3 else ''}")
+            
+            # Add button to accumulate server path selections
+            if mzml_files or idxml_files:
+                if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_server_files", type="primary"):
+                    for f in mzml_files:
+                        if f not in st.session_state[mzml_session_key]:
+                            st.session_state[mzml_session_key].append(f)
+                    for f in idxml_files:
+                        if f not in st.session_state[idxml_session_key]:
+                            st.session_state[idxml_session_key].append(f)
+                    st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
+                    st.rerun()
     
-    return mzml_files, idxml_files
+    # Return accumulated files from session state
+    return st.session_state[mzml_session_key], st.session_state[idxml_session_key]
 
 
 def render_data_input_section(session_key_prefix: str = "data_input", show_process_button: bool = True, process_callback = None):
@@ -530,6 +618,42 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
         st.info(f"💡 You can enter file paths directly or browse folders on **{selected_server_name}**")
         if server_type == "ssh":
             st.warning("⚠️ SSH remote browsing requires files to be mounted or accessible via filesystem")
+    
+    # Show accumulated files summary
+    mzml_session_key = f"{session_key_prefix}_accumulated_mzml"
+    idxml_session_key = f"{session_key_prefix}_accumulated_idxml"
+    
+    if mzml_session_key in st.session_state or idxml_session_key in st.session_state:
+        mzml_count = len(st.session_state.get(mzml_session_key, []))
+        idxml_count = len(st.session_state.get(idxml_session_key, []))
+        
+        if mzml_count > 0 or idxml_count > 0:
+            col_summary, col_clear = st.columns([3, 1])
+            with col_summary:
+                st.success(f"📋 **Selected:** {mzml_count} mzML files, {idxml_count} idXML files")
+            with col_clear:
+                if st.button("🗑️ Clear All", key=f"{session_key_prefix}_clear_all", help="Remove all selected files"):
+                    st.session_state[mzml_session_key] = []
+                    st.session_state[idxml_session_key] = []
+                    st.rerun()
+            
+            # Show file lists in expander
+            with st.expander("📂 View Selected Files", expanded=False):
+                if mzml_count > 0:
+                    st.markdown(f"**mzML Files ({mzml_count}):**")
+                    for i, f in enumerate(st.session_state[mzml_session_key][:10], 1):
+                        st.text(f"{i}. {Path(f).name}")
+                    if mzml_count > 10:
+                        st.text(f"... and {mzml_count - 10} more")
+                
+                if idxml_count > 0:
+                    st.markdown(f"**idXML Files ({idxml_count}):**")
+                    for i, f in enumerate(st.session_state[idxml_session_key][:10], 1):
+                        st.text(f"{i}. {Path(f).name}")
+                    if idxml_count > 10:
+                        st.text(f"... and {idxml_count - 10} more")
+    
+    st.markdown("---")
     
     # Render unified file browser (same two-tab interface for all sources)
     mzml_files, idxml_files = render_unified_file_browser(

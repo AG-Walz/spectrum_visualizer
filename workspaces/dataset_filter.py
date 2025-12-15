@@ -1,8 +1,16 @@
 """Filter Large Datasets - Extract relevant spectra before analysis.
 
-3-step workflow: Select idXML → Define peptide filter → Extract & create filtered files.
+Workflow:
+1. Select idXML file paths (not uploaded files - only path selection!)
+2. Extract or manually enter peptide sequences to filter
+3. idXML is loaded to identify relevant spectrum IDs matching peptides
+4. Only those spectra are extracted from corresponding mzML files
+5. Filtered mzML files are created in output directory
+
 Memory-efficient: Processes 10GB files using 200MB RAM via selective spectrum extraction.
 Reduces file sizes by 90-99%. Output ready for Spectrum Analysis workspace.
+
+Note: Uses PyOpenMS IdXMLFile().load() and filter_mzml() from mzml_processor.
 """
 import sys as _sys
 from pathlib import Path as _Path
@@ -161,7 +169,8 @@ def render_idxml_selection():
     """File selection using shared data_input_components.py - filters only need idXML files."""
     
     # Use shared data input section (but we'll only take idXML files)
-    mzml_files, idxml_files = render_data_input_section(
+    # UploadedFile objects are automatically converted to temp file paths by data_input_components
+    _, idxml_files = render_data_input_section(
         session_key_prefix="dataset_filter",
         show_process_button=False,  # We handle processing separately
         process_callback=None
@@ -198,17 +207,27 @@ def render_peptide_filter():
             if st.button("🔍 Extract Peptides", type="primary"):
                 with st.spinner("Extracting..."):
                     unique_peps = set()
-                    for idxml in st.session_state['selected_idxml']:
+                    for idxml_path in st.session_state['selected_idxml']:
                         try:
-                            psms = read_file(idxml, file_format="idXML")
-                            for psm in psms:
-                                unique_peps.add(str(psm.peptidoform))
+                            # Use PyOpenMS to load idXML (not spectrum_utils)
+                            protein_ids = []
+                            peptide_ids = []
+                            oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+                            
+                            # Extract peptide sequences
+                            for peptide_id in peptide_ids:
+                                hits = peptide_id.getHits()
+                                for hit in hits:
+                                    sequence = hit.getSequence()
+                                    unmodified = sequence.toUnmodifiedString()
+                                    unique_peps.add(unmodified)
                         except Exception as e:
-                            st.error(f"Error: {e}")
+                            st.error(f"Error loading {Path(idxml_path).name}: {e}")
+                            logger.error(f"Error extracting peptides from {idxml_path}", exc_info=True)
                     
                     peptides = sorted(list(unique_peps))
                     st.session_state['extracted_peptides'] = peptides
-                    st.success(f"✅ {len(peptides)} peptides")
+                    st.success(f"✅ {len(peptides)} unique peptides")
             
             if 'extracted_peptides' in st.session_state:
                 peptides = st.session_state['extracted_peptides']
