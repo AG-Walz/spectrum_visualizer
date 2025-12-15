@@ -744,7 +744,7 @@ def render_data_input_section_local():
     # Show confirmation button only if both file types are selected
     if mzml_files and idxml_files:
         st.markdown("---")
-        if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files", use_container_width=True):
+        if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files", width="stretch"):
             st.info("📋 Extracting available peptides from idXML files (fast)...")
             
             # Extract peptides without loading mzML files
@@ -904,7 +904,7 @@ def render_peptide_filter_for_preloading():
         st.success(f"✅ Selected {len(selected_peptidoforms)} peptidoforms covering {total_psms} PSMs")
         
         # NOW process files with the selected peptides
-        if st.button("🚀 Load Spectra for Selected Peptides", type="primary", key="load_spectra"):
+        if st.button("🚀 Load Spectra for Selected Peptides", type="primary", key="load_spectra", width="stretch"):
             st.session_state['selected_peptidoforms_for_loading'] = selected_peptidoforms
             
             # PHASE 2: Filter idXML by selected peptides (with progress tracking)
@@ -1176,18 +1176,18 @@ def render_peptide_filter_and_spectrum_selector(mapping_df: pd.DataFrame) -> Opt
             # Controls for bulk selection
             col1, col2, col3 = st.columns([1, 1, 4])
             with col1:
-                if st.button("✅ Select All", use_container_width=True):
+                if st.button("✅ Select All", width="stretch"):
                     st.session_state['selected_spectra_indices'] = set(display_df["spec_idx"].tolist())
                     st.rerun()
             with col2:
-                if st.button("❌ Deselect All", use_container_width=True):
+                if st.button("❌ Deselect All", width="stretch"):
                     st.session_state['selected_spectra_indices'] = set()
                     st.rerun()
             
             # Display editable dataframe
             edited_df = st.data_editor(
                 display_df[condensed_columns + ["spec_idx"]],
-                use_container_width=True,
+                width="stretch",
                 height=400,
                 hide_index=True,
                 disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx"],
@@ -1339,18 +1339,18 @@ def render_spectrum_selector_only(mapping_df: pd.DataFrame):
     # Controls for bulk selection
     col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
-        if st.button("✅ Select All", use_container_width=True):
+        if st.button("✅ Select All", width="stretch"):
             st.session_state['selected_spectra_indices'] = set(display_df["spec_idx"].tolist())
             st.rerun()
     with col2:
-        if st.button("❌ Deselect All", use_container_width=True):
+        if st.button("❌ Deselect All", width="stretch"):
             st.session_state['selected_spectra_indices'] = set()
             st.rerun()
     
     # Display editable dataframe
     edited_df = st.data_editor(
         display_df[condensed_columns + ["spec_idx"]],
-        use_container_width=True,
+        width="stretch",
         height=400,
         hide_index=True,
         disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx"],
@@ -1384,7 +1384,7 @@ def display_plot_with_fallbacks(plot, debug_mode: bool) -> bool:
     # Method 1: Streamlit's built-in bokeh_chart
     try:
         if BOKEH_AVAILABLE:
-            st.bokeh_chart(plot, use_container_width=True)
+            st.bokeh_chart(plot, width="stretch")
             plot_displayed = True
             if debug_mode:
                 st.success("✅ Using st.bokeh_chart")
@@ -1400,7 +1400,7 @@ def display_plot_with_fallbacks(plot, debug_mode: bool) -> bool:
     # Method 2: Standard Streamlit
     if not plot_displayed:
         try:
-            st.bokeh_chart(plot, use_container_width=True)
+            st.bokeh_chart(plot, width="stretch")
             plot_displayed = True
             if debug_mode:
                 st.success("✅ Using standard bokeh chart")
@@ -1561,70 +1561,24 @@ def main():
     if 'mapping_df' in st.session_state and not st.session_state['mapping_df'].empty:
         st.markdown("---")
         
-        # ========== DIAGNOSTIC SECTION: Count Tracking ==========
-        with st.expander("🔍 Data Flow Diagnostics (Count Tracking)", expanded=True):
-            st.caption("This section explains the different counts you see throughout the pipeline:")
-            
-            mapping_df = st.session_state['mapping_df']
-            selected_peptides = st.session_state.get('selected_peptides', [])
-            selected_spectra_indices = st.session_state.get('selected_spectra_indices', set())
-            
-            # PHASE 1: Initial extraction counts
-            st.markdown("### 📊 Phase 1: Peptide Extraction (from idXML)")
-            peptidoforms_data = st.session_state.get('peptidoforms_data', {})
-            if peptidoforms_data:
-                total_peptidoforms = len(peptidoforms_data)
-                total_psms_phase1 = sum(data['psm_count'] for data in peptidoforms_data.values())
-                st.info(f"""
-**{total_peptidoforms} unique peptidoforms** found across all idXML files  
-**{total_psms_phase1} total PSMs** (Peptide-Spectrum Matches)
-
-💡 **What this means:** Each idXML file contains multiple peptide identifications. Each peptide can have multiple "hits" (different scores, modifications, etc.). We count PSMs by summing all hits for each peptidoform across all peptide_ids.
-                """)
-            
-            # PHASE 2: Peptide filtering
-            st.markdown("### 🔎 Phase 2: Peptide Filtering")
-            st.info(f"""
-**{len(selected_peptides)} peptides** selected for filtering  
-                
-💡 **What this means:** From the complete list of peptidoforms, you selected {len(selected_peptides)} to focus your analysis on.
-            """)
-            
-            # PHASE 3: Spectrum loading
-            st.markdown("### 📥 Phase 3: Spectrum Loading (from filtered idXML)")
-            total_spectra_loaded = len(mapping_df)
-            unique_peptides_in_mapping = mapping_df['peptide_sequence'].nunique() if 'peptide_sequence' in mapping_df.columns else 0
-            
-            # Count spectra per peptide
-            if 'peptide_sequence' in mapping_df.columns:
-                spectra_per_peptide = mapping_df['peptide_sequence'].value_counts()
-                st.info(f"""
-**{total_spectra_loaded} spectra** loaded from mzML files (indexed access)  
-**{unique_peptides_in_mapping} unique peptide sequences** in loaded spectra
-
-💡 **What this means:** We scanned the idXML files for spectrum IDs matching your {len(selected_peptides)} selected peptides, then loaded only those spectra from the mzML files. A single peptide can appear in multiple spectra (technical/biological replicates, different samples).
-                """)
-                
-                with st.expander("📋 Breakdown: Spectra per peptide"):
-                    for peptide, count in spectra_per_peptide.head(20).items():
-                        st.text(f"  {peptide}: {count} spectra")
-                    if len(spectra_per_peptide) > 20:
-                        st.caption(f"... and {len(spectra_per_peptide) - 20} more peptides")
-            
-            # PHASE 4: Spectrum selection
-            st.markdown("### ✅ Phase 4: Spectrum Selection (User Choice)")
-            num_selected = len(selected_spectra_indices)
-            st.info(f"""
-**{num_selected} spectra** currently selected for analysis
-
-💡 **What this means:** From the {total_spectra_loaded} loaded spectra, you've selected {num_selected} using the checkboxes below. These are the spectra that will be used in the final analysis.
-            """)
+        # Quick data summary
+        mapping_df = st.session_state['mapping_df']
+        selected_peptides = st.session_state.get('selected_peptides', [])
+        selected_spectra_indices = st.session_state.get('selected_spectra_indices', set())
+        
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Loaded Spectra", len(mapping_df))
+        with col2:
+            st.metric("Selected Peptides", len(selected_peptides))
+        with col3:
+            st.metric("Selected Spectra", len(selected_spectra_indices))
             
             # Show mapping_df structure
             with st.expander("🗂️ mapping_df structure (for debugging)"):
                 st.caption(f"Shape: {mapping_df.shape[0]} rows × {mapping_df.shape[1]} columns")
                 st.caption(f"Columns: {', '.join(mapping_df.columns.tolist())}")
-                st.dataframe(mapping_df.head(10), use_container_width=True)
+                st.dataframe(mapping_df.head(10), width="stretch")
             
             # Explain the final counts
             st.markdown("### 🔬 What happens in analysis:")
@@ -1817,72 +1771,18 @@ def render_simplified_analysis_settings():
         selected_peptidoforms = [item['peptidoform'] for item in unique_peptidoforms_list]
         selected_sequences = [item['sequence'] for item in unique_peptidoforms_list]
         
-        # ========== DIAGNOSTIC SECTION: Final Analysis Counts ==========
-        with st.expander("🔬 Final Analysis Count Breakdown", expanded=True):
-            st.caption("Understanding the numbers in your analysis:")
-            
-            # Count filtered PSMs
-            total_filtered_psms = sum(len(filtered_list) for filtered_list, _ in all_psm_lists_filtered)
-            total_original_psms = sum(len(psm_list) for psm_list, _ in all_psm_lists)
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("### 📥 Input (from Phase 4)")
-                st.metric("Selected Spectra", len(selected_spectra_indices))
-                st.metric("Selected Spectrum IDs", len(selected_spectrum_ids))
-                st.caption("These are the spectra you selected via checkboxes")
-            
-            with col2:
-                st.markdown("### 📤 Output (for Analysis)")
-                st.metric("Unique Peptidoforms", len(unique_peptidoforms_list))
-                st.metric("Total PSMs", total_filtered_psms)
-                st.caption("After re-parsing idXML and filtering by your selections")
-            
-            st.markdown("---")
-            st.markdown("### 📊 Detailed Breakdown:")
-            
-            st.info(f"""
-**Step 1: Re-parse idXML files with psm_utils**  
-Found **{total_original_psms} total PSMs** across all idXML files
-
-**Step 2: Apply dual filters**  
-Filter A: Keep only PSMs with spectrum_id in selected set ({len(selected_spectrum_ids)} IDs)  
-Filter B: Keep only PSMs with peptide in selected peptides ({len(selected_peptides)} peptides)  
-Result: **{total_filtered_psms} PSMs** passed both filters
-
-**Step 3: Extract unique peptidoforms**  
-From {total_filtered_psms} filtered PSMs, identified **{len(unique_peptidoforms_list)} unique peptidoforms**  
-(Multiple PSMs can have the same peptidoform - different spectra, same peptide+mods)
-            """)
-            
-            st.markdown("### 🎯 Why Your Counts Differ:")
-            
-            reason_html = """
-<div style="background-color: #f0f2f6; padding: 15px; border-radius: 5px; margin: 10px 0;">
-    <h4>🔢 Count Discrepancies Explained:</h4>
-    <ol>
-        <li><b>40 "found spectra"</b> → Total spectra loaded from mzML files matching your peptide filter</li>
-        <li><b>32 "unique peptides"</b> → Number of unique peptide sequences in those 40 spectra</li>
-        <li><b>28 "selected spectra"</b> → You may have unchecked some boxes, OR some spectrum_ids in mapping_df don't match spectrum_ids in psm_utils parsing</li>
-        <li><b>38 "peptidoforms"</b> → Unique peptide+modification combinations (can exceed unique peptides if modifications vary)</li>
-        <li><b>51 "PSMs"</b> → Total peptide-spectrum matches (multiple PSMs can share same spectrum or same peptidoform)</li>
-    </ol>
-    
-    <h4>🔍 Key Insights:</h4>
-    <ul>
-        <li><b>Peptidoforms > Unique Peptides:</b> Same peptide with different modifications (e.g., M(Oxidation) vs unmodified)</li>
-        <li><b>PSMs > Peptidoforms:</b> Same peptidoform identified in multiple spectra/runs</li>
-        <li><b>Selected < Found:</b> Either manual deselection OR spectrum_id matching issues between parsers</li>
-    </ul>
-</div>
-            """
-            st.markdown(reason_html, unsafe_allow_html=True)
-            
-            # Show peptidoform breakdown
-            with st.expander("📋 Peptidoform PSM Counts"):
-                for item in unique_peptidoforms_list:
-                    st.text(f"  {item['display_label']}: {item['psm_count']} PSMs")
+        # Analysis summary
+        total_filtered_psms = sum(len(filtered_list) for filtered_list, _ in all_psm_lists_filtered)
+        
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Selected Spectra", len(selected_spectra_indices))
+        with col2:
+            st.metric("Unique Peptidoforms", len(unique_peptidoforms_list))
+        with col3:
+            st.metric("Total PSMs", total_filtered_psms)
+        with col4:
+            st.metric("Selected Peptides", len(selected_peptides))
         
         # ==========================================
         # SECTION 1: COMMON SETTINGS IN ONE ROW
@@ -2043,7 +1943,16 @@ From {total_filtered_psms} filtered PSMs, identified **{len(unique_peptidoforms_
             
             with col_pred1:
                 # Model selection
-                available_models = st_tools.get_available_models()
+                if st_tools and hasattr(st_tools, 'get_available_models'):
+                    try:
+                        available_models = st_tools.get_available_models()
+                    except Exception as e:
+                        logger.error(f"Analysis settings error: {e}")
+                        st.warning(f"⚠️ Could not load prediction models: {e}")
+                        available_models = {"Default": "default"}
+                else:
+                    available_models = {"Default": "default"}
+                
                 selected_model = st.selectbox(
                     "🤖 Prediction Model",
                     list(available_models.keys()),
@@ -2445,7 +2354,7 @@ def render_automated_analysis():
             
             if exp_pred_plots:
                 for plot in exp_pred_plots:
-                    st.bokeh_chart(plot, use_container_width=True)
+                    st.bokeh_chart(plot, width="stretch")
                 st.success(f"✅ Generated {len(exp_pred_plots)} experimental vs predicted plots")
             
             # Store export data in session state
@@ -2536,7 +2445,7 @@ def render_automated_analysis():
             
             if exp_exp_plots:
                 for plot in exp_exp_plots:
-                    st.bokeh_chart(plot, use_container_width=True)
+                    st.bokeh_chart(plot, width="stretch")
                 st.success(f"✅ Generated {total_comparisons} replicate comparison plots from {groups_with_comparisons} {group_label} group(s)")
             else:
                 st.warning(f"No replicate comparison plots could be generated. Each {group_label} needs at least 2 PSMs for comparison.")
@@ -2593,7 +2502,7 @@ def render_automated_analysis():
             
             if one_vs_all_plots:
                 for plot in one_vs_all_plots:
-                    st.bokeh_chart(plot, use_container_width=True)
+                    st.bokeh_chart(plot, width="stretch")
                 st.success(f"✅ Generated {len(one_vs_all_plots)} one-vs-all comparison plots")
             
             # Store export data in session state
@@ -2646,7 +2555,7 @@ def render_automated_analysis():
                 )
             
             # Export button
-            if st.button("📤 Export All Plots", type="primary", use_container_width=True):
+            if st.button("📤 Export All Plots", type="primary", width="stretch"):
                 with st.spinner(f"Exporting {len(all_export_data)} plot(s)..."):
                     export_progress = st.progress(0)
                     export_status = st.empty()
