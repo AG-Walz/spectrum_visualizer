@@ -358,6 +358,13 @@ def _load_indexed_mzml(mzml_path: str):
     try:
         # Use OnDiscMSExperiment for indexed access without loading all spectra
         indexed_file = oms.OnDiscMSExperiment()
+        indexed_file.openFile(mzml_path)
+        return indexed_file
+    except Exception as e:
+        logger.error(f"Failed to create indexed access for {mzml_path}: {e}")
+        return None
+
+
 def load_only_needed_spectra(idxml_paths: List[str],
                              mzml_paths: List[str],
                              idxml_to_mzml_spectra: Dict[str, Dict[str, List[str]]],
@@ -393,34 +400,23 @@ def load_only_needed_spectra(idxml_paths: List[str],
     total_mzmls = sum(len(mzml_dict) for mzml_dict in idxml_to_mzml_spectra.values())
     mzml_counter = 0
     
-    for idxml_path in idxml_paths:l_name_to_path.keys()),
-        "matched_files": [],
-        "missing_files": [],
-        "extra_files": [],
-        "idxml_mappings": {}
-    }
-    
-        # Load only matching mzML files
-        for mzml_file, spec_ids in mzml_spectra.items():
-            mzml_counter += 1
-            if progress_callback:
-                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
-            
-            if mzml_file not in mzml_name_to_path:
-                messages.append(f"  ⚠️ Missing: {mzml_file}")
-                validation_info["missing_files"].append(mzml_file)
-                continue
-            
-            mzml_path = mzml_name_to_path[mzml_file]
-            messages.append(f"  Loading {mzml_file}: {len(spec_ids)} spectra (indexed)")
-            
-            try:expected files for this idXML
+    for idxml_path in idxml_paths:
+        idxml_name = extract_filename(idxml_path)
+        
+        mzml_spectra = idxml_to_mzml_spectra[idxml_name]
+        messages.append(f"📊 Loading spectra for {idxml_name}")
+        
+        # Track expected files for this idXML
         expected_mzml_files = list(mzml_spectra.keys())
         validation_info["expected_files"].extend(expected_mzml_files)
         validation_info["idxml_mappings"][idxml_name] = expected_mzml_files
         
         # Load only matching mzML files
         for mzml_file, spec_ids in mzml_spectra.items():
+            mzml_counter += 1
+            if progress_callback:
+                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
+            
             if mzml_file not in mzml_name_to_path:
                 messages.append(f"  ⚠️ Missing: {mzml_file}")
                 validation_info["missing_files"].append(mzml_file)
