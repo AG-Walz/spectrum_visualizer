@@ -1569,31 +1569,6 @@ def main():
             st.metric("Selected Peptides", len(selected_peptides))
         with col3:
             st.metric("Selected Spectra", len(selected_spectra_indices))
-            
-            # Show mapping_df structure
-            with st.expander("🗂️ mapping_df structure (for debugging)"):
-                st.caption(f"Shape: {mapping_df.shape[0]} rows × {mapping_df.shape[1]} columns")
-                st.caption(f"Columns: {', '.join(mapping_df.columns.tolist())}")
-                st.dataframe(mapping_df.head(10), width="stretch")
-            
-            # Explain the final counts
-            st.markdown("### 🔬 What happens in analysis:")
-            st.info("""
-When you proceed to analysis, the system will:
-
-1. **Re-parse idXML files** using psm_utils (different parser than initial extraction)
-2. **Filter PSMs** to only include:
-   - PSMs whose spectrum_id matches your selected spectra
-   - PSMs whose peptide matches your selected peptides
-3. **Count unique peptidoforms** from the filtered PSMs
-4. **Count total PSMs** for each peptidoform
-
-**Why counts may differ:**
-- **PSMs ≠ Spectra**: Multiple PSMs can share the same spectrum (different identifications for the same scan)
-- **Parser differences**: psm_utils may parse peptide modifications differently than PyOpenMS
-- **Filtering order**: Different filtering sequences can yield different results
-- **Multiple hits**: A single spectrum can have multiple peptide hits in the idXML
-            """)
         
         render_spectrum_selector_only(st.session_state['mapping_df'])
         
