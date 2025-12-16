@@ -251,8 +251,8 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     
     # Set default path based on source
     if source == "local":
-        # For local computer, start from user's home directory
-        default_path = str(Path.home())
+        # For local computer, start from root directory
+        default_path = "/"
     else:
         # For servers, use the configured server path
         default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
