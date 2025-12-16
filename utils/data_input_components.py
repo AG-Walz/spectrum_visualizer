@@ -423,13 +423,18 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
         # Add button to accumulate folder selections
         if mzml_files or idxml_files:
             if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_folder_files", type="primary"):
-                for f in mzml_files:
-                    if f not in st.session_state[mzml_session_key]:
-                        st.session_state[mzml_session_key].append(f)
-                for f in idxml_files:
-                    if f not in st.session_state[idxml_session_key]:
-                        st.session_state[idxml_session_key].append(f)
-                st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
+                # Use set for O(1) lookup instead of O(n) list membership check
+                existing_mzml = set(st.session_state[mzml_session_key])
+                existing_idxml = set(st.session_state[idxml_session_key])
+                
+                # Add new files efficiently
+                new_mzml = [f for f in mzml_files if f not in existing_mzml]
+                new_idxml = [f for f in idxml_files if f not in existing_idxml]
+                
+                st.session_state[mzml_session_key].extend(new_mzml)
+                st.session_state[idxml_session_key].extend(new_idxml)
+                
+                st.success(f"✅ Added {len(new_mzml)} mzML + {len(new_idxml)} idXML files")
                 st.rerun()
     
     # Return accumulated files from session state
