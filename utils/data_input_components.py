@@ -193,29 +193,29 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     mzml_files = []
     idxml_files = []
     
-    # Add file upload option for local computer
+    # Add file selection option for local computer
     if source == "local":
-        st.markdown("### 📤 Option 1: Upload Files from Browser")
-        st.caption("Upload files directly from wherever your browser is running")
+        st.markdown("### 📤 Select Files from Your Computer")
+        st.caption("📝 Select files from your computer - they will be uploaded temporarily for processing")
         
         col_upload1, col_upload2 = st.columns(2)
         
         with col_upload1:
-            st.markdown("**Upload mzML Files**")
+            st.markdown("**Select mzML Files**")
             uploaded_mzml = st.file_uploader(
                 "Choose mzML files",
                 type=['mzML', 'mzml'],
                 accept_multiple_files=True,
                 key=f"{session_key_prefix}_upload_mzml",
-                help="Upload mzML files from your local machine"
+                help="Select mzML files - will be temporarily saved on server for processing"
             )
             if uploaded_mzml:
-                total_mb = sum(f.size for f in uploaded_mzml) / 1024 / 1024
-                st.info(f"📊 {len(uploaded_mzml)} file(s) selected ({total_mb:.1f} MB)")
-                if st.button("➕ Add Uploaded mzML Files", key=f"{session_key_prefix}_add_uploaded_mzml", type="primary"):
-                    with st.spinner("Saving mzML files..."):
+                # Show selected files without uploading yet
+                st.info(f"📊 {len(uploaded_mzml)} file(s) selected: {', '.join([f.name for f in uploaded_mzml[:3]])}{' ...' if len(uploaded_mzml) > 3 else ''}")
+                if st.button("➕ Add Selected mzML Files", key=f"{session_key_prefix}_add_uploaded_mzml", type="primary"):
+                    with st.spinner(f"Uploading {len(uploaded_mzml)} mzML file(s)..."):
                         for uploaded_file in uploaded_mzml:
-                            # Convert to temp path and add to session state
+                            # Save file temporarily and add path to session state
                             temp_path = convert_uploaded_file_to_path(uploaded_file)
                             if temp_path not in st.session_state[mzml_session_key]:
                                 st.session_state[mzml_session_key].append(temp_path)
@@ -223,21 +223,21 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     st.rerun()
         
         with col_upload2:
-            st.markdown("**Upload idXML Files**")
+            st.markdown("**Select idXML Files**")
             uploaded_idxml = st.file_uploader(
                 "Choose idXML files",
                 type=['idXML', 'idxml', 'mzid', 'mzidentml'],
                 accept_multiple_files=True,
                 key=f"{session_key_prefix}_upload_idxml",
-                help="Upload idXML/mzIdentML files from your local machine"
+                help="Select idXML/mzIdentML files - will be temporarily saved on server for processing"
             )
             if uploaded_idxml:
-                total_mb = sum(f.size for f in uploaded_idxml) / 1024 / 1024
-                st.info(f"📊 {len(uploaded_idxml)} file(s) selected ({total_mb:.1f} MB)")
-                if st.button("➕ Add Uploaded idXML Files", key=f"{session_key_prefix}_add_uploaded_idxml", type="primary"):
-                    with st.spinner("Saving idXML files..."):
+                # Show selected files without uploading yet
+                st.info(f"📊 {len(uploaded_idxml)} file(s) selected: {', '.join([f.name for f in uploaded_idxml[:3]])}{' ...' if len(uploaded_idxml) > 3 else ''}")
+                if st.button("➕ Add Selected idXML Files", key=f"{session_key_prefix}_add_uploaded_idxml", type="primary"):
+                    with st.spinner(f"Uploading {len(uploaded_idxml)} idXML file(s)..."):
                         for uploaded_file in uploaded_idxml:
-                            # Convert to temp path and add to session state
+                            # Save file temporarily and add path to session state
                             temp_path = convert_uploaded_file_to_path(uploaded_file)
                             if temp_path not in st.session_state[idxml_session_key]:
                                 st.session_state[idxml_session_key].append(temp_path)
@@ -245,8 +245,8 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     st.rerun()
         
         st.markdown("---")
-        st.markdown("### 📁 Option 2: Browse Local Folders")
-        st.caption("Browse directories accessible from the server")
+        st.markdown("### 📁 Browse Folders on Local Machine")
+        st.caption("Browse directories accessible from your computer (if mounted on server)")
     else:
         st.markdown("### 📁 Browse Server Folders")
         st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
@@ -456,78 +456,6 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
     """
     st.header("📁 Data Input")
     
-    # Get available servers
-    with st.spinner("Loading server list..."):
-        available_servers = get_available_servers()
-    
-    # ========================================================================
-    # STEP 1: Server Selection (Independent)
-    # ========================================================================
-    st.subheader("🌐 Step 1: Select Server")
-    
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        # Create server options with display names
-        server_options = [info["display"] for info in available_servers.values()]
-        server_names = list(available_servers.keys())
-        
-        selected_display = st.selectbox(
-            "Choose data source:",
-            options=server_options,
-            key=f"{session_key_prefix}_server_selector",
-            help="Select where your files are located - this choice is independent of how you select files below"
-        )
-        
-        # Map back to server name
-        selected_server_name = server_names[server_options.index(selected_display)]
-        selected_server = available_servers[selected_server_name]
-        
-        # Show server description
-        st.caption(selected_server["description"])
-    
-    with col2:
-        if st.button("🔄 Reset", key=f"{session_key_prefix}_reset", help="Clear all selections and start over"):
-            # Clear relevant session state for this workspace
-            keys_to_clear = [
-                f'{session_key_prefix}_selected_folders',
-                f'{session_key_prefix}_selected_server',
-                f'{session_key_prefix}_selected_server_name',
-                f'{session_key_prefix}_individual_mzml_upload',
-                f'{session_key_prefix}_individual_idxml_upload',
-                f'{session_key_prefix}_individual_mzml_paths',
-                f'{session_key_prefix}_individual_idxml_paths',
-            ]
-            for key in keys_to_clear:
-                if key in st.session_state:
-                    del st.session_state[key]
-            st.rerun()
-    
-    # Check if server changed and clear directory state if so
-    previous_server = st.session_state.get(f'{session_key_prefix}_selected_server_name')
-    if previous_server and previous_server != selected_server_name:
-        # Clear directory browser state when switching servers
-        old_dir_key = f'{session_key_prefix}_dir_{previous_server}'
-        if old_dir_key in st.session_state:
-            del st.session_state[old_dir_key]
-        # Also clear selected folders when switching servers
-        folders_key = f'{session_key_prefix}_selected_folders'
-        if folders_key in st.session_state:
-            st.session_state[folders_key] = []
-    
-    # Store selected server in session state (with prefix for isolation)
-    st.session_state[f'{session_key_prefix}_selected_server'] = selected_server
-    st.session_state[f'{session_key_prefix}_selected_server_name'] = selected_server_name
-    
-    st.markdown("---")
-    
-    # ========================================================================
-    # STEP 2: File Selection (Independent of server choice)
-    # ========================================================================
-    st.subheader("📂 Step 2: Select Files")
-    
-    server_type = selected_server["type"]
-    source = "local" if server_type == "local" else "server"
-    
     # Show accumulated files summary
     mzml_session_key = f"{session_key_prefix}_accumulated_mzml"
     idxml_session_key = f"{session_key_prefix}_accumulated_idxml"
@@ -564,12 +492,30 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
     
     st.markdown("---")
     
-    # Render unified file browser (same two-tab interface for all sources)
-    mzml_files, idxml_files = render_unified_file_browser(
-        source=source, 
-        server_info=selected_server,
-        session_key_prefix=session_key_prefix
-    )
+    # Create tabs for local vs server file selection
+    tab_local, tab_server = st.tabs(["💻 Local Computer", "🖥️ Current Server"])
+    
+    with tab_local:
+        # Get current server info
+        available_servers = get_available_servers()
+        local_server = available_servers.get("local", {})
+        
+        mzml_files, idxml_files = render_unified_file_browser(
+            source="local", 
+            server_info=local_server,
+            session_key_prefix=f"{session_key_prefix}_local"
+        )
+    
+    with tab_server:
+        # Get current server info
+        available_servers = get_available_servers()
+        current_server = available_servers.get("current", {})
+        
+        mzml_files, idxml_files = render_unified_file_browser(
+            source="server", 
+            server_info=current_server,
+            session_key_prefix=f"{session_key_prefix}_server"
+        )
     
     # Process files if callback provided and button shown
     if show_process_button and mzml_files and idxml_files:
