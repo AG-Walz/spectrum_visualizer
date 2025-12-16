@@ -196,7 +196,7 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     # Add file selection option for local computer
     if source == "local":
         st.markdown("### 📤 Select Files from Your Computer")
-        st.caption("📝 Select files from your computer - they will be uploaded temporarily for processing")
+        st.warning("⚠️ **For small files only!** Browser upload is slow for large files. For larger projects, move files to a location accessible to the server rather than uploading through the browser.")
         
         col_upload1, col_upload2 = st.columns(2)
         
