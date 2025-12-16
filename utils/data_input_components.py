@@ -193,329 +193,192 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     mzml_files = []
     idxml_files = []
     
-    # Both local and server sources show the same two options
-    tab1, tab2 = st.tabs(["📋 Select Files Individually", "📂 Browse Common Folder"])
-    individual_tab = tab1
-    browse_tab = tab2
+    # Browse common folder approach
+    # Common folder approach with filtering (same for both local and server)
+    st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
     
-    with browse_tab:
-        # Common folder approach with filtering (same for both local and server)
-        st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
-        
-        # Set default path based on source
-        if source == "local":
-            # For local computer, start from user's home directory
-            default_path = str(Path.home())
-        else:
-            # For servers, use the configured server path
-            default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
-        
-        # Allow multiple folder selection (use session_key_prefix for isolation)
-        folders_key = f'{session_key_prefix}_selected_folders'
-        if folders_key not in st.session_state:
-            st.session_state[folders_key] = []
-        
-        col_a, col_b = st.columns([4, 1])
-        with col_a:
-            # Get current server name from session state
-            current_server_name = st.session_state.get(f'{session_key_prefix}_selected_server_name', 'default')
-            current_folder = render_server_directory_selector(
-                default_path=default_path, 
-                session_key=session_key_prefix,
-                server_name=current_server_name
-            )
-        with col_b:
-            # Add spacing to align with directory browser (accounts for back button row)
-            st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
-            if current_folder and st.button("➕ Add Folder", key=f"{session_key_prefix}_add_folder_btn", use_container_width=True):
-                if current_folder not in st.session_state[folders_key]:
-                    st.session_state[folders_key].append(current_folder)
-                    st.rerun()
-        
-        # Display selected folders with remove option in a collapsible section
-        if st.session_state[folders_key]:
-            with st.expander(f"📁 Selected Folders ({len(st.session_state[folders_key])})", expanded=False):
-                folders_to_remove = []
-                for idx, folder in enumerate(st.session_state[folders_key]):
-                    col_folder, col_remove = st.columns([9, 1])
-                    with col_folder:
-                        st.text(folder)
-                    with col_remove:
-                        if st.button("✕", key=f"{session_key_prefix}_remove_folder_{idx}", help="Remove this folder"):
-                            folders_to_remove.append(folder)
-                
-                # Remove folders after iteration
-                for folder in folders_to_remove:
-                    st.session_state[folders_key].remove(folder)
-                    st.rerun()
-        
-        selected_folders = st.session_state[folders_key]
-        
-        if selected_folders:
-            
-            # Show filtering options
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown("**📊 mzML Files**")
-                mzml_substring = st.text_input(
-                    "Filter mzML files (optional)",
-                    value="",
-                    key=f"{session_key_prefix}_mzml_filter",
-                    placeholder="e.g., HNSCC, Rep1",
-                    help="Filter by substring in filename"
-                )
-                
-                mzml_include_subdirs = st.checkbox(
-                    "Include subdirectories",
-                    value=True,
-                    key=f"{session_key_prefix}_mzml_subdirs"
-                )
-            
-            with col2:
-                st.markdown("**🔍 idXML Files**")
-                idxml_substring = st.text_input(
-                    "Filter idXML files (optional)",
-                    value="",
-                    key=f"{session_key_prefix}_idxml_filter",
-                    placeholder="e.g., HNSCC, Rep1",
-                    help="Filter by substring in filename"
-                )
-                
-                idxml_include_subdirs = st.checkbox(
-                    "Include subdirectories",
-                    value=True,
-                    key=f"{session_key_prefix}_idxml_subdirs"
-                )
-            
-            # Find files with filters from all selected folders
-            mzml_files_found = []
-            idxml_files_found = []
-            
-            for folder in selected_folders:
-                folder_mzml = get_files_with_substring(
-                    folder, 
-                    mzml_substring, 
-                    ['.mzML']
-                )
-                folder_idxml = get_files_with_substring(
-                    folder,
-                    idxml_substring,
-                    ['.idXML', '.mzid', '.mzidentml']
-                )
-                mzml_files_found.extend(folder_mzml)
-                idxml_files_found.extend(folder_idxml)
-            
-            # Remove duplicates while preserving order
-            mzml_files_found = list(dict.fromkeys(mzml_files_found))
-            idxml_files_found = list(dict.fromkeys(idxml_files_found))
-            
-            # Show results with folder breakdown
-            if len(selected_folders) > 1:
-                with st.expander(f"📊 Files by Folder (Total: {len(mzml_files_found)} mzML, {len(idxml_files_found)} idXML)", expanded=False):
-                    for folder in selected_folders:
-                        folder_mzml_count = len([f for f in mzml_files_found if f.startswith(folder)])
-                        folder_idxml_count = len([f for f in idxml_files_found if f.startswith(folder)])
-                        st.text(f"📁 {folder}")
-                        st.text(f"   └─ {folder_mzml_count} mzML, {folder_idxml_count} idXML")
-            
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if mzml_files_found:
-                    count_msg = f"Found {len(mzml_files_found)} mzML files across {len(selected_folders)} folder(s)"
-                    if len(mzml_files_found) >= 10000:
-                        st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
-                    else:
-                        st.info(count_msg)
-                    
-                    select_all_mzml = st.checkbox(
-                        f"Select all {len(mzml_files_found)} mzML files",
-                        key=f"{session_key_prefix}_select_all_mzml"
-                    )
-                    
-                    if select_all_mzml:
-                        mzml_files = mzml_files_found
-                    else:
-                        file_options = create_file_options_with_sizes(mzml_files_found)
-                        selected_display = st.multiselect(
-                            "Select mzML files",
-                            options=file_options,
-                            key=f"{session_key_prefix}_mzml_select"
-                        )
-                        mzml_files = map_display_names_to_paths(selected_display, mzml_files_found)
-                else:
-                    st.warning("No mzML files found")
-            
-            with col2:
-                if idxml_files_found:
-                    count_msg = f"Found {len(idxml_files_found)} idXML files across {len(selected_folders)} folder(s)"
-                    if len(idxml_files_found) >= 10000:
-                        st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
-                    else:
-                        st.info(count_msg)
-                    
-                    select_all_idxml = st.checkbox(
-                        f"Select all {len(idxml_files_found)} idXML files",
-                        key=f"{session_key_prefix}_select_all_idxml"
-                    )
-                    
-                    if select_all_idxml:
-                        idxml_files = idxml_files_found
-                    else:
-                        file_options = create_file_options_with_sizes(idxml_files_found)
-                        selected_display = st.multiselect(
-                            "Select idXML files",
-                            options=file_options,
-                            key=f"{session_key_prefix}_idxml_select"
-                        )
-                        idxml_files = map_display_names_to_paths(selected_display, idxml_files_found)
-                else:
-                    st.warning("No idXML files found")
-            
-            # Add button to accumulate folder selections
-            if mzml_files or idxml_files:
-                if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_folder_files", type="primary"):
-                    for f in mzml_files:
-                        if f not in st.session_state[mzml_session_key]:
-                            st.session_state[mzml_session_key].append(f)
-                    for f in idxml_files:
-                        if f not in st.session_state[idxml_session_key]:
-                            st.session_state[idxml_session_key].append(f)
-                    st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
-                    st.rerun()
+    # Set default path based on source
+    if source == "local":
+        # For local computer, start from user's home directory
+        default_path = str(Path.home())
+    else:
+        # For servers, use the configured server path
+        default_path = server_info.get("path", "/mnt/volume/") if server_info else "/mnt/volume/"
     
-    # Individual file selection
-    with individual_tab:
-        if source == "local":
-            # Local: File uploader
-            max_size_gb = st.session_state.settings.get("performance", {}).get("max_file_size_gb", 2)
+    # Allow multiple folder selection (use session_key_prefix for isolation)
+    folders_key = f'{session_key_prefix}_selected_folders'
+    if folders_key not in st.session_state:
+        st.session_state[folders_key] = []
+    
+    col_a, col_b = st.columns([4, 1])
+    with col_a:
+        # Get current server name from session state
+        current_server_name = st.session_state.get(f'{session_key_prefix}_selected_server_name', 'default')
+        current_folder = render_server_directory_selector(
+            default_path=default_path, 
+            session_key=session_key_prefix,
+            server_name=current_server_name
+        )
+    with col_b:
+        # Add spacing to align with directory browser (accounts for back button row)
+        st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
+        if current_folder and st.button("➕ Add Folder", key=f"{session_key_prefix}_add_folder_btn", use_container_width=True):
+            if current_folder not in st.session_state[folders_key]:
+                st.session_state[folders_key].append(current_folder)
+                st.rerun()
+    
+    # Display selected folders with remove option in a collapsible section
+    if st.session_state[folders_key]:
+        with st.expander(f"📁 Selected Folders ({len(st.session_state[folders_key])})", expanded=False):
+            folders_to_remove = []
+            for idx, folder in enumerate(st.session_state[folders_key]):
+                col_folder, col_remove = st.columns([9, 1])
+                with col_folder:
+                    st.text(folder)
+                with col_remove:
+                    if st.button("✕", key=f"{session_key_prefix}_remove_folder_{idx}", help="Remove this folder"):
+                        folders_to_remove.append(folder)
             
-            st.info("💡 Files will be uploaded and saved temporarily for processing")
-            
-            # mzML uploader
-            st.markdown("**📊 mzML Files**")
-            mzml_uploads = st.file_uploader(
-                "Select mzML files from your computer",
-                type=["mzML"],
-                accept_multiple_files=True,
-                help=f"MS/MS spectra files (up to {max_size_gb} GB each) - will be saved temporarily",
-                key=f"{session_key_prefix}_individual_mzml_upload",
-                label_visibility="collapsed"
-            )
-            if mzml_uploads:
-                total_mb = sum(f.size for f in mzml_uploads) / 1024 / 1024
-                st.success(f"✅ {len(mzml_uploads)} mzML files ({total_mb:.1f} MB)")
-                
-                # Add button to save uploaded files
-                if st.button("➕ Add mzML Files to Selection", key=f"{session_key_prefix}_add_mzml_files", type="primary"):
-                    with st.spinner("Saving mzML files..."):
-                        for upload in mzml_uploads:
-                            # Convert UploadedFile to temp path
-                            temp_path = convert_uploaded_file_to_path(upload)
-                            # Add to session state if not already there
-                            if temp_path not in st.session_state[mzml_session_key]:
-                                st.session_state[mzml_session_key].append(temp_path)
-                    st.success(f"✅ Added {len(mzml_uploads)} mzML files")
-                    st.rerun()
-            
-            st.markdown("---")
-            
-            # idXML uploader
-            st.markdown("**🔍 idXML Files**")
-            idxml_uploads = st.file_uploader(
-                "Select idXML files from your computer",
-                type=["idXML", "mzid", "mzidentml"],
-                accept_multiple_files=True,
-                help=f"Peptide IDs (up to {max_size_gb} GB each) - will be saved temporarily",
-                key=f"{session_key_prefix}_individual_idxml_upload",
-                label_visibility="collapsed"
-            )
-            if idxml_uploads:
-                total_mb = sum(f.size for f in idxml_uploads) / 1024 / 1024
-                st.success(f"✅ {len(idxml_uploads)} idXML files ({total_mb:.1f} MB)")
-                
-                # Add button to save uploaded files
-                if st.button("➕ Add idXML Files to Selection", key=f"{session_key_prefix}_add_idxml_files", type="primary"):
-                    with st.spinner("Saving idXML files..."):
-                        for upload in idxml_uploads:
-                            # Convert UploadedFile to temp path
-                            temp_path = convert_uploaded_file_to_path(upload)
-                            # Add to session state if not already there
-                            if temp_path not in st.session_state[idxml_session_key]:
-                                st.session_state[idxml_session_key].append(temp_path)
-                    st.success(f"✅ Added {len(idxml_uploads)} idXML files")
-                    st.rerun()
+            # Remove folders after iteration
+            for folder in folders_to_remove:
+                st.session_state[folders_key].remove(folder)
+                st.rerun()
+    
+    selected_folders = st.session_state[folders_key]
+    
+    if selected_folders:
+    
+        # Show filtering options
+        col1, col2 = st.columns(2)
         
-        else:  # source == "server"
-            # Server: Text input for direct file paths
-            st.info("💡 Enter complete file paths on the server, one per line")
-            
-            # mzML paths
+        with col1:
             st.markdown("**📊 mzML Files**")
-            mzml_paths_text = st.text_area(
-                "Enter mzML file paths (one per line)",
-                height=150,
-                placeholder="/mnt/volume/data/file1.mzML\n/mnt/volume/data/file2.mzML",
-                key=f"{session_key_prefix}_individual_mzml_paths",
-                label_visibility="collapsed"
+            mzml_substring = st.text_input(
+                "Filter mzML files (optional)",
+                value="",
+                key=f"{session_key_prefix}_mzml_filter",
+                placeholder="e.g., HNSCC, Rep1",
+                help="Filter by substring in filename"
             )
-            if mzml_paths_text.strip():
-                mzml_paths = [line.strip() for line in mzml_paths_text.strip().split('\n') if line.strip()]
-                # Validate paths exist
-                valid_mzml = []
-                invalid_mzml = []
-                for path in mzml_paths:
-                    if os.path.exists(path) and path.lower().endswith('.mzml'):
-                        valid_mzml.append(path)
-                    else:
-                        invalid_mzml.append(path)
-                
-                if valid_mzml:
-                    st.success(f"✅ {len(valid_mzml)} valid mzML files")
-                    mzml_files = valid_mzml
-                if invalid_mzml:
-                    st.error(f"❌ {len(invalid_mzml)} invalid paths: {', '.join(invalid_mzml[:3])}{'...' if len(invalid_mzml) > 3 else ''}")
             
-            st.markdown("---")
-            
-            # idXML paths
+            mzml_include_subdirs = st.checkbox(
+                "Include subdirectories",
+                value=True,
+                key=f"{session_key_prefix}_mzml_subdirs"
+            )
+        
+        with col2:
             st.markdown("**🔍 idXML Files**")
-            idxml_paths_text = st.text_area(
-                "Enter idXML file paths (one per line)",
-                height=150,
-                placeholder="/mnt/volume/data/file1.idXML\n/mnt/volume/data/file2.idXML",
-                key=f"{session_key_prefix}_individual_idxml_paths",
-                label_visibility="collapsed"
+            idxml_substring = st.text_input(
+                "Filter idXML files (optional)",
+                value="",
+                key=f"{session_key_prefix}_idxml_filter",
+                placeholder="e.g., HNSCC, Rep1",
+                help="Filter by substring in filename"
             )
-            if idxml_paths_text.strip():
-                idxml_paths = [line.strip() for line in idxml_paths_text.strip().split('\n') if line.strip()]
-                # Validate paths exist
-                valid_idxml = []
-                invalid_idxml = []
-                for path in idxml_paths:
-                    if os.path.exists(path) and any(path.lower().endswith(ext) for ext in ['.idxml', '.mzid', '.mzidentml']):
-                        valid_idxml.append(path)
-                    else:
-                        invalid_idxml.append(path)
-                
-                if valid_idxml:
-                    st.success(f"✅ {len(valid_idxml)} valid idXML files")
-                    idxml_files = valid_idxml
-                if invalid_idxml:
-                    st.error(f"❌ {len(invalid_idxml)} invalid paths: {', '.join(invalid_idxml[:3])}{'...' if len(invalid_idxml) > 3 else ''}")
             
-            # Add button to accumulate server path selections
-            if mzml_files or idxml_files:
-                if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_server_files", type="primary"):
-                    for f in mzml_files:
-                        if f not in st.session_state[mzml_session_key]:
-                            st.session_state[mzml_session_key].append(f)
-                    for f in idxml_files:
-                        if f not in st.session_state[idxml_session_key]:
-                            st.session_state[idxml_session_key].append(f)
-                    st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
-                    st.rerun()
+            idxml_include_subdirs = st.checkbox(
+                "Include subdirectories",
+                value=True,
+                key=f"{session_key_prefix}_idxml_subdirs"
+            )
+        
+        # Find files with filters from all selected folders
+        mzml_files_found = []
+        idxml_files_found = []
+        
+        for folder in selected_folders:
+            folder_mzml = get_files_with_substring(
+                folder, 
+                mzml_substring, 
+                ['.mzML']
+            )
+            folder_idxml = get_files_with_substring(
+                folder,
+                idxml_substring,
+                ['.idXML', '.mzid', '.mzidentml']
+            )
+            mzml_files_found.extend(folder_mzml)
+            idxml_files_found.extend(folder_idxml)
+        
+        # Remove duplicates while preserving order
+        mzml_files_found = list(dict.fromkeys(mzml_files_found))
+        idxml_files_found = list(dict.fromkeys(idxml_files_found))
+        
+        # Show results with folder breakdown
+        if len(selected_folders) > 1:
+            with st.expander(f"📊 Files by Folder (Total: {len(mzml_files_found)} mzML, {len(idxml_files_found)} idXML)", expanded=False):
+                for folder in selected_folders:
+                    folder_mzml_count = len([f for f in mzml_files_found if f.startswith(folder)])
+                    folder_idxml_count = len([f for f in idxml_files_found if f.startswith(folder)])
+                    st.text(f"📁 {folder}")
+                    st.text(f"   └─ {folder_mzml_count} mzML, {folder_idxml_count} idXML")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if mzml_files_found:
+                count_msg = f"Found {len(mzml_files_found)} mzML files across {len(selected_folders)} folder(s)"
+                if len(mzml_files_found) >= 10000:
+                    st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
+                else:
+                    st.info(count_msg)
+                
+                select_all_mzml = st.checkbox(
+                    f"Select all {len(mzml_files_found)} mzML files",
+                    key=f"{session_key_prefix}_select_all_mzml"
+                )
+                
+                if select_all_mzml:
+                    mzml_files = mzml_files_found
+                else:
+                    file_options = create_file_options_with_sizes(mzml_files_found)
+                    selected_display = st.multiselect(
+                        "Select mzML files",
+                        options=file_options,
+                        key=f"{session_key_prefix}_mzml_select"
+                    )
+                    mzml_files = map_display_names_to_paths(selected_display, mzml_files_found)
+            else:
+                st.warning("No mzML files found")
+        
+        with col2:
+            if idxml_files_found:
+                count_msg = f"Found {len(idxml_files_found)} idXML files across {len(selected_folders)} folder(s)"
+                if len(idxml_files_found) >= 10000:
+                    st.warning(f"⚠️ {count_msg} (search limit reached - results may be incomplete)")
+                else:
+                    st.info(count_msg)
+                
+                select_all_idxml = st.checkbox(
+                    f"Select all {len(idxml_files_found)} idXML files",
+                    key=f"{session_key_prefix}_select_all_idxml"
+                )
+                
+                if select_all_idxml:
+                    idxml_files = idxml_files_found
+                else:
+                    file_options = create_file_options_with_sizes(idxml_files_found)
+                    selected_display = st.multiselect(
+                        "Select idXML files",
+                        options=file_options,
+                        key=f"{session_key_prefix}_idxml_select"
+                    )
+                    idxml_files = map_display_names_to_paths(selected_display, idxml_files_found)
+            else:
+                st.warning("No idXML files found")
+        
+        # Add button to accumulate folder selections
+        if mzml_files or idxml_files:
+            if st.button("➕ Add These Files to Selection", key=f"{session_key_prefix}_add_folder_files", type="primary"):
+                for f in mzml_files:
+                    if f not in st.session_state[mzml_session_key]:
+                        st.session_state[mzml_session_key].append(f)
+                for f in idxml_files:
+                    if f not in st.session_state[idxml_session_key]:
+                        st.session_state[idxml_session_key].append(f)
+                st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
+            st.rerun()
     
     # Return accumulated files from session state
     return st.session_state[mzml_session_key], st.session_state[idxml_session_key]
@@ -610,14 +473,6 @@ def render_data_input_section(session_key_prefix: str = "data_input", show_proce
     
     server_type = selected_server["type"]
     source = "local" if server_type == "local" else "server"
-    
-    # Show info about what methods are available based on server type
-    if server_type == "local":
-        st.info("💡 You can upload individual files or browse a folder on your local computer")
-    else:
-        st.info(f"💡 You can enter file paths directly or browse folders on **{selected_server_name}**")
-        if server_type == "ssh":
-            st.warning("⚠️ SSH remote browsing requires files to be mounted or accessible via filesystem")
     
     # Show accumulated files summary
     mzml_session_key = f"{session_key_prefix}_accumulated_mzml"
