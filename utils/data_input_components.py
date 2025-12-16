@@ -193,9 +193,63 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     mzml_files = []
     idxml_files = []
     
-    # Browse common folder approach
-    # Common folder approach with filtering (same for both local and server)
-    st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
+    # Add file upload option for local computer
+    if source == "local":
+        st.markdown("### 📤 Option 1: Upload Files from Browser")
+        st.caption("Upload files directly from wherever your browser is running")
+        
+        col_upload1, col_upload2 = st.columns(2)
+        
+        with col_upload1:
+            st.markdown("**Upload mzML Files**")
+            uploaded_mzml = st.file_uploader(
+                "Choose mzML files",
+                type=['mzML', 'mzml'],
+                accept_multiple_files=True,
+                key=f"{session_key_prefix}_upload_mzml",
+                help="Upload mzML files from your local machine"
+            )
+            if uploaded_mzml:
+                total_mb = sum(f.size for f in uploaded_mzml) / 1024 / 1024
+                st.info(f"📊 {len(uploaded_mzml)} file(s) selected ({total_mb:.1f} MB)")
+                if st.button("➕ Add Uploaded mzML Files", key=f"{session_key_prefix}_add_uploaded_mzml", type="primary"):
+                    with st.spinner("Saving mzML files..."):
+                        for uploaded_file in uploaded_mzml:
+                            # Convert to temp path and add to session state
+                            temp_path = convert_uploaded_file_to_path(uploaded_file)
+                            if temp_path not in st.session_state[mzml_session_key]:
+                                st.session_state[mzml_session_key].append(temp_path)
+                    st.success(f"✅ Added {len(uploaded_mzml)} mzML file(s)")
+                    st.rerun()
+        
+        with col_upload2:
+            st.markdown("**Upload idXML Files**")
+            uploaded_idxml = st.file_uploader(
+                "Choose idXML files",
+                type=['idXML', 'idxml', 'mzid', 'mzidentml'],
+                accept_multiple_files=True,
+                key=f"{session_key_prefix}_upload_idxml",
+                help="Upload idXML/mzIdentML files from your local machine"
+            )
+            if uploaded_idxml:
+                total_mb = sum(f.size for f in uploaded_idxml) / 1024 / 1024
+                st.info(f"📊 {len(uploaded_idxml)} file(s) selected ({total_mb:.1f} MB)")
+                if st.button("➕ Add Uploaded idXML Files", key=f"{session_key_prefix}_add_uploaded_idxml", type="primary"):
+                    with st.spinner("Saving idXML files..."):
+                        for uploaded_file in uploaded_idxml:
+                            # Convert to temp path and add to session state
+                            temp_path = convert_uploaded_file_to_path(uploaded_file)
+                            if temp_path not in st.session_state[idxml_session_key]:
+                                st.session_state[idxml_session_key].append(temp_path)
+                    st.success(f"✅ Added {len(uploaded_idxml)} idXML file(s)")
+                    st.rerun()
+        
+        st.markdown("---")
+        st.markdown("### 📁 Option 2: Browse Local Folders")
+        st.caption("Browse directories accessible from the server")
+    else:
+        st.markdown("### 📁 Browse Server Folders")
+        st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
     
     # Set default path based on source
     if source == "local":

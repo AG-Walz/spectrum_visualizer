@@ -58,7 +58,8 @@ def render_directory_browser(
     session_key: str,
     default_path: str = "/mnt/volume/",
     show_subdirs: bool = True,
-    compact: bool = False
+    compact: bool = False,
+    allow_manual_input: bool = True
 ) -> str:
     """Render a directory browser widget.
     
@@ -67,6 +68,7 @@ def render_directory_browser(
         default_path: Starting directory path
         show_subdirs: Whether to show subdirectory navigation buttons
         compact: If True, uses simpler layout without parent/refresh buttons
+        allow_manual_input: If True, allows user to type or paste directory path
         
     Returns:
         Currently selected directory path
@@ -80,13 +82,30 @@ def render_directory_browser(
     # Display current directory with back button
     col1, col2 = st.columns([5, 1])
     with col1:
-        st.text_input(
-            "Current Directory",
-            value=current_dir,
-            key=f"{session_key}_display",
-            disabled=True,
-            help="Currently selected directory"
-        )
+        if allow_manual_input:
+            # Allow user to type or paste path
+            manual_path = st.text_input(
+                "Current Directory (editable - type or paste path)",
+                value=current_dir,
+                key=f"{session_key}_manual_input",
+                help="You can type or paste a directory path here"
+            )
+            # Update session state if user changed the path
+            if manual_path != current_dir and manual_path:
+                if Path(manual_path).exists() and Path(manual_path).is_dir():
+                    st.session_state[session_key] = manual_path
+                    st.rerun()
+                elif manual_path:  # User entered something but it's invalid
+                    st.warning(f"⚠️ Directory does not exist: {manual_path}")
+        else:
+            # Non-editable display
+            st.text_input(
+                "Current Directory",
+                value=current_dir,
+                key=f"{session_key}_display",
+                disabled=True,
+                help="Currently selected directory"
+            )
     with col2:
         # Add spacing to align button with text input (label + input height)
         st.markdown("<div style='margin-top: 28px;'></div>", unsafe_allow_html=True)
@@ -115,8 +134,8 @@ def render_directory_browser(
                             if idx < len(subdirs):
                                 subdir = subdirs[idx]
                                 with col:
-                                    # Truncate long names
-                                    display_name = subdir.name if len(subdir.name) <= 15 else subdir.name[:12] + "..."
+                                    # Truncate long names - doubled from 15 to 30 characters
+                                    display_name = subdir.name if len(subdir.name) <= 30 else subdir.name[:27] + "..."
                                     if st.button(
                                         f"📁 {display_name}",
                                         key=f"{session_key}_dir_{idx}",
