@@ -1545,7 +1545,6 @@ def main():
     6. Continue with analysis
     """
     st.title("🔬 Spectrum Analysis Workspace")
-    st.markdown("---")
     
     # STEP 1 & 2: File Input (only show if not yet confirmed)
     if not st.session_state.get('files_confirmed', False):
@@ -1566,20 +1565,6 @@ def main():
     # Step 2: Spectrum Selection (peptides already filtered during pre-loading)
     if 'mapping_df' in st.session_state and not st.session_state['mapping_df'].empty:
         st.markdown("---")
-        
-        # Quick data summary
-        mapping_df = st.session_state['mapping_df']
-        selected_peptides = st.session_state.get('selected_peptides', [])
-        selected_spectra_indices = st.session_state.get('selected_spectra_indices', set())
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Loaded Spectra", len(mapping_df))
-        with col2:
-            st.metric("Selected Peptides", len(selected_peptides))
-        with col3:
-            st.metric("Selected Spectra", len(selected_spectra_indices))
-        
         render_spectrum_selector_only(st.session_state['mapping_df'])
         
         # Only proceed to analysis if spectra are selected
