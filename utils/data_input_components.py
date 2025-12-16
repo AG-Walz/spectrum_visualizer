@@ -196,12 +196,11 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     # Add file selection option for local computer
     if source == "local":
         st.markdown("### 📤 Select Files from Your Computer")
-        st.warning("⚠️ **For small files only!** Browser upload is slow for large files. For larger projects, move files to a location accessible to the server rather than uploading through the browser.")
+        st.warning("⚠️ **For small files only!** Otherwise move files to a server-accessible location rather than uploading through the browser.")
         
         col_upload1, col_upload2 = st.columns(2)
         
         with col_upload1:
-            st.markdown("**Select mzML Files**")
             uploaded_mzml = st.file_uploader(
                 "Choose mzML files",
                 type=['mzML', 'mzml'],
@@ -223,7 +222,6 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     st.rerun()
         
         with col_upload2:
-            st.markdown("**Select idXML Files**")
             uploaded_idxml = st.file_uploader(
                 "Choose idXML files",
                 type=['idXML', 'idxml', 'mzid', 'mzidentml'],
@@ -246,7 +244,7 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
         
         st.markdown("---")
         st.markdown("### 📁 Browse Folders on Local Machine")
-        st.caption("Browse directories accessible from your computer (if mounted on server)")
+        st.caption("Browse directories accessible from your computer (if mounted on server) - You can add multiple folders. ")
     else:
         st.markdown("### 📁 Browse Server Folders")
         st.caption("💡 You can add multiple folders - all files from all folders will be combined for analysis")
@@ -432,7 +430,7 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
                     if f not in st.session_state[idxml_session_key]:
                         st.session_state[idxml_session_key].append(f)
                 st.success(f"✅ Added {len(mzml_files)} mzML + {len(idxml_files)} idXML files")
-            st.rerun()
+                st.rerun()
     
     # Return accumulated files from session state
     return st.session_state[mzml_session_key], st.session_state[idxml_session_key]
