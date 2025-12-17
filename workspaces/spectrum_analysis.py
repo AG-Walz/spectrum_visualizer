@@ -1250,7 +1250,7 @@ def render_peptide_filter_and_spectrum_selector(mapping_df: pd.DataFrame) -> Opt
             
             edited_df = st.data_editor(
                 display_df[editor_columns],
-                width="stretch",
+                use_container_width=True,
                 height=400,
                 hide_index=True,
                 disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx", "peptide_sequence"],
@@ -1416,7 +1416,7 @@ def render_spectrum_selector_only(mapping_df: pd.DataFrame):
     
     edited_df = st.data_editor(
         display_df[editor_columns],
-        width="stretch",
+        use_container_width=True,
         height=400,
         hide_index=True,
         disabled=["Peptide", "idXML", "mzML", "Spectrum ID", "spec_idx", "peptide_sequence"],
