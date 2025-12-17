@@ -2203,39 +2203,84 @@ def render_automated_analysis():
         instrument_type = st.session_state['instrument_type']  # New parameter
         included_ions = st.session_state['included_ions']  # New parameter for ion types
         
-        # Get file paths - now supporting multiple idXML files
-        if 'mzml_paths' in st.session_state:
-            mzml_paths = st.session_state['mzml_paths']
-        else:
-            mzml_paths = [st.session_state['mzml_path']]
-        idxml_paths = st.session_state['idxml_paths']
+        # Create cache key for analysis results (excludes export directory to prevent recomputation)
+        analysis_cache_key = (
+            tuple(sorted(selected_peptidoforms)),
+            selected_model,
+            max_frag_charge,
+            fragment_mass_tolerance,
+            collision_energy,
+            instrument_type,
+            tuple(sorted(included_ions)),
+            st.session_state.get('enable_predicted_mode', False),
+            st.session_state.get('enable_all_vs_all_mode', False),
+            st.session_state.get('enable_one_vs_all_mode', False),
+            tuple(sorted(st.session_state.get('reference_runs', []))),
+            st.session_state.get('num_selected_spectra', 0)
+        )
         
-        # Verification: Show what PSMs are being analyzed
-        all_psm_lists = st.session_state.get('all_psm_lists', [])
-        num_selected_spectra = st.session_state.get('num_selected_spectra', 0)
-        
-        # Count total PSMs across all files
-        total_psms_to_analyze = sum(len(psm_list) for psm_list, _ in all_psm_lists)
-        
-        st.success(f"✅ Analysis ready: **{total_psms_to_analyze} PSMs** from **{num_selected_spectra} selected spectra** across **{len(selected_peptidoforms)} peptidoforms**")
-        
-        # Show detailed breakdown
-        with st.expander("🔍 Verification: PSMs included in analysis"):
-            st.caption("These PSMs passed both filters: selected spectra AND selected peptides")
-            for psm_list, idxml_name in all_psm_lists:
-                st.write(f"**{idxml_name}**: {len(psm_list)} PSMs")
-                # Group by peptidoform
-                peptide_counts = {}
-                for psm in psm_list:
-                    peptidoform_str = str(psm.peptidoform)
-                    peptide_counts[peptidoform_str] = peptide_counts.get(peptidoform_str, 0) + 1
+        # Check if analysis results are already cached
+        if 'analysis_cache_key' in st.session_state and st.session_state['analysis_cache_key'] == analysis_cache_key:
+            # Use cached results
+            if 'cached_analysis_results' in st.session_state:
+                logger.info("Using cached analysis results")
+                cached_results = st.session_state['cached_analysis_results']
+                # Restore cached variables
+                aligned_df = cached_results['aligned_df']
+                final_psms = cached_results['final_psms']
+                psm_to_idxml_map = cached_results['psm_to_idxml_map']
+                exp_pred_plots = cached_results.get('exp_pred_plots', [])
+                exp_exp_plots = cached_results.get('exp_exp_plots', [])
+                one_vs_all_plots = cached_results.get('one_vs_all_plots', [])
+                exp_pred_export_data = cached_results.get('exp_pred_export_data', [])
+                exp_exp_export_data = cached_results.get('exp_exp_export_data', [])
+                one_vs_all_export_data = cached_results.get('one_vs_all_export_data', [])
                 
-                for peptidoform, count in sorted(peptide_counts.items()):
-                    display_label = next((item['display_label'] for item in selected_peptidoforms_data 
-                                        if item['peptidoform'] == peptidoform), peptidoform)
-                    st.write(f"    • {display_label}: {count} PSMs")
+                # Skip to display section
+                use_cached = True
+            else:
+                use_cached = False
+        else:
+            use_cached = False
         
-        with st.spinner("🔄 Running analysis workflow..."):
+        if not use_cached:
+            # Get file paths - now supporting multiple idXML files
+            if 'mzml_paths' in st.session_state:
+                mzml_paths = st.session_state['mzml_paths']
+            else:
+                mzml_paths = [st.session_state['mzml_path']]
+            idxml_paths = st.session_state['idxml_paths']
+            
+            # Verification: Show what PSMs are being analyzed
+            all_psm_lists = st.session_state.get('all_psm_lists', [])
+            num_selected_spectra = st.session_state.get('num_selected_spectra', 0)
+            
+            # Count total PSMs across all files
+            total_psms_to_analyze = sum(len(psm_list) for psm_list, _ in all_psm_lists)
+            
+            st.success(f"✅ Analysis ready: **{total_psms_to_analyze} PSMs** from **{num_selected_spectra} selected spectra** across **{len(selected_peptidoforms)} peptidoforms**")
+            
+            # Show detailed breakdown
+            with st.expander("🔍 Verification: PSMs included in analysis"):
+                st.caption("These PSMs passed both filters: selected spectra AND selected peptides")
+                for psm_list, idxml_name in all_psm_lists:
+                    st.write(f"**{idxml_name}**: {len(psm_list)} PSMs")
+                    # Group by peptidoform
+                    peptide_counts = {}
+                    for psm in psm_list:
+                        peptidoform_str = str(psm.peptidoform)
+                        peptide_counts[peptidoform_str] = peptide_counts.get(peptidoform_str, 0) + 1
+                    
+                    for peptidoform, count in sorted(peptide_counts.items()):
+                        display_label = next((item['display_label'] for item in selected_peptidoforms_data 
+                                            if item['peptidoform'] == peptidoform), peptidoform)
+                        st.write(f"    • {display_label}: {count} PSMs")
+        else:
+            # Using cached results - skip heavy computation
+            st.info(f"⚡ Using cached analysis results for {len(selected_peptidoforms)} peptidoforms")
+        
+        if not use_cached:
+            with st.spinner("🔄 Running analysis workflow..."):
             # Use the pre-filtered PSM lists from analysis settings
             # These have already been filtered by selected spectra AND selected peptides
             psms_with_spectra = []
@@ -2578,6 +2623,22 @@ def render_automated_analysis():
             
             # Store export data in session state
             st.session_state['one_vs_all_export_data'] = one_vs_all_export_data
+        
+        # Cache analysis results if this was a fresh computation (not using cached data)
+        if not use_cached:
+            st.session_state['analysis_cache_key'] = analysis_cache_key
+            st.session_state['cached_analysis_results'] = {
+                'aligned_df': aligned_df,
+                'final_psms': final_psms,
+                'psm_to_idxml_map': psm_to_idxml_map,
+                'exp_pred_plots': exp_pred_plots,
+                'exp_exp_plots': exp_exp_plots,
+                'one_vs_all_plots': one_vs_all_plots,
+                'exp_pred_export_data': exp_pred_export_data,
+                'exp_exp_export_data': exp_exp_export_data,
+                'one_vs_all_export_data': one_vs_all_export_data
+            }
+            logger.info("Cached analysis results for future use")
         
         # ==========================================
         # PLOT EXPORT SECTION (All Modes)
