@@ -157,10 +157,14 @@ def save_uploaded_file(uploaded_file, suffix: Optional[str] = None) -> str:
 # OPTIMIZED LOADING FUNCTIONS
 # ================================================================
 
-def extract_idxml_metadata(idxml_paths: List[str]) -> Tuple[Dict[str, List[str]], Dict[str, Any], List[str], List[str]]:
+def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tuple[Dict[str, List[str]], Dict[str, Any], List[str], List[str]]:
     """
     PHASE 1: Extract metadata from idXML files without loading mzML.
     OPTIMIZED: Uses PyOpenMS directly for faster peptide extraction.
+    
+    Args:
+        idxml_paths: List of idXML file paths
+        progress_callback: Optional function(current, total, message) for progress updates
     
     Returns:
         (expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files)
@@ -170,7 +174,10 @@ def extract_idxml_metadata(idxml_paths: List[str]) -> Tuple[Dict[str, List[str]]
     expected_mzmls_by_idxml = {}  # {idxml_name: [expected_mzml_files]}
     all_peptidoforms_data = {}  # {peptidoform_str: {data}}
     
-    for idxml_path in idxml_paths:
+    total_files = len(idxml_paths)
+    for idx, idxml_path in enumerate(idxml_paths):
+        if progress_callback:
+            progress_callback(idx, total_files, extract_filename(idxml_path))
         idxml_name = extract_filename(idxml_path)
         messages.append(f"📋 Processing {idxml_name}")
         
@@ -803,12 +810,28 @@ def render_data_input_section_local():
     # Show confirmation button only if both file types are selected
     if mzml_files and idxml_files:
         st.markdown("---")
-        if st.button("✅ Confirm File Selection & Extract Peptides", type="primary", key="confirm_files", width="stretch"):
-            st.info("📋 Extracting available peptides from idXML files (fast)...")
+        if st.button("✅ Confirm File Selection", type="primary", key="confirm_files", width="stretch"):
+            # Create progress indicators
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            status_text.info("📋 Extracting available peptides from idXML files...")
             
             # Extract peptides without loading mzML files
             try:
-                expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files = extract_idxml_metadata(idxml_files)
+                total_files = len(idxml_files)
+                
+                # Wrap extraction with progress updates
+                def progress_callback(current, total, message):
+                    progress_bar.progress(current / total)
+                    status_text.info(f"📋 Processing file {current}/{total}: {message}")
+                
+                expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files = extract_idxml_metadata(
+                    idxml_files, 
+                    progress_callback=progress_callback
+                )
+                
+                progress_bar.progress(1.0)
+                status_text.empty()
                 
                 # Store paths and extracted peptides in session state
                 st.session_state.update({
@@ -1603,7 +1626,7 @@ def main():
     3. User selects peptides to analyze → WORKFLOW HALTS HERE
     4. Filter idXML by selected peptides
     5. Load ONLY needed spectra from mzML using indexed access
-    6. Continue with analysis
+        st.info("👆 Select files or folders and click 'Confirm File Selection' to continue.")
     """
     st.title("🔬 Spectrum Analysis Workspace")
     
