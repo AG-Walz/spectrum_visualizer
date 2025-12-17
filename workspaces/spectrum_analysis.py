@@ -2467,7 +2467,9 @@ def render_automated_analysis():
                             'source_idxml': source_idxml,
                             'peptidoform': str(psm.peptidoform),
                             'fragment_mass_tolerance': fragment_mass_tolerance,
-                            'r2_metric': st.session_state.get('r2_metric', 'both')
+                            'r2_metric': st.session_state.get('r2_metric', 'both'),
+                            'r2_matching': r2_matching,  # Store actual R² value
+                            'r2_binned': r2_binned  # Store actual R² value
                         })
                 except Exception as e:
                     logger.error(f"Error creating exp vs pred plot for {psm.spectrum_id}: {e}")
@@ -2559,7 +2561,9 @@ def render_automated_analysis():
                                     'source_idxml2': source_idxml2,
                                     'peptidoform': group_key,
                                     'fragment_mass_tolerance': fragment_mass_tolerance,
-                                    'r2_metric': st.session_state.get('r2_metric', 'both')
+                                    'r2_metric': st.session_state.get('r2_metric', 'both'),
+                                    'r2_matching': r2_matching,  # Store actual R² value
+                                    'r2_binned': r2_binned  # Store actual R² value
                                 })
                         except Exception as e:
                             logger.error(f"Error creating exp vs exp plot: {e}")
@@ -2617,7 +2621,9 @@ def render_automated_analysis():
                                         'source_idxml_ref': source_idxml_ref,
                                         'peptidoform': peptidoform_str,
                                         'fragment_mass_tolerance': fragment_mass_tolerance,
-                                        'r2_metric': st.session_state.get('r2_metric', 'both')
+                                        'r2_metric': st.session_state.get('r2_metric', 'both'),
+                                        'r2_matching': r2_matching,  # Store actual R² value
+                                        'r2_binned': r2_binned  # Store actual R² value
                                     })
                             except Exception as e:
                                 logger.error(f"Error creating one-vs-all plot: {e}")
@@ -2704,29 +2710,30 @@ def render_automated_analysis():
                     # Prepare R² data for overview plots from all export data
                     r2_data_rows = []
                     
+                    def safe_float(value, default=None):
+                        """Convert value to float, handling None, strings, and invalid values."""
+                        if value is None:
+                            return default
+                        try:
+                            return float(value)
+                        except (ValueError, TypeError):
+                            return default
+                    
                     for item in all_export_data:
                         plot_data = item['data']
                         mode = item['mode']
                         peptidoform_str = plot_data.get('peptidoform', 'Unknown')
                         
-                        # Extract R² values based on mode
-                        if mode == 'exp_vs_pred':
-                            # Exp vs Pred has separate r2_matching and r2_binned
-                            r2_matching = plot_data.get('r2_metric')  # Get stored metric
-                            r2_binned = plot_data.get('r2_metric')  # May need to extract differently
+                        # Extract R² values - now using stored numeric values
+                        r2_matching = safe_float(plot_data.get('r2_matching'))
+                        r2_binned = safe_float(plot_data.get('r2_binned'))
+                        
+                        # Only add rows with at least one valid R² value
+                        if r2_matching is not None or r2_binned is not None:
                             r2_data_rows.append({
                                 'peptidoform': peptidoform_str,
                                 'r2_matching': r2_matching,
                                 'r2_binned': r2_binned,
-                                'mode': mode
-                            })
-                        elif mode in ['exp_vs_exp', 'one_vs_all']:
-                            # Exp vs Exp comparisons - extract from comparison info if available
-                            r2_value = plot_data.get('r2_metric', 0.5)  # Default placeholder
-                            r2_data_rows.append({
-                                'peptidoform': peptidoform_str,
-                                'r2_matching': r2_value,
-                                'r2_binned': r2_value,
                                 'mode': mode
                             })
                     
