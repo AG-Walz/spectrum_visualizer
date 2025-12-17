@@ -810,13 +810,6 @@ def render_data_input_section_local():
     if mzml_files and idxml_files:
         st.markdown("---")
         
-        # Show file count summary
-        col1, col2 = st.columns(2)
-        with col1:
-            st.metric("mzML files", len(mzml_files))
-        with col2:
-            st.metric("idXML files", len(idxml_files))
-        
         if st.button("✅ Confirm File Selection", type="primary", key="confirm_files", width="stretch"):
             # Create progress indicators
             progress_bar = st.progress(0)
@@ -1484,7 +1477,7 @@ def display_plot_with_fallbacks(plot, debug_mode: bool) -> bool:
     # Method 1: Streamlit's built-in bokeh_chart
     try:
         if BOKEH_AVAILABLE:
-            st.bokeh_chart(plot, width="stretch")
+            st.bokeh_chart(plot, use_container_width=True)
             plot_displayed = True
             if debug_mode:
                 st.success("✅ Using st.bokeh_chart")
@@ -1500,7 +1493,7 @@ def display_plot_with_fallbacks(plot, debug_mode: bool) -> bool:
     # Method 2: Standard Streamlit
     if not plot_displayed:
         try:
-            st.bokeh_chart(plot, width="stretch")
+            st.bokeh_chart(plot, use_container_width=True)
             plot_displayed = True
             if debug_mode:
                 st.success("✅ Using standard bokeh chart")
@@ -1728,20 +1721,37 @@ def render_simplified_analysis_settings():
         
         logger.info(f"Filtering PSMs: {len(selected_spectrum_ids)} unique spectrum IDs from {len(selected_spectra_indices)} selected spectra")
         
-        # Load PSM data to get peptidoforms with modifications for the selected peptides
-        idxml_paths = st.session_state.get('idxml_paths')
-        if not idxml_paths:
-            st.error("No idXML file paths found in session state.")
-            return
+        # Check if PSMs are already cached in session state to avoid expensive re-loading
+        cache_key = f"psm_cache_{hash(tuple(sorted(st.session_state.get('idxml_paths', []))))}"
         
-        all_psm_lists = []
+        if cache_key in st.session_state:
+            # Use cached PSM lists
+            all_psm_lists = st.session_state[cache_key]
+        else:
+            # Load PSM data from idXML files (expensive operation - cache it!)
+            idxml_paths = st.session_state.get('idxml_paths')
+            if not idxml_paths:
+                st.error("No idXML file paths found in session state.")
+                return
+            
+            all_psm_lists = []
+            with st.spinner(f"Loading PSM data from {len(idxml_paths)} idXML files..."):
+                for idxml_path in idxml_paths:
+                    try:
+                        psm_list = read_file(idxml_path, file_format="idXML")
+                        all_psm_lists.append((psm_list, Path(idxml_path).name))
+                    except Exception as e:
+                        logger.error(f"Error loading {idxml_path}: {e}")
+                        st.warning(f"⚠️ Could not load {Path(idxml_path).name}")
+            
+            # Cache the loaded PSMs
+            st.session_state[cache_key] = all_psm_lists
+        
         all_psm_lists_filtered = []  # Store filtered PSMs only
         unique_peptidoforms_data = {}
         
-        for idxml_path in idxml_paths:
+        for psm_list, idxml_name in all_psm_lists:
             try:
-                psm_list = read_file(idxml_path, file_format="idXML")
-                all_psm_lists.append((psm_list, Path(idxml_path).name))
                 
                 # Filter PSMs to only include selected spectra
                 filtered_psm_list = []
@@ -2412,7 +2422,7 @@ def render_automated_analysis():
             
             if exp_pred_plots:
                 for plot in exp_pred_plots:
-                    st.bokeh_chart(plot, width="stretch")
+                    st.bokeh_chart(plot, use_container_width=True)
                 st.success(f"✅ Generated {len(exp_pred_plots)} experimental vs predicted plots")
             
             # Store export data in session state
@@ -2503,7 +2513,7 @@ def render_automated_analysis():
             
             if exp_exp_plots:
                 for plot in exp_exp_plots:
-                    st.bokeh_chart(plot, width="stretch")
+                    st.bokeh_chart(plot, use_container_width=True)
                 st.success(f"✅ Generated {total_comparisons} replicate comparison plots from {groups_with_comparisons} {group_label} group(s)")
             else:
                 st.warning(f"No replicate comparison plots could be generated. Each {group_label} needs at least 2 PSMs for comparison.")
@@ -2560,7 +2570,7 @@ def render_automated_analysis():
             
             if one_vs_all_plots:
                 for plot in one_vs_all_plots:
-                    st.bokeh_chart(plot, width="stretch")
+                    st.bokeh_chart(plot, use_container_width=True)
                 st.success(f"✅ Generated {len(one_vs_all_plots)} one-vs-all comparison plots")
             
             # Store export data in session state
