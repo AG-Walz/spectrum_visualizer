@@ -2686,6 +2686,19 @@ def render_automated_analysis():
                     key="plot_export_formats"
                 )
             
+            # Check PNG/SVG export dependencies
+            if 'png' in export_formats or 'svg' in export_formats:
+                try:
+                    from bokeh.io import export_png, export_svgs
+                    # Test if selenium is available (required for PNG/SVG export)
+                    try:
+                        from selenium import webdriver
+                        st.success("✅ PNG/SVG export dependencies available")
+                    except ImportError:
+                        st.error("❌ PNG/SVG export requires selenium. Install with: `pip install selenium` and a webdriver (geckodriver or chromedriver)")
+                except ImportError as e:
+                    st.error(f"❌ Bokeh export functions not available: {e}")
+            
             # Export button
             if st.button("📤 Export All Plots", type="primary", use_container_width=True):
                 # Create export directory if it doesn't exist
@@ -2764,21 +2777,21 @@ def render_automated_analysis():
                                                 plot.output_backend = "svg"
                                                 export_svgs(plot, filename=str(output_file))
                                             exported_files.append(str(output_file))
-                                            logger.info(f"Exported: {output_file}")
+                                            logger.info(f"Exported {fmt.upper()}: {output_file}")
                                         except Exception as e:
-                                            # Fallback: save as HTML if image export fails
-                                            logger.warning(f"Image export failed for {fmt}, trying HTML: {e}")
-                                            html_file = export_path / f"{filename_base}.html"
-                                            from bokeh.plotting import save
-                                            save(plot, filename=str(html_file))
-                                            exported_files.append(str(html_file))
+                                            # Log error but DO NOT fallback to HTML - user wants PNG/SVG
+                                            error_msg = f"❌ {fmt.upper()} export failed for {peptidoform_str}: {str(e)}"
+                                            logger.error(error_msg)
+                                            failed_exports.append(f"{peptidoform_str} ({fmt.upper()}): {str(e)}")
+                                            # Re-raise to show user the real issue
+                                            raise
                                     
                                     elif fmt == 'html':
                                         # Export as interactive HTML
                                         from bokeh.plotting import save
                                         save(plot, filename=str(output_file))
                                         exported_files.append(str(output_file))
-                                        logger.info(f"Exported: {output_file}")
+                                        logger.info(f"Exported HTML: {output_file}")
                                 
                             except Exception as e:
                                 logger.error(f"Failed to export plot for {peptidoform_str}: {e}", exc_info=True)
