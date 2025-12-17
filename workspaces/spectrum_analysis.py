@@ -810,7 +810,7 @@ def render_data_input_section_local():
     if mzml_files and idxml_files:
         st.markdown("---")
         
-        if st.button("✅ Confirm File Selection", type="primary", key="confirm_files", width="stretch"):
+        if st.button("✅ Confirm File Selection", type="primary", key="confirm_files", use_container_width=True):
             # Create progress indicators
             progress_bar = st.progress(0)
             status_text = st.empty()
@@ -989,7 +989,7 @@ def render_peptide_filter_for_preloading():
         st.success(f"✅ Selected {len(selected_peptidoforms)} peptidoforms covering {total_psms} PSMs")
         
         # NOW process files with the selected peptides
-        if st.button("🚀 Load Spectra for Selected Peptides", type="primary", key="load_spectra", width="stretch"):
+        if st.button("🚀 Load Spectra for Selected Peptides", type="primary", key="load_spectra", use_container_width=True):
             st.session_state['selected_peptidoforms_for_loading'] = selected_peptidoforms
             
             # PHASE 2: Filter idXML by selected peptides (with progress tracking)
@@ -1261,11 +1261,11 @@ def render_peptide_filter_and_spectrum_selector(mapping_df: pd.DataFrame) -> Opt
             # Controls for bulk selection
             col1, col2, col3 = st.columns([1, 1, 4])
             with col1:
-                if st.button("✅ Select All", width="stretch"):
+                if st.button("✅ Select All", use_container_width=True):
                     st.session_state['selected_spectra_indices'] = set(display_df["spec_idx"].tolist())
                     st.rerun()
             with col2:
-                if st.button("❌ Deselect All", width="stretch"):
+                if st.button("❌ Deselect All", use_container_width=True):
                     st.session_state['selected_spectra_indices'] = set()
                     st.rerun()
             
@@ -1427,11 +1427,11 @@ def render_spectrum_selector_only(mapping_df: pd.DataFrame):
     # Controls for bulk selection
     col1, col2, col3 = st.columns([1, 1, 4])
     with col1:
-        if st.button("✅ Select All", width="stretch"):
+        if st.button("✅ Select All", use_container_width=True):
             st.session_state['selected_spectra_indices'] = set(display_df["spec_idx"].tolist())
             st.rerun()
     with col2:
-        if st.button("❌ Deselect All", width="stretch"):
+        if st.button("❌ Deselect All", use_container_width=True):
             st.session_state['selected_spectra_indices'] = set()
             st.rerun()
     
@@ -1821,12 +1821,12 @@ def render_simplified_analysis_settings():
                         continue
                 
                 # Store the filtered PSM list
-                all_psm_lists_filtered.append((filtered_psm_list, Path(idxml_path).name))
+                all_psm_lists_filtered.append((filtered_psm_list, idxml_name))
                         
-                logger.info(f"Loaded {len(psm_list)} PSMs from {Path(idxml_path).name}, filtered to {len(filtered_psm_list)} matching selected spectra and peptides")
+                logger.info(f"Loaded {len(psm_list)} PSMs from {idxml_name}, filtered to {len(filtered_psm_list)} matching selected spectra and peptides")
             except Exception as e:
-                logger.error(f"Error loading {idxml_path}: {e}")
-                st.error(f"Error loading {Path(idxml_path).name}: {e}")
+                logger.error(f"Error loading {idxml_name}: {e}")
+                st.error(f"Error loading {idxml_name}: {e}")
                 continue
         
         # Sort peptidoforms by PSM count (descending), then by unmodified sequence
@@ -2281,145 +2281,145 @@ def render_automated_analysis():
         
         if not use_cached:
             with st.spinner("🔄 Running analysis workflow..."):
-            # Use the pre-filtered PSM lists from analysis settings
-            # These have already been filtered by selected spectra AND selected peptides
-            psms_with_spectra = []
-            for psm_list, idxml_name in all_psm_lists:
-                psms_with_spectra.extend(psm_list)
-            
-            if len(psms_with_spectra) == 0:
-                st.error("No PSMs available for analysis. Please check your selection.")
-                logger.error("PIPELINE STOPPED: No PSMs available")
-                return
-            
-            st.success(f"✅ Using {len(psms_with_spectra)} pre-filtered PSMs from analysis settings")
-            
-            # Step 1: Load experiments (following notebook exactly)
-            logger.info("="*60)
-            logger.info("STEP 1: Loading mzML experiments")
-            logger.info("="*60)
-            experiments = create_experiment_map(mzml_paths, show_ui=False)
-            logger.info(f"✅ Total experiments loaded: {len(experiments)}")
-            logger.info(f"✅ Total spectra available: {sum(exp.getNrSpectra() for exp in experiments.values())}")
-            st.info(f"📂 Loaded {len(experiments)} mzML file(s) with {sum(exp.getNrSpectra() for exp in experiments.values())} total spectra")
-            
-            # Step 2: Create spectrum lookups with smart format detection
-            logger.info("="*60)
-            logger.info("STEP 2: Creating spectrum lookups")
-            logger.info("="*60)
-            lookup_map = create_spectrum_lookups(experiments)
-            
-            # Get the PSM to idXML mapping
-            psm_to_idxml_map = st.session_state.get('psm_to_idxml_map', {})
-            
-            # Step 3: Attach spectra to PSMs
-            logger.info("="*60)
-            logger.info("STEP 3: Attaching spectra to PSMs")
-            logger.info("="*60)
-            logger.info(f"  PSMs to process: {len(psms_with_spectra)}")
-            
-            # Create mapping helpers for fuzzy matching
-            exp_stem_to_name, exp_base_to_name = create_fuzzy_match_helpers(experiments)
-            
-            updated_psms = []
-            spectra_attached_count = 0
-            
-            for psm in psms_with_spectra:
-                if not (hasattr(psm, "spectrum") and psm.spectrum is not None):
-                    # Try multiple matching strategies
-                    exp_name, lookup_key = find_matching_experiment(
-                        psm.run, experiments, exp_stem_to_name, exp_base_to_name
-                    )
-                    
-                    if exp_name and lookup_key and lookup_key in lookup_map:
-                        try:
-                            idx = lookup_map[lookup_key].findByNativeID(psm.spectrum_id)
-                            psm.spectrum = experiments[exp_name][idx]
-                            spectra_attached_count += 1
-                        except:
-                            pass
-                updated_psms.append(psm)
-            
-            logger.info(f"✅ Spectra successfully attached: {spectra_attached_count}/{len(psms_with_spectra)}")
-            
-            # Filter PSMs that have spectra attached
-            final_psms = [psm for psm in updated_psms if hasattr(psm, 'spectrum') and psm.spectrum is not None]
-            
-            if len(final_psms) == 0:
-                st.error("No experimental spectra could be loaded for the selected PSMs.")
-                return
-            
-            st.info(f"📊 {len(final_psms)} PSMs successfully attached to spectra")
-            
-            # Step 4: Process alignments
-            logger.info("="*60)
-            logger.info("STEP 4: Generating theoretical spectra and alignments")
-            logger.info("="*60)
-            aligned_rows = []
-            
-            for psm in final_psms:
-                try:
-                    # Generate theoretical spectrum
-                    gen = oms.TheoreticalSpectrumGenerator()
-                    params = gen.getParameters()
-                    for ion in ["a", "b", "y", "c", "x", "z"]: 
-                        params.setValue(f"add_{ion}_ions", "true" if ion in included_ions else "false")
-                    params.setValue("add_metainfo", "true")
-                    params.setValue("add_losses", "true" if "loss" in included_ions else "false")
-                    params.setValue("add_precursor_peaks", "true" if "precursor" in included_ions else "false")
-                    params.setValue("add_first_prefix_ion", "true" if "prefix" in included_ions else "false")
-                    params.setValue("add_abundant_immonium_ions", "true" if "immonium" in included_ions else "false")
-                    gen.setParameters(params)
-                    theo_spec = oms.MSSpectrum()
-                    gen.getSpectrum(theo_spec, oms.AASequence(str(psm.peptidoform).split('/')[0].replace('[','(').replace(']',')')), 
-                                    1, max_frag_charge)
-                    if theo_spec.size() > 1: 
-                        theo_spec.sortByPosition()
-                    
-                    sda, ida = theo_spec.getStringDataArrays(), theo_spec.getIntegerDataArrays()
-                    names = [n.decode() for n in sda[0]] if sda and len(sda) > 0 and sda[0].size() > 0 else [""] * theo_spec.size()
-                    charges = list(ida[0]) if ida and len(ida) > 0 and ida[0].size() > 0 else [None] * theo_spec.size()
-                    
-                    # Align spectra
-                    if psm.spectrum.size() > 1: 
-                        psm.spectrum.sortByPosition()
-                    aligner = oms.SpectrumAlignment()
-                    prm = aligner.getParameters()
-                    prm.setValue("tolerance", fragment_mass_tolerance)
-                    prm.setValue("is_relative_tolerance", "false")
-                    aligner.setParameters(prm)
-                    pairs = []
-                    aligner.getSpectrumAlignment(pairs, theo_spec, psm.spectrum)
-                    
-                    # Create aligned dataframe
-                    rows = []
-                    for theo_idx, exp_idx in pairs:
-                        if exp_idx < psm.spectrum.size() and theo_idx < theo_spec.size():
-                            rows.append({
-                                'exp_idx': exp_idx,
-                                'theo_idx': theo_idx,
-                                'mz': theo_spec[theo_idx].getMZ(),
-                                'intensity': theo_spec[theo_idx].getIntensity(),
-                                'annotation': names[theo_idx] if theo_idx < len(names) else "",
-                                'charge': charges[theo_idx] if theo_idx < len(charges) else None,
-                                'exp_mz': psm.spectrum[exp_idx].getMZ(),
-                                'exp_intensity': psm.spectrum[exp_idx].getIntensity()
-                            })
-                    
-                    if rows:
-                        aligned_df_psm = pd.DataFrame(rows)
-                        aligned_df_psm["psm_id"] = psm.spectrum_id
-                        aligned_rows.append(aligned_df_psm.assign(run=psm.run))
-                except Exception as e:
-                    logger.error(f"Error processing PSM {psm.spectrum_id}: {e}")
-                    continue
-            
-            if not aligned_rows:
-                st.error("No successful alignments could be generated.")
-                return
-            
-            aligned_df = pd.concat(aligned_rows, ignore_index=True, sort=False)
-            st.success(f"✅ Generated {len(aligned_df)} peak alignments from {len(aligned_rows)} PSMs")
+                # Use the pre-filtered PSM lists from analysis settings
+                # These have already been filtered by selected spectra AND selected peptides
+                psms_with_spectra = []
+                for psm_list, idxml_name in all_psm_lists:
+                    psms_with_spectra.extend(psm_list)
+                
+                if len(psms_with_spectra) == 0:
+                    st.error("No PSMs available for analysis. Please check your selection.")
+                    logger.error("PIPELINE STOPPED: No PSMs available")
+                    return
+                
+                st.success(f"✅ Using {len(psms_with_spectra)} pre-filtered PSMs from analysis settings")
+                
+                # Step 1: Load experiments (following notebook exactly)
+                logger.info("="*60)
+                logger.info("STEP 1: Loading mzML experiments")
+                logger.info("="*60)
+                experiments = create_experiment_map(mzml_paths, show_ui=False)
+                logger.info(f"✅ Total experiments loaded: {len(experiments)}")
+                logger.info(f"✅ Total spectra available: {sum(exp.getNrSpectra() for exp in experiments.values())}")
+                st.info(f"📂 Loaded {len(experiments)} mzML file(s) with {sum(exp.getNrSpectra() for exp in experiments.values())} total spectra")
+                
+                # Step 2: Create spectrum lookups with smart format detection
+                logger.info("="*60)
+                logger.info("STEP 2: Creating spectrum lookups")
+                logger.info("="*60)
+                lookup_map = create_spectrum_lookups(experiments)
+                
+                # Get the PSM to idXML mapping
+                psm_to_idxml_map = st.session_state.get('psm_to_idxml_map', {})
+                
+                # Step 3: Attach spectra to PSMs
+                logger.info("="*60)
+                logger.info("STEP 3: Attaching spectra to PSMs")
+                logger.info("="*60)
+                logger.info(f"  PSMs to process: {len(psms_with_spectra)}")
+                
+                # Create mapping helpers for fuzzy matching
+                exp_stem_to_name, exp_base_to_name = create_fuzzy_match_helpers(experiments)
+                
+                updated_psms = []
+                spectra_attached_count = 0
+                
+                for psm in psms_with_spectra:
+                    if not (hasattr(psm, "spectrum") and psm.spectrum is not None):
+                        # Try multiple matching strategies
+                        exp_name, lookup_key = find_matching_experiment(
+                            psm.run, experiments, exp_stem_to_name, exp_base_to_name
+                        )
+                        
+                        if exp_name and lookup_key and lookup_key in lookup_map:
+                            try:
+                                idx = lookup_map[lookup_key].findByNativeID(psm.spectrum_id)
+                                psm.spectrum = experiments[exp_name][idx]
+                                spectra_attached_count += 1
+                            except:
+                                pass
+                    updated_psms.append(psm)
+                
+                logger.info(f"✅ Spectra successfully attached: {spectra_attached_count}/{len(psms_with_spectra)}")
+                
+                # Filter PSMs that have spectra attached
+                final_psms = [psm for psm in updated_psms if hasattr(psm, 'spectrum') and psm.spectrum is not None]
+                
+                if len(final_psms) == 0:
+                    st.error("No experimental spectra could be loaded for the selected PSMs.")
+                    return
+                
+                st.info(f"📊 {len(final_psms)} PSMs successfully attached to spectra")
+                
+                # Step 4: Process alignments
+                logger.info("="*60)
+                logger.info("STEP 4: Generating theoretical spectra and alignments")
+                logger.info("="*60)
+                aligned_rows = []
+                
+                for psm in final_psms:
+                    try:
+                        # Generate theoretical spectrum
+                        gen = oms.TheoreticalSpectrumGenerator()
+                        params = gen.getParameters()
+                        for ion in ["a", "b", "y", "c", "x", "z"]: 
+                            params.setValue(f"add_{ion}_ions", "true" if ion in included_ions else "false")
+                        params.setValue("add_metainfo", "true")
+                        params.setValue("add_losses", "true" if "loss" in included_ions else "false")
+                        params.setValue("add_precursor_peaks", "true" if "precursor" in included_ions else "false")
+                        params.setValue("add_first_prefix_ion", "true" if "prefix" in included_ions else "false")
+                        params.setValue("add_abundant_immonium_ions", "true" if "immonium" in included_ions else "false")
+                        gen.setParameters(params)
+                        theo_spec = oms.MSSpectrum()
+                        gen.getSpectrum(theo_spec, oms.AASequence(str(psm.peptidoform).split('/')[0].replace('[','(').replace(']',')')), 
+                                        1, max_frag_charge)
+                        if theo_spec.size() > 1: 
+                            theo_spec.sortByPosition()
+                        
+                        sda, ida = theo_spec.getStringDataArrays(), theo_spec.getIntegerDataArrays()
+                        names = [n.decode() for n in sda[0]] if sda and len(sda) > 0 and sda[0].size() > 0 else [""] * theo_spec.size()
+                        charges = list(ida[0]) if ida and len(ida) > 0 and ida[0].size() > 0 else [None] * theo_spec.size()
+                        
+                        # Align spectra
+                        if psm.spectrum.size() > 1: 
+                            psm.spectrum.sortByPosition()
+                        aligner = oms.SpectrumAlignment()
+                        prm = aligner.getParameters()
+                        prm.setValue("tolerance", fragment_mass_tolerance)
+                        prm.setValue("is_relative_tolerance", "false")
+                        aligner.setParameters(prm)
+                        pairs = []
+                        aligner.getSpectrumAlignment(pairs, theo_spec, psm.spectrum)
+                        
+                        # Create aligned dataframe
+                        rows = []
+                        for theo_idx, exp_idx in pairs:
+                            if exp_idx < psm.spectrum.size() and theo_idx < theo_spec.size():
+                                rows.append({
+                                    'exp_idx': exp_idx,
+                                    'theo_idx': theo_idx,
+                                    'mz': theo_spec[theo_idx].getMZ(),
+                                    'intensity': theo_spec[theo_idx].getIntensity(),
+                                    'annotation': names[theo_idx] if theo_idx < len(names) else "",
+                                    'charge': charges[theo_idx] if theo_idx < len(charges) else None,
+                                    'exp_mz': psm.spectrum[exp_idx].getMZ(),
+                                    'exp_intensity': psm.spectrum[exp_idx].getIntensity()
+                                })
+                        
+                        if rows:
+                            aligned_df_psm = pd.DataFrame(rows)
+                            aligned_df_psm["psm_id"] = psm.spectrum_id
+                            aligned_rows.append(aligned_df_psm.assign(run=psm.run))
+                    except Exception as e:
+                        logger.error(f"Error processing PSM {psm.spectrum_id}: {e}")
+                        continue
+                
+                if not aligned_rows:
+                    st.error("No successful alignments could be generated.")
+                    return
+                
+                aligned_df = pd.concat(aligned_rows, ignore_index=True, sort=False)
+                st.success(f"✅ Generated {len(aligned_df)} peak alignments from {len(aligned_rows)} PSMs")
         
         # Get analysis mode flags
         enable_predicted_mode = st.session_state.get('enable_predicted_mode', True)
@@ -2687,7 +2687,7 @@ def render_automated_analysis():
                 )
             
             # Export button
-            if st.button("📤 Export All Plots", type="primary", width="stretch"):
+            if st.button("📤 Export All Plots", type="primary", use_container_width=True):
                 # Create export directory if it doesn't exist
                 export_path = Path(export_dir)
                 try:
@@ -2745,8 +2745,8 @@ def render_automated_analysis():
                                 # Export the plot to files
                                 logger.info(f"Exporting plot {i+1}/{len(all_export_data)}: {filename_base}")
                                 
-                                # Get the plot object
-                                plot = item.get('plot')
+                                # Get the plot object from the data dictionary
+                                plot = plot_data.get('plot')
                                 if not plot:
                                     raise ValueError("No plot object found in export data")
                                 
