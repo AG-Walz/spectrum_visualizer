@@ -77,6 +77,55 @@ logger = logging.getLogger(__name__)
 # UTILITY FUNCTIONS (CONSOLIDATED)
 # ================================================================
 
+def find_matching_mzml(idxml_stem: str, available_mzml_names: List[str]) -> Optional[str]:
+    """
+    Smart matching of idXML files to mzML files.
+    
+    Tries multiple strategies:
+    1. Exact match (idxml_stem.mzML)
+    2. Common prefix match (e.g., ProT013_1 matches ProT013_1_something.mzML)
+    3. Strip suffixes like _pout_filtered, _ms2rescore and try again
+    
+    Args:
+        idxml_stem: Stem of idXML filename (without extension)
+        available_mzml_names: List of available mzML filenames
+    
+    Returns:
+        Best matching mzML filename or None
+    """
+    # Strategy 1: Exact match
+    exact_match = f"{idxml_stem}.mzML"
+    if exact_match in available_mzml_names:
+        return exact_match
+    
+    # Strategy 2: Strip common idXML suffixes and try again
+    suffixes_to_strip = ['_pout_filtered', '_ms2rescore', '_filtered', '_rescored', '_percolator']
+    stem_cleaned = idxml_stem
+    for suffix in suffixes_to_strip:
+        if stem_cleaned.endswith(suffix):
+            stem_cleaned = stem_cleaned[:-len(suffix)]
+            break
+    
+    # Try exact match with cleaned stem
+    if stem_cleaned != idxml_stem:
+        cleaned_match = f"{stem_cleaned}.mzML"
+        if cleaned_match in available_mzml_names:
+            return cleaned_match
+    
+    # Strategy 3: Find mzML files that start with the cleaned stem
+    candidates = [f for f in available_mzml_names if f.startswith(stem_cleaned)]
+    if candidates:
+        # Prefer shorter names (closer match)
+        return min(candidates, key=len)
+    
+    # Strategy 4: Find mzML files that contain the main part (before first underscore)
+    main_part = stem_cleaned.split('_')[0] if '_' in stem_cleaned else stem_cleaned
+    candidates = [f for f in available_mzml_names if main_part in f]
+    if candidates:
+        return min(candidates, key=len)
+    
+    return None
+
 def validate_spectrum_index(mapping_df: pd.DataFrame, spectrum_index: int, context: str = "") -> bool:
     """Validate spectrum index."""
     try:
@@ -186,6 +235,7 @@ def extract_idxml_metadata(idxml_paths: List[str]) -> Tuple[Dict[str, List[str]]
 
 
 def filter_idxml_by_selected_peptides(idxml_paths: List[str], 
+                                      mzml_paths: List[str],
                                       selected_peptidoforms: List[str],
                                       progress_callback=None) -> Tuple[Dict[str, Dict[str, List[str]]], List[str], List[str]]:
     """
@@ -195,6 +245,7 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     MATCHES: Both modified peptidoforms (e.g., "GEADIM(Oxidation)ISF") AND unmodified sequences (e.g., "GEADIMISF")
     
     Args:
+        mzml_paths: List of available mzML file paths (for smart matching)
         progress_callback: Optional function(current, total, message) for progress updates
     
     Returns:
@@ -204,12 +255,16 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     empty_files = []  # Track files with no peptide identifications
     idxml_to_mzml_spectra = {}  # {idxml_name: {mzml_file: [spec_ids]}}
     
+    # Build list of available mzML filenames for smart matching
+    available_mzml_names = [extract_filename(p) for p in mzml_paths]
+    
     # Convert selected peptidoforms to a set for faster lookup
     # Support both modified and unmodified sequences
     selected_set = set(selected_peptidoforms)
     
     messages.append(f"Filtering for {len(selected_set)} selected peptidoforms...")
     messages.append(f"Sample selected (first 3): {list(selected_set)[:3]}")
+    messages.append(f"Available mzML files: {len(available_mzml_names)}")
     
     total_files = len(idxml_paths)
     for idx, idxml_path in enumerate(idxml_paths):
@@ -283,15 +338,19 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                             if pep_id.metaValueExists("spectra_data"):
                                 spectra_data = str(pep_id.getMetaValue("spectra_data"))
                                 run = Path(spectra_data).stem
-                            
-                            # Fallback: use idXML filename
-                            if not run:
-                                run = Path(idxml_path).stem
-                                if matched_count == 0:  # Only warn once per file
-                                    messages.append(f"  ⚠️ Using idXML stem as fallback run name")
-                            
-                            # Store the spectrum
-                            mzml_file = f"{run}.mzML" if not run.endswith('.mzML') else run
+                                mzml_file = f"{run}.mzML" if not run.endswith('.mzML') else run
+                            else:
+                                # Fallback: use smart matching with available mzML files
+                                idxml_stem = Path(idxml_path).stem
+                                mzml_file = find_matching_mzml(idxml_stem, available_mzml_names)
+                                
+                                if not mzml_file:
+                                    # Last resort: use idXML stem
+                                    mzml_file = f"{idxml_stem}.mzML"
+                                    if matched_count == 0:  # Only warn once per file
+                                        messages.append(f"  ⚠️ No match found, trying: {mzml_file}")
+                                elif matched_count == 0:  # Only report once per file
+                                    messages.append(f"  ✓ Matched to: {mzml_file}")
                             
                             if mzml_file not in mzml_spectra:
                                 mzml_spectra[mzml_file] = []
@@ -909,6 +968,7 @@ def render_peptide_filter_for_preloading():
             
             # PHASE 2: Filter idXML by selected peptides (with progress tracking)
             idxml_paths = st.session_state['idxml_paths']
+            mzml_paths = st.session_state['mzml_paths']
             st.info(f"🔍 Filtering {len(idxml_paths)} idXML file(s) by {len(selected_peptidoforms)} selected peptide(s)...")
             
             progress_bar = st.progress(0)
@@ -916,6 +976,7 @@ def render_peptide_filter_for_preloading():
             
             idxml_to_mzml_spectra, filter_messages, filter_empty = filter_idxml_by_selected_peptides(
                 idxml_paths,
+                mzml_paths,
                 selected_peptidoforms,
                 progress_callback=lambda i, total, msg: (
                     progress_bar.progress(i / total),
@@ -1549,7 +1610,7 @@ def main():
     # STEP 1 & 2: File Input (only show if not yet confirmed)
     if not st.session_state.get('files_confirmed', False):
         render_data_input_section_local()
-        st.info("👆 Select files and click 'Confirm File Selection & Extract Peptides' to continue.")
+        st.info("👆 Select files or folders and click 'Confirm File Selection & Extract Peptides' to continue.")
         return
     
     # STEP 3 & 4: Show peptide selection after files are confirmed
