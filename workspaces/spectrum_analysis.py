@@ -179,18 +179,20 @@ def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tu
         if progress_callback:
             progress_callback(idx, total_files, extract_filename(idxml_path))
         idxml_name = extract_filename(idxml_path)
+        
+        # Safety check: Skip non-idXML files
+        if not idxml_path.lower().endswith(('.idxml', '.mzid', '.mzidentml')):
+            messages.append(f"⚠️ Skipping non-idXML file: {idxml_name}")
+            logger.warning(f"Skipping non-idXML file: {idxml_path}")
+            continue
+        
         messages.append(f"📋 Processing {idxml_name}")
         
         try:
-            # Extract expected mzML files (optional - skip if st_tools not available)
+            # OPTIMIZATION: Skip extracting expected mzML files - not needed for peptide extraction
+            # This step can be slow and we don't use this information during peptide filtering
             expected_files = []
-            if st_tools:
-                try:
-                    expected_files = st_tools.extract_mzml_files_from_idxml(idxml_path)
-                except:
-                    pass  # Skip if extraction fails
             expected_mzmls_by_idxml[idxml_name] = expected_files
-            messages.append(f"  Expected mzML files: {len(expected_files)}")
             
             # OPTIMIZED: Use PyOpenMS directly for faster extraction
             protein_ids = []
@@ -200,10 +202,7 @@ def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tu
             if not peptide_ids:
                 raise Exception("contains no PeptideIdentifications")
             
-            psm_count = sum(len(pep_id.getHits()) for pep_id in peptide_ids)
-            messages.append(f"  Found {psm_count} PSMs")
-            
-            # Extract unique peptidoforms quickly
+            # Extract unique peptidoforms quickly (count PSMs during extraction)
             for pep_id in peptide_ids:
                 for hit in pep_id.getHits():
                     try:
@@ -810,11 +809,22 @@ def render_data_input_section_local():
     # Show confirmation button only if both file types are selected
     if mzml_files and idxml_files:
         st.markdown("---")
+        
+        # Show file count summary
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("mzML files", len(mzml_files))
+        with col2:
+            st.metric("idXML files", len(idxml_files))
+        
         if st.button("✅ Confirm File Selection", type="primary", key="confirm_files", width="stretch"):
             # Create progress indicators
             progress_bar = st.progress(0)
             status_text = st.empty()
-            status_text.info("📋 Extracting available peptides from idXML files...")
+            
+            # IMPORTANT: Only process idXML files, not mzML files
+            # mzML files are large and will be loaded later on-demand
+            status_text.info(f"📋 Extracting peptides from {len(idxml_files)} idXML files...")
             
             # Extract peptides without loading mzML files
             try:
