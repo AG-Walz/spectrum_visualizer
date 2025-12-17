@@ -2405,8 +2405,9 @@ def render_automated_analysis():
                     plot, r2_matching, r2_binned = create_exp_vs_pred_plot_streamlit(psm, aligned_df, selected_model, collision_energy, instrument_type, source_idxml)
                     if plot:
                         exp_pred_plots.append(plot)
-                        # Store export data
+                        # Store export data (including plot object for export)
                         exp_pred_export_data.append({
+                            'plot': plot,  # Include the plot object
                             'psm': psm,
                             'aligned_df': aligned_df,
                             'model': selected_model,
@@ -2497,8 +2498,9 @@ def render_automated_analysis():
                             if plot:
                                 exp_exp_plots.append(plot)
                                 total_comparisons += 1
-                                # Store export data
+                                # Store export data (including plot object for export)
                                 exp_exp_export_data.append({
+                                    'plot': plot,  # Include the plot object
                                     'psm1': psm1,
                                     'psm2': psm2,
                                     'aligned_df': aligned_df,
@@ -2554,8 +2556,9 @@ def render_automated_analysis():
                                 plot, r2_matching, r2_binned, comparison_info = create_exp_vs_exp_plot_streamlit(other_psm, ref_psm, aligned_df, source_idxml_other, source_idxml_ref)
                                 if plot:
                                     one_vs_all_plots.append(plot)
-                                    # Store export data
+                                    # Store export data (including plot object for export)
                                     one_vs_all_export_data.append({
+                                        'plot': plot,  # Include the plot object
                                         'other_psm': other_psm,
                                         'ref_psm': ref_psm,
                                         'aligned_df': aligned_df,
@@ -2624,6 +2627,16 @@ def render_automated_analysis():
             
             # Export button
             if st.button("📤 Export All Plots", type="primary", width="stretch"):
+                # Create export directory if it doesn't exist
+                export_path = Path(export_dir)
+                try:
+                    export_path.mkdir(parents=True, exist_ok=True)
+                    st.info(f"📁 Export directory: {export_path.absolute()}")
+                except Exception as e:
+                    st.error(f"❌ Failed to create export directory: {e}")
+                    logger.error(f"Directory creation failed: {e}")
+                    st.stop()
+                
                 with st.spinner(f"Exporting {len(all_export_data)} plot(s)..."):
                     export_progress = st.progress(0)
                     export_status = st.empty()
@@ -2668,12 +2681,43 @@ def render_automated_analysis():
                                     safe_ref = ref_psm.run.replace('/', '_').replace(' ', '_')
                                     filename_base = f"OneVsAll_{safe_peptide}_{safe_other}_vs_{safe_ref}"
                                 
-                                # Export using st_tools
+                                # Export the plot to files
                                 logger.info(f"Exporting plot {i+1}/{len(all_export_data)}: {filename_base}")
                                 
-                                # Note: The actual export would call st_tools.export_plot()
-                                # For now, just log the intention
-                                st.info(f"Would export: {filename_base}.{'/'.join(export_formats)}")
+                                # Get the plot object
+                                plot = item.get('plot')
+                                if not plot:
+                                    raise ValueError("No plot object found in export data")
+                                
+                                # Export to each selected format
+                                for fmt in export_formats:
+                                    output_file = export_path / f"{filename_base}.{fmt}"
+                                    
+                                    if fmt == 'png' or fmt == 'svg':
+                                        # Export as static image using bokeh
+                                        from bokeh.io import export_png, export_svgs
+                                        try:
+                                            if fmt == 'png':
+                                                export_png(plot, filename=str(output_file))
+                                            else:  # svg
+                                                plot.output_backend = "svg"
+                                                export_svgs(plot, filename=str(output_file))
+                                            exported_files.append(str(output_file))
+                                            logger.info(f"Exported: {output_file}")
+                                        except Exception as e:
+                                            # Fallback: save as HTML if image export fails
+                                            logger.warning(f"Image export failed for {fmt}, trying HTML: {e}")
+                                            html_file = export_path / f"{filename_base}.html"
+                                            from bokeh.plotting import save
+                                            save(plot, filename=str(html_file))
+                                            exported_files.append(str(html_file))
+                                    
+                                    elif fmt == 'html':
+                                        # Export as interactive HTML
+                                        from bokeh.plotting import save
+                                        save(plot, filename=str(output_file))
+                                        exported_files.append(str(output_file))
+                                        logger.info(f"Exported: {output_file}")
                                 
                             except Exception as e:
                                 logger.error(f"Failed to export plot for {peptidoform_str}: {e}", exc_info=True)
@@ -2681,13 +2725,19 @@ def render_automated_analysis():
                         
                         # Summary
                         export_progress.progress(1.0)
+                        export_status.empty()
+                        
+                        if exported_files:
+                            st.success(f"✅ Successfully exported {len(exported_files)} file(s) to `{export_path.absolute()}`")
+                            with st.expander("📂 View exported files"):
+                                for filepath in exported_files:
+                                    st.code(filepath)
+                        
                         if failed_exports:
-                            st.warning(f"⚠️ Export completed with {len(failed_exports)} failures")
+                            st.warning(f"⚠️ {len(failed_exports)} plot(s) failed to export")
                             with st.expander("Show failed exports"):
                                 for peptide in failed_exports:
                                     st.write(f"• {peptide}")
-                        else:
-                            st.success(f"✅ Successfully exported {len(all_export_data)} plot(s) to `{export_dir}`")
                     
                     except Exception as e:
                         st.error(f"Export failed: {e}")
