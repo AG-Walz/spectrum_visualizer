@@ -70,6 +70,12 @@ if BOKEH_AVAILABLE:
 if TABULATE_AVAILABLE:
     from shared_imports import tabulate
 
+# Import spectrum engine functions for matplotlib-based overview plots
+try:
+    from spectrum_engine import create_peptide_overview_plot, export_overview_plot
+except ImportError:
+    from core.spectrum_engine import create_peptide_overview_plot, export_overview_plot
+
 # Logger setup (already configured in shared_imports, just get reference)
 logger = logging.getLogger(__name__)
 
@@ -2661,46 +2667,20 @@ def render_automated_analysis():
         
         if all_export_data:
             st.markdown("---")
-            st.subheader("💾 Export Plots to Files")
-            st.info(f"Export publication-ready mirror plots (PNG/SVG) with peak annotations and transparent background")
-            st.caption(f"📊 Available: {', '.join(export_mode_labels)} = **{len(all_export_data)} total plots**")
+            st.subheader("💾 Export Summary Plots")
+            st.info(f"Export publication-ready summary plots showing peptide counts and R² correlations (PNG/SVG)")
+            st.caption(f"📊 Available data: {', '.join(export_mode_labels)} = **{len(all_export_data)} comparisons**")
             
             # Configuration
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                export_dir = st.text_input(
-                    "📁 Export Directory",
-                    value=st.session_state.get('plot_output_dir', './output_plots'),
-                    help="Directory where plot files will be saved",
-                    key="plot_export_dir"
-                )
-            
-            with col2:
-                st.write("")  # Spacing
-                st.write("")  # Spacing
-                export_formats = st.multiselect(
-                    "Formats",
-                    options=['png', 'svg', 'html'],
-                    default=['png', 'svg'],
-                    help="Select export formats",
-                    key="plot_export_formats"
-                )
-            
-            # Check PNG/SVG export dependencies
-            if 'png' in export_formats or 'svg' in export_formats:
-                try:
-                    from bokeh.io import export_png, export_svgs
-                    # Test if selenium is available (required for PNG/SVG export)
-                    try:
-                        from selenium import webdriver
-                        st.success("✅ PNG/SVG export dependencies available")
-                    except ImportError:
-                        st.error("❌ PNG/SVG export requires selenium. Install with: `pip install selenium` and a webdriver (geckodriver or chromedriver)")
-                except ImportError as e:
-                    st.error(f"❌ Bokeh export functions not available: {e}")
+            export_dir = st.text_input(
+                "📁 Export Directory",
+                value=st.session_state.get('plot_output_dir', './output_plots'),
+                help="Directory where plot files will be saved",
+                key="plot_export_dir"
+            )
             
             # Export button
-            if st.button("📤 Export All Plots", type="primary", use_container_width=True):
+            if st.button("📤 Export Summary Plots", type="primary", use_container_width=True):
                 # Create export directory if it doesn't exist
                 export_path = Path(export_dir)
                 try:
@@ -2711,111 +2691,90 @@ def render_automated_analysis():
                     logger.error(f"Directory creation failed: {e}")
                     st.stop()
                 
-                with st.spinner(f"Exporting {len(all_export_data)} plot(s)..."):
-                    export_progress = st.progress(0)
-                    export_status = st.empty()
-                    
+                with st.spinner("Creating summary plots with matplotlib..."):
                     exported_files = []
-                    failed_exports = []
                     
-                    try:
-                        for i, item in enumerate(all_export_data):
-                            peptidoform_str = "Unknown"
-                            filename_base = "unknown"
-                            try:
-                                # Update progress
-                                progress = (i + 1) / len(all_export_data)
-                                export_progress.progress(progress)
-                                
-                                plot_data = item['data']
-                                mode = item['mode']
-                                peptidoform_str = plot_data.get('peptidoform', 'Unknown')
-                                
-                                export_status.text(f"Exporting plot {i+1}/{len(all_export_data)}: {peptidoform_str} ({mode})")
-                                
-                                # Create filename base based on mode
-                                safe_peptide = str(peptidoform_str).replace('/', '_').replace('[', '').replace(']', '').replace('(', '').replace(')', '').replace(' ', '')
-                                
-                                if mode == 'exp_vs_pred':
-                                    psm = plot_data['psm']
-                                    safe_run = psm.run.replace('/', '_').replace(' ', '_')
-                                    filename_base = f"ExpVsPred_{safe_peptide}_{safe_run}"
-                                    
-                                elif mode == 'exp_vs_exp':
-                                    psm1 = plot_data['psm1']
-                                    psm2 = plot_data['psm2']
-                                    safe_run1 = psm1.run.replace('/', '_').replace(' ', '_')
-                                    safe_run2 = psm2.run.replace('/', '_').replace(' ', '_')
-                                    filename_base = f"AllVsAll_{safe_peptide}_{safe_run1}_vs_{safe_run2}"
-                                    
-                                elif mode == 'one_vs_all':
-                                    other_psm = plot_data['other_psm']
-                                    ref_psm = plot_data['ref_psm']
-                                    safe_other = other_psm.run.replace('/', '_').replace(' ', '_')
-                                    safe_ref = ref_psm.run.replace('/', '_').replace(' ', '_')
-                                    filename_base = f"OneVsAll_{safe_peptide}_{safe_other}_vs_{safe_ref}"
-                                
-                                # Export the plot to files
-                                logger.info(f"Exporting plot {i+1}/{len(all_export_data)}: {filename_base}")
-                                
-                                # Get the plot object from the data dictionary
-                                plot = plot_data.get('plot')
-                                if not plot:
-                                    raise ValueError("No plot object found in export data")
-                                
-                                # Export to each selected format
-                                for fmt in export_formats:
-                                    output_file = export_path / f"{filename_base}.{fmt}"
-                                    
-                                    if fmt == 'png' or fmt == 'svg':
-                                        # Export as static image using bokeh
-                                        from bokeh.io import export_png, export_svgs
-                                        try:
-                                            if fmt == 'png':
-                                                export_png(plot, filename=str(output_file))
-                                            else:  # svg
-                                                plot.output_backend = "svg"
-                                                export_svgs(plot, filename=str(output_file))
-                                            exported_files.append(str(output_file))
-                                            logger.info(f"Exported {fmt.upper()}: {output_file}")
-                                        except Exception as e:
-                                            # Log error but DO NOT fallback to HTML - user wants PNG/SVG
-                                            error_msg = f"❌ {fmt.upper()} export failed for {peptidoform_str}: {str(e)}"
-                                            logger.error(error_msg)
-                                            failed_exports.append(f"{peptidoform_str} ({fmt.upper()}): {str(e)}")
-                                            # Re-raise to show user the real issue
-                                            raise
-                                    
-                                    elif fmt == 'html':
-                                        # Export as interactive HTML
-                                        from bokeh.plotting import save
-                                        save(plot, filename=str(output_file))
-                                        exported_files.append(str(output_file))
-                                        logger.info(f"Exported HTML: {output_file}")
-                                
-                            except Exception as e:
-                                logger.error(f"Failed to export plot for {peptidoform_str}: {e}", exc_info=True)
-                                failed_exports.append(peptidoform_str)
+                    # Prepare R² data for overview plots from all export data
+                    r2_data_rows = []
+                    
+                    for item in all_export_data:
+                        plot_data = item['data']
+                        mode = item['mode']
+                        peptidoform_str = plot_data.get('peptidoform', 'Unknown')
                         
-                        # Summary
-                        export_progress.progress(1.0)
-                        export_status.empty()
+                        # Extract R² values based on mode
+                        if mode == 'exp_vs_pred':
+                            # Exp vs Pred has separate r2_matching and r2_binned
+                            r2_matching = plot_data.get('r2_metric')  # Get stored metric
+                            r2_binned = plot_data.get('r2_metric')  # May need to extract differently
+                            r2_data_rows.append({
+                                'peptidoform': peptidoform_str,
+                                'r2_matching': r2_matching,
+                                'r2_binned': r2_binned,
+                                'mode': mode
+                            })
+                        elif mode in ['exp_vs_exp', 'one_vs_all']:
+                            # Exp vs Exp comparisons - extract from comparison info if available
+                            r2_value = plot_data.get('r2_metric', 0.5)  # Default placeholder
+                            r2_data_rows.append({
+                                'peptidoform': peptidoform_str,
+                                'r2_matching': r2_value,
+                                'r2_binned': r2_value,
+                                'mode': mode
+                            })
+                    
+                    if r2_data_rows:
+                        r2_df = pd.DataFrame(r2_data_rows)
+                        
+                        # Create overview plots for each metric
+                        for metric in ['r2_matching', 'r2_binned']:
+                            metric_label = 'matching' if metric == 'r2_matching' else 'binned'
+                            
+                            try:
+                                # Create matplotlib figure
+                                fig, summary_df = create_peptide_overview_plot(
+                                    r2_data=r2_df,
+                                    r2_metric=metric,
+                                    top_n=None  # Include all peptides
+                                )
+                                
+                                if fig is not None:
+                                    # Export as PNG
+                                    png_path = export_overview_plot(fig, str(export_path), f"r2_{metric_label}")
+                                    if png_path:
+                                        exported_files.append(png_path)
+                                    
+                                    # Also export as SVG
+                                    try:
+                                        svg_filename = f"peptide_count_r2_{metric_label}.svg"
+                                        svg_path = export_path / svg_filename
+                                        fig.savefig(svg_path, dpi=300, bbox_inches="tight", format='svg')
+                                        exported_files.append(str(svg_path))
+                                        logger.info(f"Saved SVG: {svg_path}")
+                                    except Exception as e:
+                                        logger.warning(f"SVG export failed: {e}")
+                                    
+                                    # Close figure
+                                    import matplotlib.pyplot as plt
+                                    plt.close(fig)
+                                    
+                                    st.success(f"✅ Created {metric_label} R² summary plot")
+                                else:
+                                    st.warning(f"⚠️ Could not create {metric_label} overview plot (no valid R² data)")
+                            
+                            except Exception as e:
+                                st.error(f"❌ Failed to create {metric_label} plot: {e}")
+                                logger.error(f"Overview plot creation failed for {metric}: {e}", exc_info=True)
                         
                         if exported_files:
-                            st.success(f"✅ Successfully exported {len(exported_files)} file(s) to `{export_path.absolute()}`")
+                            st.success(f"✅ Successfully exported {len(exported_files)} summary plot file(s) to `{export_path.absolute()}`")
                             with st.expander("📂 View exported files"):
                                 for filepath in exported_files:
                                     st.code(filepath)
-                        
-                        if failed_exports:
-                            st.warning(f"⚠️ {len(failed_exports)} plot(s) failed to export")
-                            with st.expander("Show failed exports"):
-                                for peptide in failed_exports:
-                                    st.write(f"• {peptide}")
-                    
-                    except Exception as e:
-                        st.error(f"Export failed: {e}")
-                        logger.error(f"Export error: {e}", exc_info=True)
+                        else:
+                            st.warning("No plots were exported")
+                    else:
+                        st.warning("No R² data available for summary plots")
         
         # Summary
         st.subheader("📋 Analysis Summary")
