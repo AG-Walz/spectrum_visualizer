@@ -1931,7 +1931,7 @@ def render_simplified_analysis_settings():
         with col1:
             enable_predicted_mode = st.checkbox(
                 "✨ Predicted Spectrum",
-                value=True,
+                value=False,
                 help="Compare experimental spectra against AI-predicted spectra (Koina models)\n"
                      "Generates: Exp vs Predicted mirror plots for each PSM"
             )
@@ -1939,7 +1939,7 @@ def render_simplified_analysis_settings():
         with col2:
             enable_all_vs_all_mode = st.checkbox(
                 "🔄 All-vs-All Replicates", 
-                value=True,
+                value=False,
                 help="Compare all replicates of the same peptide against each other\n"
                      "Generates: All pairwise comparisons within each peptidoform"
             )
@@ -1947,7 +1947,7 @@ def render_simplified_analysis_settings():
         with col3:
             enable_one_vs_all_mode = st.checkbox(
                 "📍 One-vs-All Replicates",
-                value=False,
+                value=True,
                 help="Select one reference spectrum and compare all other replicates against it\n"
                      "Generates: Reference vs each replicate comparison"
             )
@@ -2087,26 +2087,28 @@ def render_simplified_analysis_settings():
         st.info(f"📊 Analyzing **{total_peptides} peptidoforms** with **{total_psms} total PSMs** from selected spectra across {len(all_psm_lists)} idXML files")
         
         # Show per-peptide counts (already visible in selection, but detailed breakdown)
-        with st.expander("📋 Detailed PSM Breakdown by File (Filtered)"):
+        with st.expander("📋 Detailed PSM Breakdown by File (Filtered)", expanded=False):
+            # Only compute breakdown when expander is opened (lazy loading)
+            # Build a lookup dict once for performance
+            peptidoform_to_display = {item['peptidoform']: item['display_label'] 
+                                     for item in unique_peptidoforms_list}
+            
             for filtered_psm_list, idxml_name in all_psm_lists_filtered:
-                file_peptide_matches = {}
                 file_total = len(filtered_psm_list)
                 
-                for psm in filtered_psm_list:
-                    try:
-                        psm_peptidoform = str(psm.peptidoform)
-                        if psm_peptidoform not in file_peptide_matches:
-                            file_peptide_matches[psm_peptidoform] = 0
-                        file_peptide_matches[psm_peptidoform] += 1
-                    except:
-                        continue
-                
                 if file_total > 0:
+                    # Quick count without iterating through display labels multiple times
+                    file_peptide_matches = {}
+                    for psm in filtered_psm_list:
+                        try:
+                            psm_peptidoform = str(psm.peptidoform)
+                            file_peptide_matches[psm_peptidoform] = file_peptide_matches.get(psm_peptidoform, 0) + 1
+                        except:
+                            continue
+                    
                     st.write(f"**{idxml_name}**: {file_total} PSMs (from selected spectra)")
                     for peptidoform, count in file_peptide_matches.items():
-                        # Find display label for this peptidoform
-                        display_label = next((item['display_label'] for item in unique_peptidoforms_list 
-                                            if item['peptidoform'] == peptidoform), peptidoform)
+                        display_label = peptidoform_to_display.get(peptidoform, peptidoform)
                         st.write(f"    • {display_label}: {count} PSMs")
                 else:
                     st.write(f"**{idxml_name}**: No matching PSMs")
@@ -2115,30 +2117,26 @@ def render_simplified_analysis_settings():
         st.session_state['all_psm_lists'] = all_psm_lists_filtered
         
         # Start analysis button
-        if st.button("🚀 Start Analysis", type="primary"):
-            # Store settings in session state
-            st.session_state.update({
-                'selected_peptides': selected_sequences,  # Store unmodified sequences for compatibility
-                'selected_peptidoforms': selected_peptidoforms,  # Store full peptidoforms
-                'selected_peptides_display': [item['display_label'] for item in unique_peptidoforms_list],  # Store display labels
-                'selected_peptidoforms_data': unique_peptidoforms_list,  # Store complete data
-                'selected_model': selected_model if enable_predicted_mode else None,
-                'max_frag_charge': max_frag_charge,
-                'fragment_mass_tolerance': fragment_mass_tolerance,
-                'collision_energy': collision_energy if enable_predicted_mode else 35,
-                'instrument_type': instrument_type if enable_predicted_mode else "TIMSTOF",
-                'included_ions': included_ions,
-                # Analysis mode flags
-                'enable_predicted_mode': enable_predicted_mode,
-                'enable_all_vs_all_mode': enable_all_vs_all_mode,
-                'enable_one_vs_all_mode': enable_one_vs_all_mode,
-                'reference_runs': reference_runs if enable_one_vs_all_mode else [],
-                'group_by_unmodified': group_by_unmodified,  # All-vs-All grouping option
-                'analysis_ready': True,
-                # Store filtering information for verification
-                'selected_spectrum_ids': selected_spectrum_ids,
-                'num_selected_spectra': len(selected_spectra_indices)
-            })
+        if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
+            # Store settings directly (avoid intermediate dict creation)
+            st.session_state['selected_peptides'] = selected_sequences
+            st.session_state['selected_peptidoforms'] = selected_peptidoforms
+            st.session_state['selected_peptides_display'] = [item['display_label'] for item in unique_peptidoforms_list]
+            st.session_state['selected_peptidoforms_data'] = unique_peptidoforms_list
+            st.session_state['selected_model'] = selected_model if enable_predicted_mode else None
+            st.session_state['max_frag_charge'] = max_frag_charge
+            st.session_state['fragment_mass_tolerance'] = fragment_mass_tolerance
+            st.session_state['collision_energy'] = collision_energy if enable_predicted_mode else 35
+            st.session_state['instrument_type'] = instrument_type if enable_predicted_mode else "TIMSTOF"
+            st.session_state['included_ions'] = included_ions
+            st.session_state['enable_predicted_mode'] = enable_predicted_mode
+            st.session_state['enable_all_vs_all_mode'] = enable_all_vs_all_mode
+            st.session_state['enable_one_vs_all_mode'] = enable_one_vs_all_mode
+            st.session_state['reference_runs'] = reference_runs if enable_one_vs_all_mode else []
+            st.session_state['group_by_unmodified'] = group_by_unmodified
+            st.session_state['analysis_ready'] = True
+            st.session_state['selected_spectrum_ids'] = selected_spectrum_ids
+            st.session_state['num_selected_spectra'] = len(selected_spectra_indices)
             st.rerun()
     
     except Exception as e:
