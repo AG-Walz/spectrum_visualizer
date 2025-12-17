@@ -2671,16 +2671,23 @@ def render_automated_analysis():
             st.info(f"Export publication-ready summary plots showing peptide counts and R² correlations (PNG/SVG)")
             st.caption(f"📊 Available data: {', '.join(export_mode_labels)} = **{len(all_export_data)} comparisons**")
             
-            # Configuration
-            export_dir = st.text_input(
-                "📁 Export Directory",
-                value=st.session_state.get('plot_output_dir', './output_plots'),
-                help="Directory where plot files will be saved",
-                key="plot_export_dir"
-            )
+            # Use form to prevent rerunning analysis when export button is clicked
+            with st.form("export_form"):
+                # Configuration
+                export_dir = st.text_input(
+                    "📁 Export Directory",
+                    value=st.session_state.get('plot_output_dir', './output_plots'),
+                    help="Directory where plot files will be saved"
+                )
+                
+                # Export button (submit button in form)
+                export_clicked = st.form_submit_button("📤 Export Summary Plots", type="primary", use_container_width=True)
             
-            # Export button
-            if st.button("📤 Export Summary Plots", type="primary", use_container_width=True):
+            # Handle export outside form to avoid nested logic issues
+            if export_clicked:
+                # Store in session state for next time
+                st.session_state['plot_output_dir'] = export_dir
+                
                 # Create export directory if it doesn't exist
                 export_path = Path(export_dir)
                 try:
