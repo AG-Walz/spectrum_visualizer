@@ -1673,6 +1673,79 @@ def main():
     # Step 3: Comprehensive Analysis Settings (based on SpecViz.ipynb parameters)
     st.markdown("---")
     render_simplified_analysis_settings()
+
+
+def shorten_filenames(filenames: List[str]) -> Dict[str, str]:
+    """Create shortened, unique versions of filenames by removing common/repeated parts.
+    
+    This function identifies common prefixes, suffixes, and repeated substrings across
+    all filenames and removes them to create concise, unique identifiers.
+    
+    Args:
+        filenames: List of full filenames (e.g., mzML or idXML filenames)
+        
+    Returns:
+        Dictionary mapping original filename to shortened version
+    """
+    if not filenames or len(filenames) == 0:
+        return {}
+    
+    if len(filenames) == 1:
+        fname = filenames[0]
+        stem = Path(fname).stem if '.' in fname else fname
+        return {fname: stem}
+    
+    # Remove file extensions
+    stems = [Path(fname).stem if '.' in fname else fname for fname in filenames]
+    
+    # Find common prefix
+    def find_common_prefix(strings):
+        if not strings:
+            return ""
+        prefix = strings[0]
+        for s in strings[1:]:
+            while not s.startswith(prefix):
+                prefix = prefix[:-1]
+                if not prefix:
+                    return ""
+        return prefix
+    
+    # Find common suffix
+    def find_common_suffix(strings):
+        if not strings:
+            return ""
+        reversed_strings = [s[::-1] for s in strings]
+        common_prefix = find_common_prefix(reversed_strings)
+        return common_prefix[::-1]
+    
+    # Remove common prefix
+    common_prefix = find_common_prefix(stems)
+    if len(common_prefix) > 5:
+        stems = [s[len(common_prefix):] for s in stems]
+    
+    # Remove common suffix
+    common_suffix = find_common_suffix(stems)
+    if len(common_suffix) > 5:
+        stems = [s[:-len(common_suffix)] for s in stems]
+    
+    # Clean up underscores
+    stems = [s.strip('_').replace('__', '_') for s in stems]
+    
+    # Check uniqueness
+    if len(set(stems)) != len(stems):
+        stems = [Path(fname).stem if '.' in fname else fname for fname in filenames]
+    
+    # Limit length if too long
+    max_length = 50
+    final_stems = []
+    for stem in stems:
+        if len(stem) > max_length:
+            shortened = stem[:20] + "..." + stem[-25:]
+            final_stems.append(shortened)
+        else:
+            final_stems.append(stem)
+    
+    return {fname: short for fname, short in zip(filenames, final_stems)}
     
     # Step 4: Automatic Analysis and Visualization
     if st.session_state.get('analysis_ready', False):
@@ -2955,7 +3028,6 @@ def render_automated_analysis():
                                 all_idxml_files.add(source2)
                     
                     # Create shortened filename mapping
-                    from core.spectrum_engine import shorten_filenames
                     short_name_map = shorten_filenames(list(all_idxml_files))
                     
                     # 1. Export R² correlation matrix
@@ -3089,7 +3161,6 @@ def render_automated_analysis():
                                     'Peptidoform': str(psm.peptidoform),
                                     'Sequence': psm.peptidoform.sequence,
                                     'Charge': psm.peptidoform.precursor_charge,
-                                    'RT': psm.rt,
                                     'Source_File': short_source,
                                     'Source_File_Full': source_idxml,
                                     'Precursor_MZ': getattr(psm.peptidoform, 'precursor_mz', 'N/A')
