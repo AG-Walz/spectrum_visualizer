@@ -2675,8 +2675,8 @@ def render_automated_analysis():
         
         if all_export_data:
             st.markdown("---")
-            st.subheader("💾 Export Summary Plots")
-            st.info(f"Export publication-ready summary plots showing peptide counts and R² correlations (PNG/SVG)")
+            st.subheader("💾 Export All Plots")
+            st.info(f"Export publication-ready plots: summary plots (peptide counts & R² correlations) + individual mirror plots for all comparisons (PNG/SVG)")
             st.caption(f"📊 Available data: {', '.join(export_mode_labels)} = **{len(all_export_data)} comparisons**")
             
             # Use form to prevent rerunning analysis when export button is clicked
@@ -2689,7 +2689,7 @@ def render_automated_analysis():
                 )
                 
                 # Export button (submit button in form)
-                export_clicked = st.form_submit_button("📤 Export Summary Plots", type="primary", use_container_width=True)
+                export_clicked = st.form_submit_button("📤 Export All Plots", type="primary", use_container_width=True)
             
             # Handle export outside form to avoid nested logic issues
             if export_clicked:
@@ -2811,22 +2811,27 @@ def render_automated_analysis():
                                 aligned_df = plot_data.get('aligned_df')
                                 
                                 if psm and aligned_df is not None:
-                                    # Extract spectrum data
+                                    # Extract spectrum data properly
                                     psm_aligned = aligned_df[aligned_df.psm_id == psm.spectrum_id] if not aligned_df.empty else pd.DataFrame()
                                     
-                                    # Get experimental data
-                                    exp_df = pd.DataFrame({
-                                        'mz': psm_aligned['exp_mz'].values if not psm_aligned.empty else [],
-                                        'intensity': psm_aligned['exp_intensity'].values if not psm_aligned.empty else [],
-                                        'annotation': psm_aligned['ion_name'].values if not psm_aligned.empty else []
-                                    })
+                                    # Get experimental data using proper extraction
+                                    exp_df = st_tools.extract_annotations(psm.spectrum, psm_aligned)
                                     
-                                    # Get predicted data
-                                    pred_df = pd.DataFrame({
-                                        'mz': psm_aligned['pred_mz'].values if not psm_aligned.empty else [],
-                                        'intensity': psm_aligned['pred_intensity'].values if not psm_aligned.empty else [],
-                                        'annotation': psm_aligned['ion_name'].values if not psm_aligned.empty else []
-                                    })
+                                    # Get predicted data - need to predict it
+                                    try:
+                                        model = plot_data.get('model')
+                                        collision_energy = plot_data.get('collision_energy', 35)
+                                        instrument_type = plot_data.get('instrument_type', 'TIMSTOF')
+                                        pred_df = st_tools.predict_koina_ions(
+                                            str(psm.peptidoform), 
+                                            psm.peptidoform.precursor_charge,
+                                            model,
+                                            collision_energy,
+                                            instrument_type
+                                        )
+                                    except Exception as pred_error:
+                                        logger.warning(f"Failed to predict spectrum for export: {pred_error}")
+                                        pred_df = pd.DataFrame({'mz': [], 'intensity': [], 'annotation': []})
                                     
                                     if not exp_df.empty or not pred_df.empty:
                                         title = f"Exp vs Pred: {peptidoform_str}"
