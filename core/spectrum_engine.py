@@ -910,6 +910,167 @@ def export_plot(plot, filename_base, output_dir, formats=['png', 'svg'], driver=
     return created_files
 
 
+def create_matplotlib_mirror_plot(upper_spectrum_data, lower_spectrum_data, upper_colors=None, lower_colors=None,
+                                  title="Mirror Plot", upper_label="Upper", lower_label="Lower", 
+                                  r2_matching=None, r2_binned=None, r2_metric="both",
+                                  figsize=(12, 8), dpi=300):
+    """
+    Create a publication-ready matplotlib mirror plot for export.
+    
+    Args:
+        upper_spectrum_data: DataFrame with columns ['mz', 'intensity', 'annotation']
+        lower_spectrum_data: DataFrame with columns ['mz', 'intensity', 'annotation']
+        upper_colors: Color mapping for upper spectrum ions (defaults to EXP_COLORS)
+        lower_colors: Color mapping for lower spectrum ions (defaults to PRED_COLORS or EXP_COLORS)
+        title: Plot title
+        upper_label: Label for upper spectrum
+        lower_label: Label for lower spectrum
+        r2_matching: R² value for matching ions (if already calculated)
+        r2_binned: R² value for binned correlation (if already calculated)
+        r2_metric: Which R² to display - 'both', 'matching', or 'binned'
+        figsize: Figure size tuple (width, height)
+        dpi: Resolution for export
+        
+    Returns:
+        matplotlib.figure.Figure object
+    """
+    try:
+        import matplotlib.pyplot as plt
+        import matplotlib
+        matplotlib.use('Agg')  # Non-interactive backend
+    except ImportError:
+        logger.error("matplotlib not available for mirror plot export")
+        return None
+    
+    # Set default colors
+    if upper_colors is None:
+        upper_colors = EXP_COLORS
+    if lower_colors is None:
+        lower_colors = EXP_COLORS  # Default to EXP for both if not specified
+    
+    # Calculate R² if not provided
+    if r2_matching is None or r2_binned is None:
+        if not upper_spectrum_data.empty and not lower_spectrum_data.empty:
+            try:
+                if r2_metric in ["both", "matching"] and r2_matching is None:
+                    upper_ions = [(peak['mz'], peak['intensity'], peak['annotation']) 
+                                 for _, peak in upper_spectrum_data.iterrows() 
+                                 if 'annotation' in peak and peak['annotation'] != 'unassigned']
+                    lower_ions = [(peak['mz'], peak['intensity'], peak['annotation']) 
+                                 for _, peak in lower_spectrum_data.iterrows() 
+                                 if 'annotation' in peak and peak['annotation'] != 'unassigned']
+                    r2_matching, _, _, _ = spectrum_correlation(tuple(upper_ions), tuple(lower_ions))
+                
+                if r2_metric in ["both", "binned"] and r2_binned is None:
+                    r2_binned, _, _, _ = new_spectrum_correlation(upper_spectrum_data, lower_spectrum_data)
+            except Exception as e:
+                logger.warning(f"Could not calculate R² for mirror plot: {e}")
+    
+    # Build title with R² values
+    enhanced_title = title
+    if r2_metric == "both" and r2_matching is not None and r2_binned is not None:
+        enhanced_title = f"{title}\nR² (matching): {r2_matching:.3f} | R² (binned): {r2_binned:.3f}"
+    elif r2_metric == "matching" and r2_matching is not None:
+        enhanced_title = f"{title}\nR² (matching): {r2_matching:.3f}"
+    elif r2_metric == "binned" and r2_binned is not None:
+        enhanced_title = f"{title}\nR² (binned): {r2_binned:.3f}"
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    
+    # Normalize and plot upper spectrum (positive intensities)
+    if not upper_spectrum_data.empty:
+        upper_df = upper_spectrum_data.copy()
+        max_int = upper_df["intensity"].max()
+        if max_int > 0:
+            upper_df["intensity"] = upper_df["intensity"] / max_int
+        
+        for _, peak in upper_df.iterrows():
+            color = assign_ion_color(peak['annotation'], upper_colors)
+            ax.vlines(peak['mz'], 0, peak['intensity'], colors=color, linewidth=1.5, alpha=0.8)
+            
+            # Add annotation for annotated peaks
+            if peak['annotation'] != 'unassigned' and peak['annotation']:
+                ax.text(peak['mz'], peak['intensity'] + 0.05, peak['annotation'],
+                       fontsize=7, color=color, ha='center', va='bottom', rotation=0)
+    
+    # Normalize and plot lower spectrum (negative/mirrored intensities)
+    if not lower_spectrum_data.empty:
+        lower_df = lower_spectrum_data.copy()
+        max_int = lower_df["intensity"].max()
+        if max_int > 0:
+            lower_df["intensity"] = (lower_df["intensity"] / max_int) * -1  # Mirror
+        
+        for _, peak in lower_df.iterrows():
+            color = assign_ion_color(peak['annotation'], lower_colors)
+            ax.vlines(peak['mz'], 0, peak['intensity'], colors=color, linewidth=1.5, alpha=0.8)
+            
+            # Add annotation for annotated peaks
+            if peak['annotation'] != 'unassigned' and peak['annotation']:
+                ax.text(peak['mz'], peak['intensity'] - 0.05, peak['annotation'],
+                       fontsize=7, color=color, ha='center', va='top', rotation=0)
+    
+    # Add center line
+    if not (upper_spectrum_data.empty and lower_spectrum_data.empty):
+        all_mz = list(upper_spectrum_data["mz"]) + list(lower_spectrum_data["mz"])
+        if all_mz:
+            ax.axhline(y=0, color='black', linewidth=1, alpha=0.5)
+            ax.set_xlim(min(all_mz) - 50, max(all_mz) + 50)
+    
+    # Styling
+    ax.set_ylim(-1.2, 1.2)
+    ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Relative Intensity", fontsize=12, fontweight='bold')
+    ax.set_title(enhanced_title, fontsize=14, fontweight='bold', pad=20)
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    
+    plt.tight_layout()
+    
+    return fig
+
+
+def export_matplotlib_mirror_plot(fig, output_dir: str, filename_base: str, formats=['png', 'svg']) -> List[str]:
+    """
+    Export matplotlib mirror plot to PNG and/or SVG files.
+    
+    Args:
+        fig: Matplotlib figure object
+        output_dir: Directory to save files
+        filename_base: Base filename (without extension)
+        formats: List of formats to export ('png', 'svg')
+        
+    Returns:
+        List of created file paths
+    """
+    if fig is None:
+        return []
+    
+    try:
+        import matplotlib.pyplot as plt
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+        
+        created_files = []
+        
+        for fmt in formats:
+            filepath = output_path / f"{filename_base}.{fmt}"
+            fig.savefig(filepath, format=fmt, dpi=300 if fmt == 'png' else None, 
+                       bbox_inches="tight", transparent=False)
+            created_files.append(str(filepath))
+            logger.info(f"Saved {fmt.upper()}: {filepath}")
+        
+        # Close figure to free memory
+        plt.close(fig)
+        
+        return created_files
+    
+    except Exception as e:
+        logger.error(f"Failed to export matplotlib mirror plot: {e}")
+        return []
+
+
 def create_peptide_overview_plot(r2_data: pd.DataFrame, r2_metric: str = 'r2_matching', 
                                  top_n: Optional[int] = None) -> Tuple:
     """

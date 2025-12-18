@@ -70,11 +70,13 @@ if BOKEH_AVAILABLE:
 if TABULATE_AVAILABLE:
     from shared_imports import tabulate
 
-# Import spectrum engine functions for matplotlib-based overview plots
+# Import spectrum engine functions for matplotlib-based plots
 try:
-    from spectrum_engine import create_peptide_overview_plot, export_overview_plot
+    from spectrum_engine import (create_peptide_overview_plot, export_overview_plot,
+                                 create_matplotlib_mirror_plot, export_matplotlib_mirror_plot)
 except ImportError:
-    from core.spectrum_engine import create_peptide_overview_plot, export_overview_plot
+    from core.spectrum_engine import (create_peptide_overview_plot, export_overview_plot,
+                                      create_matplotlib_mirror_plot, export_matplotlib_mirror_plot)
 
 # Logger setup (already configured in shared_imports, just get reference)
 logger = logging.getLogger(__name__)
@@ -2789,6 +2791,136 @@ def render_automated_analysis():
                             st.warning("No plots were exported")
                     else:
                         st.warning("No R² data available for summary plots")
+                
+                # Export individual mirror plots
+                with st.spinner("Creating individual mirror plots with matplotlib..."):
+                    individual_plot_files = []
+                    
+                    for idx, item in enumerate(all_export_data):
+                        try:
+                            plot_data = item['data']
+                            mode = item['mode']
+                            peptidoform_str = plot_data.get('peptidoform', 'Unknown')
+                            r2_matching = plot_data.get('r2_matching')
+                            r2_binned = plot_data.get('r2_binned')
+                            
+                            # Create appropriate mirror plot based on mode
+                            if mode == 'exp_vs_pred':
+                                # Experimental vs Predicted
+                                psm = plot_data.get('psm')
+                                aligned_df = plot_data.get('aligned_df')
+                                
+                                if psm and aligned_df is not None:
+                                    # Extract spectrum data
+                                    psm_aligned = aligned_df[aligned_df.psm_id == psm.spectrum_id] if not aligned_df.empty else pd.DataFrame()
+                                    
+                                    # Get experimental data
+                                    exp_df = pd.DataFrame({
+                                        'mz': psm_aligned['exp_mz'].values if not psm_aligned.empty else [],
+                                        'intensity': psm_aligned['exp_intensity'].values if not psm_aligned.empty else [],
+                                        'annotation': psm_aligned['ion_name'].values if not psm_aligned.empty else []
+                                    })
+                                    
+                                    # Get predicted data
+                                    pred_df = pd.DataFrame({
+                                        'mz': psm_aligned['pred_mz'].values if not psm_aligned.empty else [],
+                                        'intensity': psm_aligned['pred_intensity'].values if not psm_aligned.empty else [],
+                                        'annotation': psm_aligned['ion_name'].values if not psm_aligned.empty else []
+                                    })
+                                    
+                                    if not exp_df.empty or not pred_df.empty:
+                                        title = f"Exp vs Pred: {peptidoform_str}"
+                                        source_idxml = plot_data.get('source_idxml', 'Unknown')
+                                        if source_idxml != 'Unknown':
+                                            title = f"{title}\n{source_idxml}"
+                                        
+                                        # Create matplotlib mirror plot
+                                        from spectrum_engine import EXP_COLORS, PRED_COLORS
+                                        fig = create_matplotlib_mirror_plot(
+                                            exp_df, pred_df,
+                                            upper_colors=EXP_COLORS,
+                                            lower_colors=PRED_COLORS,
+                                            title=title,
+                                            r2_matching=r2_matching,
+                                            r2_binned=r2_binned,
+                                            r2_metric=plot_data.get('r2_metric', 'both')
+                                        )
+                                        
+                                        if fig:
+                                            # Generate safe filename
+                                            safe_peptide = peptidoform_str.replace('/', '_').replace('[', '').replace(']', '')
+                                            filename_base = f"exp_vs_pred_{safe_peptide}_{idx}"
+                                            
+                                            # Export as PNG and SVG
+                                            files = export_matplotlib_mirror_plot(fig, str(export_path), filename_base)
+                                            individual_plot_files.extend(files)
+                            
+                            elif mode in ['exp_vs_exp', 'one_vs_all']:
+                                # Experimental vs Experimental comparisons
+                                if mode == 'exp_vs_exp':
+                                    psm1 = plot_data.get('psm1')
+                                    psm2 = plot_data.get('psm2')
+                                    source_idxml1 = plot_data.get('source_idxml1', 'Unknown')
+                                    source_idxml2 = plot_data.get('source_idxml2', 'Unknown')
+                                else:  # one_vs_all
+                                    psm1 = plot_data.get('other_psm')
+                                    psm2 = plot_data.get('ref_psm')
+                                    source_idxml1 = plot_data.get('source_idxml_other', 'Unknown')
+                                    source_idxml2 = plot_data.get('source_idxml_ref', 'Unknown')
+                                
+                                aligned_df = plot_data.get('aligned_df')
+                                
+                                if psm1 and psm2 and aligned_df is not None:
+                                    # Extract spectrum data for both PSMs
+                                    psm1_aligned = aligned_df[aligned_df.psm_id == psm1.spectrum_id] if not aligned_df.empty else pd.DataFrame()
+                                    psm2_aligned = aligned_df[aligned_df.psm_id == psm2.spectrum_id] if not aligned_df.empty else pd.DataFrame()
+                                    
+                                    # Create DataFrames
+                                    exp1_df = pd.DataFrame({
+                                        'mz': psm1_aligned['exp_mz'].values if not psm1_aligned.empty else [],
+                                        'intensity': psm1_aligned['exp_intensity'].values if not psm1_aligned.empty else [],
+                                        'annotation': psm1_aligned['ion_name'].values if not psm1_aligned.empty else []
+                                    })
+                                    
+                                    exp2_df = pd.DataFrame({
+                                        'mz': psm2_aligned['exp_mz'].values if not psm2_aligned.empty else [],
+                                        'intensity': psm2_aligned['exp_intensity'].values if not psm2_aligned.empty else [],
+                                        'annotation': psm2_aligned['ion_name'].values if not psm2_aligned.empty else []
+                                    })
+                                    
+                                    if not exp1_df.empty or not exp2_df.empty:
+                                        mode_label = "One-vs-All" if mode == 'one_vs_all' else "All-vs-All"
+                                        title = f"{mode_label}: {peptidoform_str}\n{source_idxml1} vs {source_idxml2}"
+                                        
+                                        # Create matplotlib mirror plot
+                                        from spectrum_engine import EXP_COLORS
+                                        fig = create_matplotlib_mirror_plot(
+                                            exp1_df, exp2_df,
+                                            upper_colors=EXP_COLORS,
+                                            lower_colors=EXP_COLORS,
+                                            title=title,
+                                            r2_matching=r2_matching,
+                                            r2_binned=r2_binned,
+                                            r2_metric=plot_data.get('r2_metric', 'both')
+                                        )
+                                        
+                                        if fig:
+                                            # Generate safe filename
+                                            safe_peptide = peptidoform_str.replace('/', '_').replace('[', '').replace(']', '')
+                                            filename_base = f"{mode}_{safe_peptide}_{idx}"
+                                            
+                                            # Export as PNG and SVG
+                                            files = export_matplotlib_mirror_plot(fig, str(export_path), filename_base)
+                                            individual_plot_files.extend(files)
+                        
+                        except Exception as e:
+                            logger.error(f"Failed to create mirror plot {idx}: {e}", exc_info=True)
+                    
+                    if individual_plot_files:
+                        st.success(f"✅ Successfully exported {len(individual_plot_files)} individual mirror plot file(s) to `{export_path.absolute()}`")
+                        st.info(f"📊 Created {len(individual_plot_files) // 2} mirror plots (PNG + SVG for each)")
+                    else:
+                        st.warning("No individual mirror plots were created")
         
         # Summary
         st.subheader("📋 Analysis Summary")
