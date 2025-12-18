@@ -2921,6 +2921,145 @@ def render_automated_analysis():
                         st.info(f"📊 Created {len(individual_plot_files) // 2} mirror plots (PNG + SVG for each)")
                     else:
                         st.warning("No individual mirror plots were created")
+                
+                # Export CSV tables
+                with st.spinner("Exporting CSV tables..."):
+                    csv_files = []
+                    
+                    # 1. Export R² correlation matrix
+                    try:
+                        # Build spectrum identifier for each comparison
+                        spectrum_identifiers = {}
+                        r2_matrix_data = []
+                        
+                        for idx, item in enumerate(all_export_data):
+                            plot_data = item['data']
+                            mode = item['mode']
+                            r2_matching = plot_data.get('r2_matching')
+                            r2_binned = plot_data.get('r2_binned')
+                            peptidoform_str = plot_data.get('peptidoform', 'Unknown')
+                            
+                            # Create spectrum identifiers based on mode
+                            if mode == 'exp_vs_pred':
+                                psm = plot_data.get('psm')
+                                source_idxml = plot_data.get('source_idxml', 'Unknown')
+                                if psm:
+                                    spec1_id = f"{source_idxml}|{peptidoform_str}|{psm.spectrum_id}"
+                                    spec2_id = f"Predicted|{peptidoform_str}|AI"
+                                    r2_matrix_data.append({
+                                        'Spectrum_1': spec1_id,
+                                        'Spectrum_2': spec2_id,
+                                        'Peptidoform': peptidoform_str,
+                                        'R2_Matching': r2_matching if r2_matching is not None else 'N/A',
+                                        'R2_Binned': r2_binned if r2_binned is not None else 'N/A',
+                                        'Comparison_Type': 'Exp_vs_Pred'
+                                    })
+                            
+                            elif mode == 'exp_vs_exp':
+                                psm1 = plot_data.get('psm1')
+                                psm2 = plot_data.get('psm2')
+                                source_idxml1 = plot_data.get('source_idxml1', 'Unknown')
+                                source_idxml2 = plot_data.get('source_idxml2', 'Unknown')
+                                if psm1 and psm2:
+                                    spec1_id = f"{source_idxml1}|{peptidoform_str}|{psm1.spectrum_id}"
+                                    spec2_id = f"{source_idxml2}|{peptidoform_str}|{psm2.spectrum_id}"
+                                    r2_matrix_data.append({
+                                        'Spectrum_1': spec1_id,
+                                        'Spectrum_2': spec2_id,
+                                        'Peptidoform': peptidoform_str,
+                                        'R2_Matching': r2_matching if r2_matching is not None else 'N/A',
+                                        'R2_Binned': r2_binned if r2_binned is not None else 'N/A',
+                                        'Comparison_Type': 'Replicate_AllvsAll'
+                                    })
+                            
+                            elif mode == 'one_vs_all':
+                                psm1 = plot_data.get('other_psm')
+                                psm2 = plot_data.get('ref_psm')
+                                source_idxml1 = plot_data.get('source_idxml_other', 'Unknown')
+                                source_idxml2 = plot_data.get('source_idxml_ref', 'Unknown')
+                                if psm1 and psm2:
+                                    spec1_id = f"{source_idxml1}|{peptidoform_str}|{psm1.spectrum_id}"
+                                    spec2_id = f"{source_idxml2}|{peptidoform_str}|{psm2.spectrum_id}"
+                                    r2_matrix_data.append({
+                                        'Spectrum_1': spec1_id,
+                                        'Spectrum_2': spec2_id,
+                                        'Peptidoform': peptidoform_str,
+                                        'R2_Matching': r2_matching if r2_matching is not None else 'N/A',
+                                        'R2_Binned': r2_binned if r2_binned is not None else 'N/A',
+                                        'Comparison_Type': 'OnevsAll'
+                                    })
+                        
+                        if r2_matrix_data:
+                            r2_df = pd.DataFrame(r2_matrix_data)
+                            r2_csv_path = export_path / "r2_correlation_matrix.csv"
+                            r2_df.to_csv(r2_csv_path, index=False)
+                            csv_files.append(str(r2_csv_path))
+                            logger.info(f"Exported R² correlation matrix: {r2_csv_path}")
+                    
+                    except Exception as e:
+                        logger.error(f"Failed to export R² correlation matrix: {e}", exc_info=True)
+                        st.warning(f"⚠️ Could not export R² correlation matrix: {e}")
+                    
+                    # 2. Export spectrum selection table
+                    try:
+                        # Get the selected spectra data
+                        selected_peptidoforms_data = st.session_state.get('selected_peptidoforms_data', [])
+                        
+                        if selected_peptidoforms_data:
+                            # Build selection table
+                            selection_data = []
+                            for pep_data in selected_peptidoforms_data:
+                                peptidoform = pep_data.get('peptidoform', 'Unknown')
+                                display_label = pep_data.get('display_label', peptidoform)
+                                num_spectra = pep_data.get('num_spectra', 0)
+                                source_files = pep_data.get('source_files', [])
+                                
+                                selection_data.append({
+                                    'Peptidoform': peptidoform,
+                                    'Display_Label': display_label,
+                                    'Num_Spectra': num_spectra,
+                                    'Source_Files': '; '.join(source_files) if source_files else 'N/A'
+                                })
+                            
+                            selection_df = pd.DataFrame(selection_data)
+                            selection_csv_path = export_path / "selected_spectra.csv"
+                            selection_df.to_csv(selection_csv_path, index=False)
+                            csv_files.append(str(selection_csv_path))
+                            logger.info(f"Exported spectrum selection table: {selection_csv_path}")
+                        
+                        # Also export detailed PSM information if available
+                        if final_psms:
+                            psm_data = []
+                            for psm in final_psms:
+                                psm_key = f"{psm.spectrum_id}_{psm.run}"
+                                source_idxml = psm_to_idxml_map.get(psm_key, "Unknown")
+                                
+                                psm_data.append({
+                                    'Spectrum_ID': psm.spectrum_id,
+                                    'Run': psm.run,
+                                    'Peptidoform': str(psm.peptidoform),
+                                    'Sequence': psm.peptidoform.sequence,
+                                    'Charge': psm.charge,
+                                    'RT': psm.rt,
+                                    'Source_mzML': source_idxml,
+                                    'Precursor_MZ': getattr(psm, 'precursor_mz', 'N/A')
+                                })
+                            
+                            psm_df = pd.DataFrame(psm_data)
+                            psm_csv_path = export_path / "selected_psms_detailed.csv"
+                            psm_df.to_csv(psm_csv_path, index=False)
+                            csv_files.append(str(psm_csv_path))
+                            logger.info(f"Exported detailed PSM information: {psm_csv_path}")
+                    
+                    except Exception as e:
+                        logger.error(f"Failed to export spectrum selection tables: {e}", exc_info=True)
+                        st.warning(f"⚠️ Could not export spectrum selection tables: {e}")
+                    
+                    if csv_files:
+                        st.success(f"✅ Successfully exported {len(csv_files)} CSV table(s)")
+                        with st.expander("📄 View exported CSV files"):
+                            for filepath in csv_files:
+                                st.code(filepath)
         
         # Summary
         st.subheader("📋 Analysis Summary")
