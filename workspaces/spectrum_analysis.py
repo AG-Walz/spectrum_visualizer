@@ -2871,22 +2871,13 @@ def render_automated_analysis():
                                 aligned_df = plot_data.get('aligned_df')
                                 
                                 if psm1 and psm2 and aligned_df is not None:
-                                    # Extract spectrum data for both PSMs
+                                    # Extract spectrum data for both PSMs using the proper extraction function
                                     psm1_aligned = aligned_df[aligned_df.psm_id == psm1.spectrum_id] if not aligned_df.empty else pd.DataFrame()
                                     psm2_aligned = aligned_df[aligned_df.psm_id == psm2.spectrum_id] if not aligned_df.empty else pd.DataFrame()
                                     
-                                    # Create DataFrames
-                                    exp1_df = pd.DataFrame({
-                                        'mz': psm1_aligned['exp_mz'].values if not psm1_aligned.empty else [],
-                                        'intensity': psm1_aligned['exp_intensity'].values if not psm1_aligned.empty else [],
-                                        'annotation': psm1_aligned['ion_name'].values if not psm1_aligned.empty else []
-                                    })
-                                    
-                                    exp2_df = pd.DataFrame({
-                                        'mz': psm2_aligned['exp_mz'].values if not psm2_aligned.empty else [],
-                                        'intensity': psm2_aligned['exp_intensity'].values if not psm2_aligned.empty else [],
-                                        'annotation': psm2_aligned['ion_name'].values if not psm2_aligned.empty else []
-                                    })
+                                    # Use extract_annotations to properly format the spectrum data
+                                    exp1_df = st_tools.extract_annotations(psm1.spectrum, psm1_aligned)
+                                    exp2_df = st_tools.extract_annotations(psm2.spectrum, psm2_aligned)
                                     
                                     if not exp1_df.empty or not exp2_df.empty:
                                         mode_label = "One-vs-All" if mode == 'one_vs_all' else "All-vs-All"
@@ -3039,10 +3030,10 @@ def render_automated_analysis():
                                     'Run': psm.run,
                                     'Peptidoform': str(psm.peptidoform),
                                     'Sequence': psm.peptidoform.sequence,
-                                    'Charge': psm.charge,
+                                    'Charge': psm.peptidoform.precursor_charge,
                                     'RT': psm.rt,
                                     'Source_mzML': source_idxml,
-                                    'Precursor_MZ': getattr(psm, 'precursor_mz', 'N/A')
+                                    'Precursor_MZ': getattr(psm.peptidoform, 'precursor_mz', 'N/A')
                                 })
                             
                             psm_df = pd.DataFrame(psm_data)
