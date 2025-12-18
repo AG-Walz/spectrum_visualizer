@@ -2167,6 +2167,14 @@ def render_simplified_analysis_settings():
         # Store FILTERED PSM lists for later use (only PSMs matching selected spectra and peptides)
         st.session_state['all_psm_lists'] = all_psm_lists_filtered
         
+        # Build PSM to idXML mapping for export functionality
+        psm_to_idxml_map = {}
+        for psm_list, idxml_name in all_psm_lists_filtered:
+            for psm in psm_list:
+                psm_key = f"{psm.spectrum_id}_{psm.run}"
+                psm_to_idxml_map[psm_key] = idxml_name
+        st.session_state['psm_to_idxml_map'] = psm_to_idxml_map
+        
         # Start analysis button
         if st.button("🚀 Start Analysis", type="primary", use_container_width=True):
             # Store settings directly (avoid intermediate dict creation)
@@ -2922,6 +2930,34 @@ def render_automated_analysis():
                 with st.spinner("Exporting CSV tables..."):
                     csv_files = []
                     
+                    # First pass: collect all unique idXML filenames from plot data
+                    all_idxml_files = set()
+                    for item in all_export_data:
+                        plot_data = item['data']
+                        mode = item['mode']
+                        if mode == 'exp_vs_pred':
+                            source = plot_data.get('source_idxml', 'Unknown')
+                            if source != 'Unknown':
+                                all_idxml_files.add(source)
+                        elif mode == 'exp_vs_exp':
+                            source1 = plot_data.get('source_idxml1', 'Unknown')
+                            source2 = plot_data.get('source_idxml2', 'Unknown')
+                            if source1 != 'Unknown':
+                                all_idxml_files.add(source1)
+                            if source2 != 'Unknown':
+                                all_idxml_files.add(source2)
+                        elif mode == 'one_vs_all':
+                            source1 = plot_data.get('source_idxml_other', 'Unknown')
+                            source2 = plot_data.get('source_idxml_ref', 'Unknown')
+                            if source1 != 'Unknown':
+                                all_idxml_files.add(source1)
+                            if source2 != 'Unknown':
+                                all_idxml_files.add(source2)
+                    
+                    # Create shortened filename mapping
+                    from core.spectrum_engine import shorten_filenames
+                    short_name_map = shorten_filenames(list(all_idxml_files))
+                    
                     # 1. Export R² correlation matrix
                     try:
                         # Build spectrum identifier for each comparison
@@ -2935,12 +2971,13 @@ def render_automated_analysis():
                             r2_binned = plot_data.get('r2_binned')
                             peptidoform_str = plot_data.get('peptidoform', 'Unknown')
                             
-                            # Create spectrum identifiers based on mode
+                            # Create spectrum identifiers based on mode (using shortened names)
                             if mode == 'exp_vs_pred':
                                 psm = plot_data.get('psm')
                                 source_idxml = plot_data.get('source_idxml', 'Unknown')
+                                short_name = short_name_map.get(source_idxml, source_idxml)
                                 if psm:
-                                    spec1_id = f"{source_idxml}|{peptidoform_str}|{psm.spectrum_id}"
+                                    spec1_id = f"{short_name}|{peptidoform_str}|{psm.spectrum_id}"
                                     spec2_id = f"Predicted|{peptidoform_str}|AI"
                                     r2_matrix_data.append({
                                         'Spectrum_1': spec1_id,
@@ -2956,9 +2993,11 @@ def render_automated_analysis():
                                 psm2 = plot_data.get('psm2')
                                 source_idxml1 = plot_data.get('source_idxml1', 'Unknown')
                                 source_idxml2 = plot_data.get('source_idxml2', 'Unknown')
+                                short_name1 = short_name_map.get(source_idxml1, source_idxml1)
+                                short_name2 = short_name_map.get(source_idxml2, source_idxml2)
                                 if psm1 and psm2:
-                                    spec1_id = f"{source_idxml1}|{peptidoform_str}|{psm1.spectrum_id}"
-                                    spec2_id = f"{source_idxml2}|{peptidoform_str}|{psm2.spectrum_id}"
+                                    spec1_id = f"{short_name1}|{peptidoform_str}|{psm1.spectrum_id}"
+                                    spec2_id = f"{short_name2}|{peptidoform_str}|{psm2.spectrum_id}"
                                     r2_matrix_data.append({
                                         'Spectrum_1': spec1_id,
                                         'Spectrum_2': spec2_id,
@@ -2973,9 +3012,11 @@ def render_automated_analysis():
                                 psm2 = plot_data.get('ref_psm')
                                 source_idxml1 = plot_data.get('source_idxml_other', 'Unknown')
                                 source_idxml2 = plot_data.get('source_idxml_ref', 'Unknown')
+                                short_name1 = short_name_map.get(source_idxml1, source_idxml1)
+                                short_name2 = short_name_map.get(source_idxml2, source_idxml2)
                                 if psm1 and psm2:
-                                    spec1_id = f"{source_idxml1}|{peptidoform_str}|{psm1.spectrum_id}"
-                                    spec2_id = f"{source_idxml2}|{peptidoform_str}|{psm2.spectrum_id}"
+                                    spec1_id = f"{short_name1}|{peptidoform_str}|{psm1.spectrum_id}"
+                                    spec2_id = f"{short_name2}|{peptidoform_str}|{psm2.spectrum_id}"
                                     r2_matrix_data.append({
                                         'Spectrum_1': spec1_id,
                                         'Spectrum_2': spec2_id,
@@ -3025,10 +3066,22 @@ def render_automated_analysis():
                         
                         # Also export detailed PSM information if available
                         if final_psms:
+                            # Collect unique source files from psm_to_idxml_map for shortening
+                            psm_source_files = set()
+                            for psm in final_psms:
+                                psm_key = f"{psm.spectrum_id}_{psm.run}"
+                                source_idxml = psm_to_idxml_map.get(psm_key, "Unknown")
+                                if source_idxml != "Unknown":
+                                    psm_source_files.add(source_idxml)
+                            
+                            # Create shortened names for PSM sources
+                            psm_short_name_map = shorten_filenames(list(psm_source_files))
+                            
                             psm_data = []
                             for psm in final_psms:
                                 psm_key = f"{psm.spectrum_id}_{psm.run}"
                                 source_idxml = psm_to_idxml_map.get(psm_key, "Unknown")
+                                short_source = psm_short_name_map.get(source_idxml, source_idxml)
                                 
                                 psm_data.append({
                                     'Spectrum_ID': psm.spectrum_id,
@@ -3037,7 +3090,8 @@ def render_automated_analysis():
                                     'Sequence': psm.peptidoform.sequence,
                                     'Charge': psm.peptidoform.precursor_charge,
                                     'RT': psm.rt,
-                                    'Source_mzML': source_idxml,
+                                    'Source_File': short_source,
+                                    'Source_File_Full': source_idxml,
                                     'Precursor_MZ': getattr(psm.peptidoform, 'precursor_mz', 'N/A')
                                 })
                             

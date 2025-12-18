@@ -205,6 +205,132 @@ def attach_spectrum_to_psm(psm: PSM, experiments: dict, lookups: dict) -> PSM:
     return psm
 
 
+def shorten_filenames(filenames: List[str]) -> Dict[str, str]:
+    """Create shortened, unique versions of filenames by removing common/repeated parts.
+    
+    This function identifies common prefixes, suffixes, and repeated substrings across
+    all filenames and removes them to create concise, unique identifiers that are easier
+    to read in tables and plots.
+    
+    Algorithm:
+    1. Remove common prefix across all filenames
+    2. Remove common suffix across all filenames
+    3. Remove file extensions
+    4. If all resulting names are still unique, return them
+    5. Otherwise, add minimal distinguishing information back
+    
+    Args:
+        filenames: List of full filenames (e.g., mzML filenames or idXML filenames)
+        
+    Returns:
+        Dictionary mapping original filename to shortened version
+        
+    Example:
+        Input: [
+            "190701_TG_Haen_HNSCC1_08_Tumor_W6-32_20%_DDA#1_400-650mz_msms23.mzML",
+            "190701_TG_Haen_HNSCC1_08_Tumor_W6-32_20%_DDA#2_400-650mz_msms24.mzML",
+            "190701_TG_Haen_HNSCC1_09_Tumor_W6-32_20%_DDA#1_400-650mz_msms39.mzML"
+        ]
+        Output: {
+            "190701_TG_Haen_HNSCC1_08_Tumor_W6-32_20%_DDA#1_400-650mz_msms23.mzML": "08_DDA#1_msms23",
+            "190701_TG_Haen_HNSCC1_08_Tumor_W6-32_20%_DDA#2_400-650mz_msms24.mzML": "08_DDA#2_msms24",
+            "190701_TG_Haen_HNSCC1_09_Tumor_W6-32_20%_DDA#1_400-650mz_msms39.mzML": "09_DDA#1_msms39"
+        }
+    """
+    if not filenames or len(filenames) == 0:
+        return {}
+    
+    if len(filenames) == 1:
+        # Single file - just remove extension
+        fname = filenames[0]
+        stem = Path(fname).stem if '.' in fname else fname
+        return {fname: stem}
+    
+    # Step 1: Remove file extensions
+    stems = [Path(fname).stem if '.' in fname else fname for fname in filenames]
+    
+    # Step 2: Find common prefix
+    def find_common_prefix(strings):
+        if not strings:
+            return ""
+        prefix = strings[0]
+        for s in strings[1:]:
+            while not s.startswith(prefix):
+                prefix = prefix[:-1]
+                if not prefix:
+                    return ""
+        return prefix
+    
+    # Step 3: Find common suffix
+    def find_common_suffix(strings):
+        if not strings:
+            return ""
+        reversed_strings = [s[::-1] for s in strings]
+        common_prefix = find_common_prefix(reversed_strings)
+        return common_prefix[::-1]
+    
+    # Find and remove common prefix
+    common_prefix = find_common_prefix(stems)
+    if len(common_prefix) > 5:  # Only remove if significant (more than 5 chars)
+        stems = [s[len(common_prefix):] for s in stems]
+    
+    # Find and remove common suffix
+    common_suffix = find_common_suffix(stems)
+    if len(common_suffix) > 5:  # Only remove if significant
+        stems = [s[:-len(common_suffix)] for s in stems]
+    
+    # Step 4: Look for repeated patterns (e.g., "_Tumor_", "_W6-32_", etc.)
+    # Find substrings that appear in all filenames
+    if len(stems) > 1:
+        # Get all substrings of length 4+ that appear in all stems
+        min_substring_len = 4
+        sample_stem = stems[0]
+        common_substrings = []
+        
+        for length in range(min_substring_len, len(sample_stem) + 1):
+            for start in range(len(sample_stem) - length + 1):
+                substring = sample_stem[start:start + length]
+                # Check if this substring appears in all stems
+                if all(substring in s for s in stems):
+                    # Check if this is not already part of a longer common substring
+                    is_maximal = True
+                    for existing in common_substrings:
+                        if substring in existing:
+                            is_maximal = False
+                            break
+                    if is_maximal:
+                        # Remove any shorter substrings that are part of this one
+                        common_substrings = [s for s in common_substrings if s not in substring]
+                        common_substrings.append(substring)
+        
+        # Remove common substrings (keep delimiters)
+        for substring in common_substrings:
+            if len(substring) >= 6:  # Only remove substantial common parts
+                stems = [s.replace(substring, '_', 1) for s in stems]
+    
+    # Step 5: Clean up multiple consecutive underscores and leading/trailing underscores
+    stems = [s.strip('_').replace('__', '_').replace('___', '_') for s in stems]
+    
+    # Step 6: Check uniqueness
+    if len(set(stems)) != len(stems):
+        # Not unique - use original stems
+        stems = [Path(fname).stem if '.' in fname else fname for fname in filenames]
+    
+    # Step 7: Limit length if still too long (keep first and last parts)
+    max_length = 50
+    final_stems = []
+    for stem in stems:
+        if len(stem) > max_length:
+            # Keep first 20 and last 25 chars with "..." in middle
+            shortened = stem[:20] + "..." + stem[-25:]
+            final_stems.append(shortened)
+        else:
+            final_stems.append(stem)
+    
+    # Create mapping
+    return {fname: short for fname, short in zip(filenames, final_stems)}
+
+
 # Annotation functions    
 def generate_theoretical_spectrum(pf: Peptidoform, max_charge: int = 2, included_ions: List[str] = None) -> oms.MSSpectrum:
     """
