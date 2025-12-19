@@ -480,6 +480,11 @@ def load_only_needed_spectra(idxml_paths: List[str],
     for idxml_path in idxml_paths:
         idxml_name = extract_filename(idxml_path)
         
+        # Skip if this idXML had no matching spectra during filtering
+        if idxml_name not in idxml_to_mzml_spectra:
+            messages.append(f"⏭️ Skipping {idxml_name} (no matching spectra)")
+            continue
+        
         mzml_spectra = idxml_to_mzml_spectra[idxml_name]
         messages.append(f"📊 Loading spectra for {idxml_name}")
         
