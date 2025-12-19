@@ -264,12 +264,12 @@ def render_unified_file_browser(source: str = "server", server_info: Optional[Di
     
     col_a, col_b = st.columns([4, 1])
     with col_a:
-        # Get current server name from session state
-        current_server_name = st.session_state.get(f'{session_key_prefix}_selected_server_name', 'default')
+        # Construct unique server name using source to avoid tab conflicts
+        unique_server_name = f"{source}_{session_key_prefix}"
         current_folder = render_server_directory_selector(
             default_path=default_path, 
             session_key=session_key_prefix,
-            server_name=current_server_name
+            server_name=unique_server_name
         )
     with col_b:
         # Add spacing to align with directory browser (accounts for back button row)
