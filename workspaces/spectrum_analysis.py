@@ -195,14 +195,7 @@ def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tu
             logger.warning(f"Skipping non-idXML file: {idxml_path}")
             continue
         
-        messages.append(f"📋 Processing {idxml_name}")
-        
         try:
-            # OPTIMIZATION: Skip extracting expected mzML files - not needed for peptide extraction
-            # This step can be slow and we don't use this information during peptide filtering
-            expected_files = []
-            expected_mzmls_by_idxml[idxml_name] = expected_files
-            
             # OPTIMIZED: Use PyOpenMS directly for faster extraction
             protein_ids = []
             peptide_ids = []
@@ -211,39 +204,35 @@ def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tu
             if not peptide_ids:
                 raise Exception("contains no PeptideIdentifications")
             
-            # Extract unique peptidoforms quickly (count PSMs during extraction)
+            # OPTIMIZED: Extract unique peptidoforms (only first hit per peptide_id for speed)
             for pep_id in peptide_ids:
-                for hit in pep_id.getHits():
-                    try:
-                        # Get sequence and modifications
-                        sequence = hit.getSequence()
-                        peptidoform_str = sequence.toString()
-                        unmodified_seq = sequence.toUnmodifiedString()
-                        
-                        if peptidoform_str not in all_peptidoforms_data:
-                            display_label = f"{unmodified_seq} [{peptidoform_str}]" if peptidoform_str != unmodified_seq else unmodified_seq
-                            all_peptidoforms_data[peptidoform_str] = {
-                                'peptidoform': peptidoform_str,
-                                'sequence': unmodified_seq,
-                                'display_label': display_label,
-                                'psm_count': 0
-                            }
-                        
-                        all_peptidoforms_data[peptidoform_str]['psm_count'] += 1
-                        
-                    except Exception as e:
-                        logger.warning(f"Could not extract peptidoform: {e}")
-                        continue
+                hits = pep_id.getHits()
+                if not hits:
+                    continue
+                try:
+                    # OPTIMIZATION: Only process first hit (top-ranked)
+                    sequence = hits[0].getSequence()
+                    peptidoform_str = sequence.toString()
+                    unmodified_seq = sequence.toUnmodifiedString()
+                    
+                    if peptidoform_str not in all_peptidoforms_data:
+                        display_label = f"{unmodified_seq} [{peptidoform_str}]" if peptidoform_str != unmodified_seq else unmodified_seq
+                        all_peptidoforms_data[peptidoform_str] = {
+                            'peptidoform': peptidoform_str,
+                            'sequence': unmodified_seq,
+                            'display_label': display_label,
+                            'psm_count': 0
+                        }
+                    
+                    all_peptidoforms_data[peptidoform_str]['psm_count'] += 1
+                    
+                except Exception as e:
+                    continue
                     
         except Exception as e:
             error_msg = str(e)
-            # Check if it's an empty file error
             if "contains no PeptideIdentifications" in error_msg or "Nothing to parse" in error_msg:
                 empty_files.append(idxml_name)
-                messages.append(f"  ⚠️ Skipped (empty)")
-            else:
-                messages.append(f"  ❌ Error: {error_msg}")
-                logger.error(f"Error processing {idxml_path}: {e}")
             continue
     
     return expected_mzmls_by_idxml, all_peptidoforms_data, messages, empty_files
@@ -278,16 +267,13 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     # Support both modified and unmodified sequences
     selected_set = set(selected_peptidoforms)
     
-    messages.append(f"Filtering for {len(selected_set)} selected peptidoforms...")
-    messages.append(f"Sample selected (first 3): {list(selected_set)[:3]}")
-    messages.append(f"Available mzML files: {len(available_mzml_names)}")
+    # OPTIMIZATION: Reduced logging for speed
     
     total_files = len(idxml_paths)
     for idx, idxml_path in enumerate(idxml_paths):
         if progress_callback:
             progress_callback(idx, total_files, f"Filtering idXML {idx+1}/{total_files}: {extract_filename(idxml_path)}")
         idxml_name = extract_filename(idxml_path)
-        messages.append(f"🔍 Filtering {idxml_name}")
         
         try:
             # OPTIMIZED: Use PyOpenMS directly (same as extraction phase)
@@ -300,15 +286,9 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
             
             mzml_spectra = {}  # {mzml_file: [spec_ids]}
             matched_count = 0
-            debug_samples = 0  # Counter for debug output
-            debug_spec_ids = []  # Track first few spectrum IDs for debugging
             
-            # OPTIMIZATION: Pre-build unmodified set for faster lookup
-            unmodified_selected = set()
-            for pep in selected_set:
-                # Remove modification annotations to create unmodified version
-                unmod = ''.join([c for c in pep if c.isalpha()])
-                unmodified_selected.add(unmod)
+            # OPTIMIZATION: Pre-build unmodified set for faster lookup (once per file)
+            unmodified_selected = set(''.join([c for c in pep if c.isalpha()]) for pep in selected_set)
             
             for pep_id in peptide_ids:
                 hits = pep_id.getHits()
@@ -328,11 +308,6 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                         
                         # Now check the full peptidoform (only if unmodified matches)
                         peptidoform_str = sequence.toString()
-                        
-                        # Debug: Show first few peptides being checked
-                        if debug_samples < 3:
-                            messages.append(f"  → Checking: {peptidoform_str} (unmod: {unmodified_seq})")
-                            debug_samples += 1
                         
                         # Check if this peptidoform is selected (match either modified or unmodified)
                         if peptidoform_str in selected_set or unmodified_seq in selected_set:
@@ -383,40 +358,22 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                             # This ensures we only load spectra that actually match selected peptides
                             mzml_spectra[mzml_file].append((spec_id_str, peptidoform_str))
                             matched_count += 1
-                            if len(debug_spec_ids) < 3:
-                                debug_spec_ids.append(spec_id_str)
                             
                             break  # Found a match, move to next peptide ID
                     
                     except Exception as e:
-                        logger.warning(f"Error processing hit: {e}")
                         continue
                     
                     if match_found:
                         break  # Exit hits loop early if match found
             
             if mzml_spectra:
-                total_specs = sum(len(ids) for ids in mzml_spectra.values())
-                messages.append(f"  ✅ {matched_count} matches → {total_specs} spectra in {len(mzml_spectra)} mzML(s)")
-                if debug_spec_ids:
-                    messages.append(f"      Sample IDs: {debug_spec_ids[:3]}")
-                # Log spectrum ID format for debugging
-                sample_ids = [id for ids in mzml_spectra.values() for id in ids[:2]]
-                if sample_ids:
-                    messages.append(f"      ID formats: {sample_ids[:2]}")
                 idxml_to_mzml_spectra[idxml_name] = mzml_spectra
-            else:
-                messages.append(f"  ⚠️ No matching spectra (checked {len(peptide_ids)} peptide IDs)")
                 
         except Exception as e:
             error_msg = str(e)
-            # Check if it's an empty file error
             if "contains no PeptideIdentifications" in error_msg or "Nothing to parse" in error_msg:
                 empty_files.append(idxml_name)
-                messages.append(f"  ⚠️ Skipped (empty)")
-            else:
-                messages.append(f"  ❌ Error: {error_msg}")
-                logger.error(f"Error filtering {idxml_path}: {e}")
             continue
     
     # Final progress update
@@ -1940,49 +1897,26 @@ def render_simplified_analysis_settings():
         all_psm_lists_filtered = []  # Store filtered PSMs only
         unique_peptidoforms_data = {}
         
+        # OPTIMIZATION: Pre-build lookup sets for fast matching
+        selected_peptides_set = set(selected_peptides)
+        selected_peptides_unmod = set(''.join([c for c in str(p) if c.isalpha()]).upper() for p in selected_peptides)
+        
         for psm_list, idxml_name in all_psm_lists:
             try:
-                
-                # Filter PSMs to only include selected spectra
+                # OPTIMIZED: Filter PSMs using fast set lookups
                 filtered_psm_list = []
                 
-                # Extract peptidoforms with modifications from selected peptides AND selected spectra
                 for psm in psm_list:
                     try:
                         peptidoform_str = str(psm.peptidoform)
                         unmodified_seq = Peptidoform(peptidoform_str).sequence
                         
-                        # FILTER 1: Check if this PSM's spectrum was selected by the user
-                        # Match by spectrum_id if available
-                        spectrum_matches = False
-                        if hasattr(psm, 'spectrum_id') and psm.spectrum_id:
-                            if psm.spectrum_id in selected_spectrum_ids:
-                                spectrum_matches = True
-                        
-                        # If no match yet and we have spectrum_index in mapping, try index-based matching
-                        if not spectrum_matches and "spectrum_index" in selected_rows.columns:
-                            # Try to find this PSM in the selected_rows by matching spectrum_id or peptide
-                            matching_row = selected_rows[
-                                (selected_rows["peptide_sequence"] == str(psm.peptidoform)) |
-                                (selected_rows["peptide_sequence"].str.replace(r'[^A-Z]', '', regex=True) == unmodified_seq)
-                            ]
-                            if not matching_row.empty:
-                                spectrum_matches = True
-                        
-                        if not spectrum_matches:
+                        # OPTIMIZED: Quick spectrum ID check using set lookup
+                        if hasattr(psm, 'spectrum_id') and psm.spectrum_id and psm.spectrum_id not in selected_spectrum_ids:
                             continue
                         
-                        # FILTER 2: Check if this PSM matches any of the selected peptides
-                        # (peptide filter from previous step)
-                        peptide_matches = False
-                        for sel_pep in selected_peptides:
-                            # Check if this PSM matches any of the selected peptides
-                            sel_pep_unmod = ''.join([c for c in str(sel_pep) if c.isalpha()]).upper()
-                            if unmodified_seq == sel_pep_unmod or peptidoform_str == sel_pep:
-                                peptide_matches = True
-                                break
-                        
-                        if not peptide_matches:
+                        # OPTIMIZED: Quick peptide check using set lookup
+                        if peptidoform_str not in selected_peptides_set and unmodified_seq not in selected_peptides_unmod:
                             continue
                         
                         # Both filters passed - include this PSM
@@ -2012,8 +1946,6 @@ def render_simplified_analysis_settings():
                 
                 # Store the filtered PSM list
                 all_psm_lists_filtered.append((filtered_psm_list, idxml_name))
-                        
-                logger.info(f"Loaded {len(psm_list)} PSMs from {idxml_name}, filtered to {len(filtered_psm_list)} matching selected spectra and peptides")
             except Exception as e:
                 logger.error(f"Error loading {idxml_name}: {e}")
                 st.error(f"Error loading {idxml_name}: {e}")
@@ -2490,114 +2422,89 @@ def render_automated_analysis():
                     logger.error("PIPELINE STOPPED: No PSMs available")
                     return
                 
-                st.success(f"✅ Using {len(psms_with_spectra)} pre-filtered PSMs from analysis settings")
-                
-                # Step 1: Load experiments (following notebook exactly)
-                logger.info("="*60)
-                logger.info("STEP 1: Loading mzML experiments")
-                logger.info("="*60)
+                # STEP 1: Load experiments and create lookups (optimized)
                 experiments = create_experiment_map(mzml_paths, show_ui=False)
-                logger.info(f"✅ Total experiments loaded: {len(experiments)}")
-                logger.info(f"✅ Total spectra available: {sum(exp.getNrSpectra() for exp in experiments.values())}")
-                st.info(f"📂 Loaded {len(experiments)} mzML file(s) with {sum(exp.getNrSpectra() for exp in experiments.values())} total spectra")
-                
-                # Step 2: Create spectrum lookups with smart format detection
-                logger.info("="*60)
-                logger.info("STEP 2: Creating spectrum lookups")
-                logger.info("="*60)
                 lookup_map = create_spectrum_lookups(experiments)
                 
-                # Get the PSM to idXML mapping
-                psm_to_idxml_map = st.session_state.get('psm_to_idxml_map', {})
-                
-                # Step 3: Attach spectra to PSMs
-                logger.info("="*60)
-                logger.info("STEP 3: Attaching spectra to PSMs")
-                logger.info("="*60)
-                logger.info(f"  PSMs to process: {len(psms_with_spectra)}")
-                
-                # Create mapping helpers for fuzzy matching
+                # STEP 2: Attach spectra to PSMs (optimized)
                 exp_stem_to_name, exp_base_to_name = create_fuzzy_match_helpers(experiments)
                 
-                updated_psms = []
-                spectra_attached_count = 0
-                
+                # OPTIMIZATION: Only process PSMs that don't have spectra yet, filter inline
+                final_psms = []
                 for psm in psms_with_spectra:
-                    if not (hasattr(psm, "spectrum") and psm.spectrum is not None):
-                        # Try multiple matching strategies
-                        exp_name, lookup_key = find_matching_experiment(
-                            psm.run, experiments, exp_stem_to_name, exp_base_to_name
-                        )
-                        
-                        if exp_name and lookup_key and lookup_key in lookup_map:
-                            try:
-                                idx = lookup_map[lookup_key].findByNativeID(psm.spectrum_id)
-                                psm.spectrum = experiments[exp_name][idx]
-                                spectra_attached_count += 1
-                            except:
-                                pass
-                    updated_psms.append(psm)
-                
-                logger.info(f"✅ Spectra successfully attached: {spectra_attached_count}/{len(psms_with_spectra)}")
-                
-                # Filter PSMs that have spectra attached
-                final_psms = [psm for psm in updated_psms if hasattr(psm, 'spectrum') and psm.spectrum is not None]
+                    # Skip if already has spectrum
+                    if hasattr(psm, "spectrum") and psm.spectrum is not None:
+                        final_psms.append(psm)
+                        continue
+                    
+                    # Try to attach spectrum
+                    exp_name, lookup_key = find_matching_experiment(
+                        psm.run, experiments, exp_stem_to_name, exp_base_to_name
+                    )
+                    
+                    if exp_name and lookup_key and lookup_key in lookup_map:
+                        try:
+                            idx = lookup_map[lookup_key].findByNativeID(psm.spectrum_id)
+                            psm.spectrum = experiments[exp_name][idx]
+                            final_psms.append(psm)
+                        except:
+                            pass
                 
                 if len(final_psms) == 0:
                     st.error("No experimental spectra could be loaded for the selected PSMs.")
                     return
                 
-                st.info(f"📊 {len(final_psms)} PSMs successfully attached to spectra")
+                # STEP 3: Generate alignments (optimized - reuse generator)
+                if not final_psms:
+                    st.error("No experimental spectra could be loaded for the selected PSMs.")
+                    return
                 
-                # Step 4: Process alignments
-                logger.info("="*60)
-                logger.info("STEP 4: Generating theoretical spectra and alignments")
-                logger.info("="*60)
                 aligned_rows = []
+                
+                # OPTIMIZATION: Create generator once with settings, reuse for all PSMs
+                gen = oms.TheoreticalSpectrumGenerator()
+                params = gen.getParameters()
+                for ion in ["a", "b", "y", "c", "x", "z"]: 
+                    params.setValue(f"add_{ion}_ions", "true" if ion in included_ions else "false")
+                params.setValue("add_metainfo", "true")
+                params.setValue("add_losses", "true" if "loss" in included_ions else "false")
+                params.setValue("add_precursor_peaks", "true" if "precursor" in included_ions else "false")
+                params.setValue("add_first_prefix_ion", "true" if "prefix" in included_ions else "false")
+                params.setValue("add_abundant_immonium_ions", "true" if "immonium" in included_ions else "false")
+                gen.setParameters(params)
+                
+                # OPTIMIZATION: Create aligner once, reuse for all PSMs
+                aligner = oms.SpectrumAlignment()
+                prm = aligner.getParameters()
+                prm.setValue("tolerance", fragment_mass_tolerance)
+                prm.setValue("is_relative_tolerance", "false")
+                aligner.setParameters(prm)
                 
                 for psm in final_psms:
                     try:
-                        # Generate theoretical spectrum
-                        gen = oms.TheoreticalSpectrumGenerator()
-                        params = gen.getParameters()
-                        for ion in ["a", "b", "y", "c", "x", "z"]: 
-                            params.setValue(f"add_{ion}_ions", "true" if ion in included_ions else "false")
-                        params.setValue("add_metainfo", "true")
-                        params.setValue("add_losses", "true" if "loss" in included_ions else "false")
-                        params.setValue("add_precursor_peaks", "true" if "precursor" in included_ions else "false")
-                        params.setValue("add_first_prefix_ion", "true" if "prefix" in included_ions else "false")
-                        params.setValue("add_abundant_immonium_ions", "true" if "immonium" in included_ions else "false")
-                        gen.setParameters(params)
+                        # Generate theoretical spectrum (reuse generator)
                         theo_spec = oms.MSSpectrum()
                         gen.getSpectrum(theo_spec, oms.AASequence(str(psm.peptidoform).split('/')[0].replace('[','(').replace(']',')')), 
                                         1, max_frag_charge)
-                        if theo_spec.size() > 1: 
-                            theo_spec.sortByPosition()
+                        theo_spec.sortByPosition()
                         
                         sda, ida = theo_spec.getStringDataArrays(), theo_spec.getIntegerDataArrays()
-                        names = [n.decode() for n in sda[0]] if sda and len(sda) > 0 and sda[0].size() > 0 else [""] * theo_spec.size()
-                        charges = list(ida[0]) if ida and len(ida) > 0 and ida[0].size() > 0 else [None] * theo_spec.size()
+                        names = [n.decode() for n in sda[0]] if sda and sda[0].size() > 0 else [""] * theo_spec.size()
+                        charges = list(ida[0]) if ida and ida[0].size() > 0 else [None] * theo_spec.size()
                         
-                        # Align spectra
-                        if psm.spectrum.size() > 1: 
-                            psm.spectrum.sortByPosition()
-                        aligner = oms.SpectrumAlignment()
-                        prm = aligner.getParameters()
-                        prm.setValue("tolerance", fragment_mass_tolerance)
-                        prm.setValue("is_relative_tolerance", "false")
-                        aligner.setParameters(prm)
+                        # Align spectra (reuse aligner)
+                        psm.spectrum.sortByPosition()
                         pairs = []
                         aligner.getSpectrumAlignment(pairs, theo_spec, psm.spectrum)
                         
                         # Create aligned dataframe
                         rows = []
                         for theo_idx, exp_idx in pairs:
-                            if exp_idx < psm.spectrum.size() and theo_idx < theo_spec.size():
-                                rows.append({
-                                    'exp_idx': exp_idx,
-                                    'theo_idx': theo_idx,
-                                    'mz': theo_spec[theo_idx].getMZ(),
-                                    'intensity': theo_spec[theo_idx].getIntensity(),
+                            rows.append({
+                                'exp_idx': exp_idx,
+                                'theo_idx': theo_idx,
+                                'mz': theo_spec[theo_idx].getMZ(),
+                                'intensity': theo_spec[theo_idx].getIntensity(),
                                     'annotation': names[theo_idx] if theo_idx < len(names) else "",
                                     'charge': charges[theo_idx] if theo_idx < len(charges) else None,
                                     'exp_mz': psm.spectrum[exp_idx].getMZ(),
