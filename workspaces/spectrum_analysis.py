@@ -1997,7 +1997,8 @@ def render_simplified_analysis_settings():
                 help="Choose which R² correlation metric to display in spectrum comparisons:\n"
                      "• Both: Show both matching ions and binned R²\n"
                      "• Matching Ions: Only show R² calculated from annotated matching ions\n"
-                     "• Binned Intensities: Only show R² from binned spectrum correlation"
+                     "• Binned Intensities: Only show R² from binned spectrum correlation",
+                key="analysis_r2_metric_select"
             )
             r2_metric = r2_metric_options[r2_metric_display]
             
@@ -2013,7 +2014,8 @@ def render_simplified_analysis_settings():
                 value=st.session_state.settings.get("spectrum_analysis", {}).get("default_fragment_mass_tolerance", 0.02),  
                 step=0.001,
                 help="The fragment mass tolerance of theoretical and experimental spectrum matching",
-                format="%.3f"  # Show 3 decimal places
+                format="%.3f",
+                key="analysis_fragment_tolerance"
             )
         
         with col3:
@@ -2023,7 +2025,8 @@ def render_simplified_analysis_settings():
                 min_value=1,
                 max_value=5,
                 value=st.session_state.settings.get("spectrum_analysis", {}).get("default_max_fragment_charge", 2),
-                help="Maximum charge state for fragment ions"
+                help="Maximum charge state for fragment ions",
+                key="analysis_max_frag_charge"
             )
         
         # Ion type selection - split into two rows for all ion types
@@ -2034,29 +2037,29 @@ def render_simplified_analysis_settings():
         col_a, col_b, col_c, col_x, col_y, col_z = st.columns(6)
         
         with col_a:
-            include_a_ions = st.checkbox("a", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("a", False), help="a-type fragment ions")
+            include_a_ions = st.checkbox("a", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("a", False), help="a-type fragment ions", key="analysis_ion_a")
         with col_b:
-            include_b_ions = st.checkbox("b", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("b", True), help="b-type fragment ions")
+            include_b_ions = st.checkbox("b", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("b", True), help="b-type fragment ions", key="analysis_ion_b")
         with col_c:
-            include_c_ions = st.checkbox("c", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("c", False), help="c-type fragment ions")
+            include_c_ions = st.checkbox("c", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("c", False), help="c-type fragment ions", key="analysis_ion_c")
         with col_x:
-            include_x_ions = st.checkbox("x", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("x", False), help="x-type fragment ions")
+            include_x_ions = st.checkbox("x", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("x", False), help="x-type fragment ions", key="analysis_ion_x")
         with col_y:
-            include_y_ions = st.checkbox("y", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("y", True), help="y-type fragment ions")
+            include_y_ions = st.checkbox("y", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("y", True), help="y-type fragment ions", key="analysis_ion_y")
         with col_z:
-            include_z_ions = st.checkbox("z", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("z", False), help="z-type fragment ions")
+            include_z_ions = st.checkbox("z", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("z", False), help="z-type fragment ions", key="analysis_ion_z")
         
         # Second row: Additional ion types
         col_loss, col_precursor, col_prefix, col_immonium = st.columns(4)
         
         with col_loss:
-            include_loss_ions = st.checkbox("loss", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("loss", False), help="Neutral loss ions (e.g., b-H2O, y-NH3)")
+            include_loss_ions = st.checkbox("loss", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("loss", False), help="Neutral loss ions (e.g., b-H2O, y-NH3)", key="analysis_ion_loss")
         with col_precursor:
-            include_precursor_ions = st.checkbox("precursor", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("precursor", False), help="Precursor ions")
+            include_precursor_ions = st.checkbox("precursor", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("precursor", False), help="Precursor ions", key="analysis_ion_precursor")
         with col_prefix:
-            include_prefix_ions = st.checkbox("prefix", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("prefix", False), help="First prefix ions")
+            include_prefix_ions = st.checkbox("prefix", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("prefix", False), help="First prefix ions", key="analysis_ion_prefix")
         with col_immonium:
-            include_immonium_ions = st.checkbox("immonium", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("immonium", False), help="Abundant immonium ions")
+            include_immonium_ions = st.checkbox("immonium", value=st.session_state.settings.get("spectrum_analysis", {}).get("default_ion_types", {}).get("immonium", False), help="Abundant immonium ions", key="analysis_ion_immonium")
         
         # Create list of included ions
         included_ions = []
@@ -2098,7 +2101,8 @@ def render_simplified_analysis_settings():
                 "✨ Predicted Spectrum",
                 value=False,
                 help="Compare experimental spectra against AI-predicted spectra (Koina models)\n"
-                     "Generates: Exp vs Predicted mirror plots for each PSM"
+                     "Generates: Exp vs Predicted mirror plots for each PSM",
+                key="analysis_mode_predicted"
             )
         
         with col2:
@@ -2106,7 +2110,8 @@ def render_simplified_analysis_settings():
                 "🔄 All-vs-All Replicates", 
                 value=False,
                 help="Compare all replicates of the same peptide against each other\n"
-                     "Generates: All pairwise comparisons within each peptidoform"
+                     "Generates: All pairwise comparisons within each peptidoform",
+                key="analysis_mode_all_vs_all"
             )
         
         with col3:
@@ -2114,7 +2119,8 @@ def render_simplified_analysis_settings():
                 "📍 One-vs-All Replicates",
                 value=True,
                 help="Select one reference spectrum and compare all other replicates against it\n"
-                     "Generates: Reference vs each replicate comparison"
+                     "Generates: Reference vs each replicate comparison",
+                key="analysis_mode_one_vs_all"
             )
         
         # Check if at least one mode is selected
@@ -2150,7 +2156,7 @@ def render_simplified_analysis_settings():
                     list(available_models.keys()),
                     index=0,
                     help="AI model for fragment ion prediction",
-                    key="pred_model_select"
+                    key="analysis_pred_model_select"
                 )
                 selected_model = available_models[selected_model]  # Get model ID
             
@@ -2162,7 +2168,7 @@ def render_simplified_analysis_settings():
                     max_value=100,
                     value=st.session_state.settings.get("spectrum_analysis", {}).get("default_collision_energy", 35),
                     help="Collision energy for fragmentation",
-                    key="pred_collision_energy"
+                    key="analysis_pred_collision_energy"
                 )
             
             with col_pred3:
@@ -2176,7 +2182,7 @@ def render_simplified_analysis_settings():
                     options=instrument_options,
                     index=default_index,
                     help="Mass spectrometer type",
-                    key="pred_instrument_type"
+                    key="analysis_pred_instrument_type"
                 )
         
         # Settings for All-vs-All mode
@@ -2189,7 +2195,7 @@ def render_simplified_analysis_settings():
                 help="When enabled, peptides with different modifications (e.g., oxidation, phosphorylation) "
                      "will be compared against each other as if they were the same peptide.\n"
                      "When disabled, only PSMs with identical modifications will be compared.",
-                key="all_vs_all_group_mods"
+                key="analysis_all_vs_all_group_mods"
             )
             
             if group_by_unmodified:
@@ -2211,7 +2217,7 @@ def render_simplified_analysis_settings():
                     "📍 Select Reference Spectra (Standards)",
                     options=available_runs,
                     help="Choose one or more reference mzML files. All other replicates will be compared against these standards.",
-                    key="one_vs_all_reference"
+                    key="analysis_one_vs_all_reference"
                 )
                 
                 if reference_runs:
@@ -2229,7 +2235,7 @@ def render_simplified_analysis_settings():
                         "📁 Plot Export Directory",
                         value=st.session_state.get('plot_output_dir', './output_plots'),
                         help="Directory where PNG and SVG files will be saved",
-                        key="plot_output_dir_input"
+                        key="analysis_plot_output_dir_input"
                     )
                     st.session_state['plot_output_dir'] = plot_output_dir
                 
