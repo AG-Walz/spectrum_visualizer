@@ -30,6 +30,7 @@ from shared_imports import (
     # Spectrum tools
     st_tools, get_available_models
 )
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # Import shared file selection components
 from file_selection_components import (
@@ -442,24 +443,141 @@ def _load_indexed_mzml(mzml_path: str):
         return None
 
 
+@st.cache_data(show_spinner=False, ttl=3600)
+def _load_idxml_peptides(idxml_path: str) -> Tuple[List, List]:
+    """Cache idXML peptide identifications to avoid repeated loading.
+    
+    MAJOR OPTIMIZATION: idXML files were being loaded once per mzML file.
+    Now loaded once per idXML file and cached for 1 hour.
+    
+    Returns:
+        (protein_ids, peptide_ids) tuple from pyOpenMS
+    """
+    try:
+        protein_ids = []
+        peptide_ids = []
+        oms.IdXMLFile().load(idxml_path, protein_ids, peptide_ids)
+        logger.info(f"📖 Cached idXML {Path(idxml_path).name}: {len(peptide_ids)} peptides")
+        return protein_ids, peptide_ids
+    except Exception as e:
+        logger.error(f"Failed to load idXML {idxml_path}: {e}")
+        return [], []
+
+
+def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame], List[str], str, str, int]:
+    """Process a single mzML file for an idXML (worker function for parallel processing).
+    
+    Args:
+        args: Tuple of (idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids)
+    
+    Returns:
+        (mapping_df, messages, idxml_name, mzml_file, num_loaded)
+    """
+    idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids = args
+    messages = []
+    
+    try:
+        # OPTIMIZED: Use indexed access - only loads metadata, not full file
+        indexed_mzml = _load_indexed_mzml(mzml_path)
+        if indexed_mzml is None:
+            messages.append(f"    ❌ Failed to open indexed mzML: {mzml_file}")
+            return None, messages, idxml_name, mzml_file, 0
+        
+        # Convert spec_ids to set for faster lookup
+        spec_ids_set = set(spec_ids)
+        
+        mappings = []
+        spectrum_counter = 0
+        
+        for peptide_idx, pep_id in enumerate(peptide_ids):
+            try:
+                # Get spectrum ID - MUST match filter phase logic exactly
+                spectrum_id = None
+                if pep_id.metaValueExists("spectrum_reference"):
+                    spectrum_id = str(pep_id.getMetaValue("spectrum_reference"))
+                elif pep_id.metaValueExists("spectrum_id"):
+                    spectrum_id = str(pep_id.getMetaValue("spectrum_id"))
+                else:
+                    spectrum_id = str(pep_id.getSpectrumReference())
+                
+                # Handle empty/None spectrum IDs - use same fallback as filter phase
+                if not spectrum_id or not spectrum_id.strip() or spectrum_id == "None":
+                    spectrum_id = f"peptide_idx_{peptide_idx}"
+                else:
+                    spectrum_id = spectrum_id.strip()
+                
+                # Only include if in our filtered list
+                if spectrum_id in spec_ids_set:
+                    hits = pep_id.getHits()
+                    if hits:
+                        hit = hits[0]  # Take top hit
+                        sequence = hit.getSequence()
+                        
+                        mapping = {
+                            "spectrum_index": spectrum_counter,
+                            "peptide_index": peptide_idx,
+                            "spectrum_id": spectrum_id,
+                            "peptide_sequence": sequence.toString(),
+                            "charge": hit.getCharge(),
+                            "run": mzml_file.replace('.mzML', ''),
+                            "score": hit.getScore(),
+                            "mz": pep_id.getMZ(),
+                            "rt": pep_id.getRT(),
+                            "idxml_source": idxml_name,
+                            "mzml_file": mzml_file
+                        }
+                        mappings.append(mapping)
+                        spectrum_counter += 1
+            except Exception as e:
+                logger.warning(f"Error processing peptide ID {peptide_idx}: {e}")
+                continue
+        
+        if mappings:
+            df = pd.DataFrame(mappings)
+            messages.append(f"    ✅ Loaded {len(mappings)} spectra (expected {len(spec_ids)})")
+            if len(mappings) < len(spec_ids):
+                messages.append(f"    ⚠️ Warning: Loaded {len(mappings)} but filtered {len(spec_ids)} IDs")
+            return df, messages, idxml_name, mzml_file, len(mappings)
+        else:
+            messages.append(f"    ⚠️ No spectra loaded (filtered list had {len(spec_ids)} IDs)")
+            return None, messages, idxml_name, mzml_file, 0
+            
+    except Exception as e:
+        error_msg = str(e)
+        if "contains no PeptideIdentifications" in error_msg or "Nothing to parse" in error_msg:
+            messages.append(f"    ⚠️ Skipped {mzml_file} (empty idXML)")
+        else:
+            messages.append(f"    ❌ Error loading {mzml_file}: {error_msg}")
+            logger.error(f"Error loading {mzml_path}: {e}")
+        return None, messages, idxml_name, mzml_file, 0
+
+
 def load_only_needed_spectra(idxml_paths: List[str],
                              mzml_paths: List[str],
                              idxml_to_mzml_spectra: Dict[str, Dict[str, List[str]]],
-                             progress_callback=None) -> Tuple[pd.DataFrame, Dict, List[str], List[str]]:
+                             progress_callback=None,
+                             max_workers: int = 4) -> Tuple[pd.DataFrame, Dict, List[str], List[str]]:
     """
     PHASE 3: Load ONLY the needed spectra from mzML files using indexed access.
     
-    OPTIMIZED: Uses OnDiscMSExperiment for selective spectrum loading.
-    Only loads requested spectra into memory, not entire mzML files.
+    OPTIMIZED:
+    - Uses OnDiscMSExperiment for selective spectrum loading
+    - Parallel processing with ThreadPoolExecutor (4 workers by default)
+    - Caches idXML loading (was reloading per mzML file, now once per idXML)
+    - Only loads requested spectra into memory, not entire mzML files
     
     Args:
+        idxml_paths: List of idXML file paths
+        mzml_paths: List of mzML file paths
+        idxml_to_mzml_spectra: Filtered mapping of which spectra to load
         progress_callback: Optional function(current, total, message) for progress updates
+        max_workers: Number of parallel threads (default 4)
     
     Returns:
         (mapping_df, validation_info, messages, empty_files)
     """
     messages = []
-    empty_files = []  # Track files with no peptide identifications
+    empty_files = []
     all_mapping_dfs = []
     mzml_name_to_path = {extract_filename(p): p for p in mzml_paths}
     
@@ -477,6 +595,17 @@ def load_only_needed_spectra(idxml_paths: List[str],
     total_mzmls = sum(len(mzml_dict) for mzml_dict in idxml_to_mzml_spectra.values())
     mzml_counter = 0
     
+    # OPTIMIZED: Pre-load all idXML files once (cached)
+    idxml_peptide_cache = {}
+    for idxml_path in idxml_paths:
+        idxml_name = extract_filename(idxml_path)
+        if idxml_name in idxml_to_mzml_spectra:
+            protein_ids, peptide_ids = _load_idxml_peptides(idxml_path)
+            idxml_peptide_cache[idxml_name] = (protein_ids, peptide_ids, idxml_path)
+            messages.append(f"📖 Cached {idxml_name}: {len(peptide_ids)} peptides")
+    
+    # OPTIMIZED: Build task list for parallel processing
+    tasks = []
     for idxml_path in idxml_paths:
         idxml_name = extract_filename(idxml_path)
         
@@ -485,116 +614,71 @@ def load_only_needed_spectra(idxml_paths: List[str],
             messages.append(f"⏭️ Skipping {idxml_name} (no matching spectra)")
             continue
         
+        if idxml_name not in idxml_peptide_cache:
+            messages.append(f"⚠️ Skipping {idxml_name} (failed to load peptides)")
+            continue
+        
+        protein_ids, peptide_ids, idxml_path = idxml_peptide_cache[idxml_name]
         mzml_spectra = idxml_to_mzml_spectra[idxml_name]
-        messages.append(f"📊 Loading spectra for {idxml_name}")
+        messages.append(f"📊 Preparing to load spectra for {idxml_name}")
         
         # Track expected files for this idXML
         expected_mzml_files = list(mzml_spectra.keys())
         validation_info["expected_files"].extend(expected_mzml_files)
         validation_info["idxml_mappings"][idxml_name] = expected_mzml_files
         
-        # Load only matching mzML files
+        # Build tasks for each mzML file
         for mzml_file, spec_ids in mzml_spectra.items():
-            mzml_counter += 1
-            if progress_callback:
-                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
-            
             if mzml_file not in mzml_name_to_path:
                 messages.append(f"  ⚠️ Missing: {mzml_file}")
                 validation_info["missing_files"].append(mzml_file)
                 continue
             
             mzml_path = mzml_name_to_path[mzml_file]
-            messages.append(f"  Loading {mzml_file}: {len(spec_ids)} spectra (indexed)")
+            task = (idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids)
+            tasks.append(task)
+    
+    if not tasks:
+        messages.append("⚠️ No tasks to process")
+        mapping_df = pd.DataFrame()
+        return mapping_df, validation_info, messages, empty_files
+    
+    # OPTIMIZED: Process tasks in parallel
+    messages.append(f"⚡ Starting parallel processing with {max_workers} workers for {len(tasks)} mzML files")
+    
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # Submit all tasks
+        future_to_task = {executor.submit(_process_single_mzml_for_idxml, task): task for task in tasks}
+        
+        # Process completed tasks
+        for future in as_completed(future_to_task):
+            mzml_counter += 1
+            task = future_to_task[future]
+            _, _, mzml_file, spec_ids, _, _, _ = task
+            
+            if progress_callback:
+                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
             
             try:
-                # OPTIMIZED: Use indexed access - only loads metadata, not full file
-                indexed_mzml = _load_indexed_mzml(mzml_path)
-                if indexed_mzml is None:
-                    messages.append(f"    ❌ Failed to open indexed mzML")
-                    continue
+                df, task_messages, task_idxml_name, task_mzml_file, num_loaded = future.result()
                 
-                # Load idXML to get peptide identifications (lightweight)
-                protein_ids = []
-                peptide_ids = []
-                oms.IdXMLFile().load(idxml_path, protein_ids, peptide_ids)
+                # Add task messages
+                messages.extend(task_messages)
                 
-                # OPTIMIZED: Skip building full spectrum index - not needed
-                # We only need the peptide IDs that match our filtered list
-                # OnDiscMSExperiment handles spectrum lookup internally if needed
-                
-                # Convert spec_ids to set for faster lookup
-                spec_ids_set = set(spec_ids)
-                
-                mappings = []
-                spectrum_counter = 0  # Track unique spectrum index across all spectra
-                
-                for peptide_idx, pep_id in enumerate(peptide_ids):
-                    try:
-                        # Get spectrum ID - MUST match filter phase logic exactly
-                        spectrum_id = None
-                        if pep_id.metaValueExists("spectrum_reference"):
-                            spectrum_id = str(pep_id.getMetaValue("spectrum_reference"))
-                        elif pep_id.metaValueExists("spectrum_id"):
-                            spectrum_id = str(pep_id.getMetaValue("spectrum_id"))
-                        else:
-                            spectrum_id = str(pep_id.getSpectrumReference())
-                        
-                        # Handle empty/None spectrum IDs - use same fallback as filter phase
-                        if not spectrum_id or not spectrum_id.strip() or spectrum_id == "None":
-                            spectrum_id = f"peptide_idx_{peptide_idx}"
-                        else:
-                            spectrum_id = spectrum_id.strip()
-                        
-                        # Only include if in our filtered list
-                        if spectrum_id in spec_ids_set:
-                            # OPTIMIZED: Skip spectrum existence check - saves time
-                            # The spectrum will be loaded on-demand when actually visualized
-                            
-                            hits = pep_id.getHits()
-                            if hits:
-                                hit = hits[0]  # Take top hit
-                                sequence = hit.getSequence()
-                                
-                                mapping = {
-                                    "spectrum_index": spectrum_counter,  # Unique index for this spectrum
-                                    "peptide_index": peptide_idx,  # Index in peptide_ids list
-                                    "spectrum_id": spectrum_id,
-                                    "peptide_sequence": sequence.toString(),
-                                    "charge": hit.getCharge(),
-                                    "run": mzml_file.replace('.mzML', ''),
-                                    "score": hit.getScore(),
-                                    "mz": pep_id.getMZ(),
-                                    "rt": pep_id.getRT(),
-                                    "idxml_source": idxml_name,
-                                    "mzml_file": mzml_file
-                                }
-                                mappings.append(mapping)
-                                spectrum_counter += 1  # Increment for next spectrum
-                    except Exception as e:
-                        logger.warning(f"Error processing peptide ID {peptide_idx}: {e}")
-                        continue
-                
-                if mappings:
-                    df = pd.DataFrame(mappings)
+                # Add dataframe if successful
+                if df is not None and not df.empty:
                     all_mapping_dfs.append(df)
-                    validation_info["matched_files"].append(mzml_file)
-                    messages.append(f"    ✅ Loaded {len(mappings)} spectra (expected {len(spec_ids)})")
-                    if len(mappings) < len(spec_ids):
-                        messages.append(f"    ⚠️ Warning: Loaded {len(mappings)} but filtered {len(spec_ids)} IDs")
-                else:
-                    messages.append(f"    ⚠️ No spectra loaded (filtered list had {len(spec_ids)} IDs)")
+                    validation_info["matched_files"].append(task_mzml_file)
+                
+                # Check for empty files
+                if "empty idXML" in " ".join(task_messages):
+                    if task_idxml_name not in empty_files:
+                        empty_files.append(task_idxml_name)
                 
             except Exception as e:
                 error_msg = str(e)
-                # Check if it's an empty file error
-                if "contains no PeptideIdentifications" in error_msg or "Nothing to parse" in error_msg:
-                    empty_files.append(idxml_name)
-                    messages.append(f"    ⚠️ Skipped {mzml_file} (empty idXML)")
-                else:
-                    messages.append(f"    ❌ Error loading {mzml_file}: {error_msg}")
-                    logger.error(f"Error loading {mzml_path}: {e}")
-                continue
+                messages.append(f"    ❌ Error processing task: {error_msg}")
+                logger.error(f"Error in parallel task: {e}")
     
     # Combine all mappings
     if all_mapping_dfs:

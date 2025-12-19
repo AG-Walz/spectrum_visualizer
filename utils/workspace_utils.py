@@ -180,18 +180,20 @@ def validate_directory(
 # EXPERIMENT/SPECTRUM LOOKUP UTILITIES
 # ================================================================
 
-def create_experiment_map(mzml_paths: List[str], show_ui: bool = True) -> Dict[str, Any]:
+def create_experiment_map(mzml_paths: List[str], show_ui: bool = True, max_workers: int = 4) -> Dict[str, Any]:
     """
-    Load mzML files into experiments dictionary.
+    Load mzML files into experiments dictionary with parallel processing.
     
     Args:
         mzml_paths: List of paths to mzML files
         show_ui: Whether to show UI progress
+        max_workers: Number of parallel threads (default 4)
         
     Returns:
         Dict mapping filename to MSExperiment object
     """
     from shared_imports import oms
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     
     experiments = {}
     
@@ -203,16 +205,33 @@ def create_experiment_map(mzml_paths: List[str], show_ui: bool = True) -> Dict[s
         return name, exp
     
     if show_ui:
-        results = process_items_with_progress(
-            mzml_paths,
-            load_experiment,
-            "Loading {name}...",
-            lambda x: Path(x).name
-        )
+        import streamlit as st
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+        
+        # Parallel loading with progress tracking
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_path = {executor.submit(load_experiment, path): path for path in mzml_paths}
+            completed = 0
+            
+            for future in as_completed(future_to_path):
+                completed += 1
+                path = future_to_path[future]
+                try:
+                    name, exp = future.result()
+                    experiments[name] = exp
+                    progress_bar.progress(completed / len(mzml_paths))
+                    status_text.text(f"Loading {completed}/{len(mzml_paths)}: {name}")
+                except Exception as e:
+                    logger.error(f"Failed to load {Path(path).name}: {e}")
+        
+        progress_bar.empty()
+        status_text.empty()
     else:
-        results = [load_experiment(path) for path in mzml_paths]
-    
-    experiments = dict(results)
+        # Parallel loading without UI
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            results = list(executor.map(load_experiment, mzml_paths))
+            experiments = dict(results)
     
     total_spectra = sum(exp.getNrSpectra() for exp in experiments.values())
     logger.info(f"✅ Total experiments loaded: {len(experiments)}")
