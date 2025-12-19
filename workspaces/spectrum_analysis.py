@@ -1821,6 +1821,14 @@ def render_simplified_analysis_settings():
     """Simplified analysis settings based on SpecViz.ipynb parameters."""
     st.header("⚙️ Analysis Settings")
     
+    # Early exit if analysis is already ready - no need to recompute everything
+    if st.session_state.get('analysis_ready', False):
+        st.success("✅ Analysis configured and ready. See results below.")
+        if st.button("🔄 Reconfigure Analysis", use_container_width=True):
+            st.session_state['analysis_ready'] = False
+            st.rerun()
+        return
+    
     # Get pre-selected spectra from peptide filter step
     selected_spectra_indices = st.session_state.get('selected_spectra_indices', set())
     if not selected_spectra_indices:
@@ -1894,62 +1902,78 @@ def render_simplified_analysis_settings():
             # Cache the loaded PSMs
             st.session_state[cache_key] = all_psm_lists
         
-        all_psm_lists_filtered = []  # Store filtered PSMs only
-        unique_peptidoforms_data = {}
+        # Create cache key for filtered PSMs based on selected spectra and peptides
+        filtered_cache_key = f"filtered_psm_cache_{hash((tuple(sorted(selected_spectrum_ids)), tuple(sorted(selected_peptides)), cache_key))}"
         
-        # OPTIMIZATION: Pre-build lookup sets for fast matching
-        selected_peptides_set = set(selected_peptides)
-        selected_peptides_unmod = set(''.join([c for c in str(p) if c.isalpha()]).upper() for p in selected_peptides)
-        
-        for psm_list, idxml_name in all_psm_lists:
-            try:
-                # OPTIMIZED: Filter PSMs using fast set lookups
-                filtered_psm_list = []
-                
-                for psm in psm_list:
-                    try:
-                        peptidoform_str = str(psm.peptidoform)
-                        unmodified_seq = Peptidoform(peptidoform_str).sequence
-                        
-                        # OPTIMIZED: Quick spectrum ID check using set lookup
-                        if hasattr(psm, 'spectrum_id') and psm.spectrum_id and psm.spectrum_id not in selected_spectrum_ids:
-                            continue
-                        
-                        # OPTIMIZED: Quick peptide check using set lookup
-                        if peptidoform_str not in selected_peptides_set and unmodified_seq not in selected_peptides_unmod:
-                            continue
-                        
-                        # Both filters passed - include this PSM
-                        filtered_psm_list.append(psm)
-                        
-                        # Initialize or update peptidoform data
-                        if peptidoform_str not in unique_peptidoforms_data:
-                            # Create display label showing modifications if present
-                            if peptidoform_str != unmodified_seq:
-                                display_label = f"{unmodified_seq} [{peptidoform_str}]"
-                            else:
-                                display_label = unmodified_seq
+        # Check if filtered results are already cached
+        if filtered_cache_key in st.session_state:
+            # Use cached filtered PSMs and peptidoforms data
+            all_psm_lists_filtered = st.session_state[filtered_cache_key]['filtered_psms']
+            unique_peptidoforms_data = st.session_state[filtered_cache_key]['peptidoforms_data']
+        else:
+            # Need to filter PSMs - do it once and cache the results
+            all_psm_lists_filtered = []  # Store filtered PSMs only
+            unique_peptidoforms_data = {}
+            
+            # OPTIMIZATION: Pre-build lookup sets for fast matching
+            selected_peptides_set = set(selected_peptides)
+            selected_peptides_unmod = set(''.join([c for c in str(p) if c.isalpha()]).upper() for p in selected_peptides)
+            
+            for psm_list, idxml_name in all_psm_lists:
+                try:
+                    # OPTIMIZED: Filter PSMs using fast set lookups
+                    filtered_psm_list = []
+                    
+                    for psm in psm_list:
+                        try:
+                            peptidoform_str = str(psm.peptidoform)
+                            unmodified_seq = Peptidoform(peptidoform_str).sequence
                             
-                            unique_peptidoforms_data[peptidoform_str] = {
-                                'peptidoform': peptidoform_str,
-                                'sequence': unmodified_seq,
-                                'display_label': display_label,
-                                'psm_count': 0
-                            }
-                        
-                        # Increment PSM count for this peptidoform
-                        unique_peptidoforms_data[peptidoform_str]['psm_count'] += 1
-                        
-                    except Exception as e:
-                        logger.warning(f"Could not extract peptidoform from {psm.peptidoform}: {e}")
-                        continue
-                
-                # Store the filtered PSM list
-                all_psm_lists_filtered.append((filtered_psm_list, idxml_name))
-            except Exception as e:
-                logger.error(f"Error loading {idxml_name}: {e}")
-                st.error(f"Error loading {idxml_name}: {e}")
-                continue
+                            # OPTIMIZED: Quick spectrum ID check using set lookup
+                            if hasattr(psm, 'spectrum_id') and psm.spectrum_id and psm.spectrum_id not in selected_spectrum_ids:
+                                continue
+                            
+                            # OPTIMIZED: Quick peptide check using set lookup
+                            if peptidoform_str not in selected_peptides_set and unmodified_seq not in selected_peptides_unmod:
+                                continue
+                            
+                            # Both filters passed - include this PSM
+                            filtered_psm_list.append(psm)
+                            
+                            # Initialize or update peptidoform data
+                            if peptidoform_str not in unique_peptidoforms_data:
+                                # Create display label showing modifications if present
+                                if peptidoform_str != unmodified_seq:
+                                    display_label = f"{unmodified_seq} [{peptidoform_str}]"
+                                else:
+                                    display_label = unmodified_seq
+                                
+                                unique_peptidoforms_data[peptidoform_str] = {
+                                    'peptidoform': peptidoform_str,
+                                    'sequence': unmodified_seq,
+                                    'display_label': display_label,
+                                    'psm_count': 0
+                                }
+                            
+                            # Increment PSM count for this peptidoform
+                            unique_peptidoforms_data[peptidoform_str]['psm_count'] += 1
+                            
+                        except Exception as e:
+                            logger.warning(f"Could not extract peptidoform from {psm.peptidoform}: {e}")
+                            continue
+                    
+                    # Store the filtered PSM list
+                    all_psm_lists_filtered.append((filtered_psm_list, idxml_name))
+                except Exception as e:
+                    logger.error(f"Error loading {idxml_name}: {e}")
+                    st.error(f"Error loading {idxml_name}: {e}")
+                    continue
+            
+            # Cache the filtered results to avoid recomputation
+            st.session_state[filtered_cache_key] = {
+                'filtered_psms': all_psm_lists_filtered,
+                'peptidoforms_data': unique_peptidoforms_data
+            }
         
         # Sort peptidoforms by PSM count (descending), then by unmodified sequence
         unique_peptidoforms_list = sorted(list(unique_peptidoforms_data.values()), 
