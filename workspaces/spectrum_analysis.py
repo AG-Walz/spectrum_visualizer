@@ -252,7 +252,7 @@ def extract_idxml_metadata(idxml_paths: List[str], progress_callback=None) -> Tu
 def filter_idxml_by_selected_peptides(idxml_paths: List[str], 
                                       mzml_paths: List[str],
                                       selected_peptidoforms: List[str],
-                                      progress_callback=None) -> Tuple[Dict[str, Dict[str, List[str]]], List[str], List[str]]:
+                                      progress_callback=None) -> Tuple[Dict[str, Dict[str, List[Tuple[str, str]]]], List[str], List[str]]:
     """
     PHASE 2: Filter idXML files to get only spectrum IDs matching selected peptides.
     NO mzML loading at this stage!
@@ -264,7 +264,8 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
         progress_callback: Optional function(current, total, message) for progress updates
     
     Returns:
-        ({idxml_name: {mzml_file: [spec_ids]}}, messages, empty_files)
+        ({idxml_name: {mzml_file: [(spec_id, peptide_sequence)]}}, messages, empty_files)
+        Now includes matched peptide sequence to ensure correct spectrum-peptide pairing
     """
     messages = []
     empty_files = []  # Track files with no peptide identifications
@@ -378,7 +379,9 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                                 peptide_idx = peptide_ids.index(pep_id)
                                 spec_id_str = f"peptide_idx_{peptide_idx}"
                             
-                            mzml_spectra[mzml_file].append(spec_id_str)
+                            # CRITICAL FIX: Store both spectrum ID AND matched peptide sequence
+                            # This ensures we only load spectra that actually match selected peptides
+                            mzml_spectra[mzml_file].append((spec_id_str, peptidoform_str))
                             matched_count += 1
                             if len(debug_spec_ids) < 3:
                                 debug_spec_ids.append(spec_id_str)
@@ -468,12 +471,13 @@ def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame],
     """Process a single mzML file for an idXML (worker function for parallel processing).
     
     Args:
-        args: Tuple of (idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids)
+        args: Tuple of (idxml_path, idxml_name, mzml_file, spec_id_peptide_pairs, mzml_path, protein_ids, peptide_ids)
+              spec_id_peptide_pairs: List of (spec_id, peptide_sequence) tuples
     
     Returns:
         (mapping_df, messages, idxml_name, mzml_file, num_loaded)
     """
-    idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids = args
+    idxml_path, idxml_name, mzml_file, spec_id_peptide_pairs, mzml_path, protein_ids, peptide_ids = args
     messages = []
     
     try:
@@ -483,8 +487,8 @@ def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame],
             messages.append(f"    ❌ Failed to open indexed mzML: {mzml_file}")
             return None, messages, idxml_name, mzml_file, 0
         
-        # Convert spec_ids to set for faster lookup
-        spec_ids_set = set(spec_ids)
+        # Convert spec_id_peptide_pairs to dict for faster lookup: {spec_id: peptide_sequence}
+        spec_id_to_peptide = dict(spec_id_peptide_pairs)
         
         mappings = []
         spectrum_counter = 0
@@ -506,40 +510,56 @@ def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame],
                 else:
                     spectrum_id = spectrum_id.strip()
                 
-                # Only include if in our filtered list
-                if spectrum_id in spec_ids_set:
+                # CRITICAL FIX: Only include if spectrum_id is in our filtered list AND
+                # the peptide sequence matches what was filtered
+                if spectrum_id in spec_id_to_peptide:
+                    expected_peptide = spec_id_to_peptide[spectrum_id]
                     hits = pep_id.getHits()
                     if hits:
-                        hit = hits[0]  # Take top hit
-                        sequence = hit.getSequence()
+                        # CRITICAL FIX: Find the hit that matches the expected peptide
+                        # Don't just take hits[0] - verify it matches!
+                        matching_hit = None
+                        for hit in hits:
+                            sequence = hit.getSequence()
+                            peptidoform_str = sequence.toString()
+                            unmodified_seq = sequence.toUnmodifiedString()
+                            # Match either the full peptidoform or unmodified sequence
+                            if peptidoform_str == expected_peptide or unmodified_seq == expected_peptide:
+                                matching_hit = hit
+                                break
                         
-                        mapping = {
-                            "spectrum_index": spectrum_counter,
-                            "peptide_index": peptide_idx,
-                            "spectrum_id": spectrum_id,
-                            "peptide_sequence": sequence.toString(),
-                            "charge": hit.getCharge(),
-                            "run": mzml_file.replace('.mzML', ''),
-                            "score": hit.getScore(),
-                            "mz": pep_id.getMZ(),
-                            "rt": pep_id.getRT(),
-                            "idxml_source": idxml_name,
-                            "mzml_file": mzml_file
-                        }
-                        mappings.append(mapping)
-                        spectrum_counter += 1
+                        if matching_hit:
+                            sequence = matching_hit.getSequence()
+                            mapping = {
+                                "spectrum_index": spectrum_counter,
+                                "peptide_index": peptide_idx,
+                                "spectrum_id": spectrum_id,
+                                "peptide_sequence": sequence.toString(),
+                                "charge": matching_hit.getCharge(),
+                                "run": mzml_file.replace('.mzML', ''),
+                                "score": matching_hit.getScore(),
+                                "mz": pep_id.getMZ(),
+                                "rt": pep_id.getRT(),
+                                "idxml_source": idxml_name,
+                                "mzml_file": mzml_file
+                            }
+                            mappings.append(mapping)
+                            spectrum_counter += 1
+                        else:
+                            # No matching hit found - log warning
+                            logger.warning(f"Spectrum {spectrum_id} expected peptide {expected_peptide} but no matching hit found")
             except Exception as e:
                 logger.warning(f"Error processing peptide ID {peptide_idx}: {e}")
                 continue
         
         if mappings:
             df = pd.DataFrame(mappings)
-            messages.append(f"    ✅ Loaded {len(mappings)} spectra (expected {len(spec_ids)})")
-            if len(mappings) < len(spec_ids):
-                messages.append(f"    ⚠️ Warning: Loaded {len(mappings)} but filtered {len(spec_ids)} IDs")
+            messages.append(f"    ✅ Loaded {len(mappings)} spectra (expected {len(spec_id_to_peptide)})")
+            if len(mappings) < len(spec_id_to_peptide):
+                messages.append(f"    ⚠️ Warning: Loaded {len(mappings)} but filtered {len(spec_id_to_peptide)} IDs")
             return df, messages, idxml_name, mzml_file, len(mappings)
         else:
-            messages.append(f"    ⚠️ No spectra loaded (filtered list had {len(spec_ids)} IDs)")
+            messages.append(f"    ⚠️ No spectra loaded (filtered list had {len(spec_id_to_peptide)} IDs)")
             return None, messages, idxml_name, mzml_file, 0
             
     except Exception as e:
@@ -554,7 +574,7 @@ def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame],
 
 def load_only_needed_spectra(idxml_paths: List[str],
                              mzml_paths: List[str],
-                             idxml_to_mzml_spectra: Dict[str, Dict[str, List[str]]],
+                             idxml_to_mzml_spectra: Dict[str, Dict[str, List[Tuple[str, str]]]],
                              progress_callback=None,
                              max_workers: int = 4) -> Tuple[pd.DataFrame, Dict, List[str], List[str]]:
     """
@@ -628,14 +648,14 @@ def load_only_needed_spectra(idxml_paths: List[str],
         validation_info["idxml_mappings"][idxml_name] = expected_mzml_files
         
         # Build tasks for each mzML file
-        for mzml_file, spec_ids in mzml_spectra.items():
+        for mzml_file, spec_id_peptide_pairs in mzml_spectra.items():
             if mzml_file not in mzml_name_to_path:
                 messages.append(f"  ⚠️ Missing: {mzml_file}")
                 validation_info["missing_files"].append(mzml_file)
                 continue
             
             mzml_path = mzml_name_to_path[mzml_file]
-            task = (idxml_path, idxml_name, mzml_file, spec_ids, mzml_path, protein_ids, peptide_ids)
+            task = (idxml_path, idxml_name, mzml_file, spec_id_peptide_pairs, mzml_path, protein_ids, peptide_ids)
             tasks.append(task)
     
     if not tasks:
@@ -654,10 +674,10 @@ def load_only_needed_spectra(idxml_paths: List[str],
         for future in as_completed(future_to_task):
             mzml_counter += 1
             task = future_to_task[future]
-            _, _, mzml_file, spec_ids, _, _, _ = task
+            _, _, mzml_file, spec_id_peptide_pairs, _, _, _ = task
             
             if progress_callback:
-                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_ids)} spectra)")
+                progress_callback(mzml_counter, total_mzmls, f"Loading mzML {mzml_counter}/{total_mzmls}: {mzml_file} ({len(spec_id_peptide_pairs)} spectra)")
             
             try:
                 df, task_messages, task_idxml_name, task_mzml_file, num_loaded = future.result()
