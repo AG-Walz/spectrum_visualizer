@@ -1,12 +1,12 @@
 """Shared data input UI components for mzML and idXML file selection.
 
-This module provides the unified file selection interface used by both:
-- spectrum_analysis.py: Select files for spectral comparison
-- dataset_filter.py: Select files for filtering operations
+Unified file selection interface for:
+- spectrum_analysis.py
+- dataset_filter.py
 
-DESIGN:
-Two independent steps:
-1. Server Selection: Choose data source (Local Computer / Current Server / SSH servers)
+Functionality:
+1. Server Selection: Choose data source (Local Computer / Current Server) 
+#TODO: (more) SSH servers as options
 2. File Selection: Choose method (Individual files / Folder browsing)
 
 Both file selection methods work for ALL server types:
@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
 
 # Import shared utility functions
-from file_selection_components import (
+from file_selection import (
     render_directory_browser,
     get_files_with_substring
 )

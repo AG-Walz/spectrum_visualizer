@@ -35,14 +35,14 @@ from shared_imports import (
 )
 
 # Import shared UI components
-from file_selection_components import (
+from file_selection import (
     render_directory_browser,
     render_file_filter_and_selection,
     get_files_with_substring
 )
 
 # Import shared data input UI (single source of truth for file selection interface)
-from data_input_components import (
+from data_input import (
     render_data_input_section,
     render_unified_file_browser,
     render_server_directory_selector
@@ -166,10 +166,10 @@ def create_filtered_mzmls(mzml_to_spectra: Dict[str, List[str]],
 # ================================================================
 
 def render_idxml_selection():
-    """File selection using shared data_input_components.py - filters only need idXML files."""
+    """File selection using shared data_input.py - filters only need idXML files."""
     
     # Use shared data input section (but we'll only take idXML files)
-    # UploadedFile objects are automatically converted to temp file paths by data_input_components
+    # UploadedFile objects are automatically converted to temp file paths by data_input
     _, idxml_files = render_data_input_section(
         session_key_prefix="dataset_filter",
         show_process_button=False,  # We handle processing separately
