@@ -366,7 +366,7 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
         # FIX: Build a map of identifier -> mzML filename from ALL ProteinIdentification objects
         # Merged idXML files (e.g. from Percolator) contain multiple runs with different identifiers
         run_map = {}  # identifier -> mzML_filename
-        default_mzml_file = None
+        run_map = {}  # identifier -> mzML_filename
         
         if protein_ids:
             for i, protein_id in enumerate(protein_ids):
@@ -382,15 +382,15 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                 if mzml_file:
                     run_map[identifier] = mzml_file
                     # Keep the first one as default/fallback
-                    if default_mzml_file is None:
-                        default_mzml_file = mzml_file
+        
+        
+        # DEBUG: Log run_map
+        print(f"[DEBUG] Processing {idxml_name}: Found {len(run_map)} run identifiers")
+        for rid, rfile in run_map.items():
+            print(f"[DEBUG]   Run ID: {rid} -> {rfile}")
         
         # If no metadata found at all, use smart matching as fallback for the default
-        if not default_mzml_file:
-            idxml_stem = Path(idxml_path).stem
-            default_mzml_file = find_matching_mzml(idxml_stem, available_mzml_names)
-            if not default_mzml_file:
-                default_mzml_file = f"{idxml_stem}.mzML"
+        # If no metadata found at all, we rely purely on run matching
         
         mzml_files_seen = set()
         
@@ -436,23 +436,35 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             file_origin = decode_metadata_value(pep_id.getMetaValue("file_origin"))
                             mzml_file = Path(file_origin).name
                         
+                        if mzml_file:
+                             print(f"[DEBUG]   Priority 1 (Metadata): Found {mzml_file} in peptide metadata")
+                        
                         # Priority 2: Inferred from Run/ProteinIdentifier
                         if not mzml_file:
                             identifier = pep_id.getIdentifier()
                             # Try exact match first
                             if identifier in run_map:
                                 mzml_file = run_map[identifier]
+                                print(f"[DEBUG]   Priority 2 (Exact Run ID): {identifier} -> {mzml_file}")
                             else:
                                 # Try finding a run that matches the prefix of the peptide identifier
                                 # Percolator often appends _number to the run identifier for peptides
                                 for run_id, run_file in run_map.items():
                                     if identifier.startswith(run_id):
                                         mzml_file = run_file
+                                        print(f"[DEBUG]   Priority 2 (Prefix Run ID): {identifier} starts with {run_id} -> {mzml_file}")
                                         break
                         
-                        # Priority 3: Default fallback
+                        # Strict Mode: No default fallback
                         if not mzml_file:
-                            mzml_file = default_mzml_file
+                             print(f"[DEBUG]   SKIPPED: Could not determine mzML for {peptidoform_str} (ID: {identifier})")
+                             continue
+                        
+                        else:
+                             # Debug which priority worked if not default
+                             pass # Already set above
+                             
+                        print(f"[DEBUG] Match: {peptidoform_str} (ID: {identifier}) -> {mzml_file}")
                         
                         mzml_files_seen.add(mzml_file)
                         
