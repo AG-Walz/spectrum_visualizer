@@ -27,9 +27,15 @@ from shared_imports import (
     extract_filename, extract_filenames, is_empty_collection,
     safe_concat_dataframes, show_status_message, validate_file_list,
     create_validation_info_dict,
-    # Spectrum tools
-    st_tools, get_available_models
+    create_validation_info_dict
 )
+
+try:
+    import streamlit_bridge as st_tools
+    from streamlit_bridge import get_available_models
+except ImportError:
+    st_tools = None
+    get_available_models = lambda: {}
 import mmap
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -121,19 +127,50 @@ def find_matching_mzml(idxml_stem: str, available_mzml_names: List[str]) -> Opti
         cleaned_match = f"{stem_cleaned}.mzML"
         if cleaned_match in available_mzml_names:
             return cleaned_match
+            
+    # CRITICAL: Strategy 3 (Containment) must be strict to avoid partial matches
+    # e.g. "ProC" should not match "ProCa"
     
-    # Strategy 3: Find mzML files that start with the cleaned stem
-    candidates = [f for f in available_mzml_names if f.startswith(stem_cleaned)]
-    if candidates:
-        # Prefer shorter names (closer match)
-        return min(candidates, key=len)
+    # 3a. Check if the full cleaned stem appears in filename
+    # Prefer matches where it is delimited by underscore or boundaries
+    matches = []
+    import re
     
-    # Strategy 4: Find mzML files that contain the main part (before first underscore)
-    main_part = stem_cleaned.split('_')[0] if '_' in stem_cleaned else stem_cleaned
-    candidates = [f for f in available_mzml_names if main_part in f]
-    if candidates:
-        return min(candidates, key=len)
+    for f in available_mzml_names:
+        # Check if stem_cleaned is in file
+        if stem_cleaned in f:
+            # Enforce that it's a distinct segment if possible
+            # e.g. "ProT002" in "23..._ProT002_..." -> MATCH
+            # "ProC" in "23..._ProCa_..." -> NO MATCH (ProCa != ProC)
+            # Use regex to check for boundaries: (^|_)PATTERN($|_)
+            escaped_stem = re.escape(stem_cleaned)
+            if re.search(f"(^|_){escaped_stem}($|_|\\.)", f):
+                matches.append(f)
     
+    if matches:
+        return min(matches, key=len)
+    
+    # 3b. Fallback: Main part (before first underscore or hyphen)
+    # Also enforce strict boundaries
+    separators = ['_', '-']
+    main_part = stem_cleaned
+    for sep in separators:
+        if sep in stem_cleaned:
+            main_part = stem_cleaned.split(sep)[0]
+            break
+            
+    if main_part and len(main_part) > 2: # Don't search for tiny parts
+        matches = []
+        for f in available_mzml_names:
+            # STRICT check: main_part must be surrounded by delimiters or boundaries
+            # e.g. "ProC" must match "..._ProC_..." or "ProC_..."
+            escaped_main = re.escape(main_part)
+            if re.search(f"(^|_){escaped_main}($|_)", f):
+                 matches.append(f)
+                 
+        if matches:
+            return min(matches, key=len)
+
     return None
 
 def validate_spectrum_index(mapping_df: pd.DataFrame, spectrum_index: int, context: str = "") -> bool:
@@ -326,20 +363,29 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
         if not peptide_ids:
             return idxml_name, {}, messages, True
         
-        # Extract default mzML filename from ProteinIdentification metadata
+        # FIX: Build a map of identifier -> mzML filename from ALL ProteinIdentification objects
+        # Merged idXML files (e.g. from Percolator) contain multiple runs with different identifiers
+        run_map = {}  # identifier -> mzML_filename
         default_mzml_file = None
+        
         if protein_ids:
-            for protein_id in protein_ids:
+            for i, protein_id in enumerate(protein_ids):
+                mzml_file = None
                 metadata_keys = ["CometAdapter:1:in", "spectra_data", "spectrum_reference", "mzML_file"]
                 for key in metadata_keys:
                     if protein_id.metaValueExists(key):
                         value = decode_metadata_value(protein_id.getMetaValue(key))
-                        default_mzml_file = Path(value).name
+                        mzml_file = Path(value).name
                         break
-                if default_mzml_file:
-                    break
+                
+                identifier = protein_id.getIdentifier()
+                if mzml_file:
+                    run_map[identifier] = mzml_file
+                    # Keep the first one as default/fallback
+                    if default_mzml_file is None:
+                        default_mzml_file = mzml_file
         
-        # If no metadata found, use smart matching as fallback
+        # If no metadata found at all, use smart matching as fallback for the default
         if not default_mzml_file:
             idxml_stem = Path(idxml_path).stem
             default_mzml_file = find_matching_mzml(idxml_stem, available_mzml_names)
@@ -379,13 +425,32 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             spectrum_id = str(pep_id.getSpectrumReference())
                         
                         # Determine mzML file
+                        # Priority 1: Explicit metadata on peptide
                         mzml_file = None
                         if pep_id.metaValueExists("spectra_data"):
                             spectra_data = decode_metadata_value(pep_id.getMetaValue("spectra_data"))
                             mzml_file = Path(spectra_data).name
                         elif pep_id.metaValueExists("mzML_file"):
                             mzml_file = decode_metadata_value(pep_id.getMetaValue("mzML_file"))
+                        elif pep_id.metaValueExists("file_origin"): # Also check file_origin
+                            file_origin = decode_metadata_value(pep_id.getMetaValue("file_origin"))
+                            mzml_file = Path(file_origin).name
                         
+                        # Priority 2: Inferred from Run/ProteinIdentifier
+                        if not mzml_file:
+                            identifier = pep_id.getIdentifier()
+                            # Try exact match first
+                            if identifier in run_map:
+                                mzml_file = run_map[identifier]
+                            else:
+                                # Try finding a run that matches the prefix of the peptide identifier
+                                # Percolator often appends _number to the run identifier for peptides
+                                for run_id, run_file in run_map.items():
+                                    if identifier.startswith(run_id):
+                                        mzml_file = run_file
+                                        break
+                        
+                        # Priority 3: Default fallback
                         if not mzml_file:
                             mzml_file = default_mzml_file
                         
@@ -394,8 +459,35 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                         if mzml_file not in mzml_spectra:
                             mzml_spectra[mzml_file] = []
                         
+                        # CLEANUP: Ensure spectrum_id matches mzML Native ID format
+                        # Sometimes spectrum_reference is "file.mzML scan=123" or similar
+                        # We want just "scan=123" or whatever the native ID pattern is
+                        spec_id_str = None
                         if spectrum_id and spectrum_id.strip() and spectrum_id != "None":
-                            spec_id_str = spectrum_id.strip()
+                            raw_id = spectrum_id.strip()
+                            clean_id = raw_id
+                            
+                            # Heuristic 1: If it contains "scan=", "index=", or "spectrum=", assume that starts the ID
+                            for tag in ["scan=", "index=", "spectrum=", "controllerType="]:
+                                if tag in clean_id:
+                                    idx = clean_id.find(tag)
+                                    # If the tag is not at the start, check if it's preceded by space or colon
+                                    if idx > 0 and clean_id[idx-1] in [' ', ':']:
+                                        clean_id = clean_id[idx:]
+                                        break
+                            
+                            # Heuristic 2: If we didn't find a tag but it looks like "file.mzML 123", strip the file
+                            # This handles "file.mzML nativeID" where nativeID is just a number
+                            if clean_id == raw_id and (".mzML" in clean_id or ".mzXML" in clean_id):
+                                 # Split by space
+                                 parts = clean_id.split()
+                                 if len(parts) > 1:
+                                     # Check specific format "file.mzML id"
+                                     # If the first part ends in .mzML, assume the rest is ID
+                                     if parts[0].endswith(".mzML") or parts[0].endswith(".mzXML") or parts[0].endswith(".mzML\"") or parts[0].endswith(".mzXML\""):
+                                         clean_id = " ".join(parts[1:])
+                            
+                            spec_id_str = clean_id
                         else:
                             spec_id_str = f"peptide_idx_{peptide_idx}"
                         

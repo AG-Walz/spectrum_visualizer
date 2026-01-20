@@ -118,8 +118,18 @@ def create_spectrum_lookup(experiments: dict) -> dict:
     lookup_map = {}
     for exp_name, exp in experiments.items():
         try:
+            # Detect pattern for spectrum lookup
+            first_native_id = exp.getSpectrum(0).getNativeID() if exp.getNrSpectra() > 0 else ""
+            pattern = "scan=(?<SCAN>\\d+)"
+            if "index=" in first_native_id:
+                pattern = "index=(?<SCAN>\\d+)"
+            elif "spectrum=" in first_native_id:
+                pattern = "spectrum=(?<SCAN>\\d+)"
+            elif not "scan=" in first_native_id and first_native_id.isdigit():
+                 pattern = "(?<SCAN>\\d+)"
+            
             spectrum_lookup = oms.SpectrumLookup()
-            spectrum_lookup.readSpectra(exp, "scan=(?<SCAN>\\d+)")
+            spectrum_lookup.readSpectra(exp, pattern)
             lookup_map[Path(exp_name).stem] = spectrum_lookup
         except Exception as e:
             logger.error(f"Failed to create lookup for {exp_name}: {e}")
@@ -975,8 +985,10 @@ def create_matplotlib_mirror_plot(upper_spectrum_data, lower_spectrum_data, uppe
     elif r2_metric == "binned" and r2_binned is not None:
         enhanced_title = f"{title}\nR² (binned): {r2_binned:.3f}"
     
-    # Create figure
-    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    # Create figure using Figure class directly for thread safety
+    from matplotlib.figure import Figure
+    fig = Figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_subplot(111)
     
     # Normalize and plot upper spectrum (positive intensities)
     if not upper_spectrum_data.empty:
@@ -1026,7 +1038,7 @@ def create_matplotlib_mirror_plot(upper_spectrum_data, lower_spectrum_data, uppe
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     
-    plt.tight_layout()
+    fig.tight_layout()
     
     return fig
 
@@ -1048,11 +1060,15 @@ def export_matplotlib_mirror_plot(fig, output_dir: str, filename_base: str, form
         return []
     
     try:
-        import matplotlib.pyplot as plt
+        from matplotlib.backends.backend_agg import FigureCanvasAgg
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
         
         created_files = []
+        
+        # Ensure canvas is attached (needed for savefig if not using pyplot)
+        if fig.canvas is None:
+            FigureCanvasAgg(fig)
         
         for fmt in formats:
             filepath = output_path / f"{filename_base}.{fmt}"
@@ -1061,8 +1077,8 @@ def export_matplotlib_mirror_plot(fig, output_dir: str, filename_base: str, form
             created_files.append(str(filepath))
             logger.info(f"Saved {fmt.upper()}: {filepath}")
         
-        # Close figure to free memory
-        plt.close(fig)
+        # Explicitly clear the figure to free memory
+        fig.clf()
         
         return created_files
     

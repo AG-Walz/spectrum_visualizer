@@ -44,6 +44,20 @@ def extract_peptide_relevant_spectra(
     
     logger.info(f"Loaded {len(peptide_ids)} peptide identifications from idXML")
     
+    # Create a map of identifier -> mzML filename from protein_ids for fast lookup
+    run_map = {}
+    for protein_id in protein_ids:
+        mzml_file = None
+        if protein_id.metaValueExists("spectra_data"):
+            # Handle bytes/list logic safely
+            val = protein_id.getMetaValue("spectra_data")
+            if isinstance(val, list) and val: val = val[0]
+            if isinstance(val, bytes): val = val.decode()
+            mzml_file = Path(val).name
+        
+        if mzml_file:
+            run_map[protein_id.getIdentifier()] = mzml_file
+
     # Dictionary to store results: mzML -> [spectrum_ids]
     mzml_to_spectra = defaultdict(list)
     
@@ -64,12 +78,16 @@ def extract_peptide_relevant_spectra(
         # If no file_origin, we need to extract from the PeptideIdentification itself
         # OpenMS stores this in the identifier field or we can infer from protein_ids
         if not mzml_file and protein_ids:
-            # Try to get from protein_ids that share the same identifier
             identifier = peptide_id.getIdentifier()
-            for protein_id in protein_ids:
-                if protein_id.getIdentifier() == identifier:
-                    if protein_id.metaValueExists("spectra_data"):
-                        mzml_file = Path(protein_id.getMetaValue("spectra_data")[0].decode()).name
+            
+            # Try exact match
+            if identifier in run_map:
+                mzml_file = run_map[identifier]
+            else:
+                # Try finding a run that matches the prefix of the peptide identifier
+                for run_id, run_file in run_map.items():
+                    if identifier.startswith(run_id):
+                        mzml_file = run_file
                         break
         
         # Fallback: extract from spectrum_reference if it contains path
@@ -85,6 +103,33 @@ def extract_peptide_relevant_spectra(
         # Ensure .mzML extension
         if not mzml_file.endswith('.mzML'):
             mzml_file = f"{mzml_file}.mzML"
+        
+        # CLEANUP: Clean spectrum_id (strip filename prefix) to ensure matching with mzML Native IDs
+        if spectrum_id:
+            # Ensure string
+            if isinstance(spectrum_id, bytes):
+                spectrum_id = spectrum_id.decode()
+            
+            clean_id = spectrum_id.strip()
+            
+            # Heuristic 1: If it contains "scan=", "index=", or "spectrum=", assume that starts the ID
+            for tag in ["scan=", "index=", "spectrum=", "controllerType="]:
+                if tag in clean_id:
+                    idx = clean_id.find(tag)
+                    # If the tag is not at the start, check if it's preceded by space or colon
+                    if idx > 0 and clean_id[idx-1] in [' ', ':']:
+                        clean_id = clean_id[idx:]
+                        break
+            
+            # Heuristic 2: If we didn't find a tag but it looks like "file.mzML 123", strip the file
+            if clean_id == spectrum_id.strip() and (".mzML" in clean_id or ".mzXML" in clean_id):
+                 parts = clean_id.split()
+                 if len(parts) > 1:
+                     # Check if first part looks like a file
+                     if parts[0].endswith(".mzML") or parts[0].endswith(".mzXML") or parts[0].endswith(".mzML\"") or parts[0].endswith(".mzXML\""):
+                         clean_id = " ".join(parts[1:])
+            
+            spectrum_id = clean_id
         
         # Process each peptide hit
         hits = peptide_id.getHits()

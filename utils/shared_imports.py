@@ -111,15 +111,8 @@ except ImportError:
     validate_file_list = None
     create_validation_info_dict = None
 
-# Import spectrum tools from core/streamlit_bridge.py
-try:
-    import streamlit_bridge as st_tools
-    from streamlit_bridge import get_available_models
-    SPECTRUM_TOOLS_AVAILABLE = True
-except ImportError:
-    st_tools = None
-    get_available_models = None
-    SPECTRUM_TOOLS_AVAILABLE = False
+# Spectrum tools (Moved to individual files to avoid circular imports)
+SPECTRUM_TOOLS_AVAILABLE = False
 
 # Export all commonly used items
 __all__ = [
@@ -142,5 +135,5 @@ __all__ = [
     'safe_concat_dataframes', 'show_status_message', 'validate_file_list',
     'create_validation_info_dict',
     # Spectrum tools
-    'st_tools', 'get_available_models', 'SPECTRUM_TOOLS_AVAILABLE',
+    'SPECTRUM_TOOLS_AVAILABLE',
 ]

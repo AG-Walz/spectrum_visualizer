@@ -3,51 +3,50 @@ channels:
   - conda-forge
   - bioconda
 dependencies:
-  - python=3.11.13
-  - streamlit=1.48.1
-  - pandas=2.1.4
-  - numpy=1.26.4
-  - bokeh=2.4.3
+  - python=3.11
+  - streamlit>=1.48.0
+  - pandas>=2.1.0
+  - numpy>=1.26.0
+  - bokeh>=2.4.0
   - jupyter
   - jupyterlab
   - plotly
-  - pyarrow=20.0.0
+  - pyarrow>=14.0.0
   - tritonclient
   - grpcio
   - pip
   - tabulate
   - scikit-learn
+  - matplotlib>=3.8.0
+  - seaborn>=0.13.0
+  - h5py
+  - lxml
+  - rich
+  - sqlalchemy
+  - pydantic
+  - protobuf
+  - tqdm
+  - lark
+  - appdirs
+  - greenlet
+  - cycler
+  - fonttools
+  - kiwisolver
+  - pyparsing
+  - markdown-it-py
+  - mdurl
+  - adjustText
   - pip:
-    - openpyxl==3.1.5
-    - pyopenms==3.4.0
-    - pyopenms-viz==1.0.0
-    - psm-utils==0.8.3
-    - koinapy==0.0.10
-    - alphatims==1.0.9
-    - numba==0.61.2
-    - psims==1.3.5
-    - pyteomics==4.6.3
-    - spectrum-utils==0.4.2
-    - matplotlib==3.10.3
-    - seaborn==0.13.2
-    - h5py==3.14.0
-    - lxml==6.0.0
-    - rich==14.1.0
-    - fastobo==0.13.0
-    - nptdms==1.10.0
-    - pyzstd==0.17.0
-    - sqlalchemy==2.0.41
-    - pydantic==1.10.22
-    - protobuf==4.25.8
-    - tqdm==4.67.1
-    - lark==1.2.2
-    - appdirs==1.4.4
-    - greenlet==3.2.3
-    - cycler==0.12.1
-    - fonttools==4.58.4
-    - kiwisolver==1.4.8
-    - pyparsing==3.2.3
-    - markdown-it-py==3.0.0
-    - mdurl==0.1.2
-    - adjustText==1.3.0
-    - scikit-learn==1.3.2
+    - openpyxl
+    - pyopenms
+    - pyopenms-viz
+    - psm-utils
+    - koinapy
+    - alphatims
+    - numba
+    - psims
+    - pyteomics
+    - spectrum-utils
+    - fastobo
+    - nptdms
+    - pyzstd

@@ -29,10 +29,13 @@ from shared_imports import (
     SPECTRUM_TOOLS_AVAILABLE,
     # Common utility functions
     create_file_options_with_sizes, map_display_names_to_paths,
-    extract_filename, extract_filenames, is_empty_collection,
-    # Spectrum tools
-    st_tools
+    extract_filename, extract_filenames, is_empty_collection
 )
+
+try:
+    import streamlit_bridge as st_tools
+except ImportError:
+    st_tools = None
 
 # Import shared UI components
 from file_selection import (
