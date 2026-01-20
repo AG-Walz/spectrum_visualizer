@@ -232,6 +232,12 @@ def filter_mzml(
                 try:
                     idx = spectrum_lookup.findByNativeID(spec_id)
                     spectrum = original_exp.getSpectrum(idx)
+                    
+                    # ENFORCE MS2
+                    if spectrum.getMSLevel() != 2:
+                        # logger.debug(f"  Skipping non-MS2 spectrum {spec_id} (Level={spectrum.getMSLevel()})")
+                        continue
+                        
                     filtered_exp.addSpectrum(spectrum)
                     added_count += 1
                 except Exception as e:
@@ -278,6 +284,12 @@ def filter_mzml(
             try:
                 idx = spectrum_lookup.findByNativeID(spec_id)
                 spectrum = original_exp.getSpectrum(idx)
+                
+                # ENFORCE MS2
+                if spectrum.getMSLevel() != 2:
+                    # logger.debug(f"  Skipping non-MS2 spectrum {spec_id} (Level={spectrum.getMSLevel()})")
+                    continue
+                    
                 filtered_exp.addSpectrum(spectrum)
                 added_count += 1
             except Exception as e:

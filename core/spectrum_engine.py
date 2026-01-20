@@ -201,8 +201,15 @@ def attach_spectrum_to_psm(psm: PSM, experiments: dict, lookups: dict) -> PSM:
         if exp_name in experiments and psm.run in lookups:
             try:
                 idx = lookups[psm.run].findByNativeID(psm.spectrum_id)
-                psm.spectrum = experiments[exp_name][idx]
-                logger.info(f"DEBUG: Successfully attached spectrum for PSM {psm.spectrum_id}")
+                spectrum = experiments[exp_name][idx]
+                
+                # ENFORCE MS2
+                if spectrum.getMSLevel() != 2:
+                    logger.warning(f"Spectrum {psm.spectrum_id} is MS{spectrum.getMSLevel()}, not MS2. Skipping.")
+                    psm.spectrum = None
+                else:
+                    psm.spectrum = spectrum
+                    logger.info(f"DEBUG: Successfully attached spectrum for PSM {psm.spectrum_id}")
             except Exception as e:
                 logger.warning(f"DEBUG: Failed to attach spectrum for PSM {psm.spectrum_id}: {e}")
                 psm.spectrum = None
