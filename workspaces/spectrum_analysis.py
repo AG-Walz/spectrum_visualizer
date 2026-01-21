@@ -173,6 +173,59 @@ def find_matching_mzml(idxml_stem: str, available_mzml_names: List[str]) -> Opti
 
     return None
 
+
+def find_replicates(primary_mzml: str, available_mzmls: List[str]) -> List[str]:
+    """Find replicate files for a given mzML file based on naming conventions.
+    
+    Heuristic:
+    1. Look for 'RepX' pattern where X is a digit.
+    2. If found, look for other files that match the same pattern but with different X.
+    3. If not found, look for files sharing a very long common prefix.
+    """
+    import re
+    
+    if not primary_mzml:
+        return []
+    
+    # 1. Check for RepX pattern
+    # Pattern: ..._Rep1_...
+    match = re.search(r"(_Rep(\d+)_)", primary_mzml)
+    if match:
+        # Construct a regex that matches everything EXCEPT the digit in RepX
+        # e.g. if primary is "Prefix_Rep1_Suffix", we want "Prefix_Rep\d+_Suffix"
+        
+        # Escape the string to be safe for regex
+        escaped_name = re.escape(primary_mzml)
+        
+        # The match group 0 is the full "_Rep1_" part
+        # We replace it with "_Rep\d+_" in the pattern
+        # Note: re.escape escapes everything, so we need to be careful replacing
+        
+        # Simpler approach: Split by the match
+        start_idx = match.start()
+        end_idx = match.end()
+        
+        prefix = primary_mzml[:start_idx]
+        suffix = primary_mzml[end_idx:]
+        
+        # Build pattern: ^Prefix_Rep\d+_Suffix$
+        # But suffix might contain unique IDs (e.g. ..._320.mzML vs ..._321.mzML)
+        # So we should probably be looser on the suffix
+        
+        # Let's just match the prefix up to RepX
+        replicate_pattern = re.escape(prefix) + r"_Rep\d+_"
+        
+        replicates = []
+        for f in available_mzmls:
+            if re.match(replicate_pattern, f):
+                replicates.append(f)
+        
+        if replicates:
+             # Sort to ensure consistent order (Rep1, Rep2, Rep3)
+             return sorted(replicates)
+
+    return [primary_mzml]
+
 def validate_spectrum_index(mapping_df: pd.DataFrame, spectrum_index: int, context: str = "") -> bool:
     """Validate spectrum index."""
     try:
@@ -342,7 +395,7 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
     Returns:
         (idxml_name, mzml_spectra, messages, is_empty)
     """
-    idxml_path, available_mzml_names, selected_set, unmodified_selected = args
+    idxml_path, available_mzml_names, selected_set, unmodified_selected, plot_all_replicates = args
     messages = []
     is_empty = False
     idxml_name = extract_filename(idxml_path)
@@ -370,19 +423,32 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
         
         if protein_ids:
             for i, protein_id in enumerate(protein_ids):
-                mzml_file = None
-                metadata_keys = ["CometAdapter:1:in", "spectra_data", "spectrum_reference", "mzML_file"]
-                for key in metadata_keys:
-                    if protein_id.metaValueExists(key):
-                        value = decode_metadata_value(protein_id.getMetaValue(key))
-                        mzml_file = Path(value).name
-                        break
+                mzml_files = []
+                
+                # Priority: Check spectra_data first as it is the standard for lists
+                if protein_id.metaValueExists("spectra_data"):
+                    raw_val = protein_id.getMetaValue("spectra_data")
+                    if isinstance(raw_val, list):
+                        # Decode list
+                        mzml_files = [x.decode() if isinstance(x, bytes) else str(x) for x in raw_val]
+                    else:
+                        mzml_files = [decode_metadata_value(raw_val)]
+                    # Clean paths
+                    mzml_files = [Path(f).name for f in mzml_files]
+                
+                if not mzml_files:
+                    # Fallback to other keys
+                    metadata_keys = ["CometAdapter:1:in", "spectrum_reference", "mzML_file"]
+                    for key in metadata_keys:
+                        if protein_id.metaValueExists(key):
+                            value = decode_metadata_value(protein_id.getMetaValue(key))
+                            mzml_files = [Path(value).name]
+                            break
                 
                 identifier = protein_id.getIdentifier()
-                if mzml_file:
-                    run_map[identifier] = mzml_file
-                    # Keep the first one as default/fallback
-        
+                if mzml_files:
+                    # Store ALL files associated with this run identifier
+                    run_map[identifier] = mzml_files
         
         # DEBUG: Log run_map
         print(f"[DEBUG] Processing {idxml_name}: Found {len(run_map)} run identifiers")
@@ -444,14 +510,16 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             identifier = pep_id.getIdentifier()
                             # Try exact match first
                             if identifier in run_map:
-                                mzml_file = run_map[identifier]
-                                print(f"[DEBUG]   Priority 2 (Exact Run ID): {identifier} -> {mzml_file}")
+                                # run_map now stores a LIST. Use the first one as default/primary.
+                                if run_map[identifier]:
+                                    mzml_file = run_map[identifier][0]
+                                    print(f"[DEBUG]   Priority 2 (Exact Run ID): {identifier} -> {mzml_file}")
                             else:
                                 # Try finding a run that matches the prefix of the peptide identifier
                                 # Percolator often appends _number to the run identifier for peptides
-                                for run_id, run_file in run_map.items():
-                                    if identifier.startswith(run_id):
-                                        mzml_file = run_file
+                                for run_id, run_files in run_map.items():
+                                    if identifier.startswith(run_id) and run_files:
+                                        mzml_file = run_files[0]
                                         print(f"[DEBUG]   Priority 2 (Prefix Run ID): {identifier} starts with {run_id} -> {mzml_file}")
                                         break
                         
@@ -505,7 +573,46 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                         
                         # CRITICAL: Store peptide_idx for O(1) access later
                         # Format: (spec_id, peptidoform, peptide_idx)
-                        mzml_spectra[mzml_file].append((spec_id_str, peptidoform_str, peptide_idx))
+                        
+                        if plot_all_replicates:
+                            # FEATURE: Plot all replicates
+                            
+                            # Get replicates from run_map if available for this identifier
+                            valid_replicates = []
+                            identifier = pep_id.getIdentifier()
+                            
+                            # Tries to find the run_id that matches this peptide
+                            matched_run_id = None
+                            if identifier in run_map:
+                                matched_run_id = identifier
+                            else:
+                                for run_id in run_map.keys():
+                                    if identifier.startswith(run_id):
+                                        matched_run_id = run_id
+                                        break
+                            
+                            if matched_run_id:
+                                # Use the exact list from spectra_data!
+                                raw_replicates = run_map[matched_run_id]
+                                # Filter to available files
+                                valid_replicates = [r for r in raw_replicates if r in available_mzml_names]
+                                print(f"[DEBUG] Replicates from metadata for {identifier}: {len(valid_replicates)} found")
+                            else:
+                                # Fallback to heuristic if metadata missing (unlikely if spectra_data exists)
+                                valid_replicates = find_replicates(mzml_file, available_mzml_names)
+                                print(f"[DEBUG] Heuristic replicates for {mzml_file}: {len(valid_replicates)} files found")
+
+                            if not valid_replicates:
+                                valid_replicates = [mzml_file]
+                                
+                            for rep_file in valid_replicates:
+                                if rep_file not in mzml_spectra:
+                                    mzml_spectra[rep_file] = []
+                                mzml_spectra[rep_file].append((spec_id_str, peptidoform_str, peptide_idx))
+                                
+                        else:
+                            # Standard behavior: Only plot the matched mzML
+                            mzml_spectra[mzml_file].append((spec_id_str, peptidoform_str, peptide_idx))
                         
                         break  # Found a match, move to next peptide ID
                 
@@ -535,7 +642,8 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
                                       mzml_paths: List[str],
                                       selected_peptidoforms: List[str],
                                       progress_callback=None,
-                                      max_workers: int = 8) -> Tuple[Dict[str, Dict[str, List[Tuple[str, str, int]]]], List[str], List[str]]:
+                                      max_workers: int = 8,
+                                      plot_all_replicates: bool = False) -> Tuple[Dict[str, Dict[str, List[Tuple[str, str, int]]]], List[str], List[str]]:
     """
     PHASE 2: Filter idXML files to get only spectrum IDs matching selected peptides.
     
@@ -545,6 +653,7 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
         selected_peptidoforms: List of selected peptide string
         progress_callback: Progress callback function
         max_workers: Number of parallel workers
+        plot_all_replicates: If True, plot spectrum for all replicate mzMLs found in idXML
     
     Returns:
         (idxml_to_mzml_spectra, messages, empty_files)
@@ -565,7 +674,7 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     # Prepare arguments for parallel execution
     tasks = []
     for idxml_path in idxml_paths:
-        tasks.append((idxml_path, available_mzml_names, selected_set, unmodified_selected))
+        tasks.append((idxml_path, available_mzml_names, selected_set, unmodified_selected, plot_all_replicates))
     
     logger.info(f"Filtering {total_files} idXML files with {max_workers} workers...")
     
