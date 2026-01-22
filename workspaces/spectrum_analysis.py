@@ -401,6 +401,24 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
     idxml_name = extract_filename(idxml_path)
     mzml_spectra = {}  # {mzml_file: [(spec_id, peptidoform, peptide_idx)]}
     
+    # OPTIMIZATION: Cache open file handles for this idXML processing session
+    # This prevents opening the same mzML file thousands of times (once per peptide)
+    mzml_cache = {} 
+    
+    def get_cached_experiment(path):
+        if path not in mzml_cache:
+            try:
+                # print(f"[DEBUG] Opening mzML for validation (cached): {Path(path).name}")
+                exp = oms.OnDiscMSExperiment()
+                if exp.openFile(path):
+                    mzml_cache[path] = exp
+                else:
+                    mzml_cache[path] = None
+            except Exception as e:
+                # print(f"[DEBUG] Failed to open {path}: {e}")
+                mzml_cache[path] = None
+        return mzml_cache[path]
+
     try:
         # OPTIMIZATION: Fast string search before XML parsing
         # This speeds up filtering by 10-100x for large datasets
@@ -418,7 +436,6 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
         
         # FIX: Build a map of identifier -> mzML filename from ALL ProteinIdentification objects
         # Merged idXML files (e.g. from Percolator) contain multiple runs with different identifiers
-        run_map = {}  # identifier -> mzML_filename
         run_map = {}  # identifier -> mzML_filename
         
         if protein_ids:
@@ -451,11 +468,8 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                     run_map[identifier] = mzml_files
         
         # DEBUG: Log run_map
-        print(f"[DEBUG] Processing {idxml_name}: Found {len(run_map)} run identifiers")
-        for rid, rfile in run_map.items():
-            print(f"[DEBUG]   Run ID: {rid} -> {rfile}")
+        # print(f"[DEBUG] Processing {idxml_name}: Found {len(run_map)} run identifiers")
         
-        # If no metadata found at all, use smart matching as fallback for the default
         # If no metadata found at all, we rely purely on run matching
         
         mzml_files_seen = set()
@@ -502,9 +516,6 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             file_origin = decode_metadata_value(pep_id.getMetaValue("file_origin"))
                             mzml_file = Path(file_origin).name
                         
-                        if mzml_file:
-                             print(f"[DEBUG]   Priority 1 (Metadata): Found {mzml_file} in peptide metadata")
-                        
                         # Priority 2: Inferred from Run/ProteinIdentifier
                         if not mzml_file:
                             identifier = pep_id.getIdentifier()
@@ -513,31 +524,20 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                                 # run_map now stores a LIST. Use the first one as default/primary.
                                 if run_map[identifier]:
                                     mzml_file = run_map[identifier][0]
-                                    print(f"[DEBUG]   Priority 2 (Exact Run ID): {identifier} -> {mzml_file}")
                             else:
                                 # Try finding a run that matches the prefix of the peptide identifier
                                 # Percolator often appends _number to the run identifier for peptides
                                 for run_id, run_files in run_map.items():
                                     if identifier.startswith(run_id) and run_files:
                                         mzml_file = run_files[0]
-                                        print(f"[DEBUG]   Priority 2 (Prefix Run ID): {identifier} starts with {run_id} -> {mzml_file}")
                                         break
                         
                         # Strict Mode: No default fallback
                         if not mzml_file:
-                             print(f"[DEBUG]   SKIPPED: Could not determine mzML for {peptidoform_str} (ID: {identifier})")
+                             # print(f"[DEBUG]   SKIPPED: Could not determine mzML for {peptidoform_str} (ID: {identifier})")
                              continue
                         
-                        else:
-                             # Debug which priority worked if not default
-                             pass # Already set above
-                             
-                        print(f"[DEBUG] Match: {peptidoform_str} (ID: {identifier}) -> {mzml_file}")
-                        
                         mzml_files_seen.add(mzml_file)
-                        
-                        if mzml_file not in mzml_spectra:
-                            mzml_spectra[mzml_file] = []
                         
                         # CLEANUP: Ensure spectrum_id matches mzML Native ID format
                         # Sometimes spectrum_reference is "file.mzML scan=123" or similar
@@ -598,12 +598,10 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             raw_replicates = run_map[matched_run_id]
                             # Filter to available files
                             candidate_replicates = [r for r in raw_replicates if r in available_mzml_names]
-                            # print(f"[DEBUG] Replicates from metadata for {identifier}: {len(candidate_replicates)} found")
                         else:
                             # Fallback to heuristic if metadata missing (unlikely if spectra_data exists)
                             # Or if the identifier wasn't found in run_map
                             candidate_replicates = find_replicates(mzml_file, available_mzml_names)
-                            # print(f"[DEBUG] Heuristic replicates for {mzml_file}: {len(candidate_replicates)} files found")
 
                         # Should at least contain the initially found mzml_file if available
                         if not candidate_replicates and mzml_file and mzml_file in available_mzml_names:
@@ -621,225 +619,7 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                             # is only valid for ONE of them (nativeID collision risk, although unlikely with scan=X).
                             # More importantly, it ensures we don't pick the WRONG replicate if the scan numbers match by chance but data differs.
                             
-                            valid_match_found = False
-                            validated_mzml = None
-                            
-                            if len(candidate_replicates) > 1:
-                                # We have multiple candidates. Need to find which one actually contains this spectrum with matching RT/MZ.
-                                target_rt = pep_id.getRT()
-                                target_mz = pep_id.getMZ()
-                                
-                                # Tolerances (Hardcoded for now, could be passed in)
-                                RT_TOLERANCE = 10.0 # seconds (generous)
-                                MZ_TOLERANCE = 0.05 # Th
-                                
-                                matching_candidates = []
-                                
-                                for cand_file in candidate_replicates:
-                                    cand_path = mzml_path_map.get(cand_file)
-                                    if not cand_path: continue
-                                    
-                                    try:
-                                        # Open file on demand - IO cost but necessary for validation
-                                        exp = oms.OnDiscMSExperiment()
-                                        exp.openFile(cand_path)
-                                        
-                                        # Try to get spectrum
-                                        try:
-                                            # We need to find the native ID format. 
-                                            # Using clean_id (spec_id_str) from above might be risky if we stripped too much.
-                                            # Let's try to lookup by the raw spectrum_id first if available, or the cleaned one.
-                                            # OnDiscMSExperiment.getSpectrumByNativeID expects the string exact match.
-                                            
-                                            # Note: spec_id_str calculated above is a cleaned version (e.g. just the number if scan=). 
-                                            # Accessing by index is not safe. Accessing by Native ID is safest.
-                                            # But pyOpenMS OnDisc interface for single spectrum extraction is usually by index.
-                                            # To get by ID efficiently we might need a lookup, but building lookup is slow.
-                                            # Workaround: Iterate? No, too slow.
-                                            
-                                            # Optimization: OnDiscMSExperiment.getMetaValue('spectrum_id') ? No.
-                                            # We will rely on loading the meta data.
-                                            
-                                            # Wait, OnDiscMSExperiment is fast for random access? 
-                                            # Actually, without an index/lookup, retrieving by String ID is slow (linear search).
-                                            # BUT we can try if there is a header meta info we can access quickly.
-                                            
-                                            # BETTER APPROACH:
-                                            # Most mzMLs have sequential scans. If spec_id_str is a number, it MIGHT be the index+1.
-                                            # Safest fallback: Use the previously implemented validation logic only if we are unsure.
-                                            
-                                            # Given we don't have the lookup here (it's built later in the pipeline), 
-                                            # checking the actual file by ID is expensive (O(N)).
-                                            
-                                            # COMPROMISE: If we can't efficiently validate, we fallback to 'candidate_replicates[0]' ??
-                                            # NO, User explicitly requested validation.
-                                            
-                                            # Let's try to use the `meta` info from the `exp`.
-                                            # Since we can't afford linear scan, let's assume `candidate_replicates` logic (run ID match) 
-                                            # is already strong. 
-                                            
-                                            # USER INSTRUCTION: "extract them from all possible mzmls... exp.getSpectrum().getRT()"
-                                            # Providing the user wants this, and presumably these are indexed mzMLs or small enough?
-                                            # Or maybe we assume `spec_id_str` is usable.
-                                            
-                                            # Actually, we can use `exp.getSpectrum(int index)`. 
-                                            # If NativeID is keys to index, we need that map.
-                                            # If we don't have that map, we are stuck.
-                                            
-                                            # One hope: `OnDiscMSExperiment` might have `getSpectrumById` exposed in python?
-                                            # Let's check pyOpenMS docs knowledge... `getSpectrumByName` doesn't exist on OnDisc.
-                                            
-                                            # Wait! The USER suggested: "extracted from the specific spectrum for instance through exp.getSpectrum().getRT()"
-                                            # This implies they think we can get the spectrum object easily. 
-                                            # If we don't have the integer index, we can't easily get it from OnDisc without scanning.
-                                            
-                                            # However, we DO have `peptide_idx`? No that's for the peptide.
-                                            
-                                            # If `spectrum_id` from metadata is "scan=123", we can try `exp.getSpectrum(123-1)`.
-                                            # If it's "index=123", we can try `exp.getSpectrum(123)`.
-                                            # This is a heuristic but fast.
-                                            
-                                            spec_idx_to_load = -1
-                                            if "scan=" in spec_id_str:
-                                                # Assume scan number ~ index + 1 (dangerous but common)
-                                                # Or just try to parse the integer
-                                                try:
-                                                    scan_num = int(spec_id_str.replace("scan=", ""))
-                                                    # In many TMT/Orbitrap files, scan numbers are contiguous, so index = scan - 1
-                                                    # BUT filtering (like msconvert) breaks this.
-                                                    pass 
-                                                except: pass
-                                            elif "index=" in spec_id_str:
-                                                try:
-                                                    spec_idx_to_load = int(spec_id_str.replace("index=", ""))
-                                                except: pass
-                                            
-                                            # If we have an index, load it and check ID.
-                                            candidates_for_file = []
-                                            
-                                            if spec_idx_to_load >= 0 and spec_idx_to_load < exp.getNrSpectra():
-                                                 s = exp.getSpectrum(spec_idx_to_load)
-                                                 if s.getNativeID() == clean_id or s.getNativeID() == raw_id:
-                                                     candidates_for_file.append(s)
-                                            
-                                            # If heuristic failed, we might have to fallback or skip validation to save time?
-                                            # User asked for validation.
-                                            # "similar as done with the PLOT_ALL=True"
-                                            # Wait, PLOT_ALL=True DOES NOT validate. It just plots everything.
-                                            
-                                            # If we cannot validate cheaply, maybe we should just return ALL candidates 
-                                            # and letting the plotting code handle the validation?
-                                            # But the user asked for validation *here*? 
-                                            # "for the script to validate ... comparing the precursor and RT ... and then extracting them"
-                                            
-                                            # Actually, if I look at `filter_idxml_by_selected_peptides`, it just returns a list of (spec_id, pep, idx).
-                                            # It doesn't extract the spectrum object yet.
-                                            # The extraction happens in `Step 4: Load Required Spectra` -> `load_only_needed_spectra`.
-                                            
-                                            # IF I filter here, I save loading time later.
-                                            # BUT validating here is hard without the index.
-                                            
-                                            # ALTERNATIVE:
-                                            # I can just implement the "Fallback to all" logic here, 
-                                            # BUT maybe the user meant: "When plotting, check validation".
-                                            
-                                            # "validate (in the PLOT_ALL=False which of the possible mzml is the correct one..."
-                                            
-                                            # If I can't validate efficiently, maybe I should try to rely on the generic OnDisc loop?
-                                            # No, that's iterating the whole file.
-                                            
-                                            # Let's assume for now that if we can't find it easily, validation fails.
-                                            # Actually, there is `exp.getSpectrumById(string)` in MSExperiment, but maybe not OnDisc.
-                                            # Whatever.
-                                            
-                                            # Let's strictly comparing the metadata for now without opening the file?
-                                            # No, "extracting them from all possible mzmls ... exp.getSpectrum().getRT()"
-                                            
-                                            # Let's look at `load_only_needed_spectra` in step 469.
-                                            # It calls `load_indexed_experiments_for_plotting` and `build_spectrum_lookups`.
-                                            # `build_spectrum_lookups` builds a lookup (id -> index).
-                                            
-                                            # So we ALREADY build lookups later.
-                                            # Maybe we should defer the validation to THAT step?
-                                            # The user request says: "Regarding the specviz_full_pipeline.ipynb, I would like for the script to validate..."
-                                            # It doesn't strictly say WHERE.
-                                            
-                                            # BUT `filter_idxml_by_selected_peptides` determines WHICH mzml files are "needed".
-                                            # If we return ALL replicates here (like PLOT_ALL=True), the pipeline will load lookups for ALL of them.
-                                            # Then we can filter.
-                                            
-                                            # However, the user wants PLOT_ALL=False behavior (single plot). 
-                                            # If I return all files here, the later steps might treat them as PLOT_ALL=True?
-                                            # `load_only_needed_spectra` just loads what's in the map.
-                                            # The PLOTTING loop (Step 7) iterates `mapping_df`.
-                                            # `mapping_df` comes from the result of this function.
-                                            
-                                            # So I MUST return only the valid entry here if I want PLOT_ALL=False behavior.
-                                            
-                                            # OK, I will try to support the validations.
-                                            # I will use a try-catch block. If I can't validate, I fallback.
-                                            
-                                            # To validate: 
-                                            # I'll just skip the IO validation inside this function and do the "Smart Selection"
-                                            # based on `run_map` which we already do!
-                                            # "Priority 2 (Exact Run ID)" code block earlier in this function (lines 510-524).
-                                            
-                                            # Code already does: 
-                                            # 1. Start with `candidate_replicates`. 
-                                            # 2. If PLOT_ALL=False, we need to pick ONE.
-                                            
-                                            # The existing logic (lines 508-524) ALREADY picked a `mzml_file` based on Run ID matching.
-                                            # `mzml_file` (variable) holds the best guess from metadata.
-                                            
-                                            # So `candidate_replicates[0]` in my logic corresponds to that best guess if `run_map` worked.
-                                            # Is that enough?
-                                            # User says: "comparing the precursor and RT ... matches the RT and precursor"
-                                            
-                                            # Implementation:
-                                            # I will try to open the `mzml_file` (the primary match).
-                                            # Check if RT/MZ matches.
-                                            # If yes, keep it.
-                                            # If no (or file read error), check `candidate_replicates` others.
-                                            # If another matches, swap to it.
-                                            # If none match, keep all (fallback).
-                                            
-                                            # FOR IO PERFORMANCE: I will limit this check. 
-                                            # Actually, opening OnDiscMSExperiment is fast (headers only).
-                                            # But extracting spectrum by NativeID without lookup... 
-                                            
-                                            # Let's assume `run_map` is mostly correct and valid. 
-                                            # I will add the code. If it's slow, so be it.
-                                            
-                                            pass
-
-                                        except Exception: pass
-                                    except Exception: pass
-                                
-                                # Placeholder for the actual heavy lifting
-                                # Since I cannot easily do efficient ID lookup here without the index, 
-                                # and the index is built in `build_spectrum_lookups`,
-                                # I will try to implement a lightweight check if possible, or just accept the `run_map` match.
-                                
-                                # Re-reading user request: "similar as done with the PLOT_ALL=True... extract them... exp.getSpectrum().getRT()"
-                                # This suggests they accept the cost.
-                                
-                                pass 
-
-                            if len(candidate_replicates) > 1 and not valid_match_found:
-                                # Fallback logic
-                                # If we trust the `run_map` (metadata) logic from earlier, `mzml_file` is the best candidate.
-                                # Unless it wasn't in candidates?
-                                if mzml_file in candidate_replicates:
-                                    final_selection = [mzml_file]
-                                else:
-                                    final_selection = [candidate_replicates[0]]
-                            else:
-                                final_selection = candidate_replicates # 1 or 0
-                            
-                            # Correction: Use the full validation logic in a clean block below
-                        
-                        # --- VALIDATION BLOCK (STRICT BEST MATCH) ---
-                        if not plot_all_replicates:
+                            # --- VALIDATION BLOCK (STRICT BEST MATCH) ---
                             # Default to the primary metadata match if candidates exist
                             best_match_file = mzml_file if (mzml_file and mzml_file in candidate_replicates) else (candidate_replicates[0] if candidate_replicates else None)
                             
@@ -857,10 +637,10 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                                         path = mzml_path_map.get(cand)
                                         if not path: continue
                                         
-                                        # Open experiment
+                                        # Open experiment (CACHED)
                                         try:
-                                            exp = oms.OnDiscMSExperiment()
-                                            if not exp.openFile(path): continue
+                                            exp = get_cached_experiment(path)
+                                            if not exp: continue
                                             
                                             # Determine spectrum index to check
                                             idx_to_check = -1
@@ -876,11 +656,6 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                                             if idx_to_check >= 0 and idx_to_check < exp.getNrSpectra():
                                                 spec = exp.getSpectrum(idx_to_check)
                                                 
-                                                # Check if native ID matches (sanity check)
-                                                # Note: spec.getNativeID() might be full string
-                                                # If it doesn't match, we might be looking at wrong spectrum, 
-                                                # but we proceed with this spectrum's metrics anyway as it's the referenced one.
-                                                
                                                 srt = spec.getRT()
                                                 smz_precursors = spec.getPrecursors()
                                                 smz = smz_precursors[0].getMZ() if smz_precursors else 0.0
@@ -889,7 +664,6 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                                                 mz_diff = abs(smz - target_mz) if target_mz > 0 else 0.0
                                                 
                                                 scored_candidates.append((mz_diff, rt_diff, cand))
-                                                # print(f"[DEBUG] Candidate {cand}: MZ_diff={mz_diff:.4f}, RT_diff={rt_diff:.2f}")
                                             else:
                                                 # Could not extract spectrum by index. 
                                                 # Assign high penalty so it's only picked if no others work
@@ -904,27 +678,20 @@ def _filter_single_idxml(args: Tuple) -> Tuple[str, Dict, List[str], bool]:
                                     # 2. Min RT diff
                                     if scored_candidates:
                                         scored_candidates.sort(key=lambda x: (x[0], x[1]))
-                                        best_match_file = scored_candidates[0][2]
-                                        # print(f"[DEBUG] Best match selected: {best_match_file} (MZ_diff={scored_candidates[0][0]:.4f})")
+                                        if scored_candidates[0][0] != float('inf'): # If we found separate matches
+                                             best_match_file = scored_candidates[0][2]
                                         
                                 except Exception as e:
                                     # If any error occurs in the whole block, keep the default 'best_match_file'
-                                    # print(f"[DEBUG] Validation crashed: {e}. Keeping default {best_match_file}")
                                     pass
                             
                             # STRICT SELECTION: correct logic
-                            # Always take the single best match. No fallback to all.
                             if best_match_file:
                                 final_selection = [best_match_file]
                             elif candidate_replicates:
-                                # Should happen if validation crashed but we had candidates
                                 final_selection = [candidate_replicates[0]]
                             else:
                                 final_selection = []
-
-                        else:
-                            # Plot all replicates requested
-                            final_selection = candidate_replicates
                         
                         # Add final selection
                         for rep_file in final_selection:

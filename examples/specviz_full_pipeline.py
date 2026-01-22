@@ -352,9 +352,6 @@ if __name__ == "__main__":
             if matches:
                 reference_mzml_paths.append(matches[0])
             else:
-            if matches:
-                reference_mzml_paths.append(matches[0])
-            else:
                 print(f"  ⚠️ Warning: Reference mzML not found: {ref_mzml}")
     
     if not reference_mzml_paths:

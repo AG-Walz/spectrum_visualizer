@@ -59,7 +59,7 @@ except ImportError:
     from specviz_full_pipeline import load_indexed_experiments_for_plotting, build_spectrum_lookups
 
 # Test Data
-data_dir = Path("/mnt/volume/nacho/data/HNSCC_lumos_synpeps")
+data_dir = Path("/mnt/volume/nacho/data/ProCa_Anna/small_dataset")
 idxml_path = list(data_dir.glob("*_filtered.idXML"))[0]
 mzml_paths = [str(p) for p in data_dir.glob("*.mzML")]
 
