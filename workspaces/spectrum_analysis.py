@@ -795,6 +795,97 @@ def filter_idxml_by_selected_peptides(idxml_paths: List[str],
     return idxml_to_mzml_spectra, messages, empty_files
 
 
+def validate_mzml_files(mzml_paths: List[str], progress_callback=None) -> Dict[str, Any]:
+    """Validate all mzML files for corruption/truncation issues before processing.
+    
+    This function checks each mzML file for common corruption issues:
+    - Empty files
+    - Truncated files (missing XML closing tags)
+    - Missing index structure (for indexed mzML)
+    
+    Args:
+        mzml_paths: List of mzML file paths to validate
+        progress_callback: Optional function(current, total, message) for progress updates
+    
+    Returns:
+        Dict with keys:
+            - 'valid': List of valid mzML paths
+            - 'corrupted': List of (path, reason) tuples for corrupted files
+            - 'total': Total files checked
+            - 'valid_count': Number of valid files
+            - 'corrupted_count': Number of corrupted files
+    """
+    valid_files = []
+    corrupted_files = []
+    
+    total = len(mzml_paths)
+    for i, mzml_path in enumerate(mzml_paths):
+        if progress_callback:
+            progress_callback(i + 1, total, f"Validating {Path(mzml_path).name}")
+        
+        is_truncated, reason = _is_mzml_truncated(mzml_path)
+        if is_truncated:
+            corrupted_files.append((mzml_path, reason))
+        else:
+            valid_files.append(mzml_path)
+    
+    return {
+        'valid': valid_files,
+        'corrupted': corrupted_files,
+        'total': total,
+        'valid_count': len(valid_files),
+        'corrupted_count': len(corrupted_files)
+    }
+
+
+def _is_mzml_truncated(mzml_path: str) -> Tuple[bool, str]:
+    """Check if an mzML file is truncated or corrupted by examining its ending.
+    
+    Valid indexed mzML files should end with </indexedmzML> or at minimum </mzML>.
+    Truncated files often end mid-binary data without proper XML closing tags.
+    
+    Args:
+        mzml_path: Path to the mzML file
+        
+    Returns:
+        (is_truncated, reason): Tuple of (True if truncated, reason string)
+    """
+    try:
+        file_size = os.path.getsize(mzml_path)
+        if file_size == 0:
+            return True, "File is empty"
+        
+        # Read the last 2KB to check for proper XML structure
+        with open(mzml_path, 'rb') as f:
+            # Seek to near the end (read last 2KB for safety)
+            seek_pos = max(0, file_size - 2048)
+            f.seek(seek_pos)
+            tail_bytes = f.read()
+        
+        # Try to decode as UTF-8 (mzML is XML/UTF-8)
+        try:
+            tail_text = tail_bytes.decode('utf-8', errors='ignore')
+        except:
+            tail_text = tail_bytes.decode('latin-1', errors='ignore')
+        
+        # Check for valid endings
+        # Indexed mzML should end with </indexedmzML>
+        # Standard mzML should end with </mzML>
+        if '</indexedmzML>' in tail_text or '</mzML>' in tail_text:
+            return False, "OK"
+        
+        # Check if it looks like truncated binary data (base64 encoded)
+        # Base64 characters at the very end without XML tags = truncated
+        stripped_tail = tail_text.strip()
+        if stripped_tail and not stripped_tail.endswith('>'):
+            return True, "File truncated mid-binary data (no closing XML tags)"
+        
+        return True, "Missing expected closing tags (</indexedmzML> or </mzML>)"
+        
+    except Exception as e:
+        return True, f"Cannot read file: {e}"
+
+
 @st.cache_resource(show_spinner=False)
 def _load_indexed_mzml(mzml_path: str):
     """Cache indexed mzML file access for selective spectrum loading.
@@ -804,14 +895,30 @@ def _load_indexed_mzml(mzml_path: str):
     
     Note: Uses @st.cache_resource because OnDiscMSExperiment maintains
     file handles that cannot be pickled/serialized.
+    
+    PRE-VALIDATION: Checks for truncated/corrupted files BEFORE calling OpenMS
+    to avoid verbose error messages from the C++ library.
     """
+    # Pre-validation: Check if file is truncated before calling OpenMS
+    is_truncated, reason = _is_mzml_truncated(mzml_path)
+    if is_truncated:
+        logger.warning(f"Skipping corrupted/truncated mzML file: {Path(mzml_path).name} - {reason}")
+        return None
+    
     try:
         # Use OnDiscMSExperiment for indexed access without loading all spectra
         indexed_file = oms.OnDiscMSExperiment()
         indexed_file.openFile(mzml_path)
         return indexed_file
     except Exception as e:
-        logger.error(f"Failed to create indexed access for {mzml_path}: {e}")
+        error_str = str(e)
+        # Provide cleaner error messages for common issues
+        if "indexListOffset" in error_str or "IndexedMzMLDecoder" in error_str:
+            logger.warning(f"Corrupted indexed mzML (missing index): {Path(mzml_path).name}")
+        elif "input ended before" in error_str or "binary" in error_str:
+            logger.warning(f"Truncated mzML file: {Path(mzml_path).name}")
+        else:
+            logger.error(f"Failed to create indexed access for {mzml_path}: {e}")
         return None
 
 
@@ -851,19 +958,23 @@ def _process_single_mzml_for_idxml(args: Tuple) -> Tuple[Optional[pd.DataFrame],
     messages = []
     
     try:
+        # Pre-check: Detect truncated files before calling OpenMS
+        is_truncated, truncation_reason = _is_mzml_truncated(mzml_path)
+        if is_truncated:
+            messages.append(f"    ⚠️ Skipping corrupted mzML: {mzml_file} ({truncation_reason})")
+            return None, messages, idxml_name, mzml_file, 0
+        
         # OPTIMIZED: Use indexed access - only loads metadata, not full file
         indexed_mzml = _load_indexed_mzml(mzml_path)
         if indexed_mzml is None:
             # Check if file exists and is accessible
             if not os.path.exists(mzml_path):
-                 messages.append(f"    ❌ File not found: {mzml_file}")
+                messages.append(f"    ❌ File not found: {mzml_file}")
             elif os.path.getsize(mzml_path) == 0:
-                 messages.append(f"    ❌ File is empty: {mzml_file}")
+                messages.append(f"    ❌ File is empty: {mzml_file}")
             else:
-                 messages.append(f"    ❌ Corrupted or invalid mzML: {mzml_file} (Parse Error)")
+                messages.append(f"    ⚠️ Corrupted/truncated mzML: {mzml_file} (cannot parse index)")
             
-            return None, messages, idxml_name, mzml_file, 0
-            messages.append(f"    ❌ Failed to open indexed mzML: {mzml_file}")
             return None, messages, idxml_name, mzml_file, 0
         
         mappings = []
