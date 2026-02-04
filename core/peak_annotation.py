@@ -47,7 +47,9 @@ def generate_theoretical_fragments(
     peptidoform: str,
     charge: int = 2,
     ion_types: List[str] = None,
-    max_fragment_charge: int = 2
+    max_fragment_charge: int = 2,
+    add_losses: bool = False,
+    add_first_prefix_ion: bool = True
 ) -> pd.DataFrame:
     """
     Generate theoretical fragment ions for a peptide.
@@ -57,6 +59,8 @@ def generate_theoretical_fragments(
         charge: Precursor charge state
         ion_types: List of ion types to generate (default: ["b", "y"])
         max_fragment_charge: Maximum charge for fragment ions
+        add_losses: Whether to add neutral loss peaks (H2O, NH3)
+        add_first_prefix_ion: Whether to add first prefix ion (a1, b1)
 
     Returns:
         DataFrame with columns: mz, intensity (relative), annotation, charge
@@ -79,9 +83,11 @@ def generate_theoretical_fragments(
         params.setValue(f"add_{ion}_ions", "true" if ion in ion_types else "false")
 
     params.setValue("add_metainfo", "true")
-    params.setValue("add_losses", "true" if "loss" in ion_types else "false")
-    params.setValue("add_precursor_peaks", "true" if "precursor" in ion_types else "false")
-    params.setValue("add_first_prefix_ion", "true")
+    params.setValue("add_losses", "true" if add_losses else "false")
+    # Always generate precursor peaks at all charges for identification purposes
+    params.setValue("add_precursor_peaks", "true")
+    params.setValue("add_all_precursor_charges", "true")
+    params.setValue("add_first_prefix_ion", "true" if add_first_prefix_ion else "false")
     params.setValue("add_abundant_immonium_ions", "true" if "immonium" in ion_types else "false")
 
     tsg.setParameters(params)
@@ -237,7 +243,10 @@ def prepare_spectrum_for_plot(
     charge: int,
     ion_types: List[str] = None,
     mz_tolerance: float = 0.02,
-    normalize: bool = True
+    normalize: bool = True,
+    add_losses: bool = False,
+    add_first_prefix_ion: bool = True,
+    remove_precursor_peaks: bool = False
 ) -> pd.DataFrame:
     """
     Prepare a spectrum for plotting with annotations.
@@ -247,9 +256,12 @@ def prepare_spectrum_for_plot(
         intensity: Intensity array
         peptidoform: Peptidoform string
         charge: Precursor charge
-        ion_types: Ion types to annotate
+        ion_types: Ion types to annotate (determines coloring)
         mz_tolerance: Matching tolerance
         normalize: Whether to normalize intensities to [0, 1]
+        add_losses: Whether to include neutral loss peaks in theoretical spectrum
+        add_first_prefix_ion: Whether to include first prefix ion (a1, b1)
+        remove_precursor_peaks: Whether to remove precursor peaks from the result
 
     Returns:
         DataFrame ready for plotting with: mz, intensity, annotation, ion_type, charge
@@ -257,11 +269,13 @@ def prepare_spectrum_for_plot(
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 
-    # Generate theoretical fragments
+    # Generate theoretical fragments (always includes precursor at all charges for identification)
     theo_frags = generate_theoretical_fragments(
         peptidoform,
         charge=charge,
-        ion_types=ion_types
+        ion_types=ion_types,
+        add_losses=add_losses,
+        add_first_prefix_ion=add_first_prefix_ion
     )
 
     # Annotate spectrum
@@ -273,7 +287,25 @@ def prepare_spectrum_for_plot(
     # Add ion type column
     annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
 
-    # Normalize if requested
+    # If "precursor" not in ion_types, mark precursor peaks as unannotated (grey)
+    if "precursor" not in ion_types:
+        precursor_mask = annotated["ion_type"] == "precursor"
+        annotated.loc[precursor_mask, "ion_type"] = "unannotated"
+        annotated.loc[precursor_mask, "is_annotated"] = False
+
+    # Remove precursor peaks if requested
+    if remove_precursor_peaks:
+        # First identify precursor peaks (they have annotation starting with [M or containing precursor)
+        def is_precursor_annotation(ann):
+            if not ann or ann == "unannotated":
+                return False
+            ann_lower = ann.lower()
+            return ann_lower.startswith("[m") or "precursor" in ann_lower
+
+        precursor_mask = annotated["annotation"].apply(is_precursor_annotation)
+        annotated = annotated[~precursor_mask].reset_index(drop=True)
+
+    # Normalize if requested (do this AFTER filtering so max is recalculated)
     if normalize and len(annotated) > 0:
         max_int = annotated["intensity"].max()
         if max_int > 0:

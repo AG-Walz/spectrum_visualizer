@@ -13,6 +13,33 @@ logger = logging.getLogger(__name__)
 # State key prefix for this workspace
 STATE_PREFIX = "peptide_mirror"
 
+# ============================================================================
+# SETTINGS LOADING - Shared with main.py
+# ============================================================================
+
+def load_settings() -> dict:
+    """Load settings from settings.json (same logic as main.py)."""
+    settings_path = Path(__file__).parent.parent / "settings.json"
+    if settings_path.exists():
+        with open(settings_path, 'r') as f:
+            return json.load(f)
+    return {}
+
+
+def get_settings_value(settings: dict, *keys, default=None):
+    """Safely get nested settings value."""
+    value = settings
+    for key in keys:
+        if isinstance(value, dict):
+            value = value.get(key)
+        else:
+            return default
+    return value if value is not None else default
+
+
+# Load settings once at module level
+SETTINGS = load_settings()
+
 
 def get_state_key(key: str) -> str:
     """Get namespaced session state key."""
@@ -20,18 +47,37 @@ def get_state_key(key: str) -> str:
 
 
 def init_session_state():
-    """Initialize session state with defaults."""
+    """Initialize session state with defaults from settings.json."""
+    # Get defaults from settings.json (same values used by main.py)
+    ion_types_default = get_settings_value(SETTINGS, "ion_types", "default", default=["b", "y"])
+    mz_tolerance_default = get_settings_value(SETTINGS, "mz_tolerance", "default", default=0.02)
+    export_dir_default = get_settings_value(SETTINGS, "export", "default_directory", default="./exports")
+    export_formats_default = get_settings_value(SETTINGS, "export", "formats", default=["png", "svg"])
+    project_name_default = get_settings_value(SETTINGS, "export", "project_name", default="MSpecViz_analysis")
+    data_dir_default = get_settings_value(SETTINGS, "data_directories", "default", default="/mnt/volume")
+
+    # Annotation settings
+    add_losses_default = get_settings_value(SETTINGS, "annotation", "add_losses", default=False)
+    add_first_prefix_default = get_settings_value(SETTINGS, "annotation", "add_first_prefix_ion", default=True)
+    remove_precursor_default = get_settings_value(SETTINGS, "annotation", "remove_precursor_peaks", default=False)
+
     defaults = {
-        'idxml_dir': '/mnt/volume',
-        'mzml_dir': '/mnt/volume',
+        'idxml_dir': data_dir_default,
+        'mzml_dir': data_dir_default,
         'selected_idxmls': [],
         'selected_mzmls': [],
         'target_peptides': '',
         'reference_substring': '',
-        'ion_types': ['b', 'y'],
-        'mz_tolerance': 0.02,
+        'ion_types': ion_types_default,
+        'mz_tolerance': mz_tolerance_default,
+        'add_losses': add_losses_default,
+        'add_first_prefix_ion': add_first_prefix_default,
+        'remove_precursor_peaks': remove_precursor_default,
+        'export_dir': export_dir_default,
+        'export_formats': export_formats_default,
+        'project_name': project_name_default,
         'search_results': None,
-        'loaded_variants': None,
+        'streaming_results': None,
         'current_step': 1,
     }
 
@@ -343,17 +389,20 @@ def render_settings():
     """Render analysis settings."""
     st.header("Step 4: Settings")
 
+    # Get available ion types from settings
+    available_ions = get_settings_value(SETTINGS, "ion_types", "available",
+                                        default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
+
     col1, col2 = st.columns(2)
 
     with col1:
         st.subheader("Ion Types")
-        all_ions = ['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium']
         current_ions = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
 
         selected_ions = st.multiselect(
             "Select ion types to annotate",
-            options=all_ions,
-            default=[i for i in current_ions if i in all_ions],
+            options=available_ions,
+            default=[i for i in current_ions if i in available_ions],
             key=f"{STATE_PREFIX}_ion_select"
         )
         st.session_state[get_state_key('ion_types')] = selected_ions
@@ -372,6 +421,48 @@ def render_settings():
             key=f"{STATE_PREFIX}_tol_input"
         )
         st.session_state[get_state_key('mz_tolerance')] = tolerance
+
+    # Additional annotation settings
+    st.markdown("---")
+    st.subheader("Annotation Settings")
+
+    ann_col1, ann_col2, ann_col3 = st.columns(3)
+
+    with ann_col1:
+        add_losses = st.checkbox(
+            "Add neutral losses (H₂O, NH₃)",
+            value=st.session_state.get(get_state_key('add_losses'), False),
+            key=f"{STATE_PREFIX}_add_losses",
+            help="Include neutral loss peaks in theoretical spectrum"
+        )
+        st.session_state[get_state_key('add_losses')] = add_losses
+
+    with ann_col2:
+        add_first_prefix = st.checkbox(
+            "Add first prefix ion (a₁, b₁)",
+            value=st.session_state.get(get_state_key('add_first_prefix_ion'), True),
+            key=f"{STATE_PREFIX}_add_first_prefix",
+            help="Include first prefix ions in theoretical spectrum"
+        )
+        st.session_state[get_state_key('add_first_prefix_ion')] = add_first_prefix
+
+    with ann_col3:
+        remove_precursor = st.checkbox(
+            "Remove precursor peaks from plot",
+            value=st.session_state.get(get_state_key('remove_precursor_peaks'), False),
+            key=f"{STATE_PREFIX}_remove_precursor",
+            help="Remove all precursor ions (at any charge state) from the final plot. "
+                 "Intensities will be renormalized after removal."
+        )
+        st.session_state[get_state_key('remove_precursor_peaks')] = remove_precursor
+
+    # Info about precursor behavior
+    if remove_precursor:
+        st.caption("ℹ️ Precursor peaks will be removed from plots. Relative intensities will be recalculated.")
+    elif "precursor" in st.session_state.get(get_state_key('ion_types'), []):
+        st.caption("ℹ️ Precursor peaks will be shown and colored.")
+    else:
+        st.caption("ℹ️ Precursor peaks will be shown in grey (unannotated).")
 
     return True
 
@@ -428,13 +519,12 @@ def render_search():
 
 def render_analysis():
     """Render spectrum loading and analysis step."""
-    st.header("Step 6: Load & Analyze Spectra")
+    st.header("Step 6: Process & Export")
 
     # Check prerequisites
     search_results = st.session_state.get(get_state_key('search_results'))
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
 
-    # Reference substring: try synced key, then widget key
     ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
     if not ref_substring:
         ref_substring = st.session_state.get(f"{STATE_PREFIX}_ref_input", '')
@@ -449,51 +539,57 @@ def render_analysis():
 
     # Calculate expected spectra count
     total_psms = sum(len(vg.matches) for vg in search_results.values())
-    loaded_variants = st.session_state.get(get_state_key('loaded_variants'))
+    streaming_results = st.session_state.get(get_state_key('streaming_results'))
 
-    # Show loading status
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        if loaded_variants:
-            total_loaded = sum(
-                len(vg.query_spectra) + len(vg.reference_spectra)
-                for vg in loaded_variants.values()
-            )
-            st.metric("Spectra Loaded", f"{total_loaded} / {total_psms} PSMs")
-        else:
-            st.metric("Spectra Loaded", f"0 / {total_psms} PSMs")
-
-    with col2:
-        # Reference info
-        if ref_substring:
-            ref_count = sum(1 for m in mzmls if ref_substring.lower() in Path(m).name.lower())
-            st.metric("Reference Files", f"{ref_count} / {len(mzmls)}")
+    # Show status as caption (less prominent)
+    if streaming_results:
+        st.caption(f"✅ Processed {streaming_results.get('query_spectra', 0)} of {total_psms} PSMs, "
+                   f"exported {streaming_results.get('plots_generated', 0)} plots")
+    else:
+        st.caption(f"Ready to process {total_psms} peptide-spectrum matches")
 
     st.markdown("---")
 
-    # Loading button and progress
-    if st.button("📂 Load Spectra from mzML", key=f"{STATE_PREFIX}_load_btn", type="primary"):
-        run_spectrum_loading_with_progress()
+    # Export settings
+    with st.expander("📁 Export Settings", expanded=True):
+        export_col1, export_col2 = st.columns(2)
 
-    # Show loading progress placeholder
-    progress_container = st.container()
+        with export_col1:
+            project_name = st.text_input(
+                "Project Name",
+                value=st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis'),
+                key=f"{STATE_PREFIX}_project_name_input"
+            )
+            st.session_state[get_state_key('project_name')] = project_name
 
-    # Display loaded spectra summary
-    if loaded_variants:
+            export_dir = st.text_input(
+                "Export Directory",
+                value=st.session_state.get(get_state_key('export_dir'), './exports'),
+                key=f"{STATE_PREFIX}_export_dir_input"
+            )
+            st.session_state[get_state_key('export_dir')] = export_dir
+
+        with export_col2:
+            export_formats = st.multiselect(
+                "Export Formats",
+                options=['png', 'svg'],
+                default=st.session_state.get(get_state_key('export_formats'), ['png', 'svg']),
+                key=f"{STATE_PREFIX}_export_formats_input"
+            )
+            st.session_state[get_state_key('export_formats')] = export_formats
+
+    # Process button
+    if st.button("🚀 Process & Export", key=f"{STATE_PREFIX}_load_btn", type="primary",
+                 help="Load spectra, generate plots, and export"):
+        run_streaming_processing()
+
+    # Display results
+    if streaming_results:
         st.markdown("---")
-        st.subheader("Loaded Spectra Summary")
-        display_loaded_spectra(loaded_variants)
-
-        total_query = sum(len(vg.query_spectra) for vg in loaded_variants.values())
-        total_ref = sum(len(vg.reference_spectra) for vg in loaded_variants.values())
-
-        if total_query > 0 or total_ref > 0:
-            st.success(f"✅ Ready for visualization! {total_query} query + {total_ref} reference spectra loaded. Go to **Results** tab.")
-        else:
-            st.warning("No spectra could be loaded. Check that mzML files match the idXML identifications.")
+        st.subheader("Results")
+        display_streaming_results(streaming_results)
     else:
-        st.caption("Click 'Load Spectra' to load matched spectra from mzML files.")
+        st.caption("Click 'Process & Export' to load spectra, generate plots, and export.")
 
 
 def run_peptide_search(idxmls: list, peptides: list):
@@ -554,127 +650,378 @@ def run_peptide_search(idxmls: list, peptides: list):
         logger.exception("Peptide search error")
 
 
-def run_spectrum_loading_with_progress():
-    """Load spectra for search results with detailed progress tracking."""
-    from core.spectrum_loader import load_matched_spectra, LoadingProgress
+def run_streaming_processing():
+    """
+    Run streaming spectrum loading and processing.
 
+    This mirrors the approach used in main.py:
+    1. Load all reference spectra first
+    2. Stream each query spectrum and immediately annotate, plot, and export
+    """
+    from core.spectrum_loader import load_spectra_streaming, StreamingResult
+    from core.peak_annotation import prepare_spectrum_for_plot
+    from core.mirror_plot import create_mirror_plot
+    from core.export import sanitize_filename, create_export_directory
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+
+    # Get state
     search_results = st.session_state.get(get_state_key('search_results'))
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
     ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
+    if not ref_substring:
+        ref_substring = st.session_state.get(f"{STATE_PREFIX}_ref_input", '')
+
+    ion_types = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
+    mz_tolerance = st.session_state.get(get_state_key('mz_tolerance'), 0.02)
+    add_losses = st.session_state.get(get_state_key('add_losses'), False)
+    add_first_prefix_ion = st.session_state.get(get_state_key('add_first_prefix_ion'), True)
+    remove_precursor_peaks = st.session_state.get(get_state_key('remove_precursor_peaks'), False)
+    export_dir = st.session_state.get(get_state_key('export_dir'), './exports')
+    export_formats = st.session_state.get(get_state_key('export_formats'), ['png', 'svg'])
+    project_name = st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis')
 
     if not search_results:
-        st.warning("No search results to load")
+        st.warning("No search results to process")
         return
 
+    # Make a copy of search results
+    import copy
+    variant_groups = copy.deepcopy(search_results)
+
     mzml_paths = [Path(m) for m in mzmls]
-    total_psms = sum(len(vg.matches) for vg in search_results.values())
+    total_psms = sum(len(vg.matches) for vg in variant_groups.values())
 
-    # Progress display
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    # Create export directory structure (same as main.py)
+    root_dir, png_dir, svg_dir = create_export_directory(export_dir, project_name)
 
-    # Stats display in columns
-    stats_cols = st.columns(4)
-    files_metric = stats_cols[0].empty()
-    loaded_metric = stats_cols[1].empty()
-    failed_metric = stats_cols[2].empty()
-    current_metric = stats_cols[3].empty()
+    # Count expected reference vs query PSMs
+    ref_files_lower = {Path(m).name.lower() for m in mzmls
+                       if ref_substring and ref_substring.lower() in Path(m).name.lower()}
+    expected_refs = sum(
+        1 for vg in variant_groups.values() for m in vg.matches
+        if m.mzml_filename and m.mzml_filename.lower() in ref_files_lower
+    )
+    expected_queries = total_psms - expected_refs
 
-    # Error display area
-    error_container = st.container()
-    error_messages = []
+    # Helper to format time as hours/minutes/seconds
+    def format_time(seconds: float) -> str:
+        """Format seconds as human-readable time."""
+        if seconds < 60:
+            return f"{seconds:.0f}s"
+        elif seconds < 3600:
+            mins = int(seconds // 60)
+            secs = int(seconds % 60)
+            return f"{mins}m {secs}s"
+        else:
+            hours = int(seconds // 3600)
+            mins = int((seconds % 3600) // 60)
+            return f"{hours}h {mins}m"
 
-    def progress_callback(progress: LoadingProgress):
-        """Handle progress updates from spectrum loader."""
-        # Update progress bar
-        progress_bar.progress(progress.progress_fraction)
+    # Progress display - two separate progress bars
+    import time
+    start_time = time.time()
+    ref_start_time = start_time
+    query_start_time = None
 
-        # Update metrics
-        files_metric.metric(
-            "Files",
-            f"{progress.files_done} / {progress.total_files}"
-        )
-        loaded_metric.metric(
-            "Loaded",
-            f"{progress.spectra_loaded} / {progress.spectra_expected}"
-        )
-        failed_metric.metric(
-            "Not Found",
-            f"{progress.spectra_not_found}"
-        )
+    # Reference progress section
+    st.markdown("**Reference Spectra**")
+    ref_progress_bar = st.progress(0)
+    ref_status = st.empty()
+    ref_status.caption(f"Loading {expected_refs} reference spectra...")
 
-        # Current file info
-        if progress.current_file:
-            file_name = progress.current_file[:20] + "..." if len(progress.current_file) > 20 else progress.current_file
-            current_metric.metric(
-                "Current File",
-                file_name,
-                delta=f"{progress.current_file_spectra}/{progress.current_file_total}"
+    # Query progress section
+    st.markdown("**Query Spectra**")
+    query_progress_bar = st.progress(0)
+    query_status = st.empty()
+    query_status.caption(f"Waiting for references to complete...")
+
+    # Summary metrics (compact)
+    metrics_col1, metrics_col2 = st.columns(2)
+    plots_metric = metrics_col1.empty()
+    errors_metric = metrics_col2.empty()
+
+    def add_log(message: str):
+        """Log to terminal (not app UI)."""
+        logger.info(message)
+        print(message)
+
+    # Results tracking (same structure as main.py)
+    results_summary = {
+        "reference_spectra": 0,
+        "query_spectra": 0,
+        "plots_generated": 0,
+        "files_exported": {"png": [], "svg": []},
+        "errors": [],
+        "export_root": str(root_dir),
+    }
+
+    # Annotated reference cache (annotate once, reuse)
+    annotated_references = {}
+    refs_done = False
+
+    def annotate_spectrum(spectrum, is_reference=False):
+        """Annotate a spectrum for plotting (same as main.py)."""
+        spec_type = "reference" if is_reference else "query"
+
+        # Validate input data
+        if spectrum.mz is None or len(spectrum.mz) == 0:
+            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Empty m/z array"
+            results_summary["errors"].append(error_msg)
+            add_log(f"    ❌ {error_msg}")
+            return None
+
+        if spectrum.intensity is None or len(spectrum.intensity) == 0:
+            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Empty intensity array"
+            results_summary["errors"].append(error_msg)
+            add_log(f"    ❌ {error_msg}")
+            return None
+
+        if not spectrum.peptidoform:
+            error_msg = f"Annotation error ({spec_type}): Missing peptidoform"
+            results_summary["errors"].append(error_msg)
+            add_log(f"    ❌ {error_msg}")
+            return None
+
+        if spectrum.precursor_charge <= 0:
+            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Invalid charge {spectrum.precursor_charge}"
+            results_summary["errors"].append(error_msg)
+            add_log(f"    ❌ {error_msg}")
+            return None
+
+        try:
+            df = prepare_spectrum_for_plot(
+                mz=spectrum.mz,
+                intensity=spectrum.intensity,
+                peptidoform=spectrum.peptidoform,
+                charge=spectrum.precursor_charge,
+                ion_types=ion_types,
+                mz_tolerance=mz_tolerance,
+                add_losses=add_losses,
+                add_first_prefix_ion=add_first_prefix_ion,
+                remove_precursor_peaks=remove_precursor_peaks,
             )
+            return df
+        except Exception as e:
+            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}, charge={spectrum.precursor_charge}, peaks={len(spectrum.mz)}): {e}"
+            results_summary["errors"].append(error_msg)
+            add_log(f"    ❌ {error_msg}")
+            return None
 
-        # Status text
-        status_text.text(
-            f"Loading {progress.current_file}: {progress.current_file_spectra}/{progress.current_file_total} spectra"
-        )
+    def on_reference_loaded(variant_key: str, count: int):
+        """Called when all references for a variant are loaded."""
+        nonlocal refs_done, query_start_time
+        add_log(f"[REF] {variant_key}: {count} reference spectra loaded")
+        results_summary["reference_spectra"] += count
 
-    def error_callback(error_msg: str):
-        """Handle errors immediately."""
-        error_messages.append(error_msg)
-        # Display errors as they come in
-        with error_container:
-            st.warning(f"⚠️ {error_msg}")
+        # Update reference progress
+        if expected_refs > 0:
+            ref_frac = min(results_summary["reference_spectra"] / expected_refs, 1.0)
+            ref_progress_bar.progress(ref_frac)
+
+            elapsed = time.time() - ref_start_time
+            if ref_frac > 0:
+                estimated_total = elapsed / ref_frac
+                remaining = estimated_total - elapsed
+                ref_status.caption(f"Loaded {results_summary['reference_spectra']}/{expected_refs} references "
+                                   f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)")
+
+        # Check if all references are done
+        if results_summary["reference_spectra"] >= expected_refs and not refs_done:
+            refs_done = True
+            ref_progress_bar.progress(1.0)
+            ref_elapsed = time.time() - ref_start_time
+            ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
+            query_start_time = time.time()
+            query_status.caption(f"Processing {expected_queries} query spectra...")
+
+    def on_query_ready(result: StreamingResult):
+        """Called for each query spectrum - annotate, plot, export immediately (same as main.py)."""
+        nonlocal refs_done, query_start_time
+        query = result.query_spectrum
+        refs = result.reference_spectra
+
+        # Mark refs as done if not already (first query means refs are done)
+        if not refs_done:
+            refs_done = True
+            ref_progress_bar.progress(1.0)
+            ref_elapsed = time.time() - ref_start_time
+            ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
+            query_start_time = time.time()
+
+        progress_str = f"[{result.query_index + 1}/{result.total_queries}]"
+        add_log(f"{progress_str} Processing: {query.base_sequence} from {Path(query.source_file).name}")
+
+        results_summary["query_spectra"] += 1
+
+        # Update query progress with time estimate
+        if expected_queries > 0:
+            query_frac = min(results_summary["query_spectra"] / expected_queries, 1.0)
+            query_progress_bar.progress(query_frac)
+
+            if query_start_time:
+                elapsed = time.time() - query_start_time
+                if query_frac > 0:
+                    estimated_total = elapsed / query_frac
+                    remaining = estimated_total - elapsed
+                    query_status.caption(f"Processed {results_summary['query_spectra']}/{expected_queries} queries "
+                                        f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)")
+
+        # Annotate query spectrum
+        query_df = annotate_spectrum(query, is_reference=False)
+        if query_df is None:
+            # Error already logged in annotate_spectrum
+            return
+
+        # Ensure references are annotated (cache them)
+        if result.variant_key not in annotated_references:
+            annotated_references[result.variant_key] = []
+            for ref in refs:
+                ref_df = annotate_spectrum(ref, is_reference=True)
+                if ref_df is not None:
+                    annotated_references[result.variant_key].append((ref, ref_df))
+
+        ref_data = annotated_references.get(result.variant_key, [])
+
+        if not ref_data:
+            add_log(f"  ⚠️ No annotated references available")
+            return
+
+        # Create folder for this variant
+        if result.modification_key:
+            folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
+        else:
+            folder_name = result.base_sequence
+
+        # Generate mirror plot for each reference (same as main.py)
+        for ref, ref_df in ref_data:
+            try:
+                # Create plot
+                fig = create_mirror_plot(
+                    upper_spectrum=query_df,
+                    lower_spectrum=ref_df,
+                    upper_label=f"Query: {Path(query.source_file).stem}",
+                    lower_label=f"Ref: {Path(ref.source_file).stem}",
+                    title=f"{result.base_sequence}",
+                )
+
+                results_summary["plots_generated"] += 1
+                plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
+
+                # Generate filename (same as main.py)
+                query_stem = Path(query.source_file).stem[:30]
+                ref_stem = Path(ref.source_file).stem[:30]
+                base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
+                safe_filename = sanitize_filename(base_filename)
+
+                # Export PNG
+                if "png" in export_formats:
+                    variant_png_dir = png_dir / folder_name
+                    variant_png_dir.mkdir(exist_ok=True)
+                    png_path = variant_png_dir / f"{safe_filename}.png"
+                    fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
+                    results_summary["files_exported"]["png"].append(str(png_path))
+
+                # Export SVG
+                if "svg" in export_formats:
+                    variant_svg_dir = svg_dir / folder_name
+                    variant_svg_dir.mkdir(exist_ok=True)
+                    svg_path = variant_svg_dir / f"{safe_filename}.svg"
+                    fig.savefig(svg_path, format='svg', bbox_inches='tight', facecolor='white')
+                    results_summary["files_exported"]["svg"].append(str(svg_path))
+
+                plt.close(fig)
+                add_log(f"  ✓ Exported: {safe_filename}")
+
+            except Exception as e:
+                results_summary["errors"].append(f"Plot/export error: {e}")
+                errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
+                add_log(f"  ❌ Error: {e}")
+
+    def on_file_start(filename: str, is_reference: bool):
+        """Called when starting to process a file."""
+        file_type = "REFERENCE" if is_reference else "QUERY"
+        add_log(f"Opening {file_type} file: {filename}")
+
+    def on_file_complete(filename: str, loaded: int, not_found: int):
+        """Called when done with a file."""
+        add_log(f"Completed {filename}: {loaded} loaded, {not_found} not found")
+
+    def on_error(error_msg: str):
+        """Called on errors."""
+        results_summary["errors"].append(error_msg)
+        errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
+        add_log(f"❌ {error_msg}")
+    add_log(f"Export directory: {root_dir}")
+    add_log(f"Formats: {export_formats}")
+    add_log(f"Ion types: {ion_types}, m/z tolerance: {mz_tolerance} Da")
+    add_log("-" * 50)
 
     try:
-        # Make a copy of search results for loading
-        import copy
-        variant_groups = copy.deepcopy(search_results)
-
-        status_text.text("Starting spectrum loading...")
-        files_metric.metric("Files", f"0 / ?")
-        loaded_metric.metric("Loaded", f"0 / {total_psms}")
-        failed_metric.metric("Not Found", "0")
-        current_metric.metric("Current File", "Starting...")
-
-        loaded = load_matched_spectra(
-            variant_groups, mzml_paths,
+        # Run the streaming pipeline (same as main.py)
+        reference_spectra = load_spectra_streaming(
+            variant_groups=variant_groups,
+            mzml_paths=mzml_paths,
             reference_substring=ref_substring,
-            progress_callback=progress_callback,
-            error_callback=error_callback
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            on_file_start=on_file_start,
+            on_file_complete=on_file_complete,
+            error_callback=on_error,
         )
 
-        st.session_state[get_state_key('loaded_variants')] = loaded
+        # Finalize progress bars
+        query_progress_bar.progress(1.0)
+        total_time = time.time() - start_time
+        query_status.caption(f"✅ Done: {results_summary['query_spectra']} queries processed in {format_time(total_time)} total")
 
-        # Final counts
-        total_query = sum(len(vg.query_spectra) for vg in loaded.values())
-        total_ref = sum(len(vg.reference_spectra) for vg in loaded.values())
-        total_loaded = total_query + total_ref
-        total_failed = total_psms - total_loaded
+        # Final metrics
+        plots_metric.caption(f"📊 {results_summary['plots_generated']} plots exported")
+        if results_summary["errors"]:
+            errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
 
-        progress_bar.progress(1.0)
-        status_text.text("Loading complete!")
-        files_metric.metric("Files", f"✅ Complete")
-        loaded_metric.metric("Loaded", f"{total_loaded}")
-        failed_metric.metric("Not Found", f"{total_failed}")
-        current_metric.metric("Current File", "✅ Done")
+        # Store results for display
+        st.session_state[get_state_key('streaming_results')] = results_summary
 
-        # Summary
-        if total_loaded > 0:
-            st.success(f"Loaded {total_query} query + {total_ref} reference spectra")
-        else:
-            st.error("No spectra could be loaded. Check mzML files match the identifications.")
+        # Summary to terminal
+        add_log("-" * 50)
+        add_log("COMPLETE!")
+        add_log(f"References: {results_summary['reference_spectra']}")
+        add_log(f"Queries processed: {results_summary['query_spectra']}")
+        add_log(f"Plots generated: {results_summary['plots_generated']}")
+        add_log(f"Files exported: {len(results_summary['files_exported']['png'])} PNG, {len(results_summary['files_exported']['svg'])} SVG")
+        add_log(f"Total time: {format_time(total_time)}")
 
-        # Show error summary if any
-        if error_messages:
-            with st.expander(f"⚠️ {len(error_messages)} warnings during loading", expanded=False):
-                for msg in error_messages[:20]:  # Limit display
-                    st.caption(msg)
-                if len(error_messages) > 20:
-                    st.caption(f"... and {len(error_messages) - 20} more")
+        if results_summary["errors"]:
+            add_log(f"Errors: {len(results_summary['errors'])}")
+
+        st.success(f"✅ Complete! {results_summary['plots_generated']} plots exported to: {root_dir}")
 
     except Exception as e:
-        st.error(f"Loading failed: {e}")
+        st.error(f"Processing failed: {e}")
         status_text.text(f"Error: {e}")
-        logger.exception("Spectrum loading error")
+        logger.exception("Streaming processing error")
+
+
+def display_streaming_results(results: dict):
+    """Display streaming processing results."""
+    refs = results.get("reference_spectra", 0)
+    queries = results.get("query_spectra", 0)
+    plots = results.get("plots_generated", 0)
+    png_count = len(results.get("files_exported", {}).get("png", []))
+    svg_count = len(results.get("files_exported", {}).get("svg", []))
+    errors = results.get("errors", [])
+
+    st.caption(f"Processed {refs} reference + {queries} query spectra → {plots} plots "
+               f"({png_count} PNG, {svg_count} SVG)")
+
+    if errors:
+        with st.expander(f"⚠️ {len(errors)} Errors", expanded=False):
+            for err in errors[:20]:
+                st.caption(f"- {err}")
+            if len(errors) > 20:
+                st.caption(f"... and {len(errors) - 20} more")
 
 
 def display_search_results(results: dict):
@@ -708,204 +1055,44 @@ def display_search_results(results: dict):
         )
 
 
-def display_loaded_spectra(loaded_variants: dict):
-    """Display summary of loaded spectra."""
-    rows = []
-    for variant_key, vg in loaded_variants.items():
-        rows.append({
-            'Peptide': vg.display_label,
-            'Query Spectra': len(vg.query_spectra),
-            'Reference Spectra': len(vg.reference_spectra),
-            'Total': len(vg.query_spectra) + len(vg.reference_spectra)
-        })
-
-    if rows:
-        import pandas as pd
-        df = pd.DataFrame(rows)
-        st.dataframe(df, width="stretch", hide_index=True)
-
-
 def render_results_gallery():
-    """Render results gallery with mirror plots."""
-    st.header("Step 7: Results & Export")
+    """Render results summary."""
+    st.header("Step 7: Results")
 
-    loaded_variants = st.session_state.get(get_state_key('loaded_variants'))
-    if not loaded_variants:
-        st.info("Load spectra first to view results")
+    streaming_results = st.session_state.get(get_state_key('streaming_results'))
+
+    if not streaming_results:
+        st.info("Run 'Process & Export' on the Analysis tab to generate results.")
         return
 
-    # Filter to variants with spectra
-    variants_with_spectra = {
-        k: v for k, v in loaded_variants.items()
-        if v.query_spectra or v.reference_spectra
-    }
+    st.success("✅ Processing Complete")
 
-    if not variants_with_spectra:
-        st.warning("No spectra loaded. Check that mzML files match the idXML identifications.")
-        return
+    display_streaming_results(streaming_results)
 
-    # Create tabs for each variant
-    tab_names = list(variants_with_spectra.keys())
-    if len(tab_names) > 10:
-        tab_names = tab_names[:10]
-        st.info(f"Showing first 10 of {len(variants_with_spectra)} variants")
+    export_root = streaming_results.get("export_root", "")
+    if export_root:
+        st.markdown("---")
+        st.subheader("📁 Export Location")
+        st.code(export_root)
 
-    tabs = st.tabs([variants_with_spectra[k].display_label for k in tab_names])
+        # Show exported files
+        exported_files = streaming_results.get("files_exported", {})
+        png_files = exported_files.get("png", [])
+        svg_files = exported_files.get("svg", [])
 
-    for tab, variant_key in zip(tabs, tab_names):
-        with tab:
-            render_variant_plots(variants_with_spectra[variant_key])
+        if png_files:
+            with st.expander(f"PNG Files ({len(png_files)})", expanded=False):
+                for f in png_files[:20]:
+                    st.caption(f"📄 {Path(f).name}")
+                if len(png_files) > 20:
+                    st.caption(f"... and {len(png_files) - 20} more")
 
-    # Export section
-    st.markdown("---")
-    render_export_section(loaded_variants)
-
-
-def render_variant_plots(vg):
-    """Render mirror plots for a variant group."""
-    from core.peak_annotation import prepare_spectrum_for_plot
-    from core.mirror_plot import create_mirror_plot, figure_to_bytes
-
-    ion_types = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
-    mz_tolerance = st.session_state.get(get_state_key('mz_tolerance'), 0.02)
-
-    query_spectra = vg.query_spectra
-    ref_spectra = vg.reference_spectra
-
-    st.caption(f"{len(query_spectra)} query, {len(ref_spectra)} reference spectra")
-
-    # Determine pairs to plot
-    pairs = []
-    if query_spectra and ref_spectra:
-        for q in query_spectra:
-            for r in ref_spectra:
-                pairs.append((q, r, "Query vs Reference"))
-    elif len(query_spectra) >= 2:
-        first = query_spectra[0]
-        for other in query_spectra[1:]:
-            pairs.append((other, first, "Query vs Query"))
-
-    if not pairs:
-        st.info("Need at least one query and one reference spectrum, or two query spectra")
-        return
-
-    # Limit display
-    max_plots = 6
-    if len(pairs) > max_plots:
-        st.info(f"Showing first {max_plots} of {len(pairs)} comparisons")
-        pairs = pairs[:max_plots]
-
-    # Display plots in columns
-    cols = st.columns(min(2, len(pairs)))
-
-    for i, (upper, lower, comparison_type) in enumerate(pairs):
-        with cols[i % 2]:
-            try:
-                # Prepare data
-                upper_df = prepare_spectrum_for_plot(
-                    upper.mz, upper.intensity,
-                    upper.peptidoform, upper.precursor_charge,
-                    ion_types=ion_types, mz_tolerance=mz_tolerance
-                )
-                lower_df = prepare_spectrum_for_plot(
-                    lower.mz, lower.intensity,
-                    lower.peptidoform, lower.precursor_charge,
-                    ion_types=ion_types, mz_tolerance=mz_tolerance
-                )
-
-                # Create plot
-                title = f"{vg.base_sequence}"
-                fig = create_mirror_plot(
-                    upper_df, lower_df,
-                    title=title,
-                    upper_label=Path(upper.source_file).stem[:20],
-                    lower_label=Path(lower.source_file).stem[:20],
-                    figsize=(8, 6),
-                    dpi=100
-                )
-
-                # Display
-                st.pyplot(fig)
-
-                # Download button
-                png_bytes = figure_to_bytes(fig, 'png')
-                st.download_button(
-                    "📥 PNG",
-                    data=png_bytes,
-                    file_name=f"{vg.base_sequence}_{i+1}.png",
-                    mime="image/png",
-                    key=f"download_{vg.base_sequence}_{i}"
-                )
-
-                # Cleanup
-                import matplotlib.pyplot as plt
-                plt.close(fig)
-
-            except Exception as e:
-                st.error(f"Error generating plot: {e}")
-
-
-def render_export_section(loaded_variants: dict):
-    """Render batch export controls."""
-    st.subheader("Batch Export")
-
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        export_dir = st.text_input(
-            "Export directory",
-            value=str(Path.home() / "MSpecViz_exports"),
-            key=f"{STATE_PREFIX}_export_dir"
-        )
-
-    with col2:
-        formats = st.multiselect(
-            "Formats",
-            options=['png', 'svg'],
-            default=['png'],
-            key=f"{STATE_PREFIX}_export_formats"
-        )
-
-    if st.button("📤 Export All Plots", key=f"{STATE_PREFIX}_export_all_btn", type="primary"):
-        run_batch_export(loaded_variants, export_dir, formats)
-
-
-def run_batch_export(loaded_variants: dict, export_dir: str, formats: list):
-    """Run batch export of all plots."""
-    from core.export import export_mirror_plots
-
-    ion_types = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
-    mz_tolerance = st.session_state.get(get_state_key('mz_tolerance'), 0.02)
-
-    progress_bar = st.progress(0, "Starting export...")
-
-    def progress_callback(current, total, message):
-        if total > 0:
-            progress_bar.progress(current / total, message)
-
-    try:
-        exported = export_mirror_plots(
-            loaded_variants,
-            export_dir,
-            formats=formats,
-            ion_types=ion_types,
-            mz_tolerance=mz_tolerance,
-            progress_callback=progress_callback
-        )
-
-        progress_bar.progress(1.0, "Export complete!")
-
-        total_files = sum(len(files) for files in exported.values())
-        st.success(f"Exported {total_files} files to {export_dir}")
-
-        # Show export location
-        for fmt, files in exported.items():
-            if files:
-                st.caption(f"{fmt.upper()}: {len(files)} files")
-
-    except Exception as e:
-        st.error(f"Export failed: {e}")
-        logger.exception("Export error")
+        if svg_files:
+            with st.expander(f"SVG Files ({len(svg_files)})", expanded=False):
+                for f in svg_files[:20]:
+                    st.caption(f"📄 {Path(f).name}")
+                if len(svg_files) > 20:
+                    st.caption(f"... and {len(svg_files) - 20} more")
 
 
 def render():
@@ -922,7 +1109,7 @@ def render():
         ("3. Reference", render_reference_selection),
         ("4. Settings", render_settings),
         ("5. Search", render_search),
-        ("6. Analysis", render_analysis),
+        ("6. Process", render_analysis),
         ("7. Results", render_results_gallery),
     ]
 

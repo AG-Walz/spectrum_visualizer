@@ -16,12 +16,19 @@
     "default": 0.02,
     "unit": "Da"
   },
+  "annotation": {
+    "add_losses": false,
+    "add_first_prefix_ion": true,
+    "remove_precursor_peaks": false
+  },
   "performance": {
     "cache_size_mb": 500,
     "max_file_size_gb": 3,
     "chunk_size": 5000
   },
   "export": {
+    "default_directory": "./exports",
+    "project_name": "MSpecViz_analysis",
     "formats": ["png", "svg"],
     "dpi": 300,
     "figsize": [12, 8]

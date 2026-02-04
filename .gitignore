@@ -1,0 +1,4 @@
+.claude/
+CLAUDE.md
+workspaces/__pycache__/
+core/__pycache__/

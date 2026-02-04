@@ -167,18 +167,22 @@ def create_mirror_plot(
         mz_max = max(all_mz) + 50
         ax.set_xlim(mz_min, mz_max)
 
-    ax.set_ylim(-1.15, 1.15)
+    ax.set_ylim(-1.2, 1.2)
 
     # Add center line
     ax.axhline(y=0, color='black', linewidth=1, alpha=0.5)
 
-    # Add labels at the sides
-    ax.text(0.02, 0.95, upper_label, transform=ax.transAxes,
-            fontsize=10, fontweight='bold', va='top', ha='left',
-            color='#333333')
-    ax.text(0.02, 0.05, lower_label, transform=ax.transAxes,
-            fontsize=10, fontweight='bold', va='bottom', ha='left',
-            color='#333333')
+    # Add labels at the sides - positioned above/below intensity 1.0 to avoid overlap
+    # Upper label at top of plot area (above intensity 1.0)
+    ax.text(0.02, 0.99, upper_label, transform=ax.transAxes,
+            fontsize=9, fontweight='bold', va='top', ha='left',
+            color='#333333',
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
+    # Lower label at bottom of plot area (below intensity -1.0)
+    ax.text(0.02, 0.01, lower_label, transform=ax.transAxes,
+            fontsize=9, fontweight='bold', va='bottom', ha='left',
+            color='#333333',
+            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
 
     # Styling
     ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
@@ -188,9 +192,10 @@ def create_mirror_plot(
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    # Custom y-axis labels
+    # Custom y-axis labels (only show ticks at actual intensity values)
     ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
     ax.set_yticklabels(['1.0', '0.5', '0', '0.5', '1.0'])
+    ax.tick_params(axis='y', which='both', length=4)
 
     fig.tight_layout()
 
