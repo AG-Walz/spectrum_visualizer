@@ -1,0 +1,21 @@
+name: mspecviz
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - plotly
+  - bokeh
+  - pyopenms
+  - streamlit>=1.48.0
+  - openpyxl
+  - pip:
+    - psm-utils
+    - koinapy

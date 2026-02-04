@@ -1,0 +1,40 @@
+{
+  "app_name": "MSpecViz",
+  "version": "0.1.0",
+  "data_directories": {
+    "default": "/mnt/volume"
+  },
+  "models": {
+    "default": "ms2pip_timsTOF2024",
+    "available": ["ms2pip_timsTOF2024", "Prosit_2019_intensity"]
+  },
+  "ion_types": {
+    "default": ["b", "y"],
+    "available": ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
+  },
+  "mz_tolerance": {
+    "default": 0.02,
+    "unit": "Da"
+  },
+  "performance": {
+    "cache_size_mb": 500,
+    "max_file_size_gb": 3,
+    "chunk_size": 5000
+  },
+  "export": {
+    "formats": ["png", "svg"],
+    "dpi": 300,
+    "figsize": [12, 8]
+  },
+  "ion_colors": {
+    "a": "#FFCC00",
+    "b": "#0066CC",
+    "c": "#00CC66",
+    "x": "#CC6600",
+    "y": "#CC0000",
+    "z": "#6600CC",
+    "precursor": "#8B008B",
+    "immonium": "#00CED1",
+    "unannotated": "#AAAAAA"
+  }
+}
