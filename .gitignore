@@ -6,3 +6,5 @@ __pycache__/
 exports/
 .gitignore
 main.py
+mspecviz.prof
+program.prof

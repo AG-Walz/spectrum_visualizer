@@ -404,3 +404,255 @@ def load_matched_spectra(
     logger.info(f"Loaded {progress.spectra_loaded} spectra, {progress.spectra_not_found} not found, across {progress.files_done} files")
 
     return variant_groups
+
+
+@dataclass
+class StreamingResult:
+    """Result from streaming spectrum loader - one query spectrum with its matching references."""
+    query_spectrum: LoadedSpectrum
+    reference_spectra: List[LoadedSpectrum]
+    variant_key: str
+    base_sequence: str
+    modification_key: str
+    query_index: int  # Index of this query in its variant group
+    total_queries: int  # Total queries expected for this variant
+
+
+def load_spectra_streaming(
+    variant_groups: Dict[str, VariantGroup],
+    mzml_paths: List[Path],
+    reference_substring: str = "",
+    on_reference_loaded: Optional[Callable[[str, int], None]] = None,
+    on_query_ready: Optional[Callable[[StreamingResult], None]] = None,
+    on_file_start: Optional[Callable[[str, bool], None]] = None,
+    on_file_complete: Optional[Callable[[str, int, int], None]] = None,
+    error_callback: Optional[Callable[[str], None]] = None
+) -> Dict[str, List[LoadedSpectrum]]:
+    """
+    Load spectra with streaming: references first, then yield each query spectrum.
+
+    This approach allows immediate processing of each query spectrum as it's loaded,
+    enabling real-time visualization and export.
+
+    Args:
+        variant_groups: Dict of variant_key -> VariantGroup with matches
+        mzml_paths: List of available mzML paths
+        reference_substring: Substring to identify reference files (case-insensitive)
+        on_reference_loaded: Callback(variant_key, count) when all references for a variant are loaded
+        on_query_ready: Callback(StreamingResult) for each query spectrum ready for processing
+        on_file_start: Callback(filename, is_reference) when starting to process a file
+        on_file_complete: Callback(filename, loaded_count, not_found_count) when file is done
+        error_callback: Callback(error_message) for errors
+
+    Returns:
+        Dict of variant_key -> list of reference spectra (for summary purposes)
+    """
+    # Build available mzML lookup (case-insensitive)
+    mzml_path_map = {p.name.lower(): p for p in mzml_paths}
+    available_mzml_names = set(mzml_path_map.keys())
+
+    # Separate reference and query files
+    reference_files = {}
+    query_files = {}
+
+    for mzml_lower, path in mzml_path_map.items():
+        is_ref = reference_substring and reference_substring.lower() in path.name.lower()
+        if is_ref:
+            reference_files[mzml_lower] = path
+        else:
+            query_files[mzml_lower] = path
+
+    # Build mapping using pre-resolved filenames
+    mzml_to_matches = build_mzml_to_matches_map(variant_groups, available_mzml_names)
+
+    # Storage for reference spectra by variant
+    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
+
+    # Track query counts per variant for progress
+    query_counts: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
+    for mzml_lower, matches in mzml_to_matches.items():
+        if mzml_lower not in reference_files:
+            for match, variant_key in matches:
+                query_counts[variant_key] += 1
+
+    # =========================================================================
+    # Phase 1: Load all reference spectra
+    # =========================================================================
+    logger.info(f"Loading reference spectra from {len(reference_files)} files...")
+
+    for mzml_lower in reference_files:
+        if mzml_lower not in mzml_to_matches:
+            continue
+
+        mzml_path = mzml_path_map[mzml_lower]
+        matches_for_file = mzml_to_matches[mzml_lower]
+
+        if on_file_start:
+            on_file_start(mzml_path.name, True)
+
+        loaded_count = 0
+        not_found_count = 0
+
+        try:
+            indexed_exp, id_to_index = open_indexed_mzml(str(mzml_path))
+            n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+
+            for match, variant_key in matches_for_file:
+                try:
+                    idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+
+                    if idx is None:
+                        not_found_count += 1
+                        if error_callback:
+                            error_callback(f"Reference spectrum not found: {match.spectrum_id}")
+                        continue
+
+                    spectrum = indexed_exp.getSpectrum(idx)
+
+                    mz_array = np.array([p.getMZ() for p in spectrum])
+                    intensity_array = np.array([p.getIntensity() for p in spectrum])
+
+                    precursor_mz = 0.0
+                    precursor_charge = match.charge
+                    if spectrum.getPrecursors():
+                        prec = spectrum.getPrecursors()[0]
+                        precursor_mz = prec.getMZ()
+                        if prec.getCharge() > 0:
+                            precursor_charge = prec.getCharge()
+
+                    loaded = LoadedSpectrum(
+                        spectrum_id=match.spectrum_id,
+                        mz=mz_array,
+                        intensity=intensity_array,
+                        precursor_mz=precursor_mz,
+                        precursor_charge=precursor_charge,
+                        peptidoform=match.peptidoform,
+                        base_sequence=match.base_sequence,
+                        source_file=mzml_path.name,
+                        is_reference=True,
+                        rt=spectrum.getRT() if spectrum.getRT() else 0.0,
+                        match=match
+                    )
+
+                    reference_spectra[variant_key].append(loaded)
+                    loaded_count += 1
+
+                except Exception as e:
+                    not_found_count += 1
+                    if error_callback:
+                        error_callback(f"Error loading reference {match.spectrum_id}: {e}")
+
+        except Exception as e:
+            if error_callback:
+                error_callback(f"Error opening reference file {mzml_path.name}: {e}")
+            continue
+
+        if on_file_complete:
+            on_file_complete(mzml_path.name, loaded_count, not_found_count)
+
+    # Notify that references are loaded for each variant
+    if on_reference_loaded:
+        for variant_key, refs in reference_spectra.items():
+            if refs:
+                on_reference_loaded(variant_key, len(refs))
+
+    logger.info(f"Reference loading complete: {sum(len(v) for v in reference_spectra.values())} spectra")
+
+    # =========================================================================
+    # Phase 2: Stream query spectra one at a time
+    # =========================================================================
+    logger.info(f"Streaming query spectra from {len(query_files)} files...")
+
+    # Track query index per variant
+    query_indices: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
+
+    for mzml_lower in query_files:
+        if mzml_lower not in mzml_to_matches:
+            continue
+
+        mzml_path = mzml_path_map[mzml_lower]
+        matches_for_file = mzml_to_matches[mzml_lower]
+
+        if on_file_start:
+            on_file_start(mzml_path.name, False)
+
+        loaded_count = 0
+        not_found_count = 0
+
+        try:
+            indexed_exp, id_to_index = open_indexed_mzml(str(mzml_path))
+            n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+
+            for match, variant_key in matches_for_file:
+                try:
+                    idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+
+                    if idx is None:
+                        not_found_count += 1
+                        if error_callback:
+                            error_callback(f"Query spectrum not found: {match.spectrum_id}")
+                        continue
+
+                    spectrum = indexed_exp.getSpectrum(idx)
+
+                    mz_array = np.array([p.getMZ() for p in spectrum])
+                    intensity_array = np.array([p.getIntensity() for p in spectrum])
+
+                    precursor_mz = 0.0
+                    precursor_charge = match.charge
+                    if spectrum.getPrecursors():
+                        prec = spectrum.getPrecursors()[0]
+                        precursor_mz = prec.getMZ()
+                        if prec.getCharge() > 0:
+                            precursor_charge = prec.getCharge()
+
+                    loaded = LoadedSpectrum(
+                        spectrum_id=match.spectrum_id,
+                        mz=mz_array,
+                        intensity=intensity_array,
+                        precursor_mz=precursor_mz,
+                        precursor_charge=precursor_charge,
+                        peptidoform=match.peptidoform,
+                        base_sequence=match.base_sequence,
+                        source_file=mzml_path.name,
+                        is_reference=False,
+                        rt=spectrum.getRT() if spectrum.getRT() else 0.0,
+                        match=match
+                    )
+
+                    loaded_count += 1
+
+                    # Get variant info
+                    vg = variant_groups[variant_key]
+                    current_idx = query_indices[variant_key]
+                    query_indices[variant_key] += 1
+
+                    # Yield this query spectrum immediately with its matching references
+                    if on_query_ready:
+                        result = StreamingResult(
+                            query_spectrum=loaded,
+                            reference_spectra=reference_spectra[variant_key],
+                            variant_key=variant_key,
+                            base_sequence=vg.base_sequence,
+                            modification_key=vg.modification_key,
+                            query_index=current_idx,
+                            total_queries=query_counts[variant_key]
+                        )
+                        on_query_ready(result)
+
+                except Exception as e:
+                    not_found_count += 1
+                    if error_callback:
+                        error_callback(f"Error loading query {match.spectrum_id}: {e}")
+
+        except Exception as e:
+            if error_callback:
+                error_callback(f"Error opening query file {mzml_path.name}: {e}")
+            continue
+
+        if on_file_complete:
+            on_file_complete(mzml_path.name, loaded_count, not_found_count)
+
+    logger.info("Query streaming complete")
+
+    return reference_spectra
