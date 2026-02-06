@@ -5,6 +5,7 @@ Interactive workspace for comparing query spectra against reference spectra.
 """
 import streamlit as st
 from pathlib import Path
+from collections import defaultdict
 import json
 import logging
 
@@ -222,39 +223,46 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
         if filtered_files:
             file_names = [f.name for f in filtered_files]
 
-            # Get currently selected files
-            current_selected = st.session_state.get(get_state_key(state_key), [])
-            current_names = [Path(f).name for f in current_selected if Path(f).exists()]
-            valid_defaults = [n for n in current_names if n in file_names]
+            # Get ALL currently selected files (from all directories)
+            all_selected_paths = st.session_state.get(get_state_key(state_key), [])
 
-            # Check if all are currently selected
-            all_selected = set(valid_defaults) == set(file_names) and len(valid_defaults) > 0
+            # Separate selections: current directory vs other directories
+            current_dir_selections = [p for p in all_selected_paths if Path(p).parent == Path(current_dir)]
+            other_dir_selections = [p for p in all_selected_paths if Path(p).parent != Path(current_dir)]
 
-            # Select All checkbox
+            # Get names of files selected in current directory (for multiselect default)
+            current_dir_names = [Path(p).name for p in current_dir_selections if Path(p).exists()]
+            valid_defaults = [n for n in current_dir_names if n in file_names]
+
+            # Check if all files in current directory are selected
+            all_in_dir_selected = set(valid_defaults) == set(file_names) and len(valid_defaults) > 0
+
+            # Select All checkbox (for current directory only)
             select_all = st.checkbox(
                 f"Select all {len(filtered_files)} files" + (f" (filtered from {len(all_files)})" if filter_text else ""),
-                value=all_selected,
+                value=all_in_dir_selected,
                 key=select_all_key
             )
 
             if select_all:
-                # All files selected
+                # All files in current directory selected
                 selected_names = file_names
             else:
                 # Manual selection via multiselect
                 selected_names = st.multiselect(
-                    "Or select specific files:",
+                    "Select files from this folder:",
                     options=file_names,
-                    default=valid_defaults if not all_selected else [],
+                    default=valid_defaults if not all_in_dir_selected else [],
                     key=f"{key_prefix}_files"
                 )
 
-            # Update state with full paths
-            selected_paths = [str(f) for f in filtered_files if f.name in selected_names]
-            st.session_state[get_state_key(state_key)] = selected_paths
+            # Build new selection: other directories + current directory selections
+            current_dir_selected_paths = [str(f) for f in filtered_files if f.name in selected_names]
+            merged_selections = other_dir_selections + current_dir_selected_paths
+            st.session_state[get_state_key(state_key)] = merged_selections
 
-            if selected_paths:
-                st.success(f"✅ {len(selected_paths)} file(s) selected")
+            if current_dir_selected_paths:
+                st.success(f"✅ {len(current_dir_selected_paths)} file(s) selected from this folder")
         else:
             if filter_text:
                 st.info(f"No files match filter '{filter_text}'")
@@ -263,6 +271,38 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
 
     except Exception as e:
         st.error(f"Error listing files: {e}")
+
+    # Display accumulated selections from all folders
+    all_selected = st.session_state.get(get_state_key(state_key), [])
+    if all_selected:
+        # Group by directory
+        grouped = defaultdict(list)
+        for path in all_selected:
+            p = Path(path)
+            if p.exists():
+                grouped[str(p.parent)].append(p.name)
+
+        if grouped:
+            st.markdown("---")
+            with st.expander(f"📂 All selected files ({len(all_selected)} total)", expanded=False):
+                # Clear all button
+                if st.button("🗑️ Clear all selections", key=f"{key_prefix}_clear_all"):
+                    st.session_state[get_state_key(state_key)] = []
+                    st.rerun()
+
+                # Show grouped files with remove buttons
+                for folder, files in sorted(grouped.items()):
+                    st.caption(f"**{folder}/** ({len(files)} files)")
+                    for fname in sorted(files):
+                        col1, col2 = st.columns([6, 1])
+                        with col1:
+                            st.text(f"  {fname}")
+                        with col2:
+                            full_path = str(Path(folder) / fname)
+                            if st.button("❌", key=f"{key_prefix}_remove_{hash(full_path) % 100000}", help=f"Remove {fname}"):
+                                updated = [p for p in all_selected if p != full_path]
+                                st.session_state[get_state_key(state_key)] = updated
+                                st.rerun()
 
 
 def render_peptide_input():
