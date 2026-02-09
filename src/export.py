@@ -135,8 +135,8 @@ def export_mirror_plots(
     Returns:
         Dict mapping format -> list of exported file paths
     """
-    from core.peak_annotation import prepare_spectrum_for_plot
-    from core.mirror_plot import create_mirror_plot, ION_COLORS
+    from src.peak_annotation import prepare_spectrum_for_plot
+    from src.mirror_plot import create_mirror_plot, ION_COLORS
 
     if formats is None:
         formats = ['png', 'svg']

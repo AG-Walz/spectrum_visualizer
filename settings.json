@@ -1,6 +1,12 @@
 {
-  "app_name": "MSpecViz",
+  "app-name": "MSpecViz",
   "version": "0.1.0",
+  "repository-name": "MSpecViz",
+  "online_deployment": false,
+  "enable_workspaces": true,
+  "workspaces_dir": "..",
+  "test": false,
+  "image-format": "png",
   "data_directories": {
     "default": "/mnt/volume"
   },

@@ -1,7 +1,7 @@
 """
-Peptide Mirror Analysis Workspace
+Peptide Mirror Analysis
 
-Interactive workspace for comparing query spectra against reference spectra.
+Interactive page for comparing query spectra against reference spectra.
 """
 import streamlit as st
 from pathlib import Path
@@ -9,23 +9,18 @@ from collections import defaultdict
 import json
 import logging
 
+from src.common.common import page_setup
+
+params = page_setup()
+
 logger = logging.getLogger(__name__)
 
 # State key prefix for this workspace
 STATE_PREFIX = "peptide_mirror"
 
 # ============================================================================
-# SETTINGS LOADING - Shared with main.py
+# SETTINGS - loaded by page_setup() into st.session_state.settings
 # ============================================================================
-
-def load_settings() -> dict:
-    """Load settings from settings.json (same logic as main.py)."""
-    settings_path = Path(__file__).parent.parent / "settings.json"
-    if settings_path.exists():
-        with open(settings_path, 'r') as f:
-            return json.load(f)
-    return {}
-
 
 def get_settings_value(settings: dict, *keys, default=None):
     """Safely get nested settings value."""
@@ -38,8 +33,9 @@ def get_settings_value(settings: dict, *keys, default=None):
     return value if value is not None else default
 
 
-# Load settings once at module level
-SETTINGS = load_settings()
+def _get_settings() -> dict:
+    """Get settings from session state (loaded by page_setup)."""
+    return st.session_state.get("settings", {})
 
 
 def get_state_key(key: str) -> str:
@@ -50,17 +46,17 @@ def get_state_key(key: str) -> str:
 def init_session_state():
     """Initialize session state with defaults from settings.json."""
     # Get defaults from settings.json (same values used by main.py)
-    ion_types_default = get_settings_value(SETTINGS, "ion_types", "default", default=["b", "y"])
-    mz_tolerance_default = get_settings_value(SETTINGS, "mz_tolerance", "default", default=0.02)
-    export_dir_default = get_settings_value(SETTINGS, "export", "default_directory", default="./exports")
-    export_formats_default = get_settings_value(SETTINGS, "export", "formats", default=["png", "svg"])
-    project_name_default = get_settings_value(SETTINGS, "export", "project_name", default="MSpecViz_analysis")
-    data_dir_default = get_settings_value(SETTINGS, "data_directories", "default", default="/mnt/volume")
+    ion_types_default = get_settings_value(_get_settings(), "ion_types", "default", default=["b", "y"])
+    mz_tolerance_default = get_settings_value(_get_settings(), "mz_tolerance", "default", default=0.02)
+    export_dir_default = get_settings_value(_get_settings(), "export", "default_directory", default="./exports")
+    export_formats_default = get_settings_value(_get_settings(), "export", "formats", default=["png", "svg"])
+    project_name_default = get_settings_value(_get_settings(), "export", "project_name", default="MSpecViz_analysis")
+    data_dir_default = get_settings_value(_get_settings(), "data_directories", "default", default="/mnt/volume")
 
     # Annotation settings
-    add_losses_default = get_settings_value(SETTINGS, "annotation", "add_losses", default=False)
-    add_first_prefix_default = get_settings_value(SETTINGS, "annotation", "add_first_prefix_ion", default=True)
-    remove_precursor_default = get_settings_value(SETTINGS, "annotation", "remove_precursor_peaks", default=False)
+    add_losses_default = get_settings_value(_get_settings(), "annotation", "add_losses", default=False)
+    add_first_prefix_default = get_settings_value(_get_settings(), "annotation", "add_first_prefix_ion", default=True)
+    remove_precursor_default = get_settings_value(_get_settings(), "annotation", "remove_precursor_peaks", default=False)
 
     defaults = {
         'idxml_dir': data_dir_default,
@@ -345,7 +341,7 @@ def render_peptide_input():
 
 def preview_peptides_in_idxmls():
     """Preview which peptides are found in selected idXML files."""
-    from core.peptide_search import get_unique_peptides_from_idxmls
+    from src.peptide_search import get_unique_peptides_from_idxmls
 
     idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
     if not idxmls:
@@ -430,7 +426,7 @@ def render_settings():
     st.header("Step 4: Settings")
 
     # Get available ion types from settings
-    available_ions = get_settings_value(SETTINGS, "ion_types", "available",
+    available_ions = get_settings_value(_get_settings(), "ion_types", "available",
                                         default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
 
     col1, col2 = st.columns(2)
@@ -634,7 +630,7 @@ def render_analysis():
 
 def run_peptide_search(idxmls: list, peptides: list):
     """Execute peptide search."""
-    from core.peptide_search import search_peptides_in_idxmls
+    from src.peptide_search import search_peptides_in_idxmls
 
     progress_bar = st.progress(0, "Starting search...")
     status_text = st.empty()
@@ -698,10 +694,10 @@ def run_streaming_processing():
     1. Load all reference spectra first
     2. Stream each query spectrum and immediately annotate, plot, and export
     """
-    from core.spectrum_loader import load_spectra_streaming, StreamingResult
-    from core.peak_annotation import prepare_spectrum_for_plot
-    from core.mirror_plot import create_mirror_plot
-    from core.export import sanitize_filename, create_export_directory
+    from src.spectrum_loader import load_spectra_streaming, StreamingResult
+    from src.peak_annotation import prepare_spectrum_for_plot
+    from src.mirror_plot import create_mirror_plot
+    from src.export import sanitize_filename, create_export_directory
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -1066,7 +1062,7 @@ def display_streaming_results(results: dict):
 
 def display_search_results(results: dict):
     """Display search results table."""
-    from core.peptide_search import summarize_search_results
+    from src.peptide_search import summarize_search_results
 
     summary_df = summarize_search_results(results)
     if not summary_df.empty:
@@ -1136,7 +1132,7 @@ def render_results_gallery():
 
 
 def render():
-    """Main render function for the workspace."""
+    """Main render function for the page."""
     init_session_state()
 
     st.title("Peptide Mirror Analysis")
@@ -1160,3 +1156,7 @@ def render():
     for tab, (name, render_func) in zip(tabs, steps):
         with tab:
             render_func()
+
+
+# Run render when page is loaded
+render()

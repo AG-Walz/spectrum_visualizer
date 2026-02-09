@@ -1,9 +1,12 @@
 .claude/
 CLAUDE.md
-workspaces/__pycache__/
-core/__pycache__/
 __pycache__/
+src/__pycache__/
+src/common/__pycache__/
+content/__pycache__/
+utils/__pycache__/
 exports/
+workspaces-*/
 .gitignore
 main.py
 mspecviz.prof

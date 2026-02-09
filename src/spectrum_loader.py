@@ -13,7 +13,7 @@ from typing import Dict, List, Optional, Tuple, Callable
 import numpy as np
 import pyopenms as oms
 
-from core.peptide_search import PeptideMatch, VariantGroup
+from src.peptide_search import PeptideMatch, VariantGroup
 
 logger = logging.getLogger(__name__)
 
