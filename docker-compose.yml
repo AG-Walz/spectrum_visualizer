@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  specviz:
+    build: .
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./workspaces-specviz-gui:/app/workspaces-specviz-gui
+    environment:
+      - BOKEH_ALLOW_WS_ORIGIN=*
+    restart: unless-stopped
