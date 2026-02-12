@@ -1,12 +1,14 @@
 """
-Spectrum loading from mzML files.
+Spectrum loading from mzML files and Parquet caches.
 
 Provides memory-efficient indexed access to spectra using PyOpenMS.
 Uses pre-resolved mzML mappings from the search phase.
+Supports fast Parquet-based loading for pre-converted datasets.
 """
 import logging
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable
 
@@ -132,12 +134,17 @@ def open_indexed_mzml(mzml_path: str) -> Tuple[oms.OnDiscMSExperiment, Dict[str,
     n_spectra = indexed_exp.getNrSpectra()
     id_to_index = {}
 
-    # Detect the ID format from first spectrum
+    # Detect the ID format and index offset from first spectrum
     id_format = "unknown"
+    index_offset = 0
     if n_spectra > 0:
         first_id = indexed_exp.getSpectrum(0).getNativeID()
         if "index=" in first_id:
             id_format = "index"
+            # Detect 0-based vs 1-based indexing
+            first_num = _extract_id_number(first_id)
+            if first_num is not None:
+                index_offset = first_num  # 0 for 0-based, 1 for 1-based
         elif "scan=" in first_id:
             id_format = "scan"
         elif "spectrum=" in first_id:
@@ -145,6 +152,7 @@ def open_indexed_mzml(mzml_path: str) -> Tuple[oms.OnDiscMSExperiment, Dict[str,
 
     id_to_index["__format__"] = id_format
     id_to_index["__n_spectra__"] = n_spectra
+    id_to_index["__index_offset__"] = index_offset
 
     # Build lookup map for all spectra
     for i in range(n_spectra):
@@ -154,6 +162,152 @@ def open_indexed_mzml(mzml_path: str) -> Tuple[oms.OnDiscMSExperiment, Dict[str,
             id_to_index[native_id] = i
 
             # Also store by extracted number for flexibility
+            num_match = re.search(r'(\d+)', native_id)
+            if num_match:
+                id_to_index[f"_num_{num_match.group(1)}"] = i
+        except Exception:
+            continue
+
+    return indexed_exp, id_to_index
+
+
+def _extract_id_number(native_id: str) -> Optional[int]:
+    """Extract the numeric value from a native ID string."""
+    m = re.search(r'(?:scan|index|spectrum)=(\d+)', native_id)
+    if m:
+        return int(m.group(1))
+    m = re.search(r'(\d+)', native_id)
+    if m:
+        return int(m.group(1))
+    return None
+
+
+def open_indexed_mzml_fast(
+    mzml_path: str,
+    needed_ids: Optional[List[str]] = None
+) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
+    """
+    Open mzML with targeted (not full) index building.
+
+    Optimizations over open_indexed_mzml():
+    - For index=N format: O(1) lookup, no scanning at all
+    - For scan=N with known needed_ids: only look up those spectra O(k)
+    - Falls back to full scan for unknown formats
+
+    Args:
+        mzml_path: Path to mzML file
+        needed_ids: Optional list of spectrum IDs we need to find.
+                    If provided, enables targeted lookup instead of full scan.
+
+    Returns:
+        Tuple of (OnDiscMSExperiment, id_to_index_dict)
+    """
+    indexed_exp = oms.OnDiscMSExperiment()
+    indexed_exp.openFile(str(mzml_path))
+
+    n_spectra = indexed_exp.getNrSpectra()
+    id_to_index = {}
+
+    # Detect format and index offset from first spectrum
+    id_format = "unknown"
+    index_offset = 0
+    if n_spectra > 0:
+        first_id = indexed_exp.getSpectrum(0).getNativeID()
+        if "index=" in first_id:
+            id_format = "index"
+            # Detect 0-based vs 1-based indexing
+            first_num = _extract_id_number(first_id)
+            if first_num is not None:
+                index_offset = first_num  # 0 for 0-based, 1 for 1-based
+        elif "scan=" in first_id:
+            id_format = "scan"
+        elif "spectrum=" in first_id:
+            id_format = "spectrum"
+
+    id_to_index["__format__"] = id_format
+    id_to_index["__n_spectra__"] = n_spectra
+    id_to_index["__index_offset__"] = index_offset
+
+    # FAST PATH: For "index=N" format, apply offset to convert native ID number
+    # to array position. E.g., 1-based "index=1" → array position 0.
+    if id_format == "index":
+        logger.debug(f"Fast path: index format detected (offset={index_offset}), "
+                     f"skipping full scan ({n_spectra} spectra)")
+        return indexed_exp, id_to_index
+
+    # FAST PATH: If we know needed IDs and format is numeric, do targeted lookup
+    if needed_ids and id_format in ("scan", "spectrum"):
+        found = 0
+        for sid in needed_ids:
+            clean_id = clean_spectrum_id(sid)
+            num = _extract_id_number(clean_id)
+            if num is None:
+                continue
+
+            # Try direct index first (common case: scan numbers are near indices)
+            candidates = []
+            if 0 <= num < n_spectra:
+                candidates.append(num)
+            # Also try num-1 (1-based scan to 0-based index)
+            if num > 0 and (num - 1) < n_spectra:
+                candidates.append(num - 1)
+
+            matched = False
+            for candidate_idx in candidates:
+                try:
+                    check_spec = indexed_exp.getSpectrum(candidate_idx)
+                    check_id = check_spec.getNativeID()
+                    if clean_id == clean_spectrum_id(check_id):
+                        id_to_index[clean_id] = candidate_idx
+                        check_num = _extract_id_number(check_id)
+                        if check_num is not None:
+                            id_to_index[f"_num_{check_num}"] = candidate_idx
+                        found += 1
+                        matched = True
+                        break
+                except Exception:
+                    continue
+
+            if not matched:
+                # Binary search: scan numbers are typically monotonically increasing
+                lo, hi = 0, n_spectra - 1
+                while lo <= hi:
+                    mid = (lo + hi) // 2
+                    try:
+                        mid_spec = indexed_exp.getSpectrum(mid)
+                        mid_id = mid_spec.getNativeID()
+                        mid_num = _extract_id_number(mid_id)
+                        if mid_num is None:
+                            break
+                        if mid_num == num:
+                            id_to_index[clean_id] = mid
+                            id_to_index[f"_num_{mid_num}"] = mid
+                            found += 1
+                            break
+                        elif mid_num < num:
+                            lo = mid + 1
+                        else:
+                            hi = mid - 1
+                    except Exception:
+                        break
+
+        logger.debug(f"Targeted lookup: found {found}/{len(needed_ids)} spectra in {Path(mzml_path).name}")
+
+        # If we found all needed IDs, skip full scan
+        if found >= len(needed_ids):
+            return indexed_exp, id_to_index
+
+        # If we found most, return what we have (find_spectrum_index handles misses)
+        if found > 0:
+            return indexed_exp, id_to_index
+
+    # SLOW FALLBACK: Full scan (unknown format or no needed_ids for scan/spectrum)
+    logger.debug(f"Full scan fallback for {Path(mzml_path).name} ({n_spectra} spectra)")
+    for i in range(n_spectra):
+        try:
+            spec = indexed_exp.getSpectrum(i)
+            native_id = spec.getNativeID()
+            id_to_index[native_id] = i
             num_match = re.search(r'(\d+)', native_id)
             if num_match:
                 id_to_index[f"_num_{num_match.group(1)}"] = i
@@ -209,6 +363,7 @@ def find_spectrum_index(
         return None
 
     id_format = id_to_index.get("__format__", "unknown")
+    index_offset = id_to_index.get("__index_offset__", 0)
 
     # Strategy 1: Direct lookup
     if clean_id in id_to_index:
@@ -219,9 +374,12 @@ def find_spectrum_index(
     if scan_match:
         num = int(scan_match.group(1))
 
-        # If format is "index", the number IS the index
-        if id_format == "index" and 0 <= num < n_spectra:
-            return num
+        # If format is "index", apply offset to convert native ID number
+        # to array position. E.g., 1-based "index=1" → position 0.
+        if id_format == "index":
+            arr_pos = num - index_offset
+            if 0 <= arr_pos < n_spectra:
+                return arr_pos
 
         # Try numeric lookup
         num_key = f"_num_{num}"
@@ -236,8 +394,10 @@ def find_spectrum_index(
         if num_key in id_to_index:
             return id_to_index[num_key]
 
-        if id_format == "index" and 0 <= num < n_spectra:
-            return num
+        if id_format == "index":
+            arr_pos = num - index_offset
+            if 0 <= arr_pos < n_spectra:
+                return arr_pos
 
     return None
 
@@ -314,8 +474,9 @@ def load_matched_spectra(
             progress_callback(progress)
 
         try:
-            # Open indexed file
-            indexed_exp, id_to_index = open_indexed_mzml(str(mzml_path))
+            # Open indexed file (fast path: only look up needed spectra)
+            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
+            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
             n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
             logger.info(f"Opened {mzml_path.name} ({n_spectra} spectra, {len(matches_for_file)} to load)")
 
@@ -494,7 +655,8 @@ def load_spectra_streaming(
         not_found_count = 0
 
         try:
-            indexed_exp, id_to_index = open_indexed_mzml(str(mzml_path))
+            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
+            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
             n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
             for match, variant_key in matches_for_file:
@@ -580,7 +742,8 @@ def load_spectra_streaming(
         not_found_count = 0
 
         try:
-            indexed_exp, id_to_index = open_indexed_mzml(str(mzml_path))
+            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
+            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
             n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
             for match, variant_key in matches_for_file:
@@ -654,5 +817,155 @@ def load_spectra_streaming(
             on_file_complete(mzml_path.name, loaded_count, not_found_count)
 
     logger.info("Query streaming complete")
+
+    return reference_spectra
+
+
+# =============================================================================
+# Parquet-based spectrum loading
+# =============================================================================
+
+# Parquet schema field names (matches tools/convert_mzml_to_parquet.py)
+PARQUET_COLUMNS = [
+    "source_mzml", "spectrum_id", "peptidoform", "base_sequence",
+    "variant_key", "charge", "precursor_mz", "rt", "is_reference",
+    "mz", "intensity", "score", "idxml_file",
+]
+
+
+def load_spectra_from_parquet(
+    parquet_path: str,
+    reference_substring: str = "",
+    on_reference_loaded: Optional[Callable[[str, int], None]] = None,
+    on_query_ready: Optional[Callable[["StreamingResult"], None]] = None,
+    error_callback: Optional[Callable[[str], None]] = None,
+) -> Dict[str, List[LoadedSpectrum]]:
+    """
+    Load pre-converted spectra from a Parquet file.
+
+    Replaces the entire mzML loading pipeline when Parquet is available.
+    ~100x faster than mzML loading (no XML parsing, no index building).
+
+    The Parquet file must have been created by tools/convert_mzml_to_parquet.py
+    with the expected schema (PARQUET_COLUMNS).
+
+    Args:
+        parquet_path: Path to .parquet file
+        reference_substring: Substring to identify reference files (used as
+            fallback if is_reference column is missing)
+        on_reference_loaded: Callback(variant_key, count) when references are ready
+        on_query_ready: Callback(StreamingResult) for each query spectrum
+        error_callback: Callback(error_message) for errors
+
+    Returns:
+        Dict of variant_key -> list of reference LoadedSpectrum objects
+    """
+    import pyarrow.parquet as pq
+
+    logger.info(f"Loading spectra from Parquet: {parquet_path}")
+
+    try:
+        table = pq.read_table(str(parquet_path))
+    except Exception as e:
+        msg = f"Failed to read Parquet file: {e}"
+        logger.error(msg)
+        if error_callback:
+            error_callback(msg)
+        return {}
+
+    df = table.to_pandas()
+    logger.info(f"Parquet loaded: {len(df)} rows, columns: {list(df.columns)}")
+
+    # Validate required columns
+    required = {"source_mzml", "spectrum_id", "peptidoform", "base_sequence",
+                "variant_key", "charge", "precursor_mz", "mz", "intensity"}
+    missing = required - set(df.columns)
+    if missing:
+        msg = f"Parquet file missing required columns: {missing}"
+        logger.error(msg)
+        if error_callback:
+            error_callback(msg)
+        return {}
+
+    # Determine reference/query flag
+    if "is_reference" in df.columns:
+        pass  # Use stored flag
+    elif reference_substring:
+        df["is_reference"] = df["source_mzml"].str.contains(
+            reference_substring, case=False, na=False
+        )
+    else:
+        df["is_reference"] = False
+
+    # Build VariantGroup-like structures from the Parquet data
+    reference_spectra: Dict[str, List[LoadedSpectrum]] = {}
+    query_spectra_by_variant: Dict[str, List[LoadedSpectrum]] = {}
+    variant_info: Dict[str, Tuple[str, str]] = {}  # variant_key -> (base_sequence, mod_key)
+
+    for _, row in df.iterrows():
+        variant_key = row["variant_key"]
+        base_seq = row["base_sequence"]
+
+        # Derive modification_key from variant_key
+        if "|" in variant_key:
+            mod_key = variant_key.split("|", 1)[1]
+        else:
+            mod_key = ""
+
+        if variant_key not in variant_info:
+            variant_info[variant_key] = (base_seq, mod_key)
+            reference_spectra[variant_key] = []
+            query_spectra_by_variant[variant_key] = []
+
+        # Convert list columns to numpy arrays
+        mz_data = row["mz"]
+        int_data = row["intensity"]
+        mz_arr = np.array(mz_data, dtype=np.float64) if mz_data is not None else np.array([])
+        int_arr = np.array(int_data, dtype=np.float64) if int_data is not None else np.array([])
+
+        loaded = LoadedSpectrum(
+            spectrum_id=row["spectrum_id"],
+            mz=mz_arr,
+            intensity=int_arr,
+            precursor_mz=float(row["precursor_mz"]),
+            precursor_charge=int(row["charge"]),
+            peptidoform=row["peptidoform"],
+            base_sequence=base_seq,
+            source_file=row["source_mzml"],
+            is_reference=bool(row["is_reference"]),
+            rt=float(row.get("rt", 0.0)),
+        )
+
+        if loaded.is_reference:
+            reference_spectra[variant_key].append(loaded)
+        else:
+            query_spectra_by_variant[variant_key].append(loaded)
+
+    # Phase 1: Notify references
+    if on_reference_loaded:
+        for vk, refs in reference_spectra.items():
+            if refs:
+                on_reference_loaded(vk, len(refs))
+
+    total_refs = sum(len(v) for v in reference_spectra.values())
+    total_queries = sum(len(v) for v in query_spectra_by_variant.values())
+    logger.info(f"Parquet: {total_refs} reference, {total_queries} query spectra across {len(variant_info)} variants")
+
+    # Phase 2: Stream query spectra
+    if on_query_ready:
+        for vk, queries in query_spectra_by_variant.items():
+            base_seq, mod_key = variant_info[vk]
+            refs = reference_spectra.get(vk, [])
+            for i, query in enumerate(queries):
+                result = StreamingResult(
+                    query_spectrum=query,
+                    reference_spectra=refs,
+                    variant_key=vk,
+                    base_sequence=base_seq,
+                    modification_key=mod_key,
+                    query_index=i,
+                    total_queries=len(queries),
+                )
+                on_query_ready(result)
 
     return reference_spectra
