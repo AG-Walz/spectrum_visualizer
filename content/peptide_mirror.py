@@ -6,6 +6,7 @@ Interactive page for comparing query spectra against reference spectra.
 import streamlit as st
 from pathlib import Path
 from collections import defaultdict
+from typing import List, Tuple
 import json
 import logging
 
@@ -73,6 +74,7 @@ def init_session_state():
         'export_dir': export_dir_default,
         'export_formats': export_formats_default,
         'project_name': project_name_default,
+        'parquet_file': None,
         'search_results': None,
         'streaming_results': None,
         'current_step': 1,
@@ -106,11 +108,42 @@ def render_file_selection():
             state_key='selected_mzmls'
         )
 
+    # Parquet shortcut
+    st.markdown("---")
+    st.subheader("Pre-converted Parquet (Optional)")
+    st.caption("If you have a previously converted Parquet file, select it here to skip search and load spectra instantly.")
+
+    parquet_col1, parquet_col2 = st.columns([3, 1])
+    with parquet_col1:
+        parquet_path = st.text_input(
+            "Parquet file path",
+            value=st.session_state.get(get_state_key('parquet_file'), '') or '',
+            key=f"{STATE_PREFIX}_parquet_input",
+            placeholder="/path/to/converted_spectra.parquet"
+        )
+    with parquet_col2:
+        st.write("")  # spacer
+        if parquet_path and Path(parquet_path).exists() and parquet_path.endswith('.parquet'):
+            st.session_state[get_state_key('parquet_file')] = parquet_path
+            st.success("Parquet file found")
+        elif parquet_path:
+            st.session_state[get_state_key('parquet_file')] = None
+            if not Path(parquet_path).exists():
+                st.warning("File not found")
+            elif not parquet_path.endswith('.parquet'):
+                st.warning("Not a .parquet file")
+        else:
+            st.session_state[get_state_key('parquet_file')] = None
+
     # Show selection summary
     idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+    has_parquet = bool(st.session_state.get(get_state_key('parquet_file')))
 
-    if idxmls and mzmls:
+    if has_parquet:
+        st.success("Parquet file selected — skip to **Process** tab (Steps 2-5 are optional)")
+        return True
+    elif idxmls and mzmls:
         st.success(f"Selected {len(idxmls)} idXML file(s) and {len(mzmls)} mzML file(s)")
         return True
     else:
@@ -549,15 +582,134 @@ def render_search():
 
         total_matches = sum(len(vg.matches) for vg in search_results.values())
         st.success(f"Found {total_matches} PSMs across {len(search_results)} peptide variants. Go to **Analysis** tab to load spectra.")
+
+        # Convert to Parquet button
+        mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+        ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
+        if mzmls:
+            st.markdown("---")
+            st.subheader("Convert to Parquet (Optional)")
+            st.caption("Pre-convert matched spectra to Parquet for instant loading on future runs.")
+
+            parquet_out_col1, parquet_out_col2 = st.columns([3, 1])
+            with parquet_out_col1:
+                default_parquet_dir = st.session_state.get(get_state_key('export_dir'), './exports')
+                parquet_output = st.text_input(
+                    "Parquet output path",
+                    value=f"{default_parquet_dir}/spectra_cache.parquet",
+                    key=f"{STATE_PREFIX}_parquet_output",
+                )
+            with parquet_out_col2:
+                st.write("")
+                if st.button("Convert to Parquet", key=f"{STATE_PREFIX}_convert_parquet_btn"):
+                    _run_parquet_conversion(search_results, mzmls, ref_sub, parquet_output)
     else:
         st.caption("Search results will appear here after running the search.")
+
+
+def _run_parquet_conversion(search_results, mzmls, ref_substring, output_path):
+    """Run inline Parquet conversion from search results."""
+    from tools.convert_mzml_to_parquet import convert_mzml_to_parquet
+
+    # Collect unique idXML files from search results
+    idxml_files = set()
+    peptides = set()
+    for vg in search_results.values():
+        peptides.add(vg.base_sequence)
+        for m in vg.matches:
+            if m.idxml_file:
+                idxml_files.add(m.idxml_file)
+
+    # Determine mzML directory (use common parent of selected mzML files)
+    mzml_dirs = {str(Path(m).parent) for m in mzmls}
+    if len(mzml_dirs) == 1:
+        mzml_dir = mzml_dirs.pop()
+    else:
+        # Use first directory as primary
+        mzml_dir = str(Path(mzmls[0]).parent)
+
+    # Find full paths for idXML files
+    # They might be in selected_idxmls
+    selected_idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
+    idxml_paths = []
+    for idxml_name in idxml_files:
+        for full_path in selected_idxmls:
+            if Path(full_path).name == idxml_name:
+                idxml_paths.append(full_path)
+                break
+
+    if not idxml_paths:
+        st.error("Could not find full paths for idXML files")
+        return
+
+    progress_bar = st.progress(0, "Converting...")
+    status = st.empty()
+
+    def on_progress(msg):
+        status.caption(msg)
+
+    def on_error(msg):
+        st.warning(msg)
+
+    result = convert_mzml_to_parquet(
+        idxml_paths=idxml_paths,
+        mzml_dir=mzml_dir,
+        target_peptides=list(peptides),
+        output_path=output_path,
+        reference_substring=ref_substring,
+        progress_callback=on_progress,
+        error_callback=on_error,
+    )
+
+    progress_bar.progress(1.0)
+
+    if result:
+        st.session_state[get_state_key('parquet_file')] = result
+        st.success(f"Converted to: {result}")
+    else:
+        st.error("Conversion failed")
+
+
+def _show_cache_status(export_dir: str, parquet_file: str):
+    """Show whether a Parquet cache exists for current inputs."""
+    if parquet_file:
+        # User manually specified a Parquet file — cache is irrelevant
+        return
+
+    settings = _get_settings()
+    cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
+    if not cache_enabled:
+        return
+
+    cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
+
+    # Gather inputs for fingerprint
+    idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
+    mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+    peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
+    peptides = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
+    ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
+
+    if not idxmls or not mzmls or not peptides:
+        return
+
+    from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
+    fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides, ref_substring)
+    cache_dir = str(Path(export_dir) / cache_subdir)
+    cached = find_existing_cache(cache_dir, fingerprint)
+
+    if cached:
+        st.success(f"Parquet cache found — loading will be instant ({Path(cached).name})")
+    else:
+        st.caption("No cache yet. First run creates a Parquet cache for instant loading next time.")
 
 
 def render_analysis():
     """Render spectrum loading and analysis step."""
     st.header("Step 6: Process & Export")
 
-    # Check prerequisites
+    # Check prerequisites — Parquet path OR (search_results + mzmls)
+    parquet_file = st.session_state.get(get_state_key('parquet_file'))
     search_results = st.session_state.get(get_state_key('search_results'))
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
 
@@ -565,23 +717,27 @@ def render_analysis():
     if not ref_substring:
         ref_substring = st.session_state.get(f"{STATE_PREFIX}_ref_input", '')
 
-    if not search_results:
-        st.warning("Please run peptide search first (Search tab)")
+    if not parquet_file and not search_results:
+        st.warning("Please run peptide search first (Search tab) or select a Parquet file (Files tab)")
         return
 
-    if not mzmls:
+    if not parquet_file and not mzmls:
         st.warning("Please select mzML files first (Files tab)")
         return
 
-    # Calculate expected spectra count
-    total_psms = sum(len(vg.matches) for vg in search_results.values())
+    # Show mode indicator
+    if parquet_file:
+        st.info(f"Loading from Parquet: {Path(parquet_file).name}")
+    else:
+        total_psms = sum(len(vg.matches) for vg in search_results.values())
+
     streaming_results = st.session_state.get(get_state_key('streaming_results'))
 
     # Show status as caption (less prominent)
     if streaming_results:
-        st.caption(f"✅ Processed {streaming_results.get('query_spectra', 0)} of {total_psms} PSMs, "
+        st.caption(f"✅ Processed {streaming_results.get('query_spectra', 0)} spectra, "
                    f"exported {streaming_results.get('plots_generated', 0)} plots")
-    else:
+    elif not parquet_file:
         st.caption(f"Ready to process {total_psms} peptide-spectrum matches")
 
     st.markdown("---")
@@ -613,6 +769,9 @@ def render_analysis():
                 key=f"{STATE_PREFIX}_export_formats_input"
             )
             st.session_state[get_state_key('export_formats')] = export_formats
+
+    # Cache status indicator
+    _show_cache_status(export_dir, parquet_file)
 
     # Process button
     if st.button("🚀 Process & Export", key=f"{STATE_PREFIX}_load_btn", type="primary",
@@ -690,11 +849,11 @@ def run_streaming_processing():
     """
     Run streaming spectrum loading and processing.
 
-    This mirrors the approach used in main.py:
-    1. Load all reference spectra first
-    2. Stream each query spectrum and immediately annotate, plot, and export
+    Supports two paths:
+    - Parquet fast path: load from pre-converted .parquet file
+    - mzML path: stream from mzML files with optimized index building
     """
-    from src.spectrum_loader import load_spectra_streaming, StreamingResult
+    from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
     from src.mirror_plot import create_mirror_plot
     from src.export import sanitize_filename, create_export_directory
@@ -703,6 +862,7 @@ def run_streaming_processing():
     import matplotlib.pyplot as plt
 
     # Get state
+    parquet_file = st.session_state.get(get_state_key('parquet_file'))
     search_results = st.session_state.get(get_state_key('search_results'))
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
     ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
@@ -718,28 +878,67 @@ def run_streaming_processing():
     export_formats = st.session_state.get(get_state_key('export_formats'), ['png', 'svg'])
     project_name = st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis')
 
-    if not search_results:
-        st.warning("No search results to process")
-        return
+    # =========================================================================
+    # Auto-cache detection: check for existing Parquet cache before loading
+    # =========================================================================
+    loaded_from_cache = False
+    cache_dir = None
+    cache_fingerprint = None
 
-    # Make a copy of search results
-    import copy
-    variant_groups = copy.deepcopy(search_results)
+    settings = _get_settings()
+    cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
+    cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
 
-    mzml_paths = [Path(m) for m in mzmls]
-    total_psms = sum(len(vg.matches) for vg in variant_groups.values())
+    if not parquet_file and cache_enabled:
+        # Only auto-detect when user hasn't manually specified a Parquet file
+        idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
+        peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
+        peptides_list = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
+
+        if idxmls and mzmls and peptides_list:
+            from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
+            cache_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_list, ref_substring)
+            cache_dir = str(Path(export_dir) / cache_subdir)
+            cached_path = find_existing_cache(cache_dir, cache_fingerprint)
+
+            if cached_path:
+                parquet_file = cached_path
+                loaded_from_cache = True
+                st.info(f"Cache found! Loading from: {Path(cached_path).name}")
+
+    use_parquet = bool(parquet_file)
+
+    if not use_parquet:
+        if not search_results:
+            st.warning("No search results to process")
+            return
+
+        # Make a copy of search results
+        import copy
+        variant_groups = copy.deepcopy(search_results)
+        mzml_paths = [Path(m) for m in mzmls]
+        total_psms = sum(len(vg.matches) for vg in variant_groups.values())
+    else:
+        variant_groups = None
+        mzml_paths = None
+        total_psms = 0  # Will be determined from Parquet
 
     # Create export directory structure (same as main.py)
     root_dir, png_dir, svg_dir = create_export_directory(export_dir, project_name)
 
     # Count expected reference vs query PSMs
-    ref_files_lower = {Path(m).name.lower() for m in mzmls
-                       if ref_substring and ref_substring.lower() in Path(m).name.lower()}
-    expected_refs = sum(
-        1 for vg in variant_groups.values() for m in vg.matches
-        if m.mzml_filename and m.mzml_filename.lower() in ref_files_lower
-    )
-    expected_queries = total_psms - expected_refs
+    if use_parquet:
+        # Read row counts from Parquet for accurate progress bars
+        from src.parquet_cache import get_parquet_row_counts
+        expected_refs, expected_queries = get_parquet_row_counts(parquet_file)
+    else:
+        ref_files_lower = {Path(m).name.lower() for m in mzmls
+                           if ref_substring and ref_substring.lower() in Path(m).name.lower()}
+        expected_refs = sum(
+            1 for vg in variant_groups.values() for m in vg.matches
+            if m.mzml_filename and m.mzml_filename.lower() in ref_files_lower
+        )
+        expected_queries = total_psms - expected_refs
 
     # Helper to format time as hours/minutes/seconds
     def format_time(seconds: float) -> str:
@@ -796,6 +995,9 @@ def run_streaming_processing():
     # Annotated reference cache (annotate once, reuse)
     annotated_references = {}
     refs_done = False
+
+    # Accumulate query spectra for auto-cache save (only when loading from mzML)
+    _cached_queries: List[Tuple[str, object]] = []
 
     def annotate_spectrum(spectrum, is_reference=False):
         """Annotate a spectrum for plotting (same as main.py)."""
@@ -877,6 +1079,10 @@ def run_streaming_processing():
         nonlocal refs_done, query_start_time
         query = result.query_spectrum
         refs = result.reference_spectra
+
+        # Accumulate for auto-cache save (only when loading from mzML, not cache)
+        if not use_parquet:
+            _cached_queries.append((result.variant_key, query))
 
         # Mark refs as done if not already (first query means refs are done)
         if not refs_done:
@@ -995,17 +1201,28 @@ def run_streaming_processing():
     add_log("-" * 50)
 
     try:
-        # Run the streaming pipeline (same as main.py)
-        reference_spectra = load_spectra_streaming(
-            variant_groups=variant_groups,
-            mzml_paths=mzml_paths,
-            reference_substring=ref_substring,
-            on_reference_loaded=on_reference_loaded,
-            on_query_ready=on_query_ready,
-            on_file_start=on_file_start,
-            on_file_complete=on_file_complete,
-            error_callback=on_error,
-        )
+        if use_parquet:
+            # FAST PATH: Load from Parquet
+            add_log(f"Loading from Parquet: {parquet_file}")
+            reference_spectra = load_spectra_from_parquet(
+                parquet_path=parquet_file,
+                reference_substring=ref_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                error_callback=on_error,
+            )
+        else:
+            # STANDARD PATH: Load from mzML
+            reference_spectra = load_spectra_streaming(
+                variant_groups=variant_groups,
+                mzml_paths=mzml_paths,
+                reference_substring=ref_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                on_file_start=on_file_start,
+                on_file_complete=on_file_complete,
+                error_callback=on_error,
+            )
 
         # Finalize progress bars
         query_progress_bar.progress(1.0)
@@ -1034,9 +1251,41 @@ def run_streaming_processing():
 
         st.success(f"✅ Complete! {results_summary['plots_generated']} plots exported to: {root_dir}")
 
+        # =====================================================================
+        # Auto-save Parquet cache (only if loaded from mzML, not from cache)
+        # =====================================================================
+        if not loaded_from_cache and not st.session_state.get(get_state_key('parquet_file')) and cache_enabled and cache_fingerprint and _cached_queries:
+            try:
+                from src.parquet_cache import save_spectra_to_parquet
+                cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
+
+                idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
+                peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
+                peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+
+                cache_metadata = {
+                    "fingerprint": cache_fingerprint,
+                    "idxml_files": idxmls_for_meta,
+                    "mzml_files": mzmls,
+                    "target_peptides": peptides_for_meta,
+                    "reference_substring": ref_substring,
+                }
+
+                saved = save_spectra_to_parquet(
+                    reference_spectra=reference_spectra,
+                    query_spectra=_cached_queries,
+                    output_path=cache_path,
+                    cache_metadata=cache_metadata,
+                )
+                if saved:
+                    add_log(f"Saved Parquet cache: {saved}")
+                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
+            except Exception as cache_err:
+                add_log(f"Warning: Could not save cache: {cache_err}")
+                logger.warning(f"Cache save failed: {cache_err}")
+
     except Exception as e:
         st.error(f"Processing failed: {e}")
-        status_text.text(f"Error: {e}")
         logger.exception("Streaming processing error")
 
 
