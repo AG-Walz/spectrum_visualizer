@@ -20,3 +20,4 @@ dependencies:
   - pip:
     - psm-utils
     - koinapy
+    - ms-entropy

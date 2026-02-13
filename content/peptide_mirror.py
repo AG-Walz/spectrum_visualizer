@@ -857,6 +857,7 @@ def run_streaming_processing():
     from src.peak_annotation import prepare_spectrum_for_plot
     from src.mirror_plot import create_mirror_plot, create_single_spectrum_plot
     from src.export import sanitize_filename, create_export_directory
+    from src.spectrum_metrics import compute_all_metrics, format_metrics_text, shorten_filenames
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
@@ -1006,6 +1007,9 @@ def run_streaming_processing():
     # Annotated reference cache (annotate once, reuse)
     annotated_references = {}
     # refs_done initialized in the reference progress section above
+
+    # Accumulate per-comparison rows for summary spreadsheet
+    summary_rows: List[dict] = []
 
     # Accumulate query spectra for auto-cache save (only when loading from mzML)
     _cached_queries: List[Tuple[str, object]] = []
@@ -1191,6 +1195,10 @@ def run_streaming_processing():
         # Generate mirror plot for each reference (same as main.py)
         for ref, ref_df in ref_data:
             try:
+                # Compute comparison metrics
+                metrics = compute_all_metrics(query_df, ref_df)
+                metrics_text = format_metrics_text(metrics)
+
                 # Create plot
                 fig = create_mirror_plot(
                     upper_spectrum=query_df,
@@ -1198,10 +1206,21 @@ def run_streaming_processing():
                     upper_label=f"Query: {Path(query.source_file).stem}",
                     lower_label=f"Ref: {Path(ref.source_file).stem}",
                     title=f"{result.base_sequence}",
+                    metrics_text=metrics_text,
                 )
 
                 results_summary["plots_generated"] += 1
                 plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
+
+                # Accumulate summary row
+                summary_rows.append({
+                    "query_file": Path(query.source_file).name,
+                    "ref_file": Path(ref.source_file).name,
+                    "peptide": result.base_sequence,
+                    "modification": result.modification_key or "",
+                    "charge": query.precursor_charge,
+                    **metrics,
+                })
 
                 # Generate filename (same as main.py)
                 query_stem = Path(query.source_file).stem[:30]
@@ -1304,6 +1323,65 @@ def run_streaming_processing():
         st.success(f"✅ Complete! {results_summary['plots_generated']} plots exported to: {root_dir}")
 
         # =====================================================================
+        # Write comparison summary CSV + XLSX
+        # =====================================================================
+        if summary_rows:
+            try:
+                import pandas as _pd
+                summary_df = _pd.DataFrame(summary_rows)
+
+                # Shorten filenames for readability
+                all_filenames = list(set(
+                    summary_df["query_file"].tolist() + summary_df["ref_file"].tolist()
+                ))
+                short_map = dict(zip(all_filenames, shorten_filenames(all_filenames)))
+                summary_df.insert(0, "query_short", summary_df["query_file"].map(short_map))
+                summary_df.insert(1, "ref_short", summary_df["ref_file"].map(short_map))
+
+                # Reorder columns
+                col_order = [
+                    "query_short", "ref_short", "peptide", "modification", "charge",
+                    "R2m", "R2b", "Cos", "Ent", "Dice", "Jacc", "ShR",
+                    "total_q", "total_r", "ann_q", "ann_r", "shared",
+                    "query_file", "ref_file",
+                ]
+                summary_df = summary_df[[c for c in col_order if c in summary_df.columns]]
+
+                # Rename for display
+                rename_map = {
+                    "query_short": "Query", "ref_short": "Reference",
+                    "peptide": "Peptide", "modification": "Modification",
+                    "charge": "Charge",
+                    "R2m": "R² match", "R2b": "R² binned",
+                    "Cos": "Cosine", "Ent": "Entropy",
+                    "Dice": "Dice", "Jacc": "Jaccard", "ShR": "SharedRatio",
+                    "total_q": "Peaks (Q)", "total_r": "Peaks (R)",
+                    "ann_q": "Annotated (Q)", "ann_r": "Annotated (R)",
+                    "shared": "Shared Ions",
+                    "query_file": "Query File", "ref_file": "Ref File",
+                }
+                summary_df = summary_df.rename(columns=rename_map)
+
+                # Write CSV (primary)
+                csv_path = root_dir / "comparison_summary.csv"
+                summary_df.to_csv(csv_path, index=False)
+                results_summary["summary_csv"] = str(csv_path)
+                add_log(f"Summary CSV: {csv_path}")
+
+                # Write XLSX (secondary)
+                try:
+                    xlsx_path = root_dir / "comparison_summary.xlsx"
+                    summary_df.to_excel(xlsx_path, index=False, sheet_name="Comparisons")
+                    results_summary["summary_xlsx"] = str(xlsx_path)
+                    add_log(f"Summary XLSX: {xlsx_path}")
+                except Exception as xlsx_err:
+                    add_log(f"Warning: Could not write XLSX: {xlsx_err}")
+
+            except Exception as summary_err:
+                add_log(f"Warning: Could not write summary: {summary_err}")
+                logger.warning(f"Summary export failed: {summary_err}")
+
+        # =====================================================================
         # Auto-save Parquet cache (only if loaded from mzML, not from cache)
         # =====================================================================
         if not loaded_from_cache and not st.session_state.get(get_state_key('parquet_file')) and cache_enabled and cache_fingerprint and _cached_queries:
@@ -1356,6 +1434,17 @@ def display_streaming_results(results: dict):
     else:
         st.caption(f"Processed {queries} spectra → {plots} annotated spectrum plots "
                    f"({png_count} PNG, {svg_count} SVG)")
+
+    # Show summary file paths
+    summary_csv = results.get("summary_csv")
+    summary_xlsx = results.get("summary_xlsx")
+    if summary_csv or summary_xlsx:
+        parts = []
+        if summary_csv:
+            parts.append(f"CSV: `{summary_csv}`")
+        if summary_xlsx:
+            parts.append(f"XLSX: `{summary_xlsx}`")
+        st.caption(f"Comparison summary: {' | '.join(parts)}")
 
     if errors:
         with st.expander(f"⚠️ {len(errors)} Errors", expanded=False):

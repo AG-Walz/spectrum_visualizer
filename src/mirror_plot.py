@@ -71,7 +71,8 @@ def create_mirror_plot(
     figsize: Tuple[int, int] = (12, 8),
     dpi: int = 300,
     show_annotations: bool = True,
-    annotation_fontsize: int = 7
+    annotation_fontsize: int = 7,
+    metrics_text: Optional[str] = None
 ):
     """
     Create a publication-ready mirror plot.
@@ -87,6 +88,8 @@ def create_mirror_plot(
         dpi: Resolution for export
         show_annotations: Whether to show ion labels
         annotation_fontsize: Font size for annotations
+        metrics_text: Optional multi-line string of comparison metrics to
+            render in the top-right corner of the plot
 
     Returns:
         matplotlib.figure.Figure object
@@ -183,6 +186,14 @@ def create_mirror_plot(
             fontsize=9, fontweight='bold', va='bottom', ha='left',
             color='#333333',
             bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
+
+    # Metrics overlay in top-right corner
+    if metrics_text:
+        ax.text(0.98, 0.99, metrics_text, transform=ax.transAxes,
+                fontsize=7, fontfamily='monospace', va='top', ha='right',
+                color='#333333',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                         edgecolor='#CCCCCC', alpha=0.85))
 
     # Styling
     ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
