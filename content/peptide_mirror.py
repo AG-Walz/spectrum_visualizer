@@ -855,7 +855,7 @@ def run_streaming_processing():
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
-    from src.mirror_plot import create_mirror_plot
+    from src.mirror_plot import create_mirror_plot, create_single_spectrum_plot
     from src.export import sanitize_filename, create_export_directory
     import matplotlib
     matplotlib.use('Agg')
@@ -961,16 +961,27 @@ def run_streaming_processing():
     query_start_time = None
 
     # Reference progress section
-    st.markdown("**Reference Spectra**")
-    ref_progress_bar = st.progress(0)
-    ref_status = st.empty()
-    ref_status.caption(f"Loading {expected_refs} reference spectra...")
+    refs_done = False
+    if expected_refs > 0:
+        st.markdown("**Reference Spectra**")
+        ref_progress_bar = st.progress(0)
+        ref_status = st.empty()
+        ref_status.caption(f"Loading {expected_refs} reference spectra...")
+    else:
+        ref_progress_bar = None
+        ref_status = None
+        refs_done = True
+        query_start_time = start_time
+        st.info("No reference substring specified — generating individual annotated spectrum plots.")
 
     # Query progress section
-    st.markdown("**Query Spectra**")
+    st.markdown("**Query Spectra**" if expected_refs > 0 else "**Spectra**")
     query_progress_bar = st.progress(0)
     query_status = st.empty()
-    query_status.caption(f"Waiting for references to complete...")
+    if expected_refs > 0:
+        query_status.caption(f"Waiting for references to complete...")
+    else:
+        query_status.caption(f"Processing {expected_queries} spectra...")
 
     # Summary metrics (compact)
     metrics_col1, metrics_col2 = st.columns(2)
@@ -994,7 +1005,7 @@ def run_streaming_processing():
 
     # Annotated reference cache (annotate once, reuse)
     annotated_references = {}
-    refs_done = False
+    # refs_done initialized in the reference progress section above
 
     # Accumulate query spectra for auto-cache save (only when loading from mzML)
     _cached_queries: List[Tuple[str, object]] = []
@@ -1068,9 +1079,11 @@ def run_streaming_processing():
         # Check if all references are done
         if results_summary["reference_spectra"] >= expected_refs and not refs_done:
             refs_done = True
-            ref_progress_bar.progress(1.0)
+            if ref_progress_bar:
+                ref_progress_bar.progress(1.0)
             ref_elapsed = time.time() - ref_start_time
-            ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
+            if ref_status:
+                ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
             query_start_time = time.time()
             query_status.caption(f"Processing {expected_queries} query spectra...")
 
@@ -1087,9 +1100,11 @@ def run_streaming_processing():
         # Mark refs as done if not already (first query means refs are done)
         if not refs_done:
             refs_done = True
-            ref_progress_bar.progress(1.0)
+            if ref_progress_bar:
+                ref_progress_bar.progress(1.0)
             ref_elapsed = time.time() - ref_start_time
-            ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
+            if ref_status:
+                ref_status.caption(f"✅ Done: {results_summary['reference_spectra']} references loaded in {format_time(ref_elapsed)}")
             query_start_time = time.time()
 
         progress_str = f"[{result.query_index + 1}/{result.total_queries}]"
@@ -1126,15 +1141,52 @@ def run_streaming_processing():
 
         ref_data = annotated_references.get(result.variant_key, [])
 
-        if not ref_data:
-            add_log(f"  ⚠️ No annotated references available")
-            return
-
         # Create folder for this variant
         if result.modification_key:
             folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
         else:
             folder_name = result.base_sequence
+
+        if not ref_data:
+            # Single spectrum plot (no references available)
+            try:
+                fig = create_single_spectrum_plot(
+                    spectrum=query_df,
+                    title=f"{result.base_sequence}",
+                    label=f"{Path(query.source_file).stem}",
+                )
+                results_summary["plots_generated"] += 1
+                plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
+
+                query_stem = Path(query.source_file).stem[:30]
+                base_filename = f"{result.base_sequence}_{query_stem}"
+                safe_filename = sanitize_filename(base_filename)
+
+                # Export PNG
+                if "png" in export_formats:
+                    variant_png_dir = png_dir / folder_name
+                    variant_png_dir.mkdir(exist_ok=True)
+                    png_path = variant_png_dir / f"{safe_filename}.png"
+                    fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
+                    results_summary["files_exported"]["png"].append(str(png_path))
+
+                # Export SVG
+                if "svg" in export_formats:
+                    variant_svg_dir = svg_dir / folder_name
+                    variant_svg_dir.mkdir(exist_ok=True)
+                    svg_path = variant_svg_dir / f"{safe_filename}.svg"
+                    fig.savefig(svg_path, format='svg', bbox_inches='tight', facecolor='white')
+                    results_summary["files_exported"]["svg"].append(str(svg_path))
+
+                plt.close(fig)
+                add_log(f"  ✓ Exported: {safe_filename}")
+
+            except Exception as e:
+                results_summary["errors"].append(f"Plot/export error: {e}")
+                errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
+                add_log(f"  ❌ Error: {e}")
+
+            return
 
         # Generate mirror plot for each reference (same as main.py)
         for ref, ref_df in ref_data:
@@ -1298,8 +1350,12 @@ def display_streaming_results(results: dict):
     svg_count = len(results.get("files_exported", {}).get("svg", []))
     errors = results.get("errors", [])
 
-    st.caption(f"Processed {refs} reference + {queries} query spectra → {plots} plots "
-               f"({png_count} PNG, {svg_count} SVG)")
+    if refs > 0:
+        st.caption(f"Processed {refs} reference + {queries} query spectra → {plots} mirror plots "
+                   f"({png_count} PNG, {svg_count} SVG)")
+    else:
+        st.caption(f"Processed {queries} spectra → {plots} annotated spectrum plots "
+                   f"({png_count} PNG, {svg_count} SVG)")
 
     if errors:
         with st.expander(f"⚠️ {len(errors)} Errors", expanded=False):

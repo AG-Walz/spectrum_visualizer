@@ -202,6 +202,97 @@ def create_mirror_plot(
     return fig
 
 
+def create_single_spectrum_plot(
+    spectrum: pd.DataFrame,
+    title: str = "Annotated Spectrum",
+    label: str = "",
+    color_map: Dict[str, str] = None,
+    figsize: Tuple[int, int] = (12, 8),
+    dpi: int = 300,
+    show_annotations: bool = True,
+    annotation_fontsize: int = 7
+):
+    """
+    Create a single annotated spectrum plot (no mirror/reference).
+
+    Args:
+        spectrum: DataFrame with columns [mz, intensity, annotation]
+        title: Plot title
+        label: Label shown in top-left corner
+        color_map: Custom ion color mapping
+        figsize: Figure size (width, height)
+        dpi: Resolution for export
+        show_annotations: Whether to show ion labels
+        annotation_fontsize: Font size for annotations
+
+    Returns:
+        matplotlib.figure.Figure object
+    """
+    import matplotlib
+    matplotlib.use('Agg')
+    from matplotlib.figure import Figure
+
+    if color_map is None:
+        color_map = ION_COLORS
+
+    fig = Figure(figsize=figsize, dpi=dpi)
+    ax = fig.add_subplot(111)
+
+    # Plot peaks (positive intensities only)
+    if not spectrum.empty and len(spectrum) > 0:
+        df = spectrum.copy()
+
+        if 'annotation' not in df.columns:
+            df['annotation'] = 'unannotated'
+
+        # Normalize
+        max_int = df["intensity"].max()
+        if max_int > 0:
+            df["intensity"] = df["intensity"] / max_int
+
+        for _, peak in df.iterrows():
+            annotation = peak.get('annotation', 'unannotated')
+            color = get_ion_color(annotation, color_map)
+            ax.vlines(peak['mz'], 0, peak['intensity'],
+                     colors=color, linewidth=1.5, alpha=0.8)
+
+            if show_annotations and annotation and annotation != 'unannotated':
+                ax.text(peak['mz'], peak['intensity'] + 0.03, annotation,
+                       fontsize=annotation_fontsize, color=color,
+                       ha='center', va='bottom', rotation=0)
+
+    # Axis limits
+    if not spectrum.empty:
+        all_mz = spectrum["mz"].tolist()
+        mz_min = min(all_mz) - 50
+        mz_max = max(all_mz) + 50
+        ax.set_xlim(mz_min, mz_max)
+
+    ax.set_ylim(0, 1.15)
+
+    # Label in top-left
+    if label:
+        ax.text(0.02, 0.99, label, transform=ax.transAxes,
+                fontsize=9, fontweight='bold', va='top', ha='left',
+                color='#333333',
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
+
+    # Styling
+    ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
+    ax.set_ylabel("Relative Intensity", fontsize=12, fontweight='bold')
+    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    ax.tick_params(axis='y', which='both', length=4)
+
+    fig.tight_layout()
+
+    return fig
+
+
 def create_legend_figure(
     color_map: Dict[str, str] = None,
     ion_types: List[str] = None,
