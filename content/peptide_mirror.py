@@ -405,7 +405,7 @@ def render_reference_selection():
     st.markdown("Enter a substring to identify reference mzML files (e.g., 'Synpep', 'Standard', 'Ref')")
 
     ref_substring = st.text_input(
-        "Reference identifier",
+        "Reference identifier (Optional)",
         value=st.session_state.get(get_state_key('reference_substring'), ''),
         key=f"{STATE_PREFIX}_ref_input",
         placeholder="e.g., Synpep"
@@ -448,7 +448,7 @@ def render_reference_selection():
             st.warning("All files match as reference - no query files")
 
     else:
-        st.info("Without a reference identifier, spectra will be compared query-to-query")
+        st.info("No reference identifier — each spectrum will be plotted individually with annotations.")
         return True
 
     return False
