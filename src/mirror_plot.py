@@ -220,7 +220,7 @@ def create_mirror_plot(
     ylabel = "Relative Intensity" if normalize else "Intensity"
     ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
     ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
@@ -329,7 +329,7 @@ def create_single_spectrum_plot(
     ylabel = "Relative Intensity" if normalize else "Intensity"
     ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
     ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
-    ax.grid(True, alpha=0.3, linestyle='--')
+    ax.grid(False)
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 

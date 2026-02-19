@@ -35,7 +35,7 @@
   "export": {
     "default_directory": "./exports",
     "project_name": "MSpecViz_analysis",
-    "formats": ["png", "svg"],
+    "formats": ["png"],
     "dpi": 300,
     "figsize": [12, 8]
   },

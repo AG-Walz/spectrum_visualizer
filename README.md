@@ -4,6 +4,22 @@ MSpecViz is a Streamlit-based web application for mass spectrometry (MS/MS) spec
 
 Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/streamlit-template/) [1].
 
+## Table of Contents
+
+- [Installation](#installation)
+- [Basic Workflow](#basic-workflow)
+- [Fast Loading with Parquet Conversion](#fast-loading-with-parquet-conversion)
+- [Project Structure](#project-structure)
+- [Testing](#testing)
+- [Test Data](#test-data)
+- [Documentation](#documentation)
+  - [Caching System](docs/caching.md) — How auto-caching works, interrupted runs, invalidation
+  - [Spectrum Comparison Metrics](docs/spectrum_metrics.md) — Cosine similarity, spectral entropy, R2, shared peaks
+  - [Full User Guide](docs/DOCUMENTATION.md) — Comprehensive feature reference
+  - [Quick Start](docs/QUICKSTART.md) — Get started in 5 minutes
+  - [Parquet Conversion Tool](tools/README.md) — CLI reference for mzML-to-Parquet conversion
+- [References](#references)
+
 ## Installation
 
 ### Requirements
@@ -21,6 +37,29 @@ streamlit run app.py
 ```
 
 Access at http://localhost:8501
+
+### Remote Access (SSH tunnel)
+
+If the server is behind a firewall (e.g., accessible only via SSH through a jumphost), direct access to port 8501 will be refused. Use an SSH tunnel to forward the port to your local machine.
+
+**One command from your local PC:**
+
+```bash
+ssh -L 8501:localhost:8501 -J jumphost peptimine_highmem1
+```
+
+Then open http://localhost:8501 in your browser.
+
+**Convenience script** — run `connect_mspecviz.sh` from your local machine to open the tunnel and launch the browser automatically:
+
+```bash
+# Copy scripts/connect_mspecviz.sh to your local machine, then:
+chmod +x connect_mspecviz.sh
+./connect_mspecviz.sh
+```
+
+> **Tip:** If port 8501 is already in use locally, pick another port:
+> `ssh -L 9501:localhost:8501 -J jumphost peptimine_highmem1` then open http://localhost:9501
 
 ## Basic Workflow
 
@@ -115,9 +154,13 @@ Location: `/mnt/volume/nacho/data/ProCa_Anna/small_dataset/mini_dataset`
 
 ## Documentation
 
-- **Tools README**: [tools/README.md](tools/README.md) — Parquet conversion script reference
-- **Architecture**: [.claude/docs/architectural_patterns.md](.claude/docs/architectural_patterns.md)
-- **Progress**: [.claude/docs/progress.md](.claude/docs/progress.md)
+| Guide | Description |
+|-------|-------------|
+| [Caching System](docs/caching.md) | Auto-caching, fingerprinting, interrupted runs, cache invalidation |
+| [Spectrum Metrics](docs/spectrum_metrics.md) | Cosine similarity, spectral entropy, R2, shared peak ratios |
+| [Full User Guide](docs/DOCUMENTATION.md) | Comprehensive reference for every feature and option |
+| [Quick Start](docs/QUICKSTART.md) | Get up and running in 5 minutes |
+| [Parquet Conversion](tools/README.md) | CLI tool for mzML-to-Parquet batch conversion |
 
 ## References
 

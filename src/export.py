@@ -45,9 +45,9 @@ def create_export_directory(
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if experiment_name:
-        folder_name = f"MSpecViz_{sanitize_filename(experiment_name)}_{timestamp}"
+        folder_name = f"{sanitize_filename(experiment_name)}_{timestamp}"
     else:
-        folder_name = f"MSpecViz_export_{timestamp}"
+        folder_name = f"export_{timestamp}"
 
     root_dir = Path(base_dir) / folder_name
     png_dir = root_dir / "png"

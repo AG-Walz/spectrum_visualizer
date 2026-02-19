@@ -50,7 +50,7 @@ def init_session_state():
     ion_types_default = get_settings_value(_get_settings(), "ion_types", "default", default=["b", "y"])
     mz_tolerance_default = get_settings_value(_get_settings(), "mz_tolerance", "default", default=0.02)
     export_dir_default = get_settings_value(_get_settings(), "export", "default_directory", default="./exports")
-    export_formats_default = get_settings_value(_get_settings(), "export", "formats", default=["png", "svg"])
+    export_formats_default = get_settings_value(_get_settings(), "export", "formats", default=["png"])
     project_name_default = get_settings_value(_get_settings(), "export", "project_name", default="MSpecViz_analysis")
     data_dir_default = get_settings_value(_get_settings(), "data_directories", "default", default="/mnt/volume")
 
@@ -568,14 +568,6 @@ def render_search():
         peptide_text = st.session_state.get(f"{STATE_PREFIX}_peptide_input", '')
     peptides = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
 
-    # Debug info
-    with st.expander("Debug: Current State", expanded=False):
-        st.write(f"idXML files: {len(idxmls)}")
-        st.write(f"Peptide text length: {len(peptide_text)}")
-        st.write(f"Peptides parsed: {peptides}")
-        if idxmls:
-            st.write(f"First idXML: {idxmls[0]}")
-
     if not idxmls:
         st.warning("Please select idXML files first (Files tab)")
         return
@@ -788,11 +780,20 @@ def render_analysis():
         with export_col2:
             export_formats = st.multiselect(
                 "Export Formats",
-                options=['png', 'svg'],
-                default=st.session_state.get(get_state_key('export_formats'), ['png', 'svg']),
+                options=['png'],
+                default=st.session_state.get(get_state_key('export_formats'), ['png']),
                 key=f"{STATE_PREFIX}_export_formats_input"
             )
             st.session_state[get_state_key('export_formats')] = export_formats
+
+            plot_unpaired = st.checkbox(
+                "Plot unpaired spectra",
+                value=st.session_state.get(get_state_key('plot_unpaired'), False),
+                key=f"{STATE_PREFIX}_plot_unpaired_input",
+                help="When enabled, spectra without a matching reference (or query) are plotted individually. "
+                     "When disabled, only mirror plots with both query and reference are exported."
+            )
+            st.session_state[get_state_key('plot_unpaired')] = plot_unpaired
 
     # Cache status indicator
     _show_cache_status(export_dir, parquet_file)
@@ -818,59 +819,57 @@ def run_peptide_search(idxmls: list, peptides: list):
     # Get selected mzML paths for disambiguation
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
 
-    progress_bar = st.progress(0, "Starting search...")
-    status_text = st.empty()
-    error_container = st.container()
     error_messages = []
 
-    def progress_callback(current, total, message):
-        if total > 0:
-            progress_bar.progress(current / total, message)
-            status_text.text(message)
+    with st.status("Searching peptides...", expanded=True) as status:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-    def error_callback(error_msg: str):
-        """Handle errors immediately."""
-        error_messages.append(error_msg)
-        with error_container:
-            st.warning(f"⚠️ {error_msg}")
+        def progress_callback(current, total, message):
+            if total > 0:
+                progress_bar.progress(current / total, message)
+                status_text.text(message)
 
-    try:
-        results = search_peptides_in_idxmls(
-            idxmls, peptides,
-            mzml_paths=mzmls,
-            progress_callback=progress_callback,
-            error_callback=error_callback
-        )
+        def error_callback(error_msg: str):
+            """Handle errors immediately."""
+            error_messages.append(error_msg)
 
-        st.session_state[get_state_key('search_results')] = results
-        progress_bar.progress(1.0, "Search complete!")
-        status_text.text("Search complete!")
+        try:
+            results = search_peptides_in_idxmls(
+                idxmls, peptides,
+                mzml_paths=mzmls,
+                progress_callback=progress_callback,
+                error_callback=error_callback
+            )
 
-        if results:
-            total_matches = sum(len(vg.matches) for vg in results.values())
+            st.session_state[get_state_key('search_results')] = results
+            progress_bar.progress(1.0, "Search complete!")
 
-            # Count resolved vs unresolved mzML mappings
-            resolved = sum(1 for vg in results.values() for m in vg.matches if m.mzml_filename)
-            unresolved = total_matches - resolved
+            if results:
+                total_matches = sum(len(vg.matches) for vg in results.values())
 
-            st.success(f"Found {total_matches} PSMs across {len(results)} peptide variants")
+                # Count resolved vs unresolved mzML mappings
+                resolved = sum(1 for vg in results.values() for m in vg.matches if m.mzml_filename)
+                unresolved = total_matches - resolved
 
-            if unresolved > 0:
-                st.warning(f"{unresolved} PSMs could not be mapped to mzML files (missing id_merge_index)")
+                status.update(label=f"Found {total_matches} PSMs across {len(results)} variants", state="complete")
 
-            # Show error summary
-            if error_messages:
-                with st.expander(f"⚠️ {len(error_messages)} warnings during search", expanded=False):
-                    for msg in error_messages[:10]:
-                        st.caption(msg)
-                    if len(error_messages) > 10:
-                        st.caption(f"... and {len(error_messages) - 10} more")
-        else:
-            st.warning("No matches found for the specified peptides")
+                if unresolved > 0:
+                    st.warning(f"{unresolved} PSMs could not be mapped to mzML files (missing id_merge_index)")
 
-    except Exception as e:
-        st.error(f"Search failed: {e}")
-        logger.exception("Peptide search error")
+                # Show error summary
+                if error_messages:
+                    with st.expander(f"{len(error_messages)} warnings during search", expanded=False):
+                        for msg in error_messages[:10]:
+                            st.caption(msg)
+                        if len(error_messages) > 10:
+                            st.caption(f"... and {len(error_messages) - 10} more")
+            else:
+                status.update(label="No matches found for the specified peptides", state="error")
+
+        except Exception as e:
+            status.update(label=f"Search failed: {e}", state="error")
+            logger.exception("Peptide search error")
 
 
 def run_streaming_processing():
@@ -906,8 +905,9 @@ def run_streaming_processing():
     intensity_mode = st.session_state.get(get_state_key('intensity_mode'), 'Relative')
     normalize = intensity_mode == 'Relative'
     export_dir = st.session_state.get(get_state_key('export_dir'), './exports')
-    export_formats = st.session_state.get(get_state_key('export_formats'), ['png', 'svg'])
+    export_formats = st.session_state.get(get_state_key('export_formats'), ['png'])
     project_name = st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis')
+    plot_unpaired = st.session_state.get(get_state_key('plot_unpaired'), False)
 
     # =========================================================================
     # Auto-cache detection: check for existing Parquet cache before loading
@@ -1186,12 +1186,23 @@ def run_streaming_processing():
         else:
             folder_name = result.base_sequence
 
+        # Build title with modifications if present
+        if result.modification_key:
+            plot_title = f"{result.base_sequence} [{result.modification_key}]"
+        else:
+            plot_title = result.base_sequence
+
         if not ref_data:
+            if not plot_unpaired:
+                # Skip unpaired spectra (no reference available)
+                add_log(f"  Skipped (no reference): {Path(query.source_file).stem}")
+                return
+
             # Single spectrum plot (no references available)
             try:
                 fig = create_single_spectrum_plot(
                     spectrum=query_df,
-                    title=f"{result.base_sequence}",
+                    title=plot_title,
                     label=f"{Path(query.source_file).stem}",
                     normalize=normalize,
                 )
@@ -1241,7 +1252,7 @@ def run_streaming_processing():
                     lower_spectrum=ref_df,
                     upper_label=f"Query: {Path(query.source_file).stem}",
                     lower_label=f"Ref: {Path(ref.source_file).stem}",
-                    title=f"{result.base_sequence}",
+                    title=plot_title,
                     metrics_text=metrics_text,
                     normalize=normalize,
                 )
