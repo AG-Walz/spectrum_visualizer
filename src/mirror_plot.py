@@ -72,7 +72,8 @@ def create_mirror_plot(
     dpi: int = 300,
     show_annotations: bool = True,
     annotation_fontsize: int = 7,
-    metrics_text: Optional[str] = None
+    metrics_text: Optional[str] = None,
+    normalize: bool = True,
 ):
     """
     Create a publication-ready mirror plot.
@@ -106,6 +107,14 @@ def create_mirror_plot(
     fig = Figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
 
+    # Compute annotation text offset (3% of y-range)
+    if normalize:
+        ann_offset = 0.03
+    else:
+        upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
+        lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
+        ann_offset = max(upper_max, lower_max) * 0.03
+
     # Process upper spectrum (positive intensities)
     if not upper_spectrum.empty and len(upper_spectrum) > 0:
         upper_df = upper_spectrum.copy()
@@ -114,10 +123,11 @@ def create_mirror_plot(
         if 'annotation' not in upper_df.columns:
             upper_df['annotation'] = 'unannotated'
 
-        # Normalize
-        max_int = upper_df["intensity"].max()
-        if max_int > 0:
-            upper_df["intensity"] = upper_df["intensity"] / max_int
+        # Normalize if requested
+        if normalize:
+            max_int = upper_df["intensity"].max()
+            if max_int > 0:
+                upper_df["intensity"] = upper_df["intensity"] / max_int
 
         # Plot each peak
         for _, peak in upper_df.iterrows():
@@ -128,7 +138,7 @@ def create_mirror_plot(
 
             # Add annotation label
             if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] + 0.03, annotation,
+                ax.text(peak['mz'], peak['intensity'] + ann_offset, annotation,
                        fontsize=annotation_fontsize, color=color,
                        ha='center', va='bottom', rotation=0)
 
@@ -140,10 +150,13 @@ def create_mirror_plot(
         if 'annotation' not in lower_df.columns:
             lower_df['annotation'] = 'unannotated'
 
-        # Normalize and mirror
-        max_int = lower_df["intensity"].max()
-        if max_int > 0:
-            lower_df["intensity"] = (lower_df["intensity"] / max_int) * -1
+        # Normalize and mirror (or just mirror for raw mode)
+        if normalize:
+            max_int = lower_df["intensity"].max()
+            if max_int > 0:
+                lower_df["intensity"] = (lower_df["intensity"] / max_int) * -1
+        else:
+            lower_df["intensity"] = lower_df["intensity"] * -1
 
         # Plot each peak
         for _, peak in lower_df.iterrows():
@@ -154,7 +167,7 @@ def create_mirror_plot(
 
             # Add annotation label
             if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] - 0.03, annotation,
+                ax.text(peak['mz'], peak['intensity'] - ann_offset, annotation,
                        fontsize=annotation_fontsize, color=color,
                        ha='center', va='top', rotation=0)
 
@@ -170,7 +183,14 @@ def create_mirror_plot(
         mz_max = max(all_mz) + 50
         ax.set_xlim(mz_min, mz_max)
 
-    ax.set_ylim(-1.2, 1.2)
+    if normalize:
+        ax.set_ylim(-1.2, 1.2)
+    else:
+        # Auto-scale for raw intensities
+        upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
+        lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
+        y_max = max(upper_max, lower_max) * 1.2
+        ax.set_ylim(-y_max, y_max)
 
     # Add center line
     ax.axhline(y=0, color='black', linewidth=1, alpha=0.5)
@@ -197,15 +217,22 @@ def create_mirror_plot(
 
     # Styling
     ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
-    ax.set_ylabel("Relative Intensity", fontsize=12, fontweight='bold')
+    ylabel = "Relative Intensity" if normalize else "Intensity"
+    ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
     ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    # Custom y-axis labels (only show ticks at actual intensity values)
-    ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
-    ax.set_yticklabels(['1.0', '0.5', '0', '0.5', '1.0'])
+    if normalize:
+        # Custom y-axis labels (only show ticks at actual intensity values)
+        ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
+        ax.set_yticklabels(['1.0', '0.5', '0', '0.5', '1.0'])
+    else:
+        # Auto ticks with absolute values
+        ax.yaxis.set_major_formatter(
+            matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
+        )
     ax.tick_params(axis='y', which='both', length=4)
 
     fig.tight_layout()
@@ -221,7 +248,8 @@ def create_single_spectrum_plot(
     figsize: Tuple[int, int] = (12, 8),
     dpi: int = 300,
     show_annotations: bool = True,
-    annotation_fontsize: int = 7
+    annotation_fontsize: int = 7,
+    normalize: bool = True,
 ):
     """
     Create a single annotated spectrum plot (no mirror/reference).
@@ -256,10 +284,14 @@ def create_single_spectrum_plot(
         if 'annotation' not in df.columns:
             df['annotation'] = 'unannotated'
 
-        # Normalize
-        max_int = df["intensity"].max()
-        if max_int > 0:
-            df["intensity"] = df["intensity"] / max_int
+        # Normalize if requested
+        if normalize:
+            max_int = df["intensity"].max()
+            if max_int > 0:
+                df["intensity"] = df["intensity"] / max_int
+            ann_offset = 0.03
+        else:
+            ann_offset = df["intensity"].max() * 0.03 if len(df) > 0 else 1
 
         for _, peak in df.iterrows():
             annotation = peak.get('annotation', 'unannotated')
@@ -268,7 +300,7 @@ def create_single_spectrum_plot(
                      colors=color, linewidth=1.5, alpha=0.8)
 
             if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] + 0.03, annotation,
+                ax.text(peak['mz'], peak['intensity'] + ann_offset, annotation,
                        fontsize=annotation_fontsize, color=color,
                        ha='center', va='bottom', rotation=0)
 
@@ -279,7 +311,11 @@ def create_single_spectrum_plot(
         mz_max = max(all_mz) + 50
         ax.set_xlim(mz_min, mz_max)
 
-    ax.set_ylim(0, 1.15)
+    if normalize:
+        ax.set_ylim(0, 1.15)
+    else:
+        y_max = spectrum["intensity"].max() * 1.15 if not spectrum.empty else 1
+        ax.set_ylim(0, y_max)
 
     # Label in top-left
     if label:
@@ -290,13 +326,15 @@ def create_single_spectrum_plot(
 
     # Styling
     ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
-    ax.set_ylabel("Relative Intensity", fontsize=12, fontweight='bold')
+    ylabel = "Relative Intensity" if normalize else "Intensity"
+    ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
     ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
     ax.grid(True, alpha=0.3, linestyle='--')
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
 
-    ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    if normalize:
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     ax.tick_params(axis='y', which='both', length=4)
 
     fig.tight_layout()

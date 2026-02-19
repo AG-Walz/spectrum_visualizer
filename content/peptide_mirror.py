@@ -286,8 +286,9 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
                 )
 
             # Build new selection: other directories + current directory selections
+            # Deduplicate exact same paths (preserves order)
             current_dir_selected_paths = [str(f) for f in filtered_files if f.name in selected_names]
-            merged_selections = other_dir_selections + current_dir_selected_paths
+            merged_selections = list(dict.fromkeys(other_dir_selections + current_dir_selected_paths))
             st.session_state[get_state_key(state_key)] = merged_selections
 
             if current_dir_selected_paths:
@@ -320,6 +321,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
                     st.rerun()
 
                 # Show grouped files with remove buttons
+                remove_idx = 0
                 for folder, files in sorted(grouped.items()):
                     st.caption(f"**{folder}/** ({len(files)} files)")
                     for fname in sorted(files):
@@ -328,10 +330,11 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
                             st.text(f"  {fname}")
                         with col2:
                             full_path = str(Path(folder) / fname)
-                            if st.button("❌", key=f"{key_prefix}_remove_{hash(full_path) % 100000}", help=f"Remove {fname}"):
+                            if st.button("❌", key=f"{key_prefix}_remove_{remove_idx}", help=f"Remove {fname}"):
                                 updated = [p for p in all_selected if p != full_path]
                                 st.session_state[get_state_key(state_key)] = updated
                                 st.rerun()
+                        remove_idx += 1
 
 
 def render_peptide_input():
@@ -525,6 +528,20 @@ def render_settings():
         )
         st.session_state[get_state_key('remove_precursor_peaks')] = remove_precursor
 
+    # Intensity mode
+    st.markdown("---")
+    st.subheader("Intensity Display")
+    intensity_mode = st.radio(
+        "Intensity mode",
+        options=["Relative", "Raw"],
+        index=0 if st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative' else 1,
+        horizontal=True,
+        key=f"{STATE_PREFIX}_intensity_mode",
+        help="Relative: each spectrum normalized to its base peak (0–1). "
+             "Raw: original intensity values from the mzML file."
+    )
+    st.session_state[get_state_key('intensity_mode')] = intensity_mode
+
     # Info about precursor behavior
     if remove_precursor:
         st.caption("ℹ️ Precursor peaks will be removed from plots. Relative intensities will be recalculated.")
@@ -611,14 +628,14 @@ def _run_parquet_conversion(search_results, mzmls, ref_substring, output_path):
     """Run inline Parquet conversion from search results."""
     from tools.convert_mzml_to_parquet import convert_mzml_to_parquet
 
-    # Collect unique idXML files from search results
-    idxml_files = set()
+    # Collect unique idXML resolved paths and peptides from search results
+    idxml_resolved_paths = set()
     peptides = set()
     for vg in search_results.values():
         peptides.add(vg.base_sequence)
         for m in vg.matches:
-            if m.idxml_file:
-                idxml_files.add(m.idxml_file)
+            if m.idxml_resolved_path:
+                idxml_resolved_paths.add(m.idxml_resolved_path)
 
     # Determine mzML directory (use common parent of selected mzML files)
     mzml_dirs = {str(Path(m).parent) for m in mzmls}
@@ -628,15 +645,22 @@ def _run_parquet_conversion(search_results, mzmls, ref_substring, output_path):
         # Use first directory as primary
         mzml_dir = str(Path(mzmls[0]).parent)
 
-    # Find full paths for idXML files
-    # They might be in selected_idxmls
-    selected_idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
-    idxml_paths = []
-    for idxml_name in idxml_files:
-        for full_path in selected_idxmls:
-            if Path(full_path).name == idxml_name:
-                idxml_paths.append(full_path)
-                break
+    # Use resolved paths directly (no name-based lookup needed)
+    idxml_paths = list(idxml_resolved_paths)
+
+    # Fallback to name-based lookup if resolved paths not available
+    if not idxml_paths:
+        idxml_names = set()
+        for vg in search_results.values():
+            for m in vg.matches:
+                if m.idxml_file:
+                    idxml_names.add(m.idxml_file)
+        selected_idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
+        for idxml_name in idxml_names:
+            for full_path in selected_idxmls:
+                if Path(full_path).name == idxml_name:
+                    idxml_paths.append(full_path)
+                    break
 
     if not idxml_paths:
         st.error("Could not find full paths for idXML files")
@@ -791,6 +815,9 @@ def run_peptide_search(idxmls: list, peptides: list):
     """Execute peptide search."""
     from src.peptide_search import search_peptides_in_idxmls
 
+    # Get selected mzML paths for disambiguation
+    mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+
     progress_bar = st.progress(0, "Starting search...")
     status_text = st.empty()
     error_container = st.container()
@@ -810,6 +837,7 @@ def run_peptide_search(idxmls: list, peptides: list):
     try:
         results = search_peptides_in_idxmls(
             idxmls, peptides,
+            mzml_paths=mzmls,
             progress_callback=progress_callback,
             error_callback=error_callback
         )
@@ -875,6 +903,8 @@ def run_streaming_processing():
     add_losses = st.session_state.get(get_state_key('add_losses'), False)
     add_first_prefix_ion = st.session_state.get(get_state_key('add_first_prefix_ion'), True)
     remove_precursor_peaks = st.session_state.get(get_state_key('remove_precursor_peaks'), False)
+    intensity_mode = st.session_state.get(get_state_key('intensity_mode'), 'Relative')
+    normalize = intensity_mode == 'Relative'
     export_dir = st.session_state.get(get_state_key('export_dir'), './exports')
     export_formats = st.session_state.get(get_state_key('export_formats'), ['png', 'svg'])
     project_name = st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis')
@@ -933,11 +963,15 @@ def run_streaming_processing():
         from src.parquet_cache import get_parquet_row_counts
         expected_refs, expected_queries = get_parquet_row_counts(parquet_file)
     else:
-        ref_files_lower = {Path(m).name.lower() for m in mzmls
+        # Count refs using resolved paths when available, bare name as fallback
+        ref_paths = {str(Path(m).resolve()).lower() for m in mzmls
+                     if ref_substring and ref_substring.lower() in Path(m).name.lower()}
+        ref_names_lower = {Path(m).name.lower() for m in mzmls
                            if ref_substring and ref_substring.lower() in Path(m).name.lower()}
         expected_refs = sum(
             1 for vg in variant_groups.values() for m in vg.matches
-            if m.mzml_filename and m.mzml_filename.lower() in ref_files_lower
+            if (m.mzml_resolved_path and str(Path(m.mzml_resolved_path).resolve()).lower() in ref_paths)
+            or (not m.mzml_resolved_path and m.mzml_filename and m.mzml_filename.lower() in ref_names_lower)
         )
         expected_queries = total_psms - expected_refs
 
@@ -1054,6 +1088,7 @@ def run_streaming_processing():
                 add_losses=add_losses,
                 add_first_prefix_ion=add_first_prefix_ion,
                 remove_precursor_peaks=remove_precursor_peaks,
+                normalize=normalize,
             )
             return df
         except Exception as e:
@@ -1158,6 +1193,7 @@ def run_streaming_processing():
                     spectrum=query_df,
                     title=f"{result.base_sequence}",
                     label=f"{Path(query.source_file).stem}",
+                    normalize=normalize,
                 )
                 results_summary["plots_generated"] += 1
                 plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
@@ -1207,6 +1243,7 @@ def run_streaming_processing():
                     lower_label=f"Ref: {Path(ref.source_file).stem}",
                     title=f"{result.base_sequence}",
                     metrics_text=metrics_text,
+                    normalize=normalize,
                 )
 
                 results_summary["plots_generated"] += 1

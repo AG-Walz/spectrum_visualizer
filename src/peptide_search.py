@@ -24,10 +24,13 @@ class PeptideMatch:
     spectrum_id: str          # Native ID in mzML (e.g., "index=12345")
     charge: int               # Precursor charge
     score: float              # PSM score
-    idxml_file: str           # Source idXML filename
+    idxml_file: str           # Source idXML display name (disambiguated)
     # Direct mzML mapping from PyOpenMS metadata
-    mzml_filename: str        # Resolved mzML filename from id_merge_index
+    mzml_filename: str        # Bare mzML filename from id_merge_index
     id_merge_index: int       # Index into spectra_data list (-1 if unavailable)
+    # Resolved full paths for disambiguation (set when mzml_paths are provided)
+    mzml_resolved_path: str = ""   # Full resolved path to the mzML file
+    idxml_resolved_path: str = ""  # Full path to the source idXML file
 
 
 @dataclass
@@ -50,26 +53,35 @@ def decode_metadata_value(value) -> str:
     return str(value) if value else ""
 
 
-def extract_spectra_data_map(protein_ids: List) -> Dict[str, List[str]]:
+def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
     """
     Extract spectra_data mapping from ProteinIdentification objects.
 
     Returns:
-        Dict mapping run identifier -> list of mzML filenames
+        Tuple of:
+        - run_map: identifier -> list of mzML bare filenames
+        - run_map_full: identifier -> list of full metadata paths (as stored in idXML)
     """
     run_map = {}
+    run_map_full = {}
 
     for protein_id in protein_ids:
         identifier = protein_id.getIdentifier()
         mzml_files = []
+        mzml_full_paths = []
 
         # Try spectra_data first (standard for merged idXML)
         if protein_id.metaValueExists("spectra_data"):
             raw_val = protein_id.getMetaValue("spectra_data")
             if isinstance(raw_val, list):
-                mzml_files = [Path(decode_metadata_value(v)).name for v in raw_val]
+                for v in raw_val:
+                    full = decode_metadata_value(v)
+                    mzml_full_paths.append(full)
+                    mzml_files.append(Path(full).name)
             else:
-                mzml_files = [Path(decode_metadata_value(raw_val)).name]
+                full = decode_metadata_value(raw_val)
+                mzml_full_paths.append(full)
+                mzml_files.append(Path(full).name)
 
         # Fallback to other metadata keys
         if not mzml_files:
@@ -77,13 +89,15 @@ def extract_spectra_data_map(protein_ids: List) -> Dict[str, List[str]]:
                 if protein_id.metaValueExists(key):
                     val = decode_metadata_value(protein_id.getMetaValue(key))
                     if val:
+                        mzml_full_paths = [val]
                         mzml_files = [Path(val).name]
                         break
 
         if mzml_files:
             run_map[identifier] = mzml_files
+            run_map_full[identifier] = mzml_full_paths
 
-    return run_map
+    return run_map, run_map_full
 
 
 def get_modification_string(peptide_hit) -> str:
@@ -122,6 +136,7 @@ def get_modification_string(peptide_hit) -> str:
 def search_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
+    mzml_paths: Optional[List[str]] = None,
     progress_callback: Optional[callable] = None,
     error_callback: Optional[callable] = None
 ) -> Dict[str, VariantGroup]:
@@ -133,12 +148,15 @@ def search_peptides_in_idxmls(
     Args:
         idxml_paths: List of idXML file paths to search
         target_peptides: List of peptide sequences to find (base sequences)
+        mzml_paths: Optional list of selected mzML file paths (for disambiguation)
         progress_callback: Optional callback(current, total, message) for progress
         error_callback: Optional callback(error_message) for immediate error reporting
 
     Returns:
         Dict mapping variant_key -> VariantGroup
     """
+    from src.path_utils import disambiguate_paths, resolve_mzml_path
+
     # Normalize target peptides to uppercase, strip whitespace
     target_set = {p.strip().upper() for p in target_peptides if p.strip()}
 
@@ -147,6 +165,11 @@ def search_peptides_in_idxmls(
             error_callback("No valid target peptides provided")
         logger.warning("No valid target peptides provided")
         return {}
+
+    # Compute disambiguated names for idXML and mzML paths
+    idxml_disambig = disambiguate_paths(idxml_paths)
+    mzml_disambig = disambiguate_paths(mzml_paths) if mzml_paths else {}
+    mzml_path_strs = [str(p) for p in mzml_paths] if mzml_paths else []
 
     variant_groups: Dict[str, VariantGroup] = {}
     total_files = len(idxml_paths)
@@ -162,7 +185,7 @@ def search_peptides_in_idxmls(
             peptide_ids = []
             oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
 
-            idxml_name = Path(idxml_path).name
+            idxml_name = idxml_disambig.get(idxml_path, Path(idxml_path).name)
 
             if not peptide_ids:
                 if error_callback:
@@ -170,7 +193,7 @@ def search_peptides_in_idxmls(
                 continue
 
             # Extract spectra_data mapping for this file
-            run_map = extract_spectra_data_map(protein_ids)
+            run_map, run_map_full = extract_spectra_data_map(protein_ids)
 
             # Process each PeptideIdentification
             for pep_id in peptide_ids:
@@ -202,12 +225,18 @@ def search_peptides_in_idxmls(
 
                 # Resolve mzML filename
                 mzml_filename = ""
+                mzml_metadata_path = ""
                 if matched_run_id and matched_run_id in run_map:
                     mzml_list = run_map[matched_run_id]
+                    full_list = run_map_full.get(matched_run_id, [])
                     if id_merge_index >= 0 and id_merge_index < len(mzml_list):
                         mzml_filename = mzml_list[id_merge_index]
+                        if id_merge_index < len(full_list):
+                            mzml_metadata_path = full_list[id_merge_index]
                     elif len(mzml_list) == 1:
                         mzml_filename = mzml_list[0]
+                        if full_list:
+                            mzml_metadata_path = full_list[0]
 
                 # Process each PeptideHit
                 hits = pep_id.getHits()
@@ -239,10 +268,24 @@ def search_peptides_in_idxmls(
 
                         # Re-resolve mzML if hit has different index
                         hit_mzml_filename = mzml_filename
+                        hit_metadata_path = mzml_metadata_path
                         if hit_merge_index != id_merge_index and matched_run_id and matched_run_id in run_map:
                             mzml_list = run_map[matched_run_id]
+                            full_list = run_map_full.get(matched_run_id, [])
                             if hit_merge_index >= 0 and hit_merge_index < len(mzml_list):
                                 hit_mzml_filename = mzml_list[hit_merge_index]
+                                if hit_merge_index < len(full_list):
+                                    hit_metadata_path = full_list[hit_merge_index]
+
+                        # Resolve to a specific selected mzML path
+                        resolved_path = ""
+                        if mzml_path_strs and hit_mzml_filename:
+                            resolved = resolve_mzml_path(
+                                hit_mzml_filename, hit_metadata_path,
+                                mzml_path_strs, idxml_path
+                            )
+                            if resolved:
+                                resolved_path = resolved
 
                         # Create match object
                         match = PeptideMatch(
@@ -253,7 +296,9 @@ def search_peptides_in_idxmls(
                             score=score,
                             idxml_file=idxml_name,
                             mzml_filename=hit_mzml_filename,
-                            id_merge_index=hit_merge_index
+                            id_merge_index=hit_merge_index,
+                            mzml_resolved_path=resolved_path,
+                            idxml_resolved_path=idxml_path
                         )
 
                         # Get modification key and create variant key

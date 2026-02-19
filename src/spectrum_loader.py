@@ -87,20 +87,30 @@ class LoadedSpectrum:
 
 def build_mzml_to_matches_map(
     variant_groups: Dict[str, VariantGroup],
-    available_mzml_names: set
+    available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
     """
-    Build a mapping of mzML filename -> list of (match, variant_key) tuples.
+    Build a mapping of mzML path key -> list of (match, variant_key) tuples.
 
-    Uses pre-resolved mzml_filename from PeptideMatch.
+    Uses mzml_resolved_path when available (handles same-name files from
+    different directories). Falls back to bare filename matching.
 
     Args:
         variant_groups: Dict of variant groups with matches
-        available_mzml_names: Set of available mzML filenames (lowercase)
+        available_mzml_paths: Dict mapping path key (lowered full path) -> Path object.
+            Also supports bare-name keys for backward compatibility.
 
     Returns:
-        Dict mapping mzML filename -> list of (match, variant_key) tuples
+        Dict mapping path key -> list of (match, variant_key) tuples
     """
+    # Build a bare-name fallback lookup: lowercase name -> list of path keys
+    name_to_keys: Dict[str, List[str]] = {}
+    for key, path in available_mzml_paths.items():
+        bare = path.name.lower()
+        if bare not in name_to_keys:
+            name_to_keys[bare] = []
+        name_to_keys[bare].append(key)
+
     mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]] = {}
 
     for variant_key, vg in variant_groups.items():
@@ -108,12 +118,31 @@ def build_mzml_to_matches_map(
             if not match.mzml_filename:
                 continue
 
-            # Check if this mzML is in our available files (case-insensitive)
-            mzml_lower = match.mzml_filename.lower()
-            if mzml_lower in available_mzml_names:
-                if mzml_lower not in mzml_to_matches:
-                    mzml_to_matches[mzml_lower] = []
-                mzml_to_matches[mzml_lower].append((match, variant_key))
+            # Prefer resolved path (handles same-name files)
+            path_key = None
+            if match.mzml_resolved_path:
+                resolved_key = str(Path(match.mzml_resolved_path).resolve()).lower()
+                if resolved_key in available_mzml_paths:
+                    path_key = resolved_key
+
+            # Fallback: bare filename match (only if unambiguous)
+            if path_key is None:
+                bare_lower = match.mzml_filename.lower()
+                candidates = name_to_keys.get(bare_lower, [])
+                if len(candidates) == 1:
+                    path_key = candidates[0]
+                elif len(candidates) > 1:
+                    # Ambiguous — pick first and warn
+                    path_key = candidates[0]
+                    logger.warning(
+                        f"Ambiguous mzML match for '{match.mzml_filename}': "
+                        f"{len(candidates)} files with same name"
+                    )
+
+            if path_key:
+                if path_key not in mzml_to_matches:
+                    mzml_to_matches[path_key] = []
+                mzml_to_matches[path_key].append((match, variant_key))
 
     return mzml_to_matches
 
@@ -424,21 +453,30 @@ def load_matched_spectra(
     Returns:
         Updated variant_groups with loaded spectra
     """
-    # Build available mzML lookup (case-insensitive)
-    mzml_path_map = {p.name.lower(): p for p in mzml_paths}
-    available_mzml_names = set(mzml_path_map.keys())
+    from src.path_utils import disambiguate_paths
 
-    # Build mapping using pre-resolved filenames
-    mzml_to_matches = build_mzml_to_matches_map(variant_groups, available_mzml_names)
+    # Build available mzML lookup keyed by resolved lowercase path (collision-free)
+    mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
+
+    # Compute disambiguated display names
+    mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])
+
+    # Build mapping using resolved paths
+    mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
 
     # Calculate totals for progress
     total_expected = sum(len(matches) for matches in mzml_to_matches.values())
 
-    # Also count unresolved matches
+    # Count unresolved matches
+    matched_set = set()
+    for matches in mzml_to_matches.values():
+        for match, _ in matches:
+            matched_set.add(id(match))
+
     total_unresolved = 0
     for vg in variant_groups.values():
         for match in vg.matches:
-            if not match.mzml_filename or match.mzml_filename.lower() not in available_mzml_names:
+            if id(match) not in matched_set:
                 total_unresolved += 1
 
     if total_unresolved > 0:
@@ -464,11 +502,12 @@ def load_matched_spectra(
     loaded_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
 
     # Process each mzML file
-    for mzml_lower, matches_for_file in mzml_to_matches.items():
-        mzml_path = mzml_path_map[mzml_lower]
+    for path_key, matches_for_file in mzml_to_matches.items():
+        mzml_path = mzml_path_map[path_key]
+        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
         is_reference = reference_substring and reference_substring.lower() in mzml_path.name.lower()
 
-        progress.start_file(mzml_path.name, len(matches_for_file))
+        progress.start_file(display_name, len(matches_for_file))
 
         if progress_callback:
             progress_callback(progress)
@@ -478,7 +517,7 @@ def load_matched_spectra(
             needed_ids = [match.spectrum_id for match, _ in matches_for_file]
             indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
             n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
-            logger.info(f"Opened {mzml_path.name} ({n_spectra} spectra, {len(matches_for_file)} to load)")
+            logger.info(f"Opened {display_name} ({n_spectra} spectra, {len(matches_for_file)} to load)")
 
             # Load each matched spectrum
             for match, variant_key in matches_for_file:
@@ -487,7 +526,7 @@ def load_matched_spectra(
 
                     if idx is None:
                         progress.spectrum_not_found()
-                        error_msg = f"Spectrum not found: {match.spectrum_id} in {mzml_path.name}"
+                        error_msg = f"Spectrum not found: {match.spectrum_id} in {display_name}"
                         progress.add_error(error_msg)
                         if error_callback:
                             error_callback(error_msg)
@@ -517,7 +556,7 @@ def load_matched_spectra(
                         precursor_charge=precursor_charge,
                         peptidoform=match.peptidoform,
                         base_sequence=match.base_sequence,
-                        source_file=mzml_path.name,
+                        source_file=display_name,
                         is_reference=is_reference,
                         rt=spectrum.getRT() if spectrum.getRT() else 0.0,
                         match=match
@@ -608,31 +647,35 @@ def load_spectra_streaming(
     Returns:
         Dict of variant_key -> list of reference spectra (for summary purposes)
     """
-    # Build available mzML lookup (case-insensitive)
-    mzml_path_map = {p.name.lower(): p for p in mzml_paths}
-    available_mzml_names = set(mzml_path_map.keys())
+    from src.path_utils import disambiguate_paths
+
+    # Build available mzML lookup keyed by resolved lowercase path (collision-free)
+    mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
+
+    # Compute disambiguated display names
+    mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])
 
     # Separate reference and query files
     reference_files = {}
     query_files = {}
 
-    for mzml_lower, path in mzml_path_map.items():
+    for path_key, path in mzml_path_map.items():
         is_ref = reference_substring and reference_substring.lower() in path.name.lower()
         if is_ref:
-            reference_files[mzml_lower] = path
+            reference_files[path_key] = path
         else:
-            query_files[mzml_lower] = path
+            query_files[path_key] = path
 
-    # Build mapping using pre-resolved filenames
-    mzml_to_matches = build_mzml_to_matches_map(variant_groups, available_mzml_names)
+    # Build mapping using resolved paths
+    mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
 
     # Storage for reference spectra by variant
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
 
     # Track query counts per variant for progress
     query_counts: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
-    for mzml_lower, matches in mzml_to_matches.items():
-        if mzml_lower not in reference_files:
+    for path_key, matches in mzml_to_matches.items():
+        if path_key not in reference_files:
             for match, variant_key in matches:
                 query_counts[variant_key] += 1
 
@@ -641,15 +684,16 @@ def load_spectra_streaming(
     # =========================================================================
     logger.info(f"Loading reference spectra from {len(reference_files)} files...")
 
-    for mzml_lower in reference_files:
-        if mzml_lower not in mzml_to_matches:
+    for path_key in reference_files:
+        if path_key not in mzml_to_matches:
             continue
 
-        mzml_path = mzml_path_map[mzml_lower]
-        matches_for_file = mzml_to_matches[mzml_lower]
+        mzml_path = mzml_path_map[path_key]
+        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
+        matches_for_file = mzml_to_matches[path_key]
 
         if on_file_start:
-            on_file_start(mzml_path.name, True)
+            on_file_start(display_name, True)
 
         loaded_count = 0
         not_found_count = 0
@@ -690,7 +734,7 @@ def load_spectra_streaming(
                         precursor_charge=precursor_charge,
                         peptidoform=match.peptidoform,
                         base_sequence=match.base_sequence,
-                        source_file=mzml_path.name,
+                        source_file=display_name,
                         is_reference=True,
                         rt=spectrum.getRT() if spectrum.getRT() else 0.0,
                         match=match
@@ -706,11 +750,11 @@ def load_spectra_streaming(
 
         except Exception as e:
             if error_callback:
-                error_callback(f"Error opening reference file {mzml_path.name}: {e}")
+                error_callback(f"Error opening reference file {display_name}: {e}")
             continue
 
         if on_file_complete:
-            on_file_complete(mzml_path.name, loaded_count, not_found_count)
+            on_file_complete(display_name, loaded_count, not_found_count)
 
     # Notify that references are loaded for each variant
     if on_reference_loaded:
@@ -728,15 +772,16 @@ def load_spectra_streaming(
     # Track query index per variant
     query_indices: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
 
-    for mzml_lower in query_files:
-        if mzml_lower not in mzml_to_matches:
+    for path_key in query_files:
+        if path_key not in mzml_to_matches:
             continue
 
-        mzml_path = mzml_path_map[mzml_lower]
-        matches_for_file = mzml_to_matches[mzml_lower]
+        mzml_path = mzml_path_map[path_key]
+        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
+        matches_for_file = mzml_to_matches[path_key]
 
         if on_file_start:
-            on_file_start(mzml_path.name, False)
+            on_file_start(display_name, False)
 
         loaded_count = 0
         not_found_count = 0
@@ -777,7 +822,7 @@ def load_spectra_streaming(
                         precursor_charge=precursor_charge,
                         peptidoform=match.peptidoform,
                         base_sequence=match.base_sequence,
-                        source_file=mzml_path.name,
+                        source_file=display_name,
                         is_reference=False,
                         rt=spectrum.getRT() if spectrum.getRT() else 0.0,
                         match=match
@@ -810,11 +855,11 @@ def load_spectra_streaming(
 
         except Exception as e:
             if error_callback:
-                error_callback(f"Error opening query file {mzml_path.name}: {e}")
+                error_callback(f"Error opening query file {display_name}: {e}")
             continue
 
         if on_file_complete:
-            on_file_complete(mzml_path.name, loaded_count, not_found_count)
+            on_file_complete(display_name, loaded_count, not_found_count)
 
     logger.info("Query streaming complete")
 
