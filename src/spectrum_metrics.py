@@ -342,19 +342,21 @@ def compute_all_metrics(
 
 def format_metrics_text(metrics: Dict[str, float]) -> str:
     """
-    Format metrics as compact multi-line string for plot overlay.
+    Format metrics as multi-line string for plot overlay.
 
-    Shows top 5 metrics (R2m, R2b, Cos, Ent, Dice) in a 2-2-1 layout.
+    Shows R² Matching and R² Binned in long form under a title.
     NaN values shown as "N/A".
     """
-    def _fmt(key: str) -> str:
-        val = metrics.get(key, float("nan"))
+    def _fmt_val(val) -> str:
         if val is None or (isinstance(val, float) and math.isnan(val)):
-            return f"{key}=N/A"
-        return f"{key}={val:.2f}"
+            return "N/A"
+        return f"{val:.3f}"
 
-    line1 = f"{_fmt('R2m')}  {_fmt('R2b')}"
-    line2 = f"{_fmt('Cos')}  {_fmt('Ent')}"
-    line3 = _fmt("Dice")
+    r2m = _fmt_val(metrics.get("R2m", float("nan")))
+    r2b = _fmt_val(metrics.get("R2b", float("nan")))
 
-    return f"{line1}\n{line2}\n{line3}"
+    return (
+        f"Similarity Scores\n"
+        f"R² Matching: {r2m}\n"
+        f"R² Binned:   {r2b}"
+    )

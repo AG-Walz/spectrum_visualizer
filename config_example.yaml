@@ -1,0 +1,66 @@
+# =============================================================================
+# MSpecViz CLI Configuration
+# =============================================================================
+#
+# All settings match the Streamlit app 1:1.
+# Glob patterns are supported for file lists.
+#
+# Usage:
+#   python cli.py --config config_example.yaml
+#   python cli.py --config config_example.yaml --verbose
+#   python cli.py --config config_example.yaml --mz-tolerance 0.05 --add-losses
+
+# -----------------------------------------------------------------------------
+# Input files
+# -----------------------------------------------------------------------------
+input:
+  idxml_files:
+    - /path/to/data/*.idXML           # glob patterns supported
+    - /path/to/data/**/*.idXML        # recursive with **
+  mzml_files:
+    - /path/to/data/**/*.mzML         # recursive glob
+  # parquet_file: /path/to/cache.parquet  # optional: skip search + mzML loading
+
+# -----------------------------------------------------------------------------
+# Target peptides
+# -----------------------------------------------------------------------------
+# Options:
+#   "all"              — extract every unique peptide from the idXML files
+#   "peptides.txt"     — path to a .txt file (one peptide per line, no quotes)
+peptides: peptides_example.txt
+
+# -----------------------------------------------------------------------------
+# Reference identification
+# -----------------------------------------------------------------------------
+reference:
+  substring: "Synpep"    # substring matching reference mzML filenames
+                          # leave empty or omit for single spectrum mode
+
+# -----------------------------------------------------------------------------
+# Annotation settings
+# -----------------------------------------------------------------------------
+annotation:
+  ion_types: [b, y]       # available: a, b, c, x, y, z, precursor, immonium
+  mz_tolerance: 0.02      # Da
+  add_losses: false        # neutral losses (H2O, NH3)
+  add_first_prefix_ion: true
+  remove_precursor_peaks: false
+  intensity_mode: Relative # "Relative" (normalized 0-1) or "Raw"
+
+# -----------------------------------------------------------------------------
+# Export settings
+# -----------------------------------------------------------------------------
+export:
+  directory: ./exports
+  project_name: MSpecViz_analysis
+  formats: [png]           # [png], [svg], or [png, svg]
+  dpi: 300
+  figsize: [12, 8]         # width, height in inches
+  plot_unpaired: false      # plot spectra without matching reference
+
+# -----------------------------------------------------------------------------
+# Parquet auto-caching
+# -----------------------------------------------------------------------------
+cache:
+  enabled: true
+  subdirectory: .mspecviz_cache  # relative to export directory

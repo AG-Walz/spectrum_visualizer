@@ -210,9 +210,9 @@ def create_mirror_plot(
     # Metrics overlay in top-right corner
     if metrics_text:
         ax.text(0.98, 0.99, metrics_text, transform=ax.transAxes,
-                fontsize=7, fontfamily='monospace', va='top', ha='right',
+                fontsize=10, fontfamily='monospace', va='top', ha='right',
                 color='#333333',
-                bbox=dict(boxstyle='round,pad=0.3', facecolor='white',
+                bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
                          edgecolor='#CCCCCC', alpha=0.85))
 
     # Styling

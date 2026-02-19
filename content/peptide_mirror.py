@@ -19,6 +19,20 @@ logger = logging.getLogger(__name__)
 # State key prefix for this workspace
 STATE_PREFIX = "peptide_mirror"
 
+
+def format_time(seconds: float) -> str:
+    """Format seconds as human-readable time."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
 # ============================================================================
 # SETTINGS - loaded by page_setup() into st.session_state.settings
 # ============================================================================
@@ -821,14 +835,26 @@ def run_peptide_search(idxmls: list, peptides: list):
 
     error_messages = []
 
+    import time as _time
+
     with st.status("Searching peptides...", expanded=True) as status:
         progress_bar = st.progress(0)
         status_text = st.empty()
+        _search_start = _time.time()
 
         def progress_callback(current, total, message):
             if total > 0:
-                progress_bar.progress(current / total, message)
-                status_text.text(message)
+                frac = current / total
+                progress_bar.progress(frac, message)
+                elapsed = _time.time() - _search_start
+                if frac > 0 and current < total:
+                    remaining = (elapsed / frac) - elapsed
+                    status_text.caption(
+                        f"{current}/{total} files  "
+                        f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)"
+                    )
+                elif current >= total:
+                    status_text.caption(f"Done in {format_time(elapsed)}")
 
         def error_callback(error_msg: str):
             """Handle errors immediately."""
@@ -974,20 +1000,6 @@ def run_streaming_processing():
             or (not m.mzml_resolved_path and m.mzml_filename and m.mzml_filename.lower() in ref_names_lower)
         )
         expected_queries = total_psms - expected_refs
-
-    # Helper to format time as hours/minutes/seconds
-    def format_time(seconds: float) -> str:
-        """Format seconds as human-readable time."""
-        if seconds < 60:
-            return f"{seconds:.0f}s"
-        elif seconds < 3600:
-            mins = int(seconds // 60)
-            secs = int(seconds % 60)
-            return f"{mins}m {secs}s"
-        else:
-            hours = int(seconds // 3600)
-            mins = int((seconds % 3600) // 60)
-            return f"{hours}h {mins}m"
 
     # Progress display - two separate progress bars
     import time
@@ -1200,10 +1212,13 @@ def run_streaming_processing():
 
             # Single spectrum plot (no references available)
             try:
+                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+                single_label = (f"{Path(query.source_file).stem}"
+                                f"  (RT: {query_rt}, ID: {query.spectrum_id})")
                 fig = create_single_spectrum_plot(
                     spectrum=query_df,
                     title=plot_title,
-                    label=f"{Path(query.source_file).stem}",
+                    label=single_label,
                     normalize=normalize,
                 )
                 results_summary["plots_generated"] += 1
@@ -1246,12 +1261,20 @@ def run_streaming_processing():
                 metrics = compute_all_metrics(query_df, ref_df)
                 metrics_text = format_metrics_text(metrics)
 
+                # Build labels with RT and spectrum ID
+                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+                ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
+                query_label = (f"Query: {Path(query.source_file).stem}"
+                               f"  (RT: {query_rt}, ID: {query.spectrum_id})")
+                ref_label = (f"Ref: {Path(ref.source_file).stem}"
+                             f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
+
                 # Create plot
                 fig = create_mirror_plot(
                     upper_spectrum=query_df,
                     lower_spectrum=ref_df,
-                    upper_label=f"Query: {Path(query.source_file).stem}",
-                    lower_label=f"Ref: {Path(ref.source_file).stem}",
+                    upper_label=query_label,
+                    lower_label=ref_label,
                     title=plot_title,
                     metrics_text=metrics_text,
                     normalize=normalize,

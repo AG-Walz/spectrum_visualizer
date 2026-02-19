@@ -1,696 +1,617 @@
-# 📖 SpecViz Documentation
+# MSpecViz Documentation
 
-*Comprehensive guide to every feature, option, and workflow in the application*
+Comprehensive reference for every feature, setting, and workflow step in MSpecViz — a Streamlit-based application for MS/MS spectrum visualization and comparison.
 
 ---
 
 ## Table of Contents
 
 1. [Overview](#overview)
-2. [File Upload](#file-upload)
-3. [idXML Processing](#idxml-processing)
-4. [Peptide Selection](#peptide-selection)
-5. [mzML Loading](#mzml-loading)
-6. [Analysis Configuration](#analysis-configuration)
-7. [Automated Analysis](#automated-analysis)
-8. [Visualization](#visualization)
-9. [Export Options](#export-options)
-10. [File Formats](#file-formats)
-11. [AI Models](#ai-models)
-12. [Troubleshooting](#troubleshooting)
-13. [Advanced Features](#advanced-features)
-14. [Technical Details](#technical-details)
+2. [Installation & Access](#installation--access)
+3. [Workflow Overview](#workflow-overview)
+4. [Step 1: File Selection](#step-1-file-selection)
+5. [Step 2: Target Peptides](#step-2-target-peptides)
+6. [Step 3: Reference Identification](#step-3-reference-identification)
+7. [Step 4: Settings](#step-4-settings)
+8. [Step 5: Search Peptides](#step-5-search-peptides)
+9. [Step 6: Process & Export](#step-6-process--export)
+10. [Step 7: Results](#step-7-results)
+11. [Parquet Fast Loading](#parquet-fast-loading)
+12. [Caching System](#caching-system)
+13. [Comparison Metrics](#comparison-metrics)
+14. [File Formats](#file-formats)
+15. [Configuration](#configuration)
+16. [Troubleshooting](#troubleshooting)
+17. [Architecture & Technical Details](#architecture--technical-details)
 
 ---
 
 ## Overview
 
-SpecViz is a streamlined web application for MS/MS spectrum visualization with AI-powered fragmentation predictions. It compares experimental mass spectrometry data against predictions from state-of-the-art machine learning models (MS2PIP, Prosit, AlphaPept) via the Koina API.
+MSpecViz compares experimental MS/MS spectra against reference spectra for target peptides. It annotates peaks with theoretical fragment ions and generates publication-ready mirror plots showing how well two spectra agree.
 
-### Core Capabilities
-- Load peptide identifications from idXML/mzIdentML files
-- Extract and filter peptidoforms (sequences with modifications)
-- Match spectra to mzML files efficiently
-- Generate AI-based fragmentation predictions
-- Create interactive mirror plots with ion annotations
-- Perform multi-spectrum comparisons (replicate analysis)
-- Export results to Excel and HTML formats
+### What MSpecViz Does
 
-### Typical Workflow
+1. **Searches** idXML identification files for peptide-spectrum matches (PSMs) of your target peptides
+2. **Loads** the corresponding MS/MS spectra from mzML files
+3. **Annotates** experimental peaks by matching them to theoretical fragment ions (b, y, a, c, x, z, precursor, immonium) within a configurable m/z tolerance
+4. **Compares** query spectra against reference spectra using seven quantitative metrics
+5. **Generates** mirror plots (query on top, reference on bottom) with color-coded ion annotations
+6. **Exports** plots as PNG/SVG images and comparison metrics as CSV/XLSX spreadsheets
+
+### Typical Use Cases
+
+- **Validating peptide identifications** — Compare experimental fragmentation against a reference standard (e.g., synthetic peptide library)
+- **Quality control** — Check replicate consistency by comparing spectra from different runs
+- **Method development** — Evaluate how well a fragmentation method reproduces expected patterns
+- **Publication figures** — Generate annotated mirror plots for manuscripts and presentations
+
+---
+
+## Installation & Access
+
+### Local Installation
+
+```bash
+# Create the conda environment (first time only)
+conda env create -f environment.yml
+conda activate mspecviz
+
+# Start the app
+streamlit run app.py
 ```
-Upload Files → Select Peptides → Load Spectra → Configure Analysis → Generate Plots → Export Results
+
+The app opens at http://localhost:8501.
+
+### Remote Access (SSH Tunnel)
+
+If MSpecViz runs on a remote server accessible only via SSH through a jumphost:
+
+```bash
+ssh -L 8501:localhost:8501 -J jumphost server_name
+```
+
+Then open http://localhost:8501 in your local browser.
+
+A convenience script is provided:
+
+```bash
+./scripts/connect_mspecviz.sh                    # defaults
+./scripts/connect_mspecviz.sh myuser@jumphost myuser@server  # custom
+LOCAL_PORT=9501 ./scripts/connect_mspecviz.sh     # different local port
 ```
 
 ---
 
-## File Upload
+## Workflow Overview
 
-The first step in any analysis is uploading your data. SpecViz uses a two-phase approach to optimize memory usage.
+MSpecViz is organized into **7 sequential tabs**. You work through them left to right:
 
-### Upload Methods
-
-**Option 1: Browser Upload**
-- Click "🔍 Upload Identification Files"
-- Select files from your computer
-- Best for: Small to medium files (<500 MB)
-- Limitation: Browser memory limits may apply
-
-**Option 2: Server Browser**
-- Click "📂 Browse Server Files"
-- Navigate to data directory
-- Select files directly from server filesystem
-- Best for: Large files, batch processing, shared datasets
-
-### Supported File Formats
-
-**Identification Files (Required):**
-- `.idxml` - OpenMS identification format (recommended)
-- `.mzid` / `.mzidentml` - PSI standard format
-- Contains: Peptide sequences, modifications, scores, spectrum references
-
-**Spectrum Files (Required):**
-- `.mzML` - Open mass spectrometry data format
-- Contains: Raw MS/MS spectra with m/z and intensity values
-
-### File Matching
-
-SpecViz automatically matches idXML files to mzML files based on:
-1. **Spectrum references** in idXML (e.g., `controllerType=0 controllerNumber=1 scan=1234`)
-2. **Run names** extracted from file metadata
-3. **Fuzzy matching** if exact names don't match
-
-**Example matching:**
 ```
-sample1_ids.idXML    →  sample1_spectra.mzML
-HNSCC_01.idXML       →  HNSCC_01_DDA.mzML
+1. Files  →  2. Peptides  →  3. Reference  →  4. Settings  →  5. Search  →  6. Process  →  7. Results
 ```
+
+Each step validates its prerequisites before allowing you to proceed. You can always go back to earlier tabs to change settings.
+
+**Shortcut**: If you have a pre-converted Parquet file (from a previous run or the CLI tool), select it in Step 1 and skip directly to Step 6.
 
 ---
 
-## idXML Processing
+## Step 1: File Selection
 
-After uploading idXML files, SpecViz extracts and processes peptide identification data.
+Select the input files for your analysis. See [File Selection](file_selection.md) for full details.
 
-### What Gets Extracted
+### Directory Browser
 
-**Peptidoforms:**
-- Base sequence (e.g., `PEPTIDE`)
-- Modifications (e.g., `Oxidation (M)`, `Phospho (STY)`)
-- Charge states
-- Confidence scores (if available)
+Each file type (idXML and mzML) has its own directory browser with:
 
-**Spectrum References:**
-- File name (which mzML contains the spectrum)
-- Scan number or spectrum ID
-- Retention time (if available)
+- **Path input**: Type or paste a directory path directly
+- **Up button**: Navigate to the parent directory
+- **Folder grid**: Click folders to navigate into them (up to 15 shown)
+- **File filter**: Type to filter files by name
+- **Select All**: Checkbox to select all matching files in the current directory
+- **Multi-select**: Pick individual files from the list
 
-### Peptidoform Normalization
+### Accumulating Selections
 
-Multiple PSMs (Peptide-Spectrum Matches) may reference the same peptide with different modifications or charge states. SpecViz groups these into unique peptidoforms:
+You can select files from multiple directories. Selections persist as you navigate — files from previous directories remain selected. The "All selected files" expander shows everything grouped by directory with individual remove buttons.
+
+### Same-Name Files
+
+If you select files with identical names from different directories, MSpecViz automatically disambiguates them by prepending the minimum number of parent directory components needed to make each name unique. For example:
 
 ```
-PEPTIDE+Oxidation(M)@3 [2+] → Peptidoform 1
-PEPTIDE+Oxidation(M)@3 [3+] → Peptidoform 2
-PEPTIDE                [2+] → Peptidoform 3
+/data/experiment1/sample.mzML  →  experiment1/sample.mzML
+/data/experiment2/sample.mzML  →  experiment2/sample.mzML
+/data/unique_file.mzML         →  unique_file.mzML
 ```
 
-### Filtering Options
+Exact duplicate paths (same file selected twice) are silently removed.
 
-- **By modification**: Show only peptides with specific PTMs
-- **By charge state**: Filter by precursor charge
-- **By score**: Keep only high-confidence IDs (if scores available)
-- **By file**: Select peptides from specific runs
+### Parquet Shortcut
+
+Below the file browsers, you can paste the path to a pre-converted `.parquet` file. If valid, this skips Steps 2–5 entirely — the Parquet file already contains all the spectra, peptide information, and reference categorization.
+
+### Validation
+
+Step 1 requires either:
+- At least 1 idXML **and** 1 mzML file selected, **or**
+- A valid Parquet file path
 
 ---
 
-## Peptide Selection
+## Step 2: Target Peptides
 
-Choose which peptidoforms to analyze.
+Enter the peptide sequences you want to analyze. See [Peptide Search](peptide_search.md) for details on how the search works.
 
-### Selection Methods
+### Input Format
 
-**1. Select All**
-- Analyzes all extracted peptidoforms
-- Good for: Comprehensive analysis, QC checks
+Enter one peptide per line in the text area:
 
-**2. Manual Selection**
-- Click checkboxes next to specific peptides
-- Good for: Focused analysis, validation of specific IDs
+```
+LGGNEQVTR
+GAGSSEPVTGLDAK
+VEATFGVDESNAK
+```
 
-**3. Search/Filter**
-- Use text box to filter by sequence or modification
-- Good for: Finding specific peptides in large lists
+**Important**: Enter **base sequences** (without modifications). MSpecViz automatically finds all modified variants (e.g., Oxidation, Phosphorylation) during the search.
 
-**4. Paste List**
-- Copy/paste list of sequences from Excel or text file
-- Automatically matches against extracted peptides
-- Good for: Reproducible analysis, predefined lists
+- Case insensitive — `peptidek` and `PEPTIDEK` are treated the same
+- Whitespace and empty lines are ignored
+- The counter below the text area confirms how many peptides you've entered
 
-### What Happens Next
+### Preview
 
-For each selected peptidoform:
-1. Associated spectrum IDs are retrieved from idXML
-2. Corresponding mzML files are identified
-3. Spectra are loaded from mzML (indexed access, memory-efficient)
-4. Spectrum metadata is extracted (precursor m/z, charge, RT)
+Click **Preview in idXML** to scan your selected idXML files and display a sample of peptides they contain. This helps verify that your target peptides exist in the data before running the full search.
 
 ---
 
-## mzML Loading
+## Step 3: Reference Identification
 
-SpecViz loads spectra on-demand using indexed access for memory efficiency.
+Configure how MSpecViz separates your mzML files into **reference** and **query** groups. See [Reference Setup](reference_setup.md) for detailed explanation.
 
-### Loading Strategy
+### How It Works
 
-**Traditional approach** (memory-intensive):
-```
-Load entire mzML → Filter spectra → Process → Discard unused
-```
+Enter a **substring** that identifies your reference files. MSpecViz checks each mzML filename:
 
-**SpecViz approach** (memory-efficient):
-```
-Index mzML → Load only needed spectra → Process → Done
-```
+- If the filename **contains** the substring (case-insensitive) → **Reference**
+- Otherwise → **Query**
 
-### Advantages
+**Example**: If your reference files are named `Synpep_sample1.mzML`, `Synpep_sample2.mzML` and your query files are `Patient_A.mzML`, `Patient_B.mzML`, enter `Synpep`.
 
-- Handles 10+ GB mzML files with <500 MB RAM
-- Fast loading (indexed binary search)
-- No temporary files needed
-- Supports multiple mzML files simultaneously
+### Preview
 
-### Spectrum Information Extracted
+After entering a substring, a two-column preview shows which files are categorized as Reference and which as Query. Verify this looks correct before proceeding.
 
-For each loaded spectrum:
-- **m/z array**: Mass-to-charge ratios of fragment ions
-- **Intensity array**: Signal intensities
-- **Precursor info**: Selected ion m/z, charge, isolation window
-- **Metadata**: Scan number, retention time, activation type
+### No Reference (Optional)
+
+If you leave the reference substring blank, MSpecViz generates **individual annotated spectrum plots** instead of mirror plots. Each spectrum is plotted on its own with theoretical fragment annotations but no comparison. This is useful for simply visualizing fragmentation patterns.
+
+### Validation
+
+If a substring is entered, at least one file must match as Reference and at least one must remain as Query.
 
 ---
 
-## Analysis Configuration
+## Step 4: Settings
 
-Configure fragmentation prediction and visualization settings.
+Configure the annotation and visualization parameters. See [Annotation Settings](annotation_settings.md) for detailed explanations.
 
-### AI Model Selection
+### Ion Types
 
-Choose prediction model based on your instrument:
+Select which fragment ion series to annotate. Available types:
 
-**MS2PIP (Default)**
-- Best for: timsTOF, modern instruments
-- Model: `ms2pip_timsTOF2024`
-- Speed: ~1s per spectrum
-- Recommended for most users
+| Ion Type | Description | Default |
+|----------|-------------|---------|
+| **b** | N-terminal fragment ions (CID/HCD) | Yes |
+| **y** | C-terminal fragment ions (CID/HCD) | Yes |
+| **a** | N-terminal minus CO | No |
+| **c** | N-terminal plus NH₃ (ETD) | No |
+| **x** | C-terminal plus CO (ETD) | No |
+| **z** | C-terminal minus NH₃ (ETD) | No |
+| **precursor** | Intact precursor ion at various charges | No |
+| **immonium** | Single amino acid internal fragments | No |
 
-**Prosit**
-- Best for: Orbitrap (HCD fragmentation)
-- Model: `Prosit_2019_intensity`
-- Speed: ~2s per spectrum
-- High accuracy for Orbitrap data
+### m/z Tolerance
 
-**AlphaPept**
-- Best for: Generic predictions, unknown instruments
-- Model: `AlphaPept_ms2_generic`
-- Speed: ~2s per spectrum
-- Good baseline for any instrument
+How close (in Daltons) an experimental peak must be to a theoretical fragment m/z to be considered a match. Default: **0.02 Da**. Increase for lower-resolution data, decrease for ultra-high-resolution instruments.
 
-### Fragment Settings
+### Annotation Options
 
-**Ion Types:**
-- b-ions, y-ions (most common)
-- a-ions, c-ions, x-ions, z-ions (less common)
-- Precursor ions
-- Neutral losses (H₂O, NH₃)
+| Option | Default | What It Does |
+|--------|---------|--------------|
+| **Neutral losses** | Off | Include H₂O and NH₃ loss peaks in the theoretical spectrum |
+| **First prefix ion** | On | Include the first prefix ion (a₁ or b₁), which some search engines exclude |
+| **Remove precursor peaks** | Off | Remove all precursor ions from the plot. Intensities are renormalized afterward |
 
-**Mass Tolerance:**
-- Default: 0.02 Da (20 ppm for high-res)
-- Adjust based on instrument accuracy
-- Used for matching experimental ↔ predicted peaks
+### Intensity Mode
 
-**Charge States:**
-- Maximum fragment charge (default: 2)
-- Usually ≤ precursor charge
-
-**Collision Energy:**
-- Default: 35 (NCE for Orbitrap)
-- Adjust based on instrument method
-- Affects prediction intensities
+- **Relative** (default): Each spectrum is normalized to its base peak (0–1 scale). Best for comparing fragmentation patterns regardless of signal intensity.
+- **Raw**: Original intensity values from the mzML file. Shows actual signal strength but makes cross-spectrum comparison harder.
 
 ---
 
-## Automated Analysis
+## Step 5: Search Peptides
 
-SpecViz offers three analysis modes for comparing spectra.
+Click **Search Peptides** to find all PSMs matching your target peptides. See [Peptide Search](peptide_search.md) for the full algorithm.
 
-### Mode 1: Exp vs Pred
+### What Happens During Search
 
-**Purpose:** Compare experimental spectrum to AI prediction
+1. Each idXML file is loaded with PyOpenMS
+2. All `PeptideIdentification` records are scanned
+3. PSMs whose base sequence matches any target peptide are collected
+4. The `SpectraData` metadata in the idXML maps each PSM to a specific mzML file
+5. If multiple mzML files share the same name, MSpecViz uses path suffix matching and directory proximity heuristics to resolve ambiguity
 
-**How it works:**
-1. Loads experimental spectrum from mzML
-2. Sends peptide sequence to Koina API
-3. Receives predicted spectrum
-4. Creates mirror plot (exp on top, pred on bottom)
-5. Calculates matching metrics (R², matched ions)
+### Results Table
 
-**When to use:**
-- Validating identifications
-- Evaluating AI model performance
-- Understanding fragmentation patterns
+The results table shows:
 
-**Output:**
-- Mirror plot with annotated peaks
-- R² correlation score
-- Number of matched ions
-- Excel export with peak lists
+| Column | Meaning |
+|--------|---------|
+| **Peptide** | Base amino acid sequence |
+| **Modification** | Post-translational modifications found (e.g., Oxidation@M5) |
+| **PSMs** | Number of peptide-spectrum matches |
+| **idXML Files** | Number of idXML files containing this peptide |
+| **mzML Resolved** | Number of PSMs successfully mapped to mzML files |
+| **Unresolved** | PSMs that could not be mapped (missing metadata) |
 
-### Mode 2: All-vs-All (Exp vs Exp)
+### Convert to Parquet (Optional)
 
-**Purpose:** Compare all experimental spectra against each other
-
-**How it works:**
-1. Loads all selected spectra
-2. Compares each spectrum to every other (n×n matrix)
-3. Calculates pairwise correlations
-4. Creates heatmap of similarities
-
-**When to use:**
-- Replicate quality control
-- Identifying outliers
-- Assessing reproducibility
-
-**Output:**
-- Correlation heatmap
-- Pairwise comparison table
-- Excel export with all metrics
-
-### Mode 3: One-vs-All
-
-**Purpose:** Compare one reference spectrum to all others
-
-**How it works:**
-1. Select reference spectrum
-2. Compares reference to each other spectrum
-3. Ranks by similarity
-4. Identifies best matches
-
-**When to use:**
-- Finding best replicate
-- Troubleshooting poor IDs
-- Comparing across samples
-
-**Output:**
-- Ranked list with scores
-- Individual mirror plots
-- Excel export
+After searching, you can convert the matched spectra to a Parquet file for instant loading on future runs. Enter an output path and click **Convert to Parquet**. See [Parquet Fast Loading](#parquet-fast-loading).
 
 ---
 
-## Visualization
+## Step 6: Process & Export
 
-SpecViz creates interactive mirror plots for spectrum comparison.
+Load spectra, generate plots, and export everything. See [Export](export.md) for output format details and [Mirror Plots](mirror_plots.md) for plot interpretation.
 
-### Mirror Plot Anatomy
+### Export Settings
 
-```
-         Experimental (Top)
-    ────────────────────────────
-         m/z →
-    ────────────────────────────
-         Predicted (Bottom)
-```
+| Setting | Default | Description |
+|---------|---------|-------------|
+| **Project Name** | `MSpecViz_analysis` | Base name for the export folder |
+| **Export Directory** | `./exports` | Where export folders are created |
+| **Export Formats** | PNG | Image formats to generate (PNG and/or SVG) |
+| **Plot unpaired** | Off | Whether to plot spectra that have no matching reference |
 
-**Components:**
-- **Peaks**: Vertical lines (height = intensity)
-- **Colors**: Ion type (blue=b-ions, red=y-ions, etc.)
-- **Labels**: m/z and ion annotation
-- **Matched peaks**: Bold/highlighted
-- **Unmatched peaks**: Gray/transparent
+### Processing Pipeline
 
-### Interactive Features
+When you click **Process & Export**, MSpecViz executes the following pipeline:
 
-- **Zoom**: Click and drag to zoom region
-- **Pan**: Shift+drag to pan view
-- **Hover**: Show exact m/z and intensity
-- **Legend**: Click to hide/show ion types
-- **Export**: Save as PNG, SVG, or HTML
+1. **Cache check**: Computes a fingerprint of your inputs and checks for an existing Parquet cache
+2. **Load references**: All reference spectra for each peptide variant are loaded first and cached in memory
+3. **Load queries**: Query spectra are loaded one at a time (streaming)
+4. **Annotate**: Each spectrum's peaks are matched against theoretical fragments using PyOpenMS's `SpectrumAlignment`
+5. **Mirror plot**: For each query, a mirror plot is created against each reference spectrum for the same peptide variant
+6. **Metrics**: Seven comparison metrics are computed (see [Spectrum Metrics](spectrum_metrics.md))
+7. **Export**: Plots are saved to disk. A comparison summary spreadsheet is written at the end
+8. **Cache save**: If this was a fresh mzML load, a Parquet cache is saved for next time
 
-### Customization
+### Progress Tracking
 
-**Plot Size:**
-- Width: 800-1600 px
-- Height: 400-800 px
+Two separate progress bars track:
+- **Reference spectra**: Loading and counting references
+- **Query spectra**: Processing, plotting, and exporting each query
 
-**Labels:**
-- Font size: 8-16 pt
-- Show/hide ion annotations
-- Show/hide m/z values
+Both show elapsed time and estimated remaining time.
 
-**Colors:**
-- Predefined schemes (blue/red, rainbow)
-- Custom colors per ion type
+### Unpaired Spectra
+
+When a query spectrum has no corresponding reference (e.g., the peptide was found only in query files), the behavior depends on the **Plot unpaired** checkbox:
+
+- **Off (default)**: The spectrum is silently skipped. Only mirror plots are generated.
+- **On**: A single annotated spectrum plot is created (no mirror, just the query with annotations).
 
 ---
 
-## Export Options
+## Step 7: Results
 
-Save your analysis results in multiple formats.
+Displays a summary of the completed analysis:
 
-### Excel Workbook
+- **Counts**: Number of reference spectra, query spectra, and plots generated
+- **Files**: PNG and SVG file counts
+- **Summary files**: Links to `comparison_summary.csv` and `comparison_summary.xlsx`
+- **Export location**: Full path to the export directory
+- **Errors**: Any issues encountered during processing (expandable section)
 
-**Contents:**
-- **Overview**: Summary table (peptides, scores, files)
-- **Peak Lists**: Experimental and predicted peaks
-- **Metrics**: R², matched ions, TIC
-- **Settings**: Analysis parameters used
+Expandable sections list individual exported files by format.
 
-**When to use:**
-- Detailed data analysis in Excel
-- Statistical analysis in R/Python
-- Archiving results
+---
 
-### HTML Interactive Plots
+## Parquet Fast Loading
 
-**Contents:**
-- Standalone HTML file with embedded plot
-- Fully interactive (zoom, pan, hover)
-- No internet required
-- Can be shared via email
+MSpecViz supports loading spectra from pre-converted Parquet files instead of parsing mzML XML. This is 100–1000x faster.
 
-**When to use:**
-- Sharing results with collaborators
-- Including in presentations
-- Web-based reports
+### Three Ways to Use Parquet
 
-### PNG/SVG Images
+1. **Auto-cache**: After a successful run, MSpecViz automatically saves a Parquet cache. Next time you use the same inputs, it loads from cache instead of mzML.
 
-**Contents:**
-- Static image of plot
-- High resolution (300 DPI for PNG)
-- Vector graphics (SVG for publications)
+2. **In-app conversion**: After Step 5 (Search), click "Convert to Parquet" to save matched spectra. Use the Parquet file path in Step 1 on future runs.
 
-**When to use:**
-- Figures for papers/posters
-- PowerPoint presentations
-- Quick preview
+3. **CLI conversion**: For large datasets, use the standalone conversion tool:
+   ```bash
+   conda run -n mspecviz python tools/convert_mzml_to_parquet.py \
+     --idxml /path/to/*.idXML \
+     --mzml-dir /path/to/mzml_files/ \
+     --peptides "LGGNEQVTR,GAGSSEPVTGLDAK" \
+     --output exports/my_spectra.parquet \
+     --reference-substring "Synpep"
+   ```
+   See [tools/README.md](../tools/README.md) for full CLI documentation.
+
+### What's Stored in a Parquet File
+
+Each row represents one spectrum:
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `source_mzml` | string | Source mzML display name |
+| `spectrum_id` | string | Native spectrum ID (e.g., `index=12345`) |
+| `peptidoform` | string | Full sequence with modifications |
+| `base_sequence` | string | Unmodified peptide sequence |
+| `variant_key` | string | Grouping key (`sequence\|modifications`) |
+| `charge` | int | Precursor charge state |
+| `precursor_mz` | float | Precursor m/z |
+| `rt` | float | Retention time |
+| `is_reference` | bool | Whether this is a reference spectrum |
+| `mz` | float[] | m/z array |
+| `intensity` | float[] | Intensity array |
+| `score` | float | PSM score |
+| `idxml_file` | string | Source idXML display name |
+
+### Performance Comparison
+
+| Scenario | mzML (first run) | mzML (cached index) | Parquet |
+|----------|-------------------|---------------------|---------|
+| 10 spectra, 1 file (100k spectra) | 5–30s | <1s | ~0.1s |
+| 100 spectra, 7 files | 35–210s | ~4s | ~0.5s |
+| Re-run same analysis | Same as first | Same as first | ~0.5s |
+
+---
+
+## Caching System
+
+MSpecViz automatically caches loaded spectra in Parquet format so that repeated runs with the same inputs load instantly. See [Caching](caching.md) for the full technical reference.
+
+### Key Points
+
+- A **fingerprint** is computed from your inputs (file paths + modification times + sizes, peptide list, reference substring)
+- If the fingerprint matches an existing cache file, spectra are loaded from Parquet instead of mzML
+- Cache is saved **only after a complete, successful run** — interrupted runs leave no cache
+- Cache is automatically invalidated when any input changes
+- After code changes that affect spectrum loading, delete the cache manually:
+  ```bash
+  rm exports/.mspecviz_cache/*.parquet exports/.mspecviz_cache/*.json
+  ```
+
+---
+
+## Comparison Metrics
+
+Seven quantitative metrics are computed for each query-vs-reference pair. See [Spectrum Metrics](spectrum_metrics.md) for mathematical details, equations, and interpretation guides.
+
+### Quick Reference
+
+| Metric | Abbreviation | What It Answers |
+|--------|-------------|-----------------|
+| R² Matching | R2m | Do shared annotated ions have similar relative intensities? |
+| Cosine Similarity | Cos | How similar are the intensity vectors of shared ions? |
+| Dice Coefficient | Dice | What fraction of annotated ions are shared? |
+| Jaccard Index | Jacc | Same as Dice but with stricter (union) denominator |
+| Shared Peak Ratio | ShR | Is the smaller spectrum's information contained in the larger? |
+| R² Binned | R2b | Do the overall spectral profiles correlate? (all peaks) |
+| Spectral Entropy | Ent | Information-theoretic similarity (all peaks) |
+
+### Output
+
+Metrics appear in two places:
+1. **On each mirror plot**: Abbreviated metrics text in the top-right corner
+2. **Summary spreadsheet**: `comparison_summary.csv` and `.xlsx` in the export directory, with one row per query-reference pair
 
 ---
 
 ## File Formats
 
-### idXML Format
+### Input: idXML
 
-OpenMS XML format for peptide identifications.
+OpenMS XML format for peptide identifications. Contains:
 
-**Structure:**
-```xml
-<IdentificationRun>
-  <SearchParameters>...</SearchParameters>
-  <ProteinIdentification>...</ProteinIdentification>
-  <PeptideIdentification>
-    <PeptideHit sequence="PEPTIDE" charge="2">
-      <UserParam name="MS:1001117" value="50.5"/>
-      <UserParam name="spectrum_reference" value="scan=1234"/>
-    </PeptideHit>
-  </PeptideIdentification>
-</IdentificationRun>
-```
+- **PeptideIdentification** records: Each contains one or more `PeptideHit` with sequence, modifications, charge, and score
+- **SpectraData** metadata: Maps spectrum references to mzML files via `id_merge_index`
+- Created by OpenMS search engines (MSGF+, Comet, etc.) or converters
 
-**Key Elements:**
-- `PeptideHit`: Individual PSM
-- `sequence`: Amino acid sequence
-- `charge`: Precursor charge state
-- `spectrum_reference`: Link to mzML spectrum
+### Input: mzML
 
-### mzML Format
+PSI standard format for mass spectrometry data. Contains:
 
-PSI standard for mass spectrometry data.
+- **Spectrum records**: MS/MS scans with m/z and intensity arrays (binary-compressed)
+- **Index**: Enables fast random access to individual spectra without loading the entire file
+- **Native IDs**: Spectrum identifiers (e.g., `index=12345`, `scan=6789`)
 
-**Structure:**
-```xml
-<mzML>
-  <run id="sample1">
-    <spectrumList count="10000">
-      <spectrum id="scan=1234" index="1233">
-        <cvParam name="MS:1000511" value="2"/>
-        <binaryDataArray>...</binaryDataArray>
-      </spectrum>
-    </spectrumList>
-  </run>
-</mzML>
-```
+**Note on indexing**: Some instruments (Bruker/timsTOF) use 1-based native IDs (`index=1` is the first spectrum). MSpecViz auto-detects the offset from the first spectrum in each file.
 
-**Key Elements:**
-- `spectrum`: Individual MS/MS scan
-- `binaryDataArray`: m/z and intensity arrays (compressed)
-- `index`: Used for fast random access
+### Output: PNG/SVG
+
+- **PNG**: Raster images at 300 DPI. Good for presentations, reports, quick review.
+- **SVG**: Vector graphics. Good for publications (infinitely scalable, editable in Illustrator/Inkscape).
+
+### Output: CSV/XLSX
+
+The comparison summary contains one row per query-reference pair with:
+- Shortened filenames for readability
+- Peptide sequence and modification
+- Charge state
+- All 7 comparison metrics
+- Peak count context (total peaks, annotated peaks, shared ions)
+- Full filenames
 
 ---
 
-## AI Models
+## Configuration
 
-Detailed information about supported fragmentation prediction models.
+All settings are in `settings.json`. Changes take effect on the next app restart.
 
-### MS2PIP
+### Key Settings
 
-**Description:** Machine learning model trained on timsTOF data
+```json
+{
+  "data_directories": {
+    "default": "/mnt/volume"          // Starting directory for file browser
+  },
+  "ion_types": {
+    "default": ["b", "y"],            // Default ion types selected
+    "available": ["a","b","c","x","y","z","precursor","immonium"]
+  },
+  "mz_tolerance": {
+    "default": 0.02,                  // Default m/z tolerance in Da
+    "unit": "Da"
+  },
+  "annotation": {
+    "add_losses": false,              // Neutral losses (H₂O, NH₃)
+    "add_first_prefix_ion": true,     // Include a₁/b₁
+    "remove_precursor_peaks": false   // Strip precursor ions
+  },
+  "export": {
+    "default_directory": "./exports", // Export base directory
+    "project_name": "MSpecViz_analysis",
+    "formats": ["png"],              // Default export formats
+    "dpi": 300,                      // PNG resolution
+    "figsize": [12, 8]               // Plot size (width, height inches)
+  },
+  "cache": {
+    "enabled": true,                 // Auto-caching on/off
+    "subdirectory": ".mspecviz_cache" // Cache folder name
+  },
+  "ion_colors": {                    // Hex colors for each ion type
+    "b": "#0066CC",
+    "y": "#CC0000",
+    ...
+  }
+}
+```
 
-**Features:**
-- Fast predictions (~1s per spectrum)
-- Excellent for modern high-resolution instruments
-- Supports common modifications (Oxidation, Phospho, etc.)
-
-**Best for:**
-- timsTOF Pro/fleX
-- Orbitrap Exploris
-- Any high-resolution instrument
-
-**Limitations:**
-- May underperform on older low-res data
-- Limited exotic modification support
-
-### Prosit
-
-**Description:** Deep learning model for HCD fragmentation
-
-**Features:**
-- High accuracy for Orbitrap HCD
-- Trained on large datasets
-- Collision energy-aware
-
-**Best for:**
-- Orbitrap Fusion, Lumos
-- Q Exactive series
-- Standard HCD experiments
-
-**Limitations:**
-- Slower than MS2PIP
-- Designed specifically for HCD
-
-### AlphaPept
-
-**Description:** Generic fragmentation predictor
-
-**Features:**
-- Works across instrument types
-- Good baseline performance
-- Handles diverse modifications
-
-**Best for:**
-- Unknown instrument types
-- Mixed instrument datasets
-- Exploratory analysis
-
-**Limitations:**
-- Lower accuracy than specialized models
-- May miss instrument-specific patterns
+See [Annotation Settings](annotation_settings.md) for detailed explanations of each annotation option.
 
 ---
 
 ## Troubleshooting
 
-Common issues and solutions.
+### File Selection Issues
 
-### File Loading Issues
+**No files appear in the directory browser**
+- Verify the directory exists and is readable
+- Check that files have the expected extension (`.idXML`, `.mzML` — case-sensitive on Linux)
+- Try typing the full path in the path input box
 
-**Problem:** "No matching mzML files found"
+**Files from different directories have the same name**
+- MSpecViz handles this automatically by adding parent directory components to disambiguate
+- Exact duplicate paths (same file selected twice) are removed silently
 
-**Causes:**
-- mzML and idXML from different experiments
-- File naming mismatch
-- Files in different directories
+### Search Issues
 
-**Solutions:**
-- Check spectrum_reference in idXML matches mzML scan IDs
-- Use server browser to verify file locations
-- Rename files to match base names
+**"No matches found" for peptides that should be there**
+- Use "Preview in idXML" to check which peptides exist in your files
+- Verify you're entering base sequences without modifications
+- Check that idXML files are from the expected experiment
 
-**Problem:** "File too large" error
+**PSMs could not be mapped to mzML files**
+- The idXML's `SpectraData` metadata may be missing or point to mzML files not in your selection
+- Ensure you've selected all mzML files referenced by the idXML
+- Check the `id_merge_index` entries in the idXML's `ProteinIdentification` section
 
-**Causes:**
-- Browser upload limit exceeded (>2GB)
-- Insufficient browser memory
+### Processing Issues
 
-**Solutions:**
-- Use server browser instead
-- Use Dataset Filter workspace to reduce file size
-- Process files in smaller batches
+**Annotation errors**
+- Empty m/z arrays: The spectrum may be corrupt or empty in the mzML file
+- Invalid charge: The PSM may have charge=0 (missing charge information)
+- Parse errors: The peptidoform string may contain unsupported modification notation
 
-### Analysis Issues
+**Slow first run**
+- Normal for large mzML files. MSpecViz builds an index and streams spectra.
+- Subsequent runs with the same inputs use the Parquet cache (~100x faster)
+- For very large datasets, pre-convert to Parquet using the CLI tool
 
-**Problem:** "Koina API timeout"
+**Cache shows wrong results after a code update**
+- The fingerprint only tracks input files, not code. Delete the cache:
+  ```bash
+  rm exports/.mspecviz_cache/*.parquet exports/.mspecviz_cache/*.json
+  ```
 
-**Causes:**
-- API server overloaded
-- Network connectivity issues
-- Too many simultaneous requests
+### Connection Issues (Remote Server)
 
-**Solutions:**
-- Retry after a few minutes
-- Reduce number of spectra (< 100 at once)
-- Switch to different AI model
-
-**Problem:** "Poor R² scores" (< 0.5)
-
-**Causes:**
-- Wrong AI model for instrument
-- Incorrect peptide sequence
-- Poor quality spectrum
-
-**Solutions:**
-- Try different AI model (MS2PIP vs Prosit)
-- Verify peptide ID confidence
-- Check spectrum quality (TIC, # peaks)
-
-### Performance Issues
-
-**Problem:** "Out of memory" error
-
-**Causes:**
-- Too many spectra loaded simultaneously
-- Large mzML files (>10GB)
-- Browser memory limits
-
-**Solutions:**
-- Process fewer files at once
-- Use Dataset Filter to extract relevant spectra
-- Close other browser tabs/applications
-
-**Problem:** "Slow loading times"
-
-**Causes:**
-- Network drive access
-- Large number of files
-- Unoptimized mzML (not indexed)
-
-**Solutions:**
-- Copy files to local drive
-- Process in smaller batches
-- Re-save mzML with proper indexing
+**"localhost refused to connect"**
+- You need an SSH tunnel. See [Remote Access](#installation--access)
+- Verify Streamlit is actually running on the server: `curl -s -o /dev/null -w '%{http_code}' http://localhost:8501` (should return 200)
+- Check that port 8501 isn't already in use locally
 
 ---
 
-## Advanced Features
+## Architecture & Technical Details
 
-### Custom Modification Support
+### Processing Pipeline
 
-Add custom modifications not in default list:
-
-1. Go to Settings workspace
-2. Click "Add Custom Modification"
-3. Enter: Name, mass delta, residue specificity
-4. Save and restart analysis
-
-**Example:**
-- Name: `TMT6plex`
-- Mass: `+229.163`
-- Residues: `K, N-term`
-
-### Batch Processing
-
-Process multiple files automatically:
-
-1. Use server browser
-2. Select multiple idXML files (Shift+Click)
-3. Enable "Batch mode" checkbox
-4. Configure once, applies to all files
-5. Export generates one Excel per file
-
-### Programmatic Access
-
-SpecViz core functions can be imported:
-
-```python
-from core.spectrum_engine import compare_spectra
-from core.mzml_processor import load_spectrum
-
-# Load spectrum
-exp_spec = load_spectrum("file.mzML", scan=1234)
-
-# Compare to prediction
-result = compare_spectra(exp_spec, pred_spec, tol=0.02)
-print(f"R²: {result['r_squared']:.3f}")
+```
+idXML files ──→ search_peptides_in_idxmls() ──→ VariantGroups
+                                                      │
+mzML files  ──→ load_spectra_streaming() ─────────────┤
+                      │                                │
+                      ├── open_indexed_mzml()          │
+                      ├── build_mzml_to_matches_map()  │
+                      └── stream spectra by variant ───┘
+                                                       │
+                              ┌─────────────────────────┘
+                              │
+                    prepare_spectrum_for_plot()
+                              │
+                    ├── generate_theoretical_fragments()
+                    │         (PyOpenMS TheoreticalSpectrumGenerator)
+                    │
+                    ├── annotate_spectrum()
+                    │         (PyOpenMS SpectrumAlignment)
+                    │
+                    └── normalize / filter
+                              │
+                    create_mirror_plot()  ──→  PNG/SVG export
+                              │
+                    compute_all_metrics()  ──→  CSV/XLSX summary
 ```
 
----
+### Key Backend Modules
 
-## Technical Details
+| Module | Responsibility |
+|--------|---------------|
+| `src/peptide_search.py` | idXML parsing, PSM extraction, mzML resolution |
+| `src/spectrum_loader.py` | mzML indexed access, Parquet loading, streaming |
+| `src/peak_annotation.py` | Theoretical fragment generation, peak matching |
+| `src/mirror_plot.py` | Matplotlib mirror plot and single spectrum plots |
+| `src/spectrum_metrics.py` | Seven comparison metrics |
+| `src/parquet_cache.py` | Fingerprinting, cache lookup, cache save |
+| `src/path_utils.py` | Path disambiguation, deduplication |
+| `src/export.py` | Filename sanitization, directory creation |
 
-### Memory Optimization
+### Memory Strategy
 
-SpecViz uses several strategies to minimize memory usage:
+MSpecViz uses **streaming processing** to minimize memory usage:
 
-**Indexed mzML Access:**
-- Only loads requested spectra (not entire file)
-- Uses binary search on mzML index
-- O(log n) access time
+- mzML files are opened with `OnDiscMSExperiment` (indexed access, no full load)
+- Reference spectra are loaded per-variant and held in memory
+- Query spectra are loaded one at a time, plotted, exported, then discarded
+- This enables processing large datasets (10+ GB mzML files) with modest RAM
 
-**Lazy Loading:**
-- Data loaded on-demand
-- Cached for repeated access
-- Cleared when workspace reset
+### mzML Index Handling
 
-**Streaming Processing:**
-- Processes spectra one at a time
-- No large arrays in memory
-- Constant memory footprint
+MSpecViz supports multiple native ID formats:
+- `index=N` (common in Bruker/timsTOF data)
+- `scan=N` (common in Thermo data)
+- `spectrum=N`
 
-### Performance Benchmarks
-
-Typical performance on standard hardware (16GB RAM, 8 cores):
-
-| Task | File Size | Time | Memory |
-|------|-----------|------|--------|
-| Load idXML | 10 MB | 2s | 50 MB |
-| Load 100 spectra | 5 GB mzML | 10s | 200 MB |
-| AI prediction (MS2PIP) | 1 spectrum | 1s | 100 MB |
-| Generate 10 mirror plots | - | 5s | 150 MB |
-| Export Excel | 100 spectra | 10s | 200 MB |
-
-### API Rate Limits
-
-Koina API has usage limits:
-
-- **Free tier**: 100 requests/minute
-- **Registered**: 1000 requests/minute
-- **Rate limit exceeded**: Wait 60s and retry
-
-SpecViz automatically:
-- Batches predictions when possible
-- Retries with exponential backoff
-- Shows progress bar during API calls
+For `index=` IDs, the offset between native ID and array position is auto-detected from the first spectrum in each file. Bruker/timsTOF files typically use 1-based indexing (`index=1` is the first spectrum at array position 0).
 
 ---
 
 ## References
 
-**SpecViz** is built on the OpenMS framework and WebApps template:
+1. Muller, T. D., Siraj, A., et al. (2025). OpenMS WebApps: Building User-Friendly Solutions for MS Analysis. *Journal of Proteome Research*. [https://doi.org/10.1021/acs.jproteome.4c00872](https://doi.org/10.1021/acs.jproteome.4c00872)
 
-1. Müller, T. D., Siraj, A., et al. (2025). OpenMS WebApps: Building User-Friendly Solutions for MS Analysis. *Journal of Proteome Research*. [https://doi.org/10.1021/acs.jproteome.4c00872](https://doi.org/10.1021/acs.jproteome.4c00872)
-
-2. Röst, H. L., et al. (2016). OpenMS: a flexible open-source software platform for mass spectrometry data analysis. *Nature Methods*, 13, 741–748.
-
-3. Gabriels, R., et al. (2019). Updated MS²PIP web server delivers fast and accurate MS² peak intensity prediction for multiple fragmentation methods. *Nucleic Acids Research*, 47(W1), W295-W299.
-
-4. Gessulat, S., et al. (2019). Prosit: proteome-wide prediction of peptide tandem mass spectra by deep learning. *Nature Methods*, 16, 509–518.
+2. Rost, H. L., et al. (2016). OpenMS: a flexible open-source software platform for mass spectrometry data analysis. *Nature Methods*, 13, 741-748.

@@ -13,20 +13,17 @@ Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/
 - [Testing](#testing)
 - [Test Data](#test-data)
 - [Documentation](#documentation)
-  - [Caching System](docs/caching.md) — How auto-caching works, interrupted runs, invalidation
-  - [Spectrum Comparison Metrics](docs/spectrum_metrics.md) — Cosine similarity, spectral entropy, R2, shared peaks
-  - [Full User Guide](docs/DOCUMENTATION.md) — Comprehensive feature reference
-  - [Quick Start](docs/QUICKSTART.md) — Get started in 5 minutes
-  - [Parquet Conversion Tool](tools/README.md) — CLI reference for mzML-to-Parquet conversion
 - [References](#references)
 
 ## Installation
 
 ### Requirements
+
 - Python 3.11+
 - Conda (Miniconda or Anaconda)
 
 ### Setup
+
 ```bash
 # Create conda environment (includes all dependencies)
 conda env create -f environment.yml
@@ -98,11 +95,11 @@ See [tools/README.md](tools/README.md) for full CLI documentation.
 
 ### Performance comparison
 
-| Scenario | mzML (first run) | mzML (optimized index) | Parquet |
-|----------|-------------------|------------------------|---------|
-| 10 spectra, 1 file (100k spectra) | 5-30s | <1s | ~0.1s |
-| 100 spectra, 7 files | 35-210s | ~4s | ~0.5s |
-| Re-run same analysis | Same as first | Same as first | ~0.5s |
+| Scenario                          | mzML (first run) | mzML (optimized index) | Parquet |
+| --------------------------------- | ---------------- | ---------------------- | ------- |
+| 10 spectra, 1 file (100k spectra) | 5-30s            | <1s                    | ~0.1s   |
+| 100 spectra, 7 files              | 35-210s          | ~4s                    | ~0.5s   |
+| Re-run same analysis              | Same as first    | Same as first          | ~0.5s   |
 
 **Note:** After changing any code, restart the Streamlit app (`Ctrl+C` then `streamlit run app.py`) for changes to take effect. Streamlit caches modules in memory.
 
@@ -148,19 +145,38 @@ conda run -n mspecviz python -m pytest test_gui.py -v
 ## Test Data
 
 Location: `/mnt/volume/nacho/data/ProCa_Anna/small_dataset/mini_dataset`
+
 - 7 mzML files (~2GB each)
 - 3 idXML files
 - Reference files contain "Synpep" in filename
 
 ## Documentation
 
+### Getting Started
+
 | Guide | Description |
 |-------|-------------|
-| [Caching System](docs/caching.md) | Auto-caching, fingerprinting, interrupted runs, cache invalidation |
-| [Spectrum Metrics](docs/spectrum_metrics.md) | Cosine similarity, spectral entropy, R2, shared peak ratios |
-| [Full User Guide](docs/DOCUMENTATION.md) | Comprehensive reference for every feature and option |
 | [Quick Start](docs/QUICKSTART.md) | Get up and running in 5 minutes |
-| [Parquet Conversion](tools/README.md) | CLI tool for mzML-to-Parquet batch conversion |
+| [Full User Guide](docs/DOCUMENTATION.md) | Comprehensive reference for every feature, setting, and workflow step |
+
+### Workflow Steps (Detailed)
+
+| Guide | Description |
+|-------|-------------|
+| [File Selection](docs/file_selection.md) | Directory browsing, file disambiguation, Parquet shortcut, mzML resolution |
+| [Peptide Search](docs/peptide_search.md) | How idXML search works, PSM extraction, variant grouping |
+| [Reference Setup](docs/reference_setup.md) | Reference vs query categorization, unpaired spectra, choosing a substring |
+| [Annotation Settings](docs/annotation_settings.md) | Ion types, m/z tolerance, neutral losses, precursor handling, intensity modes |
+| [Mirror Plots](docs/mirror_plots.md) | Plot anatomy, how to interpret plots, colors, single spectrum plots |
+| [Export & Output](docs/export.md) | Directory structure, plot formats, comparison summary spreadsheet |
+
+### Technical References
+
+| Guide | Description |
+|-------|-------------|
+| [Spectrum Metrics](docs/spectrum_metrics.md) | Seven comparison metrics: R², cosine, entropy, Dice, Jaccard, shared ratio |
+| [Caching System](docs/caching.md) | Auto-caching, fingerprinting, interrupted runs, cache invalidation |
+| [Parquet Conversion Tool](tools/README.md) | CLI tool for standalone mzML-to-Parquet batch conversion |
 
 ## References
 

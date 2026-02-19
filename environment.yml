@@ -15,6 +15,7 @@ dependencies:
   - bokeh
   - pyopenms
   - pyarrow
+  - pyyaml
   - streamlit>=1.48.0
   - openpyxl
   - pip:
