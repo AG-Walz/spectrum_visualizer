@@ -817,6 +817,48 @@ def run_pipeline(cfg: CLIConfig) -> int:
         logger.exception("Processing error")
         return 1
 
+    # --- Cache save helper (called at multiple pipeline stages) ---
+    _cache_saved = [False]
+
+    def _try_save_cache(stage: str):
+        """Save Parquet cache if conditions are met. Overwrites previous saves."""
+        if _cache_saved[0]:
+            return  # already saved successfully at an earlier stage
+        if (loaded_from_cache
+                or cfg.parquet_file
+                or not cfg.cache_enabled
+                or not cache_fingerprint
+                or not _cached_queries):
+            return
+        try:
+            from src.parquet_cache import save_spectra_to_parquet
+
+            cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
+            cache_metadata = {
+                "fingerprint": cache_fingerprint,
+                "idxml_files": cfg.idxml_files,
+                "mzml_files": cfg.mzml_files,
+                "target_peptides": cfg.peptides,
+                "reference_substring": cfg.reference_substring,
+            }
+            saved = save_spectra_to_parquet(
+                reference_spectra=reference_spectra,
+                query_spectra=_cached_queries,
+                output_path=cache_path,
+                cache_metadata=cache_metadata,
+            )
+            if saved:
+                _cache_saved[0] = True
+                log_info(f"Cache saved ({stage}): {Path(saved).name} "
+                         f"({len(_cached_queries)} queries, "
+                         f"{sum(len(v) for v in reference_spectra.values())} refs)",
+                         cfg.quiet)
+        except Exception as cache_err:
+            log_info(f"Warning: cache save failed ({stage}): {cache_err}", cfg.quiet)
+
+    # Save point 1: after streaming, before plots
+    _try_save_cache("after loading")
+
     # --- Phase 4b: Generate plots in parallel ---
     if comparison_tasks:
         from src.parallel_processor import run_parallel_comparisons
@@ -848,6 +890,9 @@ def run_pipeline(cfg: CLIConfig) -> int:
         plot_progress.finish(
             f"Plots: {results_summary['plots_generated']} generated"
         )
+
+    # Save point 2: after plots
+    _try_save_cache("after plots")
 
     total_time = time.time() - start_time
 
@@ -904,35 +949,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
         except Exception as summary_err:
             log_debug(f"Could not write summary: {summary_err}", cfg.verbose)
 
-    # =========================================================================
-    # Phase 6: Auto-save Parquet cache
-    # =========================================================================
-    if (not loaded_from_cache
-            and not cfg.parquet_file
-            and cfg.cache_enabled
-            and cache_fingerprint
-            and _cached_queries):
-        try:
-            from src.parquet_cache import save_spectra_to_parquet
-
-            cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
-            cache_metadata = {
-                "fingerprint": cache_fingerprint,
-                "idxml_files": cfg.idxml_files,
-                "mzml_files": cfg.mzml_files,
-                "target_peptides": cfg.peptides,
-                "reference_substring": cfg.reference_substring,
-            }
-            saved = save_spectra_to_parquet(
-                reference_spectra=reference_spectra,
-                query_spectra=_cached_queries,
-                output_path=cache_path,
-                cache_metadata=cache_metadata,
-            )
-            if saved:
-                log_info(f"Cache saved: {Path(saved).name}", cfg.quiet)
-        except Exception as cache_err:
-            log_debug(f"Could not save cache: {cache_err}", cfg.verbose)
+    # Save point 3: after summary export
+    _try_save_cache("after summary")
 
     # =========================================================================
     # Final summary

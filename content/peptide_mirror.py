@@ -1341,6 +1341,50 @@ def run_streaming_processing():
             f"{len(comparison_tasks)} plots queued ({format_time(annotation_time)})"
         )
 
+        # --- Cache save helper (called at multiple pipeline stages) ---
+        _cache_saved = [False]
+
+        def _try_save_cache(stage: str):
+            """Save Parquet cache if conditions are met. Skips if already saved."""
+            if _cache_saved[0]:
+                return
+            if loaded_from_cache or st.session_state.get(get_state_key('parquet_file')):
+                return
+            if not cache_enabled or not cache_fingerprint or not _cached_queries:
+                return
+            try:
+                from src.parquet_cache import save_spectra_to_parquet
+                c_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
+
+                idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
+                peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
+                peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+
+                cache_metadata = {
+                    "fingerprint": cache_fingerprint,
+                    "idxml_files": idxmls_for_meta,
+                    "mzml_files": mzmls,
+                    "target_peptides": peptides_for_meta,
+                    "reference_substring": ref_substring,
+                }
+
+                saved = save_spectra_to_parquet(
+                    reference_spectra=reference_spectra,
+                    query_spectra=_cached_queries,
+                    output_path=c_path,
+                    cache_metadata=cache_metadata,
+                )
+                if saved:
+                    _cache_saved[0] = True
+                    add_log(f"Cache saved ({stage}): {Path(saved).name}")
+                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
+            except Exception as cache_err:
+                add_log(f"Warning: cache save failed ({stage}): {cache_err}")
+                logger.warning(f"Cache save failed ({stage}): {cache_err}")
+
+        # Save point 1: after streaming, before plots
+        _try_save_cache("after loading")
+
         # =================================================================
         # Parallel plot generation
         # =================================================================
@@ -1387,6 +1431,9 @@ def run_streaming_processing():
             plot_progress_bar.progress(1.0)
             plot_elapsed = time.time() - plot_start
             plot_status.caption(f"✅ Generated {results_summary['plots_generated']} plots in {format_time(plot_elapsed)}")
+
+        # Save point 2: after plots
+        _try_save_cache("after plots")
 
         # Final metrics
         total_time = time.time() - start_time
@@ -1470,38 +1517,8 @@ def run_streaming_processing():
                 add_log(f"Warning: Could not write summary: {summary_err}")
                 logger.warning(f"Summary export failed: {summary_err}")
 
-        # =====================================================================
-        # Auto-save Parquet cache (only if loaded from mzML, not from cache)
-        # =====================================================================
-        if not loaded_from_cache and not st.session_state.get(get_state_key('parquet_file')) and cache_enabled and cache_fingerprint and _cached_queries:
-            try:
-                from src.parquet_cache import save_spectra_to_parquet
-                cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
-
-                idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
-                peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
-                peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
-
-                cache_metadata = {
-                    "fingerprint": cache_fingerprint,
-                    "idxml_files": idxmls_for_meta,
-                    "mzml_files": mzmls,
-                    "target_peptides": peptides_for_meta,
-                    "reference_substring": ref_substring,
-                }
-
-                saved = save_spectra_to_parquet(
-                    reference_spectra=reference_spectra,
-                    query_spectra=_cached_queries,
-                    output_path=cache_path,
-                    cache_metadata=cache_metadata,
-                )
-                if saved:
-                    add_log(f"Saved Parquet cache: {saved}")
-                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
-            except Exception as cache_err:
-                add_log(f"Warning: Could not save cache: {cache_err}")
-                logger.warning(f"Cache save failed: {cache_err}")
+        # Save point 3: after summary export
+        _try_save_cache("after summary")
 
     except Exception as e:
         st.error(f"Processing failed: {e}")
