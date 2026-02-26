@@ -34,7 +34,7 @@ This means you can set reasonable defaults in the YAML and override individual v
 
 ## Configuration File
 
-The YAML config has five sections:
+The YAML config has seven sections:
 
 ### `input` — File paths
 
@@ -101,6 +101,13 @@ export:
   plot_unpaired: false            # plot spectra without matching reference
 ```
 
+### `performance` — Parallelism
+
+```yaml
+performance:
+  workers: 4   # number of parallel processes for plot generation (1 = sequential)
+```
+
 ### `cache` — Parquet auto-caching
 
 ```yaml
@@ -152,12 +159,13 @@ Every config setting can be overridden from the command line.
 | Flag | Description |
 |------|-------------|
 | `--no-cache` | Disable Parquet auto-caching |
+| `--workers INT` | Number of parallel worker processes for plot generation (default: 4) |
 | `-v`, `--verbose` | Verbose output with debug details |
 | `-q`, `--quiet` | Suppress all output except errors |
 
 ## Pipeline Phases
 
-The CLI runs six sequential phases. In verbose mode (`--verbose`), each phase prints detailed information.
+The CLI runs seven sequential phases. In verbose mode (`--verbose`), each phase prints detailed information.
 
 ### Phase 0: Input validation
 
@@ -175,13 +183,20 @@ Searches the idXML files for PSMs matching the target peptides. Reports total PS
 
 Streams spectra from mzML files (or loads instantly from Parquet). Reference spectra are loaded first, then queries are processed one-by-one as they arrive.
 
-### Phase 4: Annotation and plotting
+### Phase 4a: Annotation
 
-For each query spectrum:
+For each query spectrum arriving from the stream:
 1. Generates theoretical fragment ions for the peptide sequence
 2. Matches experimental peaks against theoretical within the m/z tolerance
-3. Creates a mirror plot pairing the query with its reference (or a single-spectrum plot if no reference)
-4. Saves the plot as PNG/SVG
+3. Collects the annotated spectrum data into a task list for plotting
+
+### Phase 4b: Parallel plot generation
+
+The collected tasks are processed in parallel using multiple worker processes (`--workers`, default 4):
+1. Each worker receives one annotated spectrum pair and independently computes metrics, creates a mirror plot (or single-spectrum plot), and saves it to disk
+2. Workers run in separate processes with their own matplotlib backends, so memory is released after each plot
+3. A progress bar tracks completion as tasks finish
+4. If `--workers 1`, processing falls back to sequential mode (useful for debugging)
 
 ### Phase 5: Summary export
 

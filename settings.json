@@ -30,7 +30,8 @@
   "performance": {
     "cache_size_mb": 500,
     "max_file_size_gb": 3,
-    "chunk_size": 5000
+    "chunk_size": 5000,
+    "workers": 4
   },
   "export": {
     "default_directory": "./exports",

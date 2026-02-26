@@ -73,6 +73,9 @@ class CLIConfig:
     cache_enabled: bool = True
     cache_subdirectory: str = ".mspecviz_cache"
 
+    # Parallelism
+    workers: int = 4
+
     # Verbosity
     verbose: bool = False
     quiet: bool = False
@@ -201,6 +204,7 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         figsize=tuple(_get_nested(settings, "export", "figsize", default=[12, 8])),
         cache_enabled=_get_nested(settings, "cache", "enabled", default=True),
         cache_subdirectory=_get_nested(settings, "cache", "subdirectory", default=".mspecviz_cache"),
+        workers=_get_nested(settings, "performance", "workers", default=4),
     )
 
     # Layer 2: YAML config file
@@ -257,6 +261,10 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
     if "subdirectory" in cache:
         cfg.cache_subdirectory = cache["subdirectory"]
 
+    perf = yaml_cfg.get("performance", {})
+    if "workers" in perf:
+        cfg.workers = int(perf["workers"])
+
     # Layer 3: CLI argument overrides
     if cli_args.idxml:
         cfg.idxml_files = _expand_file_globs(cli_args.idxml)
@@ -293,6 +301,8 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.plot_unpaired = True
     if cli_args.no_cache:
         cfg.cache_enabled = False
+    if cli_args.workers is not None:
+        cfg.workers = cli_args.workers
     if cli_args.verbose:
         cfg.verbose = True
     if cli_args.quiet:
@@ -396,13 +406,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
-    from src.mirror_plot import create_mirror_plot, create_single_spectrum_plot
     from src.export import sanitize_filename, create_export_directory
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text, shorten_filenames
-
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
+    from src.spectrum_metrics import shorten_filenames
 
     # =========================================================================
     # Phase 0: Validate inputs
@@ -462,6 +467,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
     log_info(f"Ions:       {cfg.ion_types}, tolerance={cfg.mz_tolerance} Da", cfg.quiet)
     log_info(f"Export:     {cfg.export_dir} [{', '.join(cfg.export_formats)}]", cfg.quiet)
     log_info(f"Project:    {cfg.project_name}", cfg.quiet)
+    log_info(f"Workers:    {cfg.workers}", cfg.quiet)
     log_info("-" * 60, cfg.quiet)
 
     # =========================================================================
@@ -595,6 +601,11 @@ def run_pipeline(cfg: CLIConfig) -> int:
     summary_rows: List[dict] = []
     _cached_queries: List[Tuple[str, object]] = []
 
+    # Task collection for parallel processing
+    from src.parallel_processor import ComparisonTask
+    comparison_tasks: List[ComparisonTask] = []
+    task_counter = [0]
+
     # --- Annotation helper ---
     def annotate_spectrum(spectrum, is_reference=False):
         spec_type = "reference" if is_reference else "query"
@@ -642,6 +653,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
             query_start_time[0] = time.time()
 
     def on_query_ready(result: StreamingResult):
+        """Annotate query + build ComparisonTasks (no figure creation here)."""
         query = result.query_spectrum
         refs = result.reference_spectra
 
@@ -687,77 +699,73 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 log_debug(f"  Skipped (no reference): {Path(query.source_file).stem}", cfg.verbose)
                 return
 
-            # Single spectrum plot
-            try:
-                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-                single_label = (f"{Path(query.source_file).stem}"
-                                f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-                fig = create_single_spectrum_plot(
-                    spectrum=query_df,
-                    title=plot_title,
-                    label=single_label,
-                    figsize=cfg.figsize,
-                    dpi=cfg.dpi,
-                    normalize=cfg.normalize,
-                )
-                results_summary["plots_generated"] += 1
+            # Build single spectrum task
+            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+            single_label = (f"{Path(query.source_file).stem}"
+                            f"  (RT: {query_rt}, ID: {query.spectrum_id})")
+            query_stem = Path(query.source_file).stem[:30]
+            base_filename = f"{result.base_sequence}_{query_stem}"
+            safe_filename = sanitize_filename(base_filename)
 
-                query_stem = Path(query.source_file).stem[:30]
-                base_filename = f"{result.base_sequence}_{query_stem}"
-                safe_filename = sanitize_filename(base_filename)
-
-                _save_figure(fig, safe_filename, folder_name, png_dir, svg_dir, cfg, results_summary)
-                plt.close(fig)
-
-            except Exception as e:
-                results_summary["errors"].append(f"Plot error: {e}")
+            comparison_tasks.append(ComparisonTask(
+                task_id=task_counter[0],
+                task_type="single",
+                query_df=query_df,
+                query_label=single_label,
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=str(png_dir),
+                svg_dir=str(svg_dir),
+                export_formats=cfg.export_formats,
+                figsize=cfg.figsize,
+                dpi=cfg.dpi,
+                normalize=cfg.normalize,
+                query_file=Path(query.source_file).name,
+                peptide=result.base_sequence,
+                modification=result.modification_key or "",
+                charge=query.precursor_charge,
+            ))
+            task_counter[0] += 1
             return
 
-        # Mirror plot for each reference
+        # Build mirror task for each reference
         for ref, ref_df in ref_data:
-            try:
-                metrics = compute_all_metrics(query_df, ref_df)
-                metrics_text = format_metrics_text(metrics)
+            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+            ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
+            query_label = (f"Query: {Path(query.source_file).stem}"
+                           f"  (RT: {query_rt}, ID: {query.spectrum_id})")
+            ref_label = (f"Ref: {Path(ref.source_file).stem}"
+                         f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
 
-                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-                ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
-                query_label = (f"Query: {Path(query.source_file).stem}"
-                               f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-                ref_label = (f"Ref: {Path(ref.source_file).stem}"
-                             f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
+            query_stem = Path(query.source_file).stem[:30]
+            ref_stem = Path(ref.source_file).stem[:30]
+            base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
+            safe_filename = sanitize_filename(base_filename)
 
-                fig = create_mirror_plot(
-                    upper_spectrum=query_df,
-                    lower_spectrum=ref_df,
-                    upper_label=query_label,
-                    lower_label=ref_label,
-                    title=plot_title,
-                    metrics_text=metrics_text,
-                    figsize=cfg.figsize,
-                    dpi=cfg.dpi,
-                    normalize=cfg.normalize,
-                )
-                results_summary["plots_generated"] += 1
-
-                summary_rows.append({
-                    "query_file": Path(query.source_file).name,
-                    "ref_file": Path(ref.source_file).name,
-                    "peptide": result.base_sequence,
-                    "modification": result.modification_key or "",
-                    "charge": query.precursor_charge,
-                    **metrics,
-                })
-
-                query_stem = Path(query.source_file).stem[:30]
-                ref_stem = Path(ref.source_file).stem[:30]
-                base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
-                safe_filename = sanitize_filename(base_filename)
-
-                _save_figure(fig, safe_filename, folder_name, png_dir, svg_dir, cfg, results_summary)
-                plt.close(fig)
-
-            except Exception as e:
-                results_summary["errors"].append(f"Plot/export error: {e}")
+            comparison_tasks.append(ComparisonTask(
+                task_id=task_counter[0],
+                task_type="mirror",
+                query_df=query_df,
+                ref_df=ref_df,
+                query_label=query_label,
+                ref_label=ref_label,
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=str(png_dir),
+                svg_dir=str(svg_dir),
+                export_formats=cfg.export_formats,
+                figsize=cfg.figsize,
+                dpi=cfg.dpi,
+                normalize=cfg.normalize,
+                query_file=Path(query.source_file).name,
+                ref_file=Path(ref.source_file).name,
+                peptide=result.base_sequence,
+                modification=result.modification_key or "",
+                charge=query.precursor_charge,
+            ))
+            task_counter[0] += 1
 
     def on_file_start(filename: str, is_reference: bool):
         file_type = "reference" if is_reference else "query"
@@ -770,7 +778,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
         results_summary["errors"].append(error_msg)
         log_debug(f"Error: {error_msg}", cfg.verbose)
 
-    # --- Run loading ---
+    # --- Phase 4a: Stream spectra and annotate (collect tasks) ---
     log_info("", cfg.quiet)  # blank line before progress
 
     try:
@@ -800,14 +808,46 @@ def run_pipeline(cfg: CLIConfig) -> int:
             ref_progress.finish(f"References: {results_summary['reference_spectra']} loaded")
         query_progress.finish(
             f"{'Queries' if expected_refs > 0 else 'Spectra'}: "
-            f"{results_summary['query_spectra']} processed, "
-            f"{results_summary['plots_generated']} plots"
+            f"{results_summary['query_spectra']} annotated, "
+            f"{len(comparison_tasks)} plots queued"
         )
 
     except Exception as e:
         log_error(f"Processing failed: {e}")
         logger.exception("Processing error")
         return 1
+
+    # --- Phase 4b: Generate plots in parallel ---
+    if comparison_tasks:
+        from src.parallel_processor import run_parallel_comparisons
+
+        log_info("", cfg.quiet)
+        log_info(f"Generating {len(comparison_tasks)} plots ({cfg.workers} workers)...", cfg.quiet)
+
+        plot_progress = TerminalProgress(len(comparison_tasks), "Plots", quiet=cfg.quiet)
+
+        def on_plot_complete(result, completed, total):
+            plot_progress.update()
+            if result.success:
+                results_summary["plots_generated"] += 1
+                if result.png_path:
+                    results_summary["files_exported"]["png"].append(result.png_path)
+                if result.svg_path:
+                    results_summary["files_exported"]["svg"].append(result.svg_path)
+                if result.summary_row:
+                    summary_rows.append(result.summary_row)
+            else:
+                results_summary["errors"].append(f"Plot error: {result.error}")
+
+        run_parallel_comparisons(
+            tasks=comparison_tasks,
+            workers=cfg.workers,
+            on_task_complete=on_plot_complete,
+        )
+
+        plot_progress.finish(
+            f"Plots: {results_summary['plots_generated']} generated"
+        )
 
     total_time = time.time() - start_time
 
@@ -925,23 +965,6 @@ def run_pipeline(cfg: CLIConfig) -> int:
     return 0
 
 
-def _save_figure(fig, safe_filename, folder_name, png_dir, svg_dir, cfg, results_summary):
-    """Save figure to PNG and/or SVG."""
-    if "png" in cfg.export_formats:
-        variant_png_dir = png_dir / folder_name
-        variant_png_dir.mkdir(exist_ok=True)
-        png_path = variant_png_dir / f"{safe_filename}.png"
-        fig.savefig(png_path, dpi=cfg.dpi, bbox_inches='tight', facecolor='white')
-        results_summary["files_exported"]["png"].append(str(png_path))
-
-    if "svg" in cfg.export_formats:
-        variant_svg_dir = svg_dir / folder_name
-        variant_svg_dir.mkdir(exist_ok=True)
-        svg_path = variant_svg_dir / f"{safe_filename}.svg"
-        fig.savefig(svg_path, format='svg', bbox_inches='tight', facecolor='white')
-        results_summary["files_exported"]["svg"].append(str(svg_path))
-
-
 # ============================================================================
 # Argument parser + main
 # ============================================================================
@@ -986,6 +1009,10 @@ examples:
 
     # Cache
     parser.add_argument("--no-cache", action="store_true", help="Disable Parquet auto-caching")
+
+    # Performance
+    parser.add_argument("--workers", type=int, default=None,
+                        help="Number of parallel worker processes for plot generation (default: 4)")
 
     # Verbosity
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug output")

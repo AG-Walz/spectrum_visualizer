@@ -104,6 +104,15 @@ export:
   plot_unpaired: false
 
 # -----------------------------------------------------------------------------
+# Performance
+# -----------------------------------------------------------------------------
+# Number of parallel worker processes for plot generation.
+# Each plot (metrics + figure + savefig) is independent, so this scales well.
+# Set to 1 to disable parallelism (useful for debugging).
+performance:
+  workers: 4
+
+# -----------------------------------------------------------------------------
 # Parquet auto-caching
 # -----------------------------------------------------------------------------
 # After the first run, loaded spectra are cached as a Parquet file.

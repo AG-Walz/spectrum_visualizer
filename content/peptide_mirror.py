@@ -73,6 +73,8 @@ def init_session_state():
     add_first_prefix_default = get_settings_value(_get_settings(), "annotation", "add_first_prefix_ion", default=True)
     remove_precursor_default = get_settings_value(_get_settings(), "annotation", "remove_precursor_peaks", default=False)
 
+    workers_default = get_settings_value(_get_settings(), "performance", "workers", default=4)
+
     defaults = {
         'idxml_dir': data_dir_default,
         'mzml_dir': data_dir_default,
@@ -88,6 +90,7 @@ def init_session_state():
         'export_dir': export_dir_default,
         'export_formats': export_formats_default,
         'project_name': project_name_default,
+        'workers': workers_default,
         'parquet_file': None,
         'search_results': None,
         'streaming_results': None,
@@ -564,6 +567,20 @@ def render_settings():
     else:
         st.caption("ℹ️ Precursor peaks will be shown in grey (unannotated).")
 
+    # Performance settings
+    st.markdown("---")
+    st.subheader("Performance")
+    workers = st.slider(
+        "Parallel workers",
+        min_value=1,
+        max_value=32,
+        value=st.session_state.get(get_state_key('workers'), 4),
+        key=f"{STATE_PREFIX}_workers",
+        help="Number of parallel processes for plot generation. "
+             "Higher values speed up export but use more memory (~30 MB per worker)."
+    )
+    st.session_state[get_state_key('workers')] = workers
+
     return True
 
 
@@ -908,12 +925,9 @@ def run_streaming_processing():
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
-    from src.mirror_plot import create_mirror_plot, create_single_spectrum_plot
     from src.export import sanitize_filename, create_export_directory
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text, shorten_filenames
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
+    from src.spectrum_metrics import shorten_filenames
+    from src.parallel_processor import ComparisonTask, run_parallel_comparisons
 
     # Get state
     parquet_file = st.session_state.get(get_state_key('parquet_file'))
@@ -1060,6 +1074,10 @@ def run_streaming_processing():
     # Accumulate query spectra for auto-cache save (only when loading from mzML)
     _cached_queries: List[Tuple[str, object]] = []
 
+    # Task collection for parallel processing
+    comparison_tasks: List[ComparisonTask] = []
+    task_counter = [0]
+
     def annotate_spectrum(spectrum, is_reference=False):
         """Annotate a spectrum for plotting (same as main.py)."""
         spec_type = "reference" if is_reference else "query"
@@ -1139,7 +1157,7 @@ def run_streaming_processing():
             query_status.caption(f"Processing {expected_queries} query spectra...")
 
     def on_query_ready(result: StreamingResult):
-        """Called for each query spectrum - annotate, plot, export immediately (same as main.py)."""
+        """Annotate query + build ComparisonTasks (no figure creation here)."""
         nonlocal refs_done, query_start_time
         query = result.query_spectrum
         refs = result.reference_spectra
@@ -1159,7 +1177,7 @@ def run_streaming_processing():
             query_start_time = time.time()
 
         progress_str = f"[{result.query_index + 1}/{result.total_queries}]"
-        add_log(f"{progress_str} Processing: {query.base_sequence} from {Path(query.source_file).name}")
+        add_log(f"{progress_str} Annotating: {query.base_sequence} from {Path(query.source_file).name}")
 
         results_summary["query_spectra"] += 1
 
@@ -1173,13 +1191,12 @@ def run_streaming_processing():
                 if query_frac > 0:
                     estimated_total = elapsed / query_frac
                     remaining = estimated_total - elapsed
-                    query_status.caption(f"Processed {results_summary['query_spectra']}/{expected_queries} queries "
+                    query_status.caption(f"Annotated {results_summary['query_spectra']}/{expected_queries} queries "
                                         f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)")
 
         # Annotate query spectrum
         query_df = annotate_spectrum(query, is_reference=False)
         if query_df is None:
-            # Error already logged in annotate_spectrum
             return
 
         # Ensure references are annotated (cache them)
@@ -1195,133 +1212,83 @@ def run_streaming_processing():
         # Create folder for this variant
         if result.modification_key:
             folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
-        else:
-            folder_name = result.base_sequence
-
-        # Build title with modifications if present
-        if result.modification_key:
             plot_title = f"{result.base_sequence} [{result.modification_key}]"
         else:
+            folder_name = result.base_sequence
             plot_title = result.base_sequence
 
         if not ref_data:
             if not plot_unpaired:
-                # Skip unpaired spectra (no reference available)
                 add_log(f"  Skipped (no reference): {Path(query.source_file).stem}")
                 return
 
-            # Single spectrum plot (no references available)
-            try:
-                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-                single_label = (f"{Path(query.source_file).stem}"
-                                f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-                fig = create_single_spectrum_plot(
-                    spectrum=query_df,
-                    title=plot_title,
-                    label=single_label,
-                    normalize=normalize,
-                )
-                results_summary["plots_generated"] += 1
-                plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
+            # Build single spectrum task
+            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+            single_label = (f"{Path(query.source_file).stem}"
+                            f"  (RT: {query_rt}, ID: {query.spectrum_id})")
+            query_stem = Path(query.source_file).stem[:30]
+            base_filename = f"{result.base_sequence}_{query_stem}"
+            safe_filename = sanitize_filename(base_filename)
 
-                query_stem = Path(query.source_file).stem[:30]
-                base_filename = f"{result.base_sequence}_{query_stem}"
-                safe_filename = sanitize_filename(base_filename)
-
-                # Export PNG
-                if "png" in export_formats:
-                    variant_png_dir = png_dir / folder_name
-                    variant_png_dir.mkdir(exist_ok=True)
-                    png_path = variant_png_dir / f"{safe_filename}.png"
-                    fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
-                    results_summary["files_exported"]["png"].append(str(png_path))
-
-                # Export SVG
-                if "svg" in export_formats:
-                    variant_svg_dir = svg_dir / folder_name
-                    variant_svg_dir.mkdir(exist_ok=True)
-                    svg_path = variant_svg_dir / f"{safe_filename}.svg"
-                    fig.savefig(svg_path, format='svg', bbox_inches='tight', facecolor='white')
-                    results_summary["files_exported"]["svg"].append(str(svg_path))
-
-                plt.close(fig)
-                add_log(f"  ✓ Exported: {safe_filename}")
-
-            except Exception as e:
-                results_summary["errors"].append(f"Plot/export error: {e}")
-                errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
-                add_log(f"  ❌ Error: {e}")
-
+            comparison_tasks.append(ComparisonTask(
+                task_id=task_counter[0],
+                task_type="single",
+                query_df=query_df,
+                query_label=single_label,
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=str(png_dir),
+                svg_dir=str(svg_dir),
+                export_formats=export_formats,
+                figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
+                dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
+                normalize=normalize,
+                query_file=Path(query.source_file).name,
+                peptide=result.base_sequence,
+                modification=result.modification_key or "",
+                charge=query.precursor_charge,
+            ))
+            task_counter[0] += 1
             return
 
-        # Generate mirror plot for each reference (same as main.py)
+        # Build mirror task for each reference
         for ref, ref_df in ref_data:
-            try:
-                # Compute comparison metrics
-                metrics = compute_all_metrics(query_df, ref_df)
-                metrics_text = format_metrics_text(metrics)
+            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+            ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
+            query_label = (f"Query: {Path(query.source_file).stem}"
+                           f"  (RT: {query_rt}, ID: {query.spectrum_id})")
+            ref_label = (f"Ref: {Path(ref.source_file).stem}"
+                         f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
 
-                # Build labels with RT and spectrum ID
-                query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-                ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
-                query_label = (f"Query: {Path(query.source_file).stem}"
-                               f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-                ref_label = (f"Ref: {Path(ref.source_file).stem}"
-                             f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
+            query_stem = Path(query.source_file).stem[:30]
+            ref_stem = Path(ref.source_file).stem[:30]
+            base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
+            safe_filename = sanitize_filename(base_filename)
 
-                # Create plot
-                fig = create_mirror_plot(
-                    upper_spectrum=query_df,
-                    lower_spectrum=ref_df,
-                    upper_label=query_label,
-                    lower_label=ref_label,
-                    title=plot_title,
-                    metrics_text=metrics_text,
-                    normalize=normalize,
-                )
-
-                results_summary["plots_generated"] += 1
-                plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
-
-                # Accumulate summary row
-                summary_rows.append({
-                    "query_file": Path(query.source_file).name,
-                    "ref_file": Path(ref.source_file).name,
-                    "peptide": result.base_sequence,
-                    "modification": result.modification_key or "",
-                    "charge": query.precursor_charge,
-                    **metrics,
-                })
-
-                # Generate filename (same as main.py)
-                query_stem = Path(query.source_file).stem[:30]
-                ref_stem = Path(ref.source_file).stem[:30]
-                base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
-                safe_filename = sanitize_filename(base_filename)
-
-                # Export PNG
-                if "png" in export_formats:
-                    variant_png_dir = png_dir / folder_name
-                    variant_png_dir.mkdir(exist_ok=True)
-                    png_path = variant_png_dir / f"{safe_filename}.png"
-                    fig.savefig(png_path, dpi=300, bbox_inches='tight', facecolor='white')
-                    results_summary["files_exported"]["png"].append(str(png_path))
-
-                # Export SVG
-                if "svg" in export_formats:
-                    variant_svg_dir = svg_dir / folder_name
-                    variant_svg_dir.mkdir(exist_ok=True)
-                    svg_path = variant_svg_dir / f"{safe_filename}.svg"
-                    fig.savefig(svg_path, format='svg', bbox_inches='tight', facecolor='white')
-                    results_summary["files_exported"]["svg"].append(str(svg_path))
-
-                plt.close(fig)
-                add_log(f"  ✓ Exported: {safe_filename}")
-
-            except Exception as e:
-                results_summary["errors"].append(f"Plot/export error: {e}")
-                errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
-                add_log(f"  ❌ Error: {e}")
+            comparison_tasks.append(ComparisonTask(
+                task_id=task_counter[0],
+                task_type="mirror",
+                query_df=query_df,
+                ref_df=ref_df,
+                query_label=query_label,
+                ref_label=ref_label,
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=str(png_dir),
+                svg_dir=str(svg_dir),
+                export_formats=export_formats,
+                figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
+                dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
+                normalize=normalize,
+                query_file=Path(query.source_file).name,
+                ref_file=Path(ref.source_file).name,
+                peptide=result.base_sequence,
+                modification=result.modification_key or "",
+                charge=query.precursor_charge,
+            ))
+            task_counter[0] += 1
 
     def on_file_start(filename: str, is_reference: bool):
         """Called when starting to process a file."""
@@ -1366,12 +1333,63 @@ def run_streaming_processing():
                 error_callback=on_error,
             )
 
-        # Finalize progress bars
+        # Finalize annotation progress
         query_progress_bar.progress(1.0)
-        total_time = time.time() - start_time
-        query_status.caption(f"✅ Done: {results_summary['query_spectra']} queries processed in {format_time(total_time)} total")
+        annotation_time = time.time() - start_time
+        query_status.caption(
+            f"✅ Annotated {results_summary['query_spectra']} queries, "
+            f"{len(comparison_tasks)} plots queued ({format_time(annotation_time)})"
+        )
+
+        # =================================================================
+        # Parallel plot generation
+        # =================================================================
+        if comparison_tasks:
+            workers = st.session_state.get(get_state_key('workers'), 4)
+            st.markdown(f"**Generating plots** ({len(comparison_tasks)} tasks, {workers} workers)")
+            plot_progress_bar = st.progress(0)
+            plot_status = st.empty()
+            plot_status.caption(f"Starting {len(comparison_tasks)} plot tasks...")
+
+            plot_start = time.time()
+
+            def on_plot_complete(result, completed, total):
+                if result.success:
+                    results_summary["plots_generated"] += 1
+                    if result.png_path:
+                        results_summary["files_exported"]["png"].append(result.png_path)
+                    if result.svg_path:
+                        results_summary["files_exported"]["svg"].append(result.svg_path)
+                    if result.summary_row:
+                        summary_rows.append(result.summary_row)
+                else:
+                    results_summary["errors"].append(f"Plot error: {result.error}")
+
+                frac = min(completed / total, 1.0)
+                plot_progress_bar.progress(frac)
+                elapsed = time.time() - plot_start
+                if frac > 0:
+                    remaining = (elapsed / frac) - elapsed
+                    plot_status.caption(
+                        f"Generated {completed}/{total} plots "
+                        f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)"
+                    )
+                plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
+                if results_summary["errors"]:
+                    errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
+
+            run_parallel_comparisons(
+                tasks=comparison_tasks,
+                workers=workers,
+                on_task_complete=on_plot_complete,
+            )
+
+            plot_progress_bar.progress(1.0)
+            plot_elapsed = time.time() - plot_start
+            plot_status.caption(f"✅ Generated {results_summary['plots_generated']} plots in {format_time(plot_elapsed)}")
 
         # Final metrics
+        total_time = time.time() - start_time
         plots_metric.caption(f"📊 {results_summary['plots_generated']} plots exported")
         if results_summary["errors"]:
             errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")

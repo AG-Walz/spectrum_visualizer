@@ -283,10 +283,9 @@ When you click **Process & Export**, MSpecViz executes the following pipeline:
 2. **Load references**: All reference spectra for each peptide variant are loaded first and cached in memory
 3. **Load queries**: Query spectra are loaded one at a time (streaming)
 4. **Annotate**: Each spectrum's peaks are matched against theoretical fragments using PyOpenMS's `SpectrumAlignment`
-5. **Mirror plot**: For each query, a mirror plot is created against each reference spectrum for the same peptide variant
-6. **Metrics**: Seven comparison metrics are computed (see [Spectrum Metrics](spectrum_metrics.md))
-7. **Export**: Plots are saved to disk. A comparison summary spreadsheet is written at the end
-8. **Cache save**: If this was a fresh mzML load, a Parquet cache is saved for next time
+5. **Parallel plot generation**: All annotated spectrum pairs are processed in parallel using multiple worker processes. Each worker independently computes metrics, creates a mirror plot (or single-spectrum plot), and saves it to disk. The number of workers is configurable (default: 10 in Streamlit, 4 in CLI).
+6. **Summary export**: A comparison summary spreadsheet (CSV + XLSX) is written with per-pair metrics
+7. **Cache save**: If this was a fresh mzML load, a Parquet cache is saved for next time
 
 ### Progress Tracking
 
@@ -479,6 +478,9 @@ All settings are in `settings.json`. Changes take effect on the next app restart
     "dpi": 300,                      // PNG resolution
     "figsize": [12, 8]               // Plot size (width, height inches)
   },
+  "performance": {
+    "workers": 4                     // Parallel worker processes for plot generation
+  },
   "cache": {
     "enabled": true,                 // Auto-caching on/off
     "subdirectory": ".mspecviz_cache" // Cache folder name
@@ -572,9 +574,12 @@ mzML files  ──→ load_spectra_streaming() ───────────
                     │
                     └── normalize / filter
                               │
-                    create_mirror_plot()  ──→  PNG/SVG export
+                    ──→  ComparisonTask objects (collected)
                               │
-                    compute_all_metrics()  ──→  CSV/XLSX summary
+                    run_parallel_comparisons()
+                              │
+                    ├── create_mirror_plot()  ──→  PNG/SVG export
+                    └── compute_all_metrics()  ──→  CSV/XLSX summary
 ```
 
 ### Key Backend Modules
@@ -586,6 +591,7 @@ mzML files  ──→ load_spectra_streaming() ───────────
 | `src/peak_annotation.py` | Theoretical fragment generation, peak matching |
 | `src/mirror_plot.py` | Matplotlib mirror plot and single spectrum plots |
 | `src/spectrum_metrics.py` | Seven comparison metrics |
+| `src/parallel_processor.py` | Parallel plot generation with ProcessPoolExecutor |
 | `src/parquet_cache.py` | Fingerprinting, cache lookup, cache save |
 | `src/path_utils.py` | Path disambiguation, deduplication |
 | `src/export.py` | Filename sanitization, directory creation |
@@ -596,7 +602,8 @@ MSpecViz uses **streaming processing** to minimize memory usage:
 
 - mzML files are opened with `OnDiscMSExperiment` (indexed access, no full load)
 - Reference spectra are loaded per-variant and held in memory
-- Query spectra are loaded one at a time, plotted, exported, then discarded
+- Query spectra are loaded one at a time, annotated, and collected as lightweight task objects
+- Plot generation runs in parallel worker processes; each worker creates one figure, saves it, and releases memory immediately
 - This enables processing large datasets (10+ GB mzML files) with modest RAM
 
 ### mzML Index Handling

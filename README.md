@@ -173,6 +173,9 @@ python cli.py --config examples/config_cli.yaml --verbose
 
 # Override settings on the command line
 python cli.py --config examples/config_cli.yaml --mz-tolerance 0.05 --formats png svg
+
+# Speed up large analyses with more parallel workers
+python cli.py --config examples/config_cli.yaml --workers 8
 ```
 
 ### CLI Configuration
@@ -198,6 +201,9 @@ python cli.py --config my_config.yaml --peptides all
 
 # Export both PNG and SVG
 python cli.py --config my_config.yaml --formats png svg
+
+# Speed up plot generation with more parallel workers (default: 4)
+python cli.py --config my_config.yaml --workers 8
 
 # Re-run from cached Parquet (instant)
 python cli.py --config my_config.yaml --parquet exports/previous_run/.mspecviz_cache/abc123.parquet
