@@ -1,0 +1,113 @@
+# =============================================================================
+# MSpecViz CLI — Example Configuration File
+# =============================================================================
+#
+# This file demonstrates every available option for the CLI pipeline.
+# Copy it, adjust the paths, and run:
+#
+#   python cli.py --config examples/config_cli.yaml
+#   python cli.py --config examples/config_cli.yaml --verbose
+#   python cli.py --config examples/config_cli.yaml --mz-tolerance 0.05 --quiet
+#
+# Configuration priority (highest wins):
+#   1. CLI arguments (--mz-tolerance, --peptides, etc.)
+#   2. This YAML file
+#   3. settings.json defaults
+#
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Input files
+# -----------------------------------------------------------------------------
+# Glob patterns are supported — the CLI expands them before processing.
+# Use ** for recursive matching within subdirectories.
+input:
+  idxml_files:
+    - /path/to/your/data/*.idXML             # all idXML files in a directory
+    # - /path/to/more/data/**/*.idXML        # recursive: all subdirectories
+
+  mzml_files:
+    - /path/to/your/data/*.mzML              # all mzML files in a directory
+    # - /path/to/more/data/**/*.mzML         # recursive: all subdirectories
+
+  # Optional: pre-converted Parquet file. If set, the pipeline skips
+  # peptide search and mzML loading entirely — loads instantly.
+  # parquet_file: /path/to/exported/spectra.parquet
+
+# -----------------------------------------------------------------------------
+# Target peptides
+# -----------------------------------------------------------------------------
+# Three input modes:
+#   1. File path   — a .txt file with one peptide per line (recommended)
+#   2. "all"       — extract every unique peptide found in the idXML files
+#   3. Inline list — e.g. [LGGNEQVTR, GAGSSEPVTGLDAK] (for quick tests)
+#
+# Modifications like (Oxidation) are automatically stripped to base sequences.
+# Duplicates are removed.
+peptides: examples/peptides.txt
+# peptides: all
+# peptides: [LGGNEQVTR, GAGSSEPVTGLDAK, ATYSVGMQK]
+
+# -----------------------------------------------------------------------------
+# Reference identification
+# -----------------------------------------------------------------------------
+# Spectra from mzML files whose filename contains this substring (case-
+# insensitive) are treated as reference spectra. All others become queries.
+# Mirror plots pair each query with its matching reference(s).
+#
+# Leave empty or omit entirely for single-spectrum mode (no mirroring).
+reference:
+  substring: "Synpep"
+
+# -----------------------------------------------------------------------------
+# Annotation settings
+# -----------------------------------------------------------------------------
+annotation:
+  # Ion types to annotate. Available: a, b, c, x, y, z, precursor, immonium
+  ion_types: [b, y]
+
+  # m/z tolerance for matching experimental peaks to theoretical fragments (Da)
+  mz_tolerance: 0.02
+
+  # Include neutral-loss ions (H2O, NH3)
+  add_losses: false
+
+  # Include the first prefix ion (b1 / a1 / c1)
+  add_first_prefix_ion: true
+
+  # Remove peaks near the precursor m/z before annotation
+  remove_precursor_peaks: false
+
+  # "Relative" normalizes intensities to 0-1; "Raw" keeps original values
+  intensity_mode: Relative
+
+# -----------------------------------------------------------------------------
+# Export settings
+# -----------------------------------------------------------------------------
+export:
+  # Output directory — a timestamped subfolder is created inside it
+  directory: ./exports
+
+  # Project name used in the export subfolder name
+  project_name: my_analysis
+
+  # Image formats: [png], [svg], or [png, svg]
+  formats: [png]
+
+  # Resolution for PNG export
+  dpi: 300
+
+  # Figure dimensions in inches [width, height]
+  figsize: [12, 8]
+
+  # Generate plots for query spectra that have no matching reference
+  plot_unpaired: false
+
+# -----------------------------------------------------------------------------
+# Parquet auto-caching
+# -----------------------------------------------------------------------------
+# After the first run, loaded spectra are cached as a Parquet file.
+# Subsequent runs with the same inputs load from cache automatically.
+cache:
+  enabled: true
+  subdirectory: .mspecviz_cache   # relative to the export directory
