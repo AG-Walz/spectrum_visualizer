@@ -402,7 +402,8 @@ def preview_peptides_in_idxmls():
         return
 
     # Get sample of peptides from files
-    sample_peptides = get_unique_peptides_from_idxmls(idxmls, limit=50)
+    workers = st.session_state.get(get_state_key('workers'), 4)
+    sample_peptides = get_unique_peptides_from_idxmls(idxmls, limit=50, workers=workers)
 
     if sample_peptides:
         st.info(f"Sample peptides from idXML files (first 50):")
@@ -740,7 +741,7 @@ def _show_cache_status(export_dir: str, parquet_file: str):
     if not idxmls or not mzmls or not peptides:
         return
 
-    from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
+    from src.parquet_cache import compute_cache_fingerprint, find_existing_cache, is_cache_complete
     fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides, ref_substring)
     cache_dir = str(Path(export_dir) / cache_subdir)
     cached = find_existing_cache(cache_dir, fingerprint)
@@ -748,7 +749,15 @@ def _show_cache_status(export_dir: str, parquet_file: str):
     if cached:
         st.success(f"Parquet cache found — loading will be instant ({Path(cached).name})")
     else:
-        st.caption("No cache yet. First run creates a Parquet cache for instant loading next time.")
+        # Check for partial cache
+        partial = find_existing_cache(cache_dir, fingerprint, allow_partial=True)
+        if partial:
+            from src.parquet_cache import get_parquet_row_counts
+            refs, queries = get_parquet_row_counts(partial)
+            st.info(f"Partial cache found ({refs} refs, {queries} queries). "
+                    f"Resume will load remaining spectra from mzML.")
+        else:
+            st.caption("No cache yet. First run creates a Parquet cache for instant loading next time.")
 
 
 def render_analysis():
@@ -844,11 +853,32 @@ def render_analysis():
 
 
 def run_peptide_search(idxmls: list, peptides: list):
-    """Execute peptide search."""
+    """Execute peptide search (with checkpoint resume support)."""
     from src.peptide_search import search_peptides_in_idxmls
 
     # Get selected mzML paths for disambiguation
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+
+    # Check for search checkpoint before running the full search
+    settings = _get_settings()
+    cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
+    if cache_enabled and mzmls:
+        cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
+        export_dir_ck = st.session_state.get(get_state_key('export_dir'), './exports')
+        ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
+        peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
+        peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
+
+        from src.parquet_cache import compute_cache_fingerprint, load_search_checkpoint
+        ck_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_ck, ref_sub)
+        ck_cache_dir = str(Path(export_dir_ck) / cache_subdir)
+        checkpoint_results = load_search_checkpoint(ck_cache_dir, ck_fingerprint)
+        if checkpoint_results:
+            total_psms = sum(len(vg.matches) for vg in checkpoint_results.values())
+            st.session_state[get_state_key('search_results')] = checkpoint_results
+            st.success(f"Search checkpoint loaded: {total_psms} PSMs across "
+                       f"{len(checkpoint_results)} variants (skipped idXML search)")
+            return
 
     error_messages = []
 
@@ -878,11 +908,13 @@ def run_peptide_search(idxmls: list, peptides: list):
             error_messages.append(error_msg)
 
         try:
+            workers = st.session_state.get(get_state_key('workers'), 4)
             results = search_peptides_in_idxmls(
                 idxmls, peptides,
                 mzml_paths=mzmls,
                 progress_callback=progress_callback,
-                error_callback=error_callback
+                error_callback=error_callback,
+                workers=workers,
             )
 
             st.session_state[get_state_key('search_results')] = results
@@ -890,6 +922,23 @@ def run_peptide_search(idxmls: list, peptides: list):
 
             if results:
                 total_matches = sum(len(vg.matches) for vg in results.values())
+
+                # Save search checkpoint immediately
+                settings = _get_settings()
+                cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
+                if cache_enabled:
+                    cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
+                    export_dir_ck = st.session_state.get(get_state_key('export_dir'), './exports')
+                    ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
+                    peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
+                    peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
+
+                    from src.parquet_cache import compute_cache_fingerprint, save_search_checkpoint
+                    ck_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_ck, ref_sub)
+                    ck_cache_dir = str(Path(export_dir_ck) / cache_subdir)
+                    ck_saved = save_search_checkpoint(ck_cache_dir, ck_fingerprint, results)
+                    if ck_saved:
+                        st.caption(f"Search checkpoint saved: {Path(ck_saved).name}")
 
                 # Count resolved vs unresolved mzML mappings
                 resolved = sum(1 for vg in results.values() for m in vg.matches if m.mzml_filename)
@@ -960,6 +1009,8 @@ def run_streaming_processing():
     cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
     cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
 
+    partial_cache_path = None
+
     if not parquet_file and cache_enabled:
         # Only auto-detect when user hasn't manually specified a Parquet file
         idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
@@ -970,12 +1021,22 @@ def run_streaming_processing():
             from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
             cache_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_list, ref_substring)
             cache_dir = str(Path(export_dir) / cache_subdir)
-            cached_path = find_existing_cache(cache_dir, cache_fingerprint)
 
+            # Check for complete cache first
+            cached_path = find_existing_cache(cache_dir, cache_fingerprint)
             if cached_path:
                 parquet_file = cached_path
                 loaded_from_cache = True
                 st.info(f"Cache found! Loading from: {Path(cached_path).name}")
+            else:
+                # Check for partial (incomplete) cache
+                partial_path = find_existing_cache(cache_dir, cache_fingerprint, allow_partial=True)
+                if partial_path:
+                    from src.parquet_cache import get_parquet_row_counts
+                    p_refs, p_queries = get_parquet_row_counts(partial_path)
+                    partial_cache_path = partial_path
+                    st.info(f"Partial cache found ({p_refs} refs, {p_queries} queries). "
+                            f"Resuming — loading remaining spectra from mzML.")
 
     use_parquet = bool(parquet_file)
 
@@ -994,8 +1055,37 @@ def run_streaming_processing():
         mzml_paths = None
         total_psms = 0  # Will be determined from Parquet
 
-    # Create export directory structure (same as main.py)
-    root_dir, png_dir, svg_dir = create_export_directory(export_dir, project_name)
+    # Build run settings dict (everything that affects output)
+    from src.export import find_or_create_export_directory
+
+    dpi = get_settings_value(_get_settings(), "export", "dpi", default=300)
+    figsize = list(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8]))
+
+    idxmls_for_settings = st.session_state.get(get_state_key('selected_idxmls'), [])
+    peptide_text_s = st.session_state.get(get_state_key('target_peptides'), '')
+    peptides_for_settings = sorted(p.strip().upper() for p in peptide_text_s.split('\n') if p.strip())
+
+    run_settings = {
+        "idxml_files": sorted(idxmls_for_settings),
+        "mzml_files": sorted(mzmls),
+        "peptides": peptides_for_settings,
+        "reference_substring": ref_substring,
+        "ion_types": sorted(ion_types),
+        "mz_tolerance": mz_tolerance,
+        "add_losses": add_losses,
+        "add_first_prefix_ion": add_first_prefix_ion,
+        "remove_precursor_peaks": remove_precursor_peaks,
+        "intensity_mode": intensity_mode,
+        "export_formats": sorted(export_formats),
+        "dpi": dpi,
+        "figsize": figsize,
+        "plot_unpaired": plot_unpaired,
+    }
+
+    # Numbered folder: MSpecViz_analysis_001/, _002/, etc. Reuses matching folder.
+    root_dir, png_dir, svg_dir = find_or_create_export_directory(
+        export_dir, project_name, run_settings
+    )
 
     # Count expected reference vs query PSMs
     if use_parquet:
@@ -1071,8 +1161,60 @@ def run_streaming_processing():
     # Accumulate per-comparison rows for summary spreadsheet
     summary_rows: List[dict] = []
 
-    # Accumulate query spectra for auto-cache save (only when loading from mzML)
+    # Accumulate spectra for auto-cache save (only when loading from mzML)
     _cached_queries: List[Tuple[str, object]] = []
+    _cached_references: Dict[str, list] = {}
+
+    # Incremental cache save state
+    _INCREMENTAL_SAVE_INTERVAL = 500
+    _last_incremental_save = [0]
+    _cache_complete = [False]
+
+    def _try_save_cache(stage: str, partial: bool = False):
+        """Save Parquet cache. Supports incremental partial saves."""
+        if _cache_complete[0]:
+            return
+        if loaded_from_cache or st.session_state.get(get_state_key('parquet_file')):
+            return
+        if not cache_enabled or not cache_fingerprint:
+            return
+        has_refs = _cached_references and any(_cached_references.values())
+        if not has_refs and not _cached_queries:
+            return
+        try:
+            from src.parquet_cache import save_spectra_to_parquet
+            c_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
+
+            idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
+            peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
+            peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+
+            cache_metadata = {
+                "fingerprint": cache_fingerprint,
+                "export_root": str(root_dir),
+                "idxml_files": idxmls_for_meta,
+                "mzml_files": mzmls,
+                "target_peptides": peptides_for_meta,
+                "reference_substring": ref_substring,
+            }
+
+            saved = save_spectra_to_parquet(
+                reference_spectra=_cached_references,
+                query_spectra=_cached_queries,
+                output_path=c_path,
+                cache_metadata=cache_metadata,
+                partial=partial,
+            )
+            if saved:
+                if not partial:
+                    _cache_complete[0] = True
+                tag = "partial" if partial else "complete"
+                add_log(f"Cache saved [{tag}] ({stage}): {Path(saved).name}")
+                if not partial:
+                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
+        except Exception as cache_err:
+            add_log(f"Warning: cache save failed ({stage}): {cache_err}")
+            logger.warning(f"Cache save failed ({stage}): {cache_err}")
 
     # Task collection for parallel processing
     comparison_tasks: List[ComparisonTask] = []
@@ -1162,9 +1304,15 @@ def run_streaming_processing():
         query = result.query_spectrum
         refs = result.reference_spectra
 
-        # Accumulate for auto-cache save (only when loading from mzML, not cache)
+        # Accumulate references (once per variant) and queries for cache
         if not use_parquet:
+            if result.variant_key not in _cached_references:
+                _cached_references[result.variant_key] = list(refs)
             _cached_queries.append((result.variant_key, query))
+            n_queries = len(_cached_queries)
+            if (n_queries - _last_incremental_save[0]) >= _INCREMENTAL_SAVE_INTERVAL:
+                _last_incremental_save[0] = n_queries
+                _try_save_cache(f"incremental {n_queries}", partial=True)
 
         # Mark refs as done if not already (first query means refs are done)
         if not refs_done:
@@ -1310,19 +1458,44 @@ def run_streaming_processing():
     add_log("-" * 50)
 
     try:
+        streaming_workers = st.session_state.get(get_state_key('workers'), 4)
+
         if use_parquet:
             # FAST PATH: Load from Parquet
             add_log(f"Loading from Parquet: {parquet_file}")
-            reference_spectra = load_spectra_from_parquet(
+            _parquet_refs = load_spectra_from_parquet(
                 parquet_path=parquet_file,
                 reference_substring=ref_substring,
                 on_reference_loaded=on_reference_loaded,
                 on_query_ready=on_query_ready,
                 error_callback=on_error,
             )
-        else:
-            # STANDARD PATH: Load from mzML
-            reference_spectra = load_spectra_streaming(
+            _cached_references.update(_parquet_refs)
+        elif partial_cache_path:
+            # RESUME PATH: Load partial cache, then stream remaining from mzML
+            add_log(f"Resuming from partial cache: {partial_cache_path}")
+
+            # Step 1: Load partial Parquet through callbacks
+            _parquet_refs = load_spectra_from_parquet(
+                parquet_path=partial_cache_path,
+                reference_substring=ref_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                error_callback=on_error,
+            )
+            _cached_references.update(_parquet_refs)
+
+            cached_refs = results_summary["reference_spectra"]
+            cached_queries = results_summary["query_spectra"]
+            add_log(f"Partial cache loaded: {cached_refs} refs, {cached_queries} queries")
+
+            # Step 2: Build skip set from partial cache
+            from src.parquet_cache import get_cached_spectrum_ids
+            skip_ids = get_cached_spectrum_ids(partial_cache_path)
+            add_log(f"Skip set: {len(skip_ids)} spectra already cached")
+
+            # Step 3: Stream remaining spectra from mzML
+            _streaming_refs = load_spectra_streaming(
                 variant_groups=variant_groups,
                 mzml_paths=mzml_paths,
                 reference_substring=ref_substring,
@@ -1331,6 +1504,26 @@ def run_streaming_processing():
                 on_file_start=on_file_start,
                 on_file_complete=on_file_complete,
                 error_callback=on_error,
+                workers=streaming_workers,
+                skip_ids=skip_ids,
+            )
+            for vk, specs in _streaming_refs.items():
+                if specs:
+                    if vk not in _cached_references:
+                        _cached_references[vk] = []
+                    _cached_references[vk].extend(specs)
+        else:
+            # STANDARD PATH: Load from mzML
+            _streaming_refs = load_spectra_streaming(
+                variant_groups=variant_groups,
+                mzml_paths=mzml_paths,
+                reference_substring=ref_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                on_file_start=on_file_start,
+                on_file_complete=on_file_complete,
+                error_callback=on_error,
+                workers=streaming_workers,
             )
 
         # Finalize annotation progress
@@ -1341,63 +1534,49 @@ def run_streaming_processing():
             f"{len(comparison_tasks)} plots queued ({format_time(annotation_time)})"
         )
 
-        # --- Cache save helper (called at multiple pipeline stages) ---
-        _cache_saved = [False]
-
-        def _try_save_cache(stage: str):
-            """Save Parquet cache if conditions are met. Skips if already saved."""
-            if _cache_saved[0]:
-                return
-            if loaded_from_cache or st.session_state.get(get_state_key('parquet_file')):
-                return
-            if not cache_enabled or not cache_fingerprint or not _cached_queries:
-                return
-            try:
-                from src.parquet_cache import save_spectra_to_parquet
-                c_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
-
-                idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
-                peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
-                peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
-
-                cache_metadata = {
-                    "fingerprint": cache_fingerprint,
-                    "idxml_files": idxmls_for_meta,
-                    "mzml_files": mzmls,
-                    "target_peptides": peptides_for_meta,
-                    "reference_substring": ref_substring,
-                }
-
-                saved = save_spectra_to_parquet(
-                    reference_spectra=reference_spectra,
-                    query_spectra=_cached_queries,
-                    output_path=c_path,
-                    cache_metadata=cache_metadata,
-                )
-                if saved:
-                    _cache_saved[0] = True
-                    add_log(f"Cache saved ({stage}): {Path(saved).name}")
-                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
-            except Exception as cache_err:
-                add_log(f"Warning: cache save failed ({stage}): {cache_err}")
-                logger.warning(f"Cache save failed ({stage}): {cache_err}")
-
-        # Save point 1: after streaming, before plots
-        _try_save_cache("after loading")
+        # Save point: after streaming complete — final complete cache
+        _try_save_cache("after loading", partial=False)
 
         # =================================================================
-        # Parallel plot generation
+        # Parallel plot generation (with optional tmpfs staging)
         # =================================================================
         if comparison_tasks:
+            from src.tmpfs_staging import TmpfsStaging, StagingConfig
+
+            # Check for existing plot files (resumable runs)
+            # Uses final disk paths — before any tmpfs rewriting
+            skipped = 0
+            for task in comparison_tasks:
+                outputs_exist = True
+                if "png" in task.export_formats and task.png_dir:
+                    if not (Path(task.png_dir) / task.folder_name / f"{task.safe_filename}.png").exists():
+                        outputs_exist = False
+                if "svg" in task.export_formats and task.svg_dir:
+                    if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
+                        outputs_exist = False
+                if outputs_exist:
+                    task.skip_plot = True
+                    skipped += 1
+
+            if skipped > 0:
+                add_log(f"Skipping {skipped}/{len(comparison_tasks)} plots (already on disk)")
+
             workers = st.session_state.get(get_state_key('workers'), 4)
-            st.markdown(f"**Generating plots** ({len(comparison_tasks)} tasks, {workers} workers)")
+            pending = len(comparison_tasks) - skipped
+            st.markdown(f"**Generating plots** ({pending} new, {skipped} cached, {workers} workers)")
             plot_progress_bar = st.progress(0)
             plot_status = st.empty()
             plot_status.caption(f"Starting {len(comparison_tasks)} plot tasks...")
 
             plot_start = time.time()
 
-            def on_plot_complete(result, completed, total):
+            # Global counter for progress across chunks
+            _global_completed = [0]
+            total_tasks = len(comparison_tasks)
+
+            def on_plot_complete_chunked(result, completed, total):
+                _global_completed[0] += 1
+                gc = _global_completed[0]
                 if result.success:
                     results_summary["plots_generated"] += 1
                     if result.png_path:
@@ -1409,24 +1588,36 @@ def run_streaming_processing():
                 else:
                     results_summary["errors"].append(f"Plot error: {result.error}")
 
-                frac = min(completed / total, 1.0)
+                frac = min(gc / total_tasks, 1.0)
                 plot_progress_bar.progress(frac)
                 elapsed = time.time() - plot_start
                 if frac > 0:
                     remaining = (elapsed / frac) - elapsed
                     plot_status.caption(
-                        f"Generated {completed}/{total} plots "
+                        f"Generated {gc}/{total_tasks} plots "
                         f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)"
                     )
                 plots_metric.caption(f"📊 {results_summary['plots_generated']} plots generated")
                 if results_summary["errors"]:
                     errors_metric.caption(f"⚠️ {len(results_summary['errors'])} errors")
 
-            run_parallel_comparisons(
-                tasks=comparison_tasks,
-                workers=workers,
-                on_task_complete=on_plot_complete,
+            # Read tmpfs settings
+            settings = _get_settings()
+            staging_config = StagingConfig(
+                enabled=get_settings_value(settings, "performance", "tmpfs_staging", default=True),
+                tmpfs_base=get_settings_value(settings, "performance", "tmpfs_path", default="/dev/shm"),
+                ram_fraction=get_settings_value(settings, "performance", "tmpfs_ram_fraction", default=0.40),
             )
+
+            with TmpfsStaging(str(png_dir), str(svg_dir), export_formats,
+                              staging_config, log_fn=add_log) as staging:
+                for chunk in staging.iter_chunks(comparison_tasks):
+                    run_parallel_comparisons(
+                        tasks=chunk,
+                        workers=workers,
+                        on_task_complete=on_plot_complete_chunked,
+                    )
+                    staging.flush()
 
             plot_progress_bar.progress(1.0)
             plot_elapsed = time.time() - plot_start

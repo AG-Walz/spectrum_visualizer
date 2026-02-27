@@ -31,7 +31,10 @@
     "cache_size_mb": 500,
     "max_file_size_gb": 3,
     "chunk_size": 5000,
-    "workers": 4
+    "workers": 4,
+    "tmpfs_staging": true,
+    "tmpfs_path": "/dev/shm",
+    "tmpfs_ram_fraction": 0.40
   },
   "export": {
     "default_directory": "./exports",

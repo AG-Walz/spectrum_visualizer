@@ -76,6 +76,11 @@ class CLIConfig:
     # Parallelism
     workers: int = 4
 
+    # tmpfs staging
+    tmpfs_staging: bool = True
+    tmpfs_path: str = "/dev/shm"
+    tmpfs_ram_fraction: float = 0.40
+
     # Verbosity
     verbose: bool = False
     quiet: bool = False
@@ -205,6 +210,9 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cache_enabled=_get_nested(settings, "cache", "enabled", default=True),
         cache_subdirectory=_get_nested(settings, "cache", "subdirectory", default=".mspecviz_cache"),
         workers=_get_nested(settings, "performance", "workers", default=4),
+        tmpfs_staging=_get_nested(settings, "performance", "tmpfs_staging", default=True),
+        tmpfs_path=_get_nested(settings, "performance", "tmpfs_path", default="/dev/shm"),
+        tmpfs_ram_fraction=_get_nested(settings, "performance", "tmpfs_ram_fraction", default=0.40),
     )
 
     # Layer 2: YAML config file
@@ -264,6 +272,12 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
     perf = yaml_cfg.get("performance", {})
     if "workers" in perf:
         cfg.workers = int(perf["workers"])
+    if "tmpfs_staging" in perf:
+        cfg.tmpfs_staging = bool(perf["tmpfs_staging"])
+    if "tmpfs_path" in perf:
+        cfg.tmpfs_path = str(perf["tmpfs_path"])
+    if "tmpfs_ram_fraction" in perf:
+        cfg.tmpfs_ram_fraction = float(perf["tmpfs_ram_fraction"])
 
     # Layer 3: CLI argument overrides
     if cli_args.idxml:
@@ -303,6 +317,8 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.cache_enabled = False
     if cli_args.workers is not None:
         cfg.workers = cli_args.workers
+    if cli_args.no_tmpfs:
+        cfg.tmpfs_staging = False
     if cli_args.verbose:
         cfg.verbose = True
     if cli_args.quiet:
@@ -436,7 +452,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
         if not cfg.peptides:
             from src.peptide_search import get_unique_peptides_from_idxmls
             log_info("Extracting all peptides from idXML files...", cfg.quiet)
-            cfg.peptides = get_unique_peptides_from_idxmls(cfg.idxml_files, limit=999999)
+            cfg.peptides = get_unique_peptides_from_idxmls(cfg.idxml_files, limit=999999, workers=cfg.workers)
             if not cfg.peptides:
                 log_error("No peptides found in idXML files")
                 return 1
@@ -477,6 +493,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
     cache_dir = None
     cache_fingerprint = None
 
+    partial_cache_path = None  # set if a partial (incomplete) cache is found
+
     if not use_parquet and cfg.cache_enabled:
         from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
 
@@ -484,13 +502,23 @@ def run_pipeline(cfg: CLIConfig) -> int:
             cfg.idxml_files, cfg.mzml_files, cfg.peptides, cfg.reference_substring
         )
         cache_dir = str(Path(cfg.export_dir) / cfg.cache_subdirectory)
-        cached_path = find_existing_cache(cache_dir, cache_fingerprint)
 
+        # Check for complete cache first
+        cached_path = find_existing_cache(cache_dir, cache_fingerprint)
         if cached_path:
             cfg.parquet_file = cached_path
             use_parquet = True
             loaded_from_cache = True
             log_info(f"Cache hit! Loading from: {Path(cached_path).name}", cfg.quiet)
+        else:
+            # Check for partial (incomplete) cache
+            partial_path = find_existing_cache(cache_dir, cache_fingerprint, allow_partial=True)
+            if partial_path:
+                from src.parquet_cache import get_parquet_row_counts
+                p_refs, p_queries = get_parquet_row_counts(partial_path)
+                partial_cache_path = partial_path
+                log_info(f"Partial cache found: {p_refs} refs, {p_queries} queries. "
+                         f"Will resume loading remaining spectra.", cfg.quiet)
 
     # =========================================================================
     # Phase 2: Peptide search (if not Parquet)
@@ -498,41 +526,62 @@ def run_pipeline(cfg: CLIConfig) -> int:
     search_results = None
 
     if not use_parquet:
-        from src.peptide_search import search_peptides_in_idxmls
+        # Check for search checkpoint first
+        search_checkpoint_loaded = False
+        if cfg.cache_enabled and cache_fingerprint:
+            from src.parquet_cache import load_search_checkpoint
+            checkpoint_results = load_search_checkpoint(cache_dir, cache_fingerprint)
+            if checkpoint_results:
+                search_results = checkpoint_results
+                search_checkpoint_loaded = True
+                total_psms = sum(len(vg.matches) for vg in search_results.values())
+                log_info(f"Search checkpoint loaded: {total_psms} PSMs across "
+                         f"{len(search_results)} variants (skipping idXML search)", cfg.quiet)
 
-        log_info("Searching peptides in idXML files...", cfg.quiet)
-        search_errors = []
-        search_progress_bar = TerminalProgress(
-            len(cfg.idxml_files), "Search", quiet=cfg.quiet
-        )
+        if not search_checkpoint_loaded:
+            from src.peptide_search import search_peptides_in_idxmls
 
-        def search_progress(current, total, message):
-            search_progress_bar.update(current)
+            log_info("Searching peptides in idXML files...", cfg.quiet)
+            search_errors = []
+            search_progress_bar = TerminalProgress(
+                len(cfg.idxml_files), "Search", quiet=cfg.quiet
+            )
 
-        def search_error(msg):
-            search_errors.append(msg)
+            def search_progress(current, total, message):
+                search_progress_bar.update(current)
 
-        search_results = search_peptides_in_idxmls(
-            cfg.idxml_files,
-            cfg.peptides,
-            mzml_paths=cfg.mzml_files,
-            progress_callback=search_progress,
-            error_callback=search_error,
-        )
-        search_progress_bar.finish("Search complete")
+            def search_error(msg):
+                search_errors.append(msg)
 
-        if not search_results:
-            log_error("No peptide matches found in idXML files")
-            return 1
+            search_results = search_peptides_in_idxmls(
+                cfg.idxml_files,
+                cfg.peptides,
+                mzml_paths=cfg.mzml_files,
+                progress_callback=search_progress,
+                error_callback=search_error,
+                workers=cfg.workers,
+            )
+            search_progress_bar.finish("Search complete")
 
-        total_psms = sum(len(vg.matches) for vg in search_results.values())
-        log_info(f"Found {total_psms} PSMs across {len(search_results)} peptide variants", cfg.quiet)
+            if not search_results:
+                log_error("No peptide matches found in idXML files")
+                return 1
 
-        if search_errors and cfg.verbose:
-            for err in search_errors[:5]:
-                log_debug(err, True)
-            if len(search_errors) > 5:
-                log_debug(f"... and {len(search_errors) - 5} more warnings", True)
+            total_psms = sum(len(vg.matches) for vg in search_results.values())
+            log_info(f"Found {total_psms} PSMs across {len(search_results)} peptide variants", cfg.quiet)
+
+            if search_errors and cfg.verbose:
+                for err in search_errors[:5]:
+                    log_debug(err, True)
+                if len(search_errors) > 5:
+                    log_debug(f"... and {len(search_errors) - 5} more warnings", True)
+
+            # Save search checkpoint immediately
+            if cfg.cache_enabled and cache_fingerprint:
+                from src.parquet_cache import save_search_checkpoint
+                saved = save_search_checkpoint(cache_dir, cache_fingerprint, search_results)
+                if saved:
+                    log_info(f"Search checkpoint saved: {Path(saved).name}", cfg.quiet)
 
     # =========================================================================
     # Phase 3: Prepare for processing
@@ -546,8 +595,30 @@ def run_pipeline(cfg: CLIConfig) -> int:
         mzml_paths = None
         total_psms = 0
 
-    # Create export directory
-    root_dir, png_dir, svg_dir = create_export_directory(cfg.export_dir, cfg.project_name)
+    # Build run settings dict (everything that affects output)
+    from src.export import find_or_create_export_directory
+
+    run_settings = {
+        "idxml_files": sorted(cfg.idxml_files),
+        "mzml_files": sorted(cfg.mzml_files),
+        "peptides": sorted(p.upper() for p in cfg.peptides),
+        "reference_substring": cfg.reference_substring,
+        "ion_types": sorted(cfg.ion_types),
+        "mz_tolerance": cfg.mz_tolerance,
+        "add_losses": cfg.add_losses,
+        "add_first_prefix_ion": cfg.add_first_prefix_ion,
+        "remove_precursor_peaks": cfg.remove_precursor_peaks,
+        "intensity_mode": cfg.intensity_mode,
+        "export_formats": sorted(cfg.export_formats),
+        "dpi": cfg.dpi,
+        "figsize": list(cfg.figsize),
+        "plot_unpaired": cfg.plot_unpaired,
+    }
+
+    # Numbered folder: ProCa_2_run_001/, _002/, etc. Reuses matching folder.
+    root_dir, png_dir, svg_dir = find_or_create_export_directory(
+        cfg.export_dir, cfg.project_name, run_settings
+    )
     log_info(f"Export directory: {root_dir}", cfg.quiet)
 
     # Count expected refs/queries for progress
@@ -600,6 +671,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
     refs_done = [expected_refs == 0]  # mutable for closure
     summary_rows: List[dict] = []
     _cached_queries: List[Tuple[str, object]] = []
+    _cached_references: Dict[str, list] = {}  # accumulated during streaming for cache saves
 
     # Task collection for parallel processing
     from src.parallel_processor import ComparisonTask
@@ -640,7 +712,62 @@ def run_pipeline(cfg: CLIConfig) -> int:
             results_summary["errors"].append(f"Annotation error ({spec_type} {spectrum.peptidoform}): {e}")
             return None
 
+    # --- Cache save helper (supports partial + complete saves) ---
+    _cache_complete = [False]  # True once a complete (non-partial) save succeeds
+
+    def _try_save_cache(stage: str, partial: bool = False):
+        """Save Parquet cache. Overwrites previous saves with updated data.
+
+        Args:
+            stage: Label for logging (e.g. "after refs", "incremental 500")
+            partial: If True, marks cache as incomplete (more queries expected)
+        """
+        if _cache_complete[0]:
+            return  # Complete cache already saved, no need to overwrite
+        if (loaded_from_cache
+                or use_parquet
+                or not cfg.cache_enabled
+                or not cache_fingerprint):
+            return
+        # For partial saves, need at least references; for complete, need queries
+        has_refs = _cached_references and any(_cached_references.values())
+        if not has_refs and not _cached_queries:
+            return
+        try:
+            from src.parquet_cache import save_spectra_to_parquet
+
+            cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
+            cache_metadata = {
+                "fingerprint": cache_fingerprint,
+                "export_root": str(root_dir),
+                "idxml_files": cfg.idxml_files,
+                "mzml_files": cfg.mzml_files,
+                "target_peptides": cfg.peptides,
+                "reference_substring": cfg.reference_substring,
+            }
+            saved = save_spectra_to_parquet(
+                reference_spectra=_cached_references,
+                query_spectra=_cached_queries,
+                output_path=cache_path,
+                cache_metadata=cache_metadata,
+                partial=partial,
+            )
+            if saved:
+                if not partial:
+                    _cache_complete[0] = True
+                n_refs = sum(len(v) for v in _cached_references.values())
+                tag = "partial" if partial else "complete"
+                log_info(f"Cache saved [{tag}] ({stage}): {Path(saved).name} "
+                         f"({len(_cached_queries)} queries, {n_refs} refs)",
+                         cfg.quiet)
+        except Exception as cache_err:
+            log_info(f"Warning: cache save failed ({stage}): {cache_err}", cfg.quiet)
+
     # --- Callbacks ---
+    # Incremental cache save interval
+    _INCREMENTAL_SAVE_INTERVAL = 500
+    _last_incremental_save = [0]  # query count at last incremental save
+
     def on_reference_loaded(variant_key: str, count: int):
         results_summary["reference_spectra"] += count
         if ref_progress:
@@ -657,9 +784,17 @@ def run_pipeline(cfg: CLIConfig) -> int:
         query = result.query_spectrum
         refs = result.reference_spectra
 
-        # Accumulate for cache
+        # Accumulate references into cache (once per variant)
+        if not use_parquet and result.variant_key not in _cached_references:
+            _cached_references[result.variant_key] = list(refs)
+
+        # Accumulate queries for cache + incremental save every N queries
         if not use_parquet:
             _cached_queries.append((result.variant_key, query))
+            n_queries = len(_cached_queries)
+            if (n_queries - _last_incremental_save[0]) >= _INCREMENTAL_SAVE_INTERVAL:
+                _last_incremental_save[0] = n_queries
+                _try_save_cache(f"incremental {n_queries}", partial=True)
 
         # Mark refs done on first query
         if not refs_done[0]:
@@ -784,15 +919,39 @@ def run_pipeline(cfg: CLIConfig) -> int:
     try:
         if use_parquet:
             log_info(f"Loading from Parquet: {Path(cfg.parquet_file).name}", cfg.quiet)
-            reference_spectra = load_spectra_from_parquet(
+            _parquet_refs = load_spectra_from_parquet(
                 parquet_path=cfg.parquet_file,
                 reference_substring=cfg.reference_substring,
                 on_reference_loaded=on_reference_loaded,
                 on_query_ready=on_query_ready,
                 error_callback=on_error,
             )
-        else:
-            reference_spectra = load_spectra_streaming(
+            _cached_references.update(_parquet_refs)
+        elif partial_cache_path:
+            # Resume from partial cache: load cached data, then stream remaining
+            log_info(f"Resuming from partial cache: {Path(partial_cache_path).name}", cfg.quiet)
+
+            # Step 1: Load partial Parquet through callbacks (populates tasks/annotations)
+            _parquet_refs = load_spectra_from_parquet(
+                parquet_path=partial_cache_path,
+                reference_substring=cfg.reference_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                error_callback=on_error,
+            )
+            _cached_references.update(_parquet_refs)
+
+            cached_refs = results_summary["reference_spectra"]
+            cached_queries = results_summary["query_spectra"]
+            log_info(f"Partial cache loaded: {cached_refs} refs, {cached_queries} queries", cfg.quiet)
+
+            # Step 2: Build skip set from partial cache
+            from src.parquet_cache import get_cached_spectrum_ids
+            skip_ids = get_cached_spectrum_ids(partial_cache_path)
+            log_info(f"Skip set: {len(skip_ids)} spectra already cached", cfg.quiet)
+
+            # Step 3: Stream remaining spectra from mzML
+            _streaming_refs = load_spectra_streaming(
                 variant_groups=variant_groups,
                 mzml_paths=mzml_paths,
                 reference_substring=cfg.reference_substring,
@@ -801,6 +960,26 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 on_file_start=on_file_start,
                 on_file_complete=on_file_complete,
                 error_callback=on_error,
+                workers=cfg.workers,
+                skip_ids=skip_ids,
+            )
+            # Merge any new references
+            for vk, specs in _streaming_refs.items():
+                if specs:
+                    if vk not in _cached_references:
+                        _cached_references[vk] = []
+                    _cached_references[vk].extend(specs)
+        else:
+            _streaming_refs = load_spectra_streaming(
+                variant_groups=variant_groups,
+                mzml_paths=mzml_paths,
+                reference_substring=cfg.reference_substring,
+                on_reference_loaded=on_reference_loaded,
+                on_query_ready=on_query_ready,
+                on_file_start=on_file_start,
+                on_file_complete=on_file_complete,
+                error_callback=on_error,
+                workers=cfg.workers,
             )
 
         # Finish progress bars
@@ -817,59 +996,44 @@ def run_pipeline(cfg: CLIConfig) -> int:
         logger.exception("Processing error")
         return 1
 
-    # --- Cache save helper (called at multiple pipeline stages) ---
-    _cache_saved = [False]
-
-    def _try_save_cache(stage: str):
-        """Save Parquet cache if conditions are met. Overwrites previous saves."""
-        if _cache_saved[0]:
-            return  # already saved successfully at an earlier stage
-        if (loaded_from_cache
-                or cfg.parquet_file
-                or not cfg.cache_enabled
-                or not cache_fingerprint
-                or not _cached_queries):
-            return
-        try:
-            from src.parquet_cache import save_spectra_to_parquet
-
-            cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
-            cache_metadata = {
-                "fingerprint": cache_fingerprint,
-                "idxml_files": cfg.idxml_files,
-                "mzml_files": cfg.mzml_files,
-                "target_peptides": cfg.peptides,
-                "reference_substring": cfg.reference_substring,
-            }
-            saved = save_spectra_to_parquet(
-                reference_spectra=reference_spectra,
-                query_spectra=_cached_queries,
-                output_path=cache_path,
-                cache_metadata=cache_metadata,
-            )
-            if saved:
-                _cache_saved[0] = True
-                log_info(f"Cache saved ({stage}): {Path(saved).name} "
-                         f"({len(_cached_queries)} queries, "
-                         f"{sum(len(v) for v in reference_spectra.values())} refs)",
-                         cfg.quiet)
-        except Exception as cache_err:
-            log_info(f"Warning: cache save failed ({stage}): {cache_err}", cfg.quiet)
-
-    # Save point 1: after streaming, before plots
-    _try_save_cache("after loading")
+    # Save point: after streaming complete — final complete cache
+    _try_save_cache("after loading", partial=False)
 
     # --- Phase 4b: Generate plots in parallel ---
     if comparison_tasks:
         from src.parallel_processor import run_parallel_comparisons
+        from src.tmpfs_staging import TmpfsStaging, StagingConfig
 
+        # Check for existing plot files (resumable runs)
+        # Uses final disk paths — before any tmpfs rewriting
+        skipped = 0
+        for task in comparison_tasks:
+            outputs_exist = True
+            if "png" in task.export_formats and task.png_dir:
+                if not (Path(task.png_dir) / task.folder_name / f"{task.safe_filename}.png").exists():
+                    outputs_exist = False
+            if "svg" in task.export_formats and task.svg_dir:
+                if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
+                    outputs_exist = False
+            if outputs_exist:
+                task.skip_plot = True
+                skipped += 1
+
+        if skipped > 0:
+            log_info(f"Skipping {skipped}/{len(comparison_tasks)} plots (already on disk)", cfg.quiet)
+
+        pending = len(comparison_tasks) - skipped
         log_info("", cfg.quiet)
-        log_info(f"Generating {len(comparison_tasks)} plots ({cfg.workers} workers)...", cfg.quiet)
+        log_info(f"Generating {pending} plots, {skipped} cached ({cfg.workers} workers)...", cfg.quiet)
 
         plot_progress = TerminalProgress(len(comparison_tasks), "Plots", quiet=cfg.quiet)
 
-        def on_plot_complete(result, completed, total):
-            plot_progress.update()
+        # Global counter for progress across chunks
+        _global_completed = [0]
+
+        def on_plot_complete_chunked(result, completed, total):
+            _global_completed[0] += 1
+            plot_progress.update(_global_completed[0])
             if result.success:
                 results_summary["plots_generated"] += 1
                 if result.png_path:
@@ -881,11 +1045,22 @@ def run_pipeline(cfg: CLIConfig) -> int:
             else:
                 results_summary["errors"].append(f"Plot error: {result.error}")
 
-        run_parallel_comparisons(
-            tasks=comparison_tasks,
-            workers=cfg.workers,
-            on_task_complete=on_plot_complete,
+        staging_config = StagingConfig(
+            enabled=cfg.tmpfs_staging,
+            tmpfs_base=cfg.tmpfs_path,
+            ram_fraction=cfg.tmpfs_ram_fraction,
         )
+
+        with TmpfsStaging(str(png_dir), str(svg_dir), cfg.export_formats,
+                          staging_config,
+                          log_fn=lambda msg: log_info(msg, cfg.quiet)) as staging:
+            for chunk in staging.iter_chunks(comparison_tasks):
+                run_parallel_comparisons(
+                    tasks=chunk,
+                    workers=cfg.workers,
+                    on_task_complete=on_plot_complete_chunked,
+                )
+                staging.flush()
 
         plot_progress.finish(
             f"Plots: {results_summary['plots_generated']} generated"
@@ -1031,6 +1206,8 @@ examples:
     # Performance
     parser.add_argument("--workers", type=int, default=None,
                         help="Number of parallel worker processes for plot generation (default: 4)")
+    parser.add_argument("--no-tmpfs", action="store_true",
+                        help="Disable RAM-backed tmpfs staging for plot writes")
 
     # Verbosity
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug output")
