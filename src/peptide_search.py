@@ -133,12 +133,174 @@ def get_modification_string(peptide_hit) -> str:
         return ""
 
 
+def _search_single_idxml(
+    idxml_path: str,
+    idxml_name: str,
+    target_set: Set[str],
+    mzml_path_strs: List[str],
+) -> Tuple[str, List[Tuple[str, PeptideMatch]], List[str]]:
+    """
+    Worker: search one idXML file for target peptides.
+
+    Must be a module-level function for ProcessPoolExecutor pickling.
+
+    Returns:
+        Tuple of (idxml_name, list of (variant_key, PeptideMatch), list of errors)
+    """
+    from src.path_utils import resolve_mzml_path
+
+    matches: List[Tuple[str, PeptideMatch]] = []
+    errors: List[str] = []
+
+    try:
+        protein_ids = []
+        peptide_ids = []
+        oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+
+        if not peptide_ids:
+            errors.append(f"No peptide identifications in {idxml_name}")
+            return idxml_name, matches, errors
+
+        run_map, run_map_full = extract_spectra_data_map(protein_ids)
+
+        for pep_id in peptide_ids:
+            spectrum_id = ""
+            if pep_id.metaValueExists("spectrum_reference"):
+                spectrum_id = decode_metadata_value(pep_id.getMetaValue("spectrum_reference"))
+
+            id_merge_index = -1
+            if pep_id.metaValueExists("id_merge_index"):
+                try:
+                    id_merge_index = int(pep_id.getMetaValue("id_merge_index"))
+                except (ValueError, TypeError):
+                    pass
+
+            pep_identifier = pep_id.getIdentifier()
+            matched_run_id = None
+
+            if pep_identifier in run_map:
+                matched_run_id = pep_identifier
+            else:
+                for run_id in run_map.keys():
+                    if pep_identifier.startswith(run_id) or run_id.startswith(pep_identifier):
+                        matched_run_id = run_id
+                        break
+
+            mzml_filename = ""
+            mzml_metadata_path = ""
+            if matched_run_id and matched_run_id in run_map:
+                mzml_list = run_map[matched_run_id]
+                full_list = run_map_full.get(matched_run_id, [])
+                if id_merge_index >= 0 and id_merge_index < len(mzml_list):
+                    mzml_filename = mzml_list[id_merge_index]
+                    if id_merge_index < len(full_list):
+                        mzml_metadata_path = full_list[id_merge_index]
+                elif len(mzml_list) == 1:
+                    mzml_filename = mzml_list[0]
+                    if full_list:
+                        mzml_metadata_path = full_list[0]
+
+            hits = pep_id.getHits()
+            for hit in hits:
+                try:
+                    aa_seq = hit.getSequence()
+                    base_seq = aa_seq.toUnmodifiedString().upper()
+
+                    if base_seq not in target_set:
+                        continue
+
+                    peptidoform_str = aa_seq.toString()
+                    charge = hit.getCharge() if hit.getCharge() > 0 else 0
+                    score = hit.getScore() if hit.getScore() else 0.0
+
+                    hit_merge_index = id_merge_index
+                    if hit.metaValueExists("id_merge_index"):
+                        try:
+                            hit_merge_index = int(hit.getMetaValue("id_merge_index"))
+                        except (ValueError, TypeError):
+                            pass
+
+                    hit_mzml_filename = mzml_filename
+                    hit_metadata_path = mzml_metadata_path
+                    if hit_merge_index != id_merge_index and matched_run_id and matched_run_id in run_map:
+                        mzml_list = run_map[matched_run_id]
+                        full_list = run_map_full.get(matched_run_id, [])
+                        if hit_merge_index >= 0 and hit_merge_index < len(mzml_list):
+                            hit_mzml_filename = mzml_list[hit_merge_index]
+                            if hit_merge_index < len(full_list):
+                                hit_metadata_path = full_list[hit_merge_index]
+
+                    resolved_path = ""
+                    if mzml_path_strs and hit_mzml_filename:
+                        resolved = resolve_mzml_path(
+                            hit_mzml_filename, hit_metadata_path,
+                            mzml_path_strs, idxml_path
+                        )
+                        if resolved:
+                            resolved_path = resolved
+
+                    match = PeptideMatch(
+                        peptidoform=peptidoform_str,
+                        base_sequence=base_seq,
+                        spectrum_id=spectrum_id,
+                        charge=charge,
+                        score=score,
+                        idxml_file=idxml_name,
+                        mzml_filename=hit_mzml_filename,
+                        id_merge_index=hit_merge_index,
+                        mzml_resolved_path=resolved_path,
+                        idxml_resolved_path=idxml_path
+                    )
+
+                    mod_key = get_modification_string(hit)
+                    variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
+                    matches.append((variant_key, match))
+
+                except Exception as e:
+                    logger.debug(f"Error processing peptide hit: {e}")
+                    continue
+
+    except Exception as e:
+        errors.append(f"Error loading {Path(idxml_path).name}: {e}")
+
+    return idxml_name, matches, errors
+
+
+def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
+    """
+    Worker: extract all unique base sequences from one idXML file.
+
+    Must be a module-level function for ProcessPoolExecutor pickling.
+
+    Returns:
+        Tuple of (idxml_path, set of base sequences)
+    """
+    peptides: Set[str] = set()
+    try:
+        protein_ids = []
+        peptide_ids = []
+        oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+
+        for pep_id in peptide_ids:
+            for hit in pep_id.getHits():
+                try:
+                    base_seq = hit.getSequence().toUnmodifiedString().upper()
+                    peptides.add(base_seq)
+                except Exception:
+                    continue
+    except Exception as e:
+        logger.warning(f"Error scanning {idxml_path}: {e}")
+
+    return idxml_path, peptides
+
+
 def search_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
     mzml_paths: Optional[List[str]] = None,
     progress_callback: Optional[callable] = None,
-    error_callback: Optional[callable] = None
+    error_callback: Optional[callable] = None,
+    workers: int = 1,
 ) -> Dict[str, VariantGroup]:
     """
     Search for target peptides across multiple idXML files using PyOpenMS.
@@ -151,11 +313,12 @@ def search_peptides_in_idxmls(
         mzml_paths: Optional list of selected mzML file paths (for disambiguation)
         progress_callback: Optional callback(current, total, message) for progress
         error_callback: Optional callback(error_message) for immediate error reporting
+        workers: Number of parallel workers. 1 = sequential (default).
 
     Returns:
         Dict mapping variant_key -> VariantGroup
     """
-    from src.path_utils import disambiguate_paths, resolve_mzml_path
+    from src.path_utils import disambiguate_paths
 
     # Normalize target peptides to uppercase, strip whitespace
     target_set = {p.strip().upper() for p in target_peptides if p.strip()}
@@ -168,174 +331,89 @@ def search_peptides_in_idxmls(
 
     # Compute disambiguated names for idXML and mzML paths
     idxml_disambig = disambiguate_paths(idxml_paths)
-    mzml_disambig = disambiguate_paths(mzml_paths) if mzml_paths else {}
     mzml_path_strs = [str(p) for p in mzml_paths] if mzml_paths else []
 
-    variant_groups: Dict[str, VariantGroup] = {}
     total_files = len(idxml_paths)
+    variant_groups: Dict[str, VariantGroup] = {}
     total_psms_found = 0
 
-    for idx, idxml_path in enumerate(idxml_paths):
-        if progress_callback:
-            progress_callback(idx, total_files, f"Searching {Path(idxml_path).name}")
+    def _merge_worker_results(worker_matches, worker_errors):
+        """Merge worker results into variant_groups (main process)."""
+        nonlocal total_psms_found
+        for variant_key, match in worker_matches:
+            mod_key = ""
+            base_seq = match.base_sequence
+            if "|" in variant_key:
+                mod_key = variant_key.split("|", 1)[1]
 
-        try:
-            # Load idXML with PyOpenMS
-            protein_ids = []
-            peptide_ids = []
-            oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+            if variant_key not in variant_groups:
+                if mod_key:
+                    display_label = f"{base_seq} [{mod_key}]"
+                else:
+                    display_label = base_seq
+                variant_groups[variant_key] = VariantGroup(
+                    base_sequence=base_seq,
+                    modification_key=mod_key,
+                    display_label=display_label
+                )
+            variant_groups[variant_key].matches.append(match)
+            total_psms_found += 1
+
+        for err in worker_errors:
+            if error_callback:
+                error_callback(err)
+            logger.error(err)
+
+    workers = max(1, min(workers, total_files))
+
+    if workers <= 1:
+        # Sequential path — process files one at a time
+        for idx, idxml_path in enumerate(idxml_paths):
+            if progress_callback:
+                progress_callback(idx, total_files, f"Searching {Path(idxml_path).name}")
 
             idxml_name = idxml_disambig.get(idxml_path, Path(idxml_path).name)
+            _, worker_matches, worker_errors = _search_single_idxml(
+                idxml_path, idxml_name, target_set, mzml_path_strs
+            )
+            _merge_worker_results(worker_matches, worker_errors)
 
-            if not peptide_ids:
-                if error_callback:
-                    error_callback(f"No peptide identifications in {idxml_name}")
-                continue
+    else:
+        # Parallel path — ProcessPoolExecutor with as_completed
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-            # Extract spectra_data mapping for this file
-            run_map, run_map_full = extract_spectra_data_map(protein_ids)
+        logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
 
-            # Process each PeptideIdentification
-            for pep_id in peptide_ids:
-                # Get spectrum reference (native ID)
-                spectrum_id = ""
-                if pep_id.metaValueExists("spectrum_reference"):
-                    spectrum_id = decode_metadata_value(pep_id.getMetaValue("spectrum_reference"))
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            future_map = {}
+            for idxml_path in idxml_paths:
+                idxml_name = idxml_disambig.get(idxml_path, Path(idxml_path).name)
+                future = pool.submit(
+                    _search_single_idxml,
+                    idxml_path, idxml_name, target_set, mzml_path_strs
+                )
+                future_map[future] = idxml_path
 
-                # Get id_merge_index if available
-                id_merge_index = -1
-                if pep_id.metaValueExists("id_merge_index"):
-                    try:
-                        id_merge_index = int(pep_id.getMetaValue("id_merge_index"))
-                    except (ValueError, TypeError):
-                        pass
+            completed = 0
+            for future in as_completed(future_map):
+                completed += 1
+                idxml_path = future_map[future]
+                try:
+                    _, worker_matches, worker_errors = future.result()
+                    _merge_worker_results(worker_matches, worker_errors)
+                except Exception as e:
+                    err = f"Worker crashed processing {Path(idxml_path).name}: {e}"
+                    if error_callback:
+                        error_callback(err)
+                    logger.error(err)
 
-                # Find matching run identifier
-                pep_identifier = pep_id.getIdentifier()
-                matched_run_id = None
-
-                if pep_identifier in run_map:
-                    matched_run_id = pep_identifier
-                else:
-                    # Try prefix matching
-                    for run_id in run_map.keys():
-                        if pep_identifier.startswith(run_id) or run_id.startswith(pep_identifier):
-                            matched_run_id = run_id
-                            break
-
-                # Resolve mzML filename
-                mzml_filename = ""
-                mzml_metadata_path = ""
-                if matched_run_id and matched_run_id in run_map:
-                    mzml_list = run_map[matched_run_id]
-                    full_list = run_map_full.get(matched_run_id, [])
-                    if id_merge_index >= 0 and id_merge_index < len(mzml_list):
-                        mzml_filename = mzml_list[id_merge_index]
-                        if id_merge_index < len(full_list):
-                            mzml_metadata_path = full_list[id_merge_index]
-                    elif len(mzml_list) == 1:
-                        mzml_filename = mzml_list[0]
-                        if full_list:
-                            mzml_metadata_path = full_list[0]
-
-                # Process each PeptideHit
-                hits = pep_id.getHits()
-                for hit in hits:
-                    try:
-                        aa_seq = hit.getSequence()
-                        base_seq = aa_seq.toUnmodifiedString().upper()
-
-                        # Check if base sequence matches any target
-                        if base_seq not in target_set:
-                            continue
-
-                        # Extract full peptidoform string
-                        peptidoform_str = aa_seq.toString()
-
-                        # Get charge
-                        charge = hit.getCharge() if hit.getCharge() > 0 else 0
-
-                        # Get score
-                        score = hit.getScore() if hit.getScore() else 0.0
-
-                        # Check for id_merge_index on hit level too
-                        hit_merge_index = id_merge_index
-                        if hit.metaValueExists("id_merge_index"):
-                            try:
-                                hit_merge_index = int(hit.getMetaValue("id_merge_index"))
-                            except (ValueError, TypeError):
-                                pass
-
-                        # Re-resolve mzML if hit has different index
-                        hit_mzml_filename = mzml_filename
-                        hit_metadata_path = mzml_metadata_path
-                        if hit_merge_index != id_merge_index and matched_run_id and matched_run_id in run_map:
-                            mzml_list = run_map[matched_run_id]
-                            full_list = run_map_full.get(matched_run_id, [])
-                            if hit_merge_index >= 0 and hit_merge_index < len(mzml_list):
-                                hit_mzml_filename = mzml_list[hit_merge_index]
-                                if hit_merge_index < len(full_list):
-                                    hit_metadata_path = full_list[hit_merge_index]
-
-                        # Resolve to a specific selected mzML path
-                        resolved_path = ""
-                        if mzml_path_strs and hit_mzml_filename:
-                            resolved = resolve_mzml_path(
-                                hit_mzml_filename, hit_metadata_path,
-                                mzml_path_strs, idxml_path
-                            )
-                            if resolved:
-                                resolved_path = resolved
-
-                        # Create match object
-                        match = PeptideMatch(
-                            peptidoform=peptidoform_str,
-                            base_sequence=base_seq,
-                            spectrum_id=spectrum_id,
-                            charge=charge,
-                            score=score,
-                            idxml_file=idxml_name,
-                            mzml_filename=hit_mzml_filename,
-                            id_merge_index=hit_merge_index,
-                            mzml_resolved_path=resolved_path,
-                            idxml_resolved_path=idxml_path
-                        )
-
-                        # Get modification key and create variant key
-                        mod_key = get_modification_string(hit)
-                        variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
-
-                        # Add to variant group
-                        if variant_key not in variant_groups:
-                            if mod_key:
-                                display_label = f"{base_seq} [{mod_key}]"
-                            else:
-                                display_label = base_seq
-
-                            variant_groups[variant_key] = VariantGroup(
-                                base_sequence=base_seq,
-                                modification_key=mod_key,
-                                display_label=display_label
-                            )
-
-                        variant_groups[variant_key].matches.append(match)
-                        total_psms_found += 1
-
-                    except Exception as e:
-                        logger.debug(f"Error processing peptide hit: {e}")
-                        continue
-
-        except Exception as e:
-            error_msg = f"Error loading {Path(idxml_path).name}: {e}"
-            if error_callback:
-                error_callback(error_msg)
-            logger.error(error_msg)
-            continue
+                if progress_callback:
+                    progress_callback(completed, total_files,
+                                      f"Searched {Path(idxml_path).name}")
 
     if progress_callback:
         progress_callback(total_files, total_files, "Search complete")
 
-    # Log summary
     logger.info(f"Found {total_psms_found} PSMs across {len(variant_groups)} variants")
 
     return variant_groups
@@ -344,7 +422,8 @@ def search_peptides_in_idxmls(
 def get_unique_peptides_from_idxmls(
     idxml_paths: List[str],
     limit: int = 100,
-    progress_callback: Optional[callable] = None
+    progress_callback: Optional[callable] = None,
+    workers: int = 1,
 ) -> List[str]:
     """
     Extract unique peptide sequences from idXML files.
@@ -353,42 +432,60 @@ def get_unique_peptides_from_idxmls(
         idxml_paths: List of idXML file paths
         limit: Maximum number of unique peptides to return
         progress_callback: Optional callback for progress
+        workers: Number of parallel workers. 1 = sequential (default).
 
     Returns:
         List of unique base sequences (sorted alphabetically)
     """
     unique_peptides: Set[str] = set()
     total_files = len(idxml_paths)
+    workers = max(1, min(workers, total_files))
 
-    for idx, idxml_path in enumerate(idxml_paths):
-        if progress_callback:
-            progress_callback(idx, total_files, f"Scanning {Path(idxml_path).name}")
+    if workers <= 1:
+        # Sequential path
+        for idx, idxml_path in enumerate(idxml_paths):
+            if progress_callback:
+                progress_callback(idx, total_files, f"Scanning {Path(idxml_path).name}")
 
-        if len(unique_peptides) >= limit:
-            break
+            if len(unique_peptides) >= limit:
+                break
 
-        try:
-            protein_ids = []
-            peptide_ids = []
-            oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+            _, file_peptides = _scan_single_idxml_peptides(idxml_path)
+            unique_peptides.update(file_peptides)
 
-            for pep_id in peptide_ids:
-                for hit in pep_id.getHits():
-                    try:
-                        base_seq = hit.getSequence().toUnmodifiedString().upper()
-                        unique_peptides.add(base_seq)
+    else:
+        # Parallel path
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-                        if len(unique_peptides) >= limit:
-                            break
-                    except Exception:
-                        continue
+        logger.info(f"Parallel peptide scan: {total_files} files, {workers} workers")
 
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(_scan_single_idxml_peptides, path): path
+                for path in idxml_paths
+            }
+
+            completed = 0
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    _, file_peptides = future.result()
+                    unique_peptides.update(file_peptides)
+                except Exception as e:
+                    logger.warning(f"Worker error scanning peptides: {e}")
+
+                if progress_callback:
+                    progress_callback(completed, total_files,
+                                      f"Scanned {Path(futures[future]).name}")
+
+                # Cancel remaining futures if limit reached
                 if len(unique_peptides) >= limit:
+                    for f in futures:
+                        f.cancel()
                     break
 
-        except Exception as e:
-            logger.warning(f"Error scanning {idxml_path}: {e}")
-            continue
+    if progress_callback:
+        progress_callback(total_files, total_files, "Scan complete")
 
     return sorted(list(unique_peptides))[:limit]
 

@@ -431,6 +431,87 @@ def find_spectrum_index(
     return None
 
 
+def _load_spectra_from_mzml(
+    mzml_path_str: str,
+    display_name: str,
+    matches_for_file: List[Tuple["PeptideMatch", str]],
+    is_reference: bool,
+) -> Tuple[str, bool, List[Tuple[str, "LoadedSpectrum"]], int, int, List[str]]:
+    """
+    Worker: open one mzML file and extract all matched spectra.
+
+    Must be a module-level function for ProcessPoolExecutor pickling.
+
+    Args:
+        mzml_path_str: Full path to mzML file
+        display_name: Display name for logging
+        matches_for_file: List of (PeptideMatch, variant_key) tuples
+        is_reference: Whether this is a reference file
+
+    Returns:
+        Tuple of (display_name, is_reference, loaded_spectra, loaded_count,
+                  not_found_count, errors)
+        where loaded_spectra is a list of (variant_key, LoadedSpectrum) tuples
+    """
+    loaded: List[Tuple[str, LoadedSpectrum]] = []
+    errors: List[str] = []
+    loaded_count = 0
+    not_found_count = 0
+
+    try:
+        needed_ids = [match.spectrum_id for match, _ in matches_for_file]
+        indexed_exp, id_to_index = open_indexed_mzml_fast(mzml_path_str, needed_ids=needed_ids)
+        n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+
+        for match, variant_key in matches_for_file:
+            try:
+                idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+
+                if idx is None:
+                    not_found_count += 1
+                    errors.append(f"Spectrum not found: {match.spectrum_id} in {display_name}")
+                    continue
+
+                spectrum = indexed_exp.getSpectrum(idx)
+
+                mz_array = np.array([p.getMZ() for p in spectrum])
+                intensity_array = np.array([p.getIntensity() for p in spectrum])
+
+                precursor_mz = 0.0
+                precursor_charge = match.charge
+                if spectrum.getPrecursors():
+                    prec = spectrum.getPrecursors()[0]
+                    precursor_mz = prec.getMZ()
+                    if prec.getCharge() > 0:
+                        precursor_charge = prec.getCharge()
+
+                loaded_spec = LoadedSpectrum(
+                    spectrum_id=match.spectrum_id,
+                    mz=mz_array,
+                    intensity=intensity_array,
+                    precursor_mz=precursor_mz,
+                    precursor_charge=precursor_charge,
+                    peptidoform=match.peptidoform,
+                    base_sequence=match.base_sequence,
+                    source_file=display_name,
+                    is_reference=is_reference,
+                    rt=spectrum.getRT() if spectrum.getRT() else 0.0,
+                    match=match
+                )
+
+                loaded.append((variant_key, loaded_spec))
+                loaded_count += 1
+
+            except Exception as e:
+                not_found_count += 1
+                errors.append(f"Error loading {match.spectrum_id}: {e}")
+
+    except Exception as e:
+        errors.append(f"Error opening {display_name}: {e}")
+
+    return display_name, is_reference, loaded, loaded_count, not_found_count, errors
+
+
 def load_matched_spectra(
     variant_groups: Dict[str, VariantGroup],
     mzml_paths: List[Path],
@@ -626,7 +707,9 @@ def load_spectra_streaming(
     on_query_ready: Optional[Callable[[StreamingResult], None]] = None,
     on_file_start: Optional[Callable[[str, bool], None]] = None,
     on_file_complete: Optional[Callable[[str, int, int], None]] = None,
-    error_callback: Optional[Callable[[str], None]] = None
+    error_callback: Optional[Callable[[str], None]] = None,
+    workers: int = 1,
+    skip_ids: Optional[set] = None,
 ) -> Dict[str, List[LoadedSpectrum]]:
     """
     Load spectra with streaming: references first, then yield each query spectrum.
@@ -643,6 +726,9 @@ def load_spectra_streaming(
         on_file_start: Callback(filename, is_reference) when starting to process a file
         on_file_complete: Callback(filename, loaded_count, not_found_count) when file is done
         error_callback: Callback(error_message) for errors
+        workers: Number of parallel workers for mzML loading. 1 = sequential (default).
+        skip_ids: Optional set of (variant_key, spectrum_id) tuples to skip.
+            Used for resuming from a partial cache — spectra already loaded are skipped.
 
     Returns:
         Dict of variant_key -> list of reference spectra (for summary purposes)
@@ -669,6 +755,23 @@ def load_spectra_streaming(
     # Build mapping using resolved paths
     mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
 
+    # Filter out already-loaded spectra when resuming from partial cache
+    skipped_count = 0
+    if skip_ids:
+        filtered_map = {}
+        for path_key, matches_for_file in mzml_to_matches.items():
+            remaining = [
+                (match, vk) for match, vk in matches_for_file
+                if (vk, match.spectrum_id) not in skip_ids
+            ]
+            skipped_count += len(matches_for_file) - len(remaining)
+            if remaining:
+                filtered_map[path_key] = remaining
+        mzml_to_matches = filtered_map
+        if skipped_count > 0:
+            logger.info(f"Resume: skipping {skipped_count} already-cached spectra, "
+                        f"{sum(len(v) for v in mzml_to_matches.values())} remaining")
+
     # Storage for reference spectra by variant
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
 
@@ -679,82 +782,68 @@ def load_spectra_streaming(
             for match, variant_key in matches:
                 query_counts[variant_key] += 1
 
+    # Determine effective worker count for file-level parallelism
+    total_mzml_files = sum(1 for pk in list(reference_files) + list(query_files) if pk in mzml_to_matches)
+    effective_workers = max(1, min(workers, total_mzml_files))
+
     # =========================================================================
     # Phase 1: Load all reference spectra
     # =========================================================================
     logger.info(f"Loading reference spectra from {len(reference_files)} files...")
 
+    # Build list of reference file tasks
+    ref_file_tasks = []
     for path_key in reference_files:
         if path_key not in mzml_to_matches:
             continue
-
         mzml_path = mzml_path_map[path_key]
         display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
         matches_for_file = mzml_to_matches[path_key]
+        ref_file_tasks.append((str(mzml_path), display_name, matches_for_file))
 
-        if on_file_start:
-            on_file_start(display_name, True)
+    if effective_workers <= 1 or len(ref_file_tasks) <= 1:
+        # Sequential reference loading
+        for mzml_path_str, display_name, matches_for_file in ref_file_tasks:
+            if on_file_start:
+                on_file_start(display_name, True)
 
-        loaded_count = 0
-        not_found_count = 0
+            _, _, loaded_list, lc, nf, errs = _load_spectra_from_mzml(
+                mzml_path_str, display_name, matches_for_file, True
+            )
+            for variant_key, spec in loaded_list:
+                reference_spectra[variant_key].append(spec)
+            for err in errs:
+                if error_callback:
+                    error_callback(err)
 
-        try:
-            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
-            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
-            n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+            if on_file_complete:
+                on_file_complete(display_name, lc, nf)
+    else:
+        # Parallel reference loading
+        from concurrent.futures import ProcessPoolExecutor, as_completed
 
-            for match, variant_key in matches_for_file:
+        logger.info(f"Parallel reference loading: {len(ref_file_tasks)} files, {effective_workers} workers")
+
+        with ProcessPoolExecutor(max_workers=effective_workers) as pool:
+            future_map = {
+                pool.submit(_load_spectra_from_mzml, mzml_path_str, dn, mff, True): dn
+                for mzml_path_str, dn, mff in ref_file_tasks
+            }
+
+            for future in as_completed(future_map):
                 try:
-                    idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
-
-                    if idx is None:
-                        not_found_count += 1
+                    dn, _, loaded_list, lc, nf, errs = future.result()
+                    for variant_key, spec in loaded_list:
+                        reference_spectra[variant_key].append(spec)
+                    for err in errs:
                         if error_callback:
-                            error_callback(f"Reference spectrum not found: {match.spectrum_id}")
-                        continue
-
-                    spectrum = indexed_exp.getSpectrum(idx)
-
-                    mz_array = np.array([p.getMZ() for p in spectrum])
-                    intensity_array = np.array([p.getIntensity() for p in spectrum])
-
-                    precursor_mz = 0.0
-                    precursor_charge = match.charge
-                    if spectrum.getPrecursors():
-                        prec = spectrum.getPrecursors()[0]
-                        precursor_mz = prec.getMZ()
-                        if prec.getCharge() > 0:
-                            precursor_charge = prec.getCharge()
-
-                    loaded = LoadedSpectrum(
-                        spectrum_id=match.spectrum_id,
-                        mz=mz_array,
-                        intensity=intensity_array,
-                        precursor_mz=precursor_mz,
-                        precursor_charge=precursor_charge,
-                        peptidoform=match.peptidoform,
-                        base_sequence=match.base_sequence,
-                        source_file=display_name,
-                        is_reference=True,
-                        rt=spectrum.getRT() if spectrum.getRT() else 0.0,
-                        match=match
-                    )
-
-                    reference_spectra[variant_key].append(loaded)
-                    loaded_count += 1
-
+                            error_callback(err)
+                    if on_file_complete:
+                        on_file_complete(dn, lc, nf)
                 except Exception as e:
-                    not_found_count += 1
+                    dn = future_map[future]
                     if error_callback:
-                        error_callback(f"Error loading reference {match.spectrum_id}: {e}")
-
-        except Exception as e:
-            if error_callback:
-                error_callback(f"Error opening reference file {display_name}: {e}")
-            continue
-
-        if on_file_complete:
-            on_file_complete(display_name, loaded_count, not_found_count)
+                        error_callback(f"Worker crashed loading reference {dn}: {e}")
 
     # Notify that references are loaded for each variant
     if on_reference_loaded:
@@ -772,94 +861,76 @@ def load_spectra_streaming(
     # Track query index per variant
     query_indices: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
 
+    # Build list of query file tasks
+    query_file_tasks = []
     for path_key in query_files:
         if path_key not in mzml_to_matches:
             continue
-
         mzml_path = mzml_path_map[path_key]
         display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
         matches_for_file = mzml_to_matches[path_key]
+        query_file_tasks.append((str(mzml_path), display_name, matches_for_file))
 
-        if on_file_start:
-            on_file_start(display_name, False)
+    def _dispatch_query_results(loaded_list, dn):
+        """Dispatch loaded query spectra through on_query_ready callback (main process)."""
+        for variant_key, loaded in loaded_list:
+            vg = variant_groups[variant_key]
+            current_idx = query_indices[variant_key]
+            query_indices[variant_key] += 1
 
-        loaded_count = 0
-        not_found_count = 0
+            if on_query_ready:
+                result = StreamingResult(
+                    query_spectrum=loaded,
+                    reference_spectra=reference_spectra[variant_key],
+                    variant_key=variant_key,
+                    base_sequence=vg.base_sequence,
+                    modification_key=vg.modification_key,
+                    query_index=current_idx,
+                    total_queries=query_counts[variant_key]
+                )
+                on_query_ready(result)
 
-        try:
-            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
-            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
-            n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+    if effective_workers <= 1 or len(query_file_tasks) <= 1:
+        # Sequential query loading
+        for mzml_path_str, display_name, matches_for_file in query_file_tasks:
+            if on_file_start:
+                on_file_start(display_name, False)
 
-            for match, variant_key in matches_for_file:
+            _, _, loaded_list, lc, nf, errs = _load_spectra_from_mzml(
+                mzml_path_str, display_name, matches_for_file, False
+            )
+            for err in errs:
+                if error_callback:
+                    error_callback(err)
+            _dispatch_query_results(loaded_list, display_name)
+
+            if on_file_complete:
+                on_file_complete(display_name, lc, nf)
+    else:
+        # Parallel query loading — load files in parallel, dispatch callbacks sequentially
+        from concurrent.futures import ProcessPoolExecutor, as_completed
+
+        logger.info(f"Parallel query loading: {len(query_file_tasks)} files, {effective_workers} workers")
+
+        with ProcessPoolExecutor(max_workers=effective_workers) as pool:
+            future_map = {
+                pool.submit(_load_spectra_from_mzml, mzml_path_str, dn, mff, False): dn
+                for mzml_path_str, dn, mff in query_file_tasks
+            }
+
+            for future in as_completed(future_map):
                 try:
-                    idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
-
-                    if idx is None:
-                        not_found_count += 1
+                    dn, _, loaded_list, lc, nf, errs = future.result()
+                    for err in errs:
                         if error_callback:
-                            error_callback(f"Query spectrum not found: {match.spectrum_id}")
-                        continue
-
-                    spectrum = indexed_exp.getSpectrum(idx)
-
-                    mz_array = np.array([p.getMZ() for p in spectrum])
-                    intensity_array = np.array([p.getIntensity() for p in spectrum])
-
-                    precursor_mz = 0.0
-                    precursor_charge = match.charge
-                    if spectrum.getPrecursors():
-                        prec = spectrum.getPrecursors()[0]
-                        precursor_mz = prec.getMZ()
-                        if prec.getCharge() > 0:
-                            precursor_charge = prec.getCharge()
-
-                    loaded = LoadedSpectrum(
-                        spectrum_id=match.spectrum_id,
-                        mz=mz_array,
-                        intensity=intensity_array,
-                        precursor_mz=precursor_mz,
-                        precursor_charge=precursor_charge,
-                        peptidoform=match.peptidoform,
-                        base_sequence=match.base_sequence,
-                        source_file=display_name,
-                        is_reference=False,
-                        rt=spectrum.getRT() if spectrum.getRT() else 0.0,
-                        match=match
-                    )
-
-                    loaded_count += 1
-
-                    # Get variant info
-                    vg = variant_groups[variant_key]
-                    current_idx = query_indices[variant_key]
-                    query_indices[variant_key] += 1
-
-                    # Yield this query spectrum immediately with its matching references
-                    if on_query_ready:
-                        result = StreamingResult(
-                            query_spectrum=loaded,
-                            reference_spectra=reference_spectra[variant_key],
-                            variant_key=variant_key,
-                            base_sequence=vg.base_sequence,
-                            modification_key=vg.modification_key,
-                            query_index=current_idx,
-                            total_queries=query_counts[variant_key]
-                        )
-                        on_query_ready(result)
-
+                            error_callback(err)
+                    _dispatch_query_results(loaded_list, dn)
+                    if on_file_complete:
+                        on_file_complete(dn, lc, nf)
                 except Exception as e:
-                    not_found_count += 1
+                    dn = future_map[future]
                     if error_callback:
-                        error_callback(f"Error loading query {match.spectrum_id}: {e}")
-
-        except Exception as e:
-            if error_callback:
-                error_callback(f"Error opening query file {display_name}: {e}")
-            continue
-
-        if on_file_complete:
-            on_file_complete(display_name, loaded_count, not_found_count)
+                        error_callback(f"Worker crashed loading query {dn}: {e}")
 
     logger.info("Query streaming complete")
 

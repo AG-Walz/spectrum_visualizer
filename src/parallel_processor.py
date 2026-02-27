@@ -53,6 +53,9 @@ class ComparisonTask:
     dpi: int = 300
     normalize: bool = True
 
+    # Skip plot generation (metrics only — plot already exists on disk)
+    skip_plot: bool = False
+
     # Summary metadata (for CSV row)
     query_file: str = ""
     ref_file: str = ""
@@ -85,37 +88,23 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
     """
     Top-level worker: compute metrics, create figure, save to disk.
 
+    If task.skip_plot is True, only computes metrics (for summary CSV)
+    without creating or saving a figure — used when the plot file already
+    exists on disk from a previous run.
+
     Imports are done inside the function so each worker process initialises
     its own matplotlib backend and module references.
     """
     try:
-        import matplotlib
-        matplotlib.use("Agg")
-
-        from src.mirror_plot import create_mirror_plot, create_single_spectrum_plot
-        from src.spectrum_metrics import compute_all_metrics, format_metrics_text
-
+        summary_row = None
         png_path = ""
         svg_path = ""
-        summary_row = None
 
         if task.task_type == "mirror" and task.ref_df is not None:
-            # --- Mirror plot ---
+            # --- Metrics (always computed for summary CSV) ---
+            from src.spectrum_metrics import compute_all_metrics
+
             metrics = compute_all_metrics(task.query_df, task.ref_df)
-            metrics_text = format_metrics_text(metrics)
-
-            fig = create_mirror_plot(
-                upper_spectrum=task.query_df,
-                lower_spectrum=task.ref_df,
-                upper_label=task.query_label,
-                lower_label=task.ref_label,
-                title=task.plot_title,
-                metrics_text=metrics_text,
-                figsize=task.figsize,
-                dpi=task.dpi,
-                normalize=task.normalize,
-            )
-
             summary_row = {
                 "query_file": task.query_file,
                 "ref_file": task.ref_file,
@@ -125,8 +114,36 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 **metrics,
             }
 
-        else:
-            # --- Single spectrum plot ---
+            if not task.skip_plot:
+                # --- Full mirror plot ---
+                import matplotlib
+                matplotlib.use("Agg")
+                from src.mirror_plot import create_mirror_plot
+                from src.spectrum_metrics import format_metrics_text
+
+                metrics_text = format_metrics_text(metrics)
+                fig = create_mirror_plot(
+                    upper_spectrum=task.query_df,
+                    lower_spectrum=task.ref_df,
+                    upper_label=task.query_label,
+                    lower_label=task.ref_label,
+                    title=task.plot_title,
+                    metrics_text=metrics_text,
+                    figsize=task.figsize,
+                    dpi=task.dpi,
+                    normalize=task.normalize,
+                )
+                png_path, svg_path = _save_task_figure(fig, task)
+                import matplotlib.pyplot as plt
+                plt.close(fig)
+                del fig
+
+        elif not task.skip_plot:
+            # --- Single spectrum plot (no metrics) ---
+            import matplotlib
+            matplotlib.use("Agg")
+            from src.mirror_plot import create_single_spectrum_plot
+
             fig = create_single_spectrum_plot(
                 spectrum=task.query_df,
                 title=task.plot_title,
@@ -135,13 +152,10 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 dpi=task.dpi,
                 normalize=task.normalize,
             )
-
-        # --- Save figure and release memory ---
-        png_path, svg_path = _save_task_figure(fig, task)
-
-        import matplotlib.pyplot as plt
-        plt.close(fig)
-        del fig  # help GC reclaim figure memory promptly
+            png_path, svg_path = _save_task_figure(fig, task)
+            import matplotlib.pyplot as plt
+            plt.close(fig)
+            del fig
 
         return ComparisonResult(
             task_id=task.task_id,

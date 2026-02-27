@@ -58,21 +58,96 @@ def compute_cache_fingerprint(
     return h.hexdigest()[:12]
 
 
-def find_existing_cache(cache_dir: str, fingerprint: str) -> Optional[str]:
+def find_existing_cache(
+    cache_dir: str,
+    fingerprint: str,
+    allow_partial: bool = False,
+) -> Optional[str]:
     """
     Check for an existing cache file matching the fingerprint.
 
     Args:
         cache_dir: Directory to search for cache files
         fingerprint: 12-char hex fingerprint
+        allow_partial: If False (default), only returns complete caches.
+            If True, also returns partial caches.
 
     Returns:
         Path to cache file if found, None otherwise
     """
     cache_path = Path(cache_dir) / f"{fingerprint}.parquet"
     if cache_path.exists() and cache_path.stat().st_size > 0:
+        if not allow_partial and not is_cache_complete(str(cache_path)):
+            logger.info(f"Cache found but partial (skipping): {cache_path}")
+            return None
         logger.info(f"Cache hit: {cache_path}")
         return str(cache_path)
+    return None
+
+
+def is_cache_complete(cache_path: str) -> bool:
+    """
+    Check whether a cache file is complete (not partial).
+
+    Reads the sidecar JSON to check the 'partial' flag.
+    If no sidecar exists, assumes complete (backward compatibility).
+
+    Args:
+        cache_path: Path to the .parquet file
+
+    Returns:
+        True if the cache is complete, False if partial
+    """
+    sidecar_path = Path(cache_path).with_suffix(".json")
+    if not sidecar_path.exists():
+        return True  # No sidecar = legacy cache, assume complete
+
+    try:
+        with open(sidecar_path) as f:
+            sidecar = json.load(f)
+        return not sidecar.get("partial", False)
+    except Exception:
+        return True  # Can't read sidecar, assume complete
+
+
+def get_cached_spectrum_ids(parquet_path: str) -> set:
+    """
+    Get set of (variant_key, spectrum_id) tuples from a Parquet cache.
+
+    Used for resume: identifies which spectra are already cached so they can
+    be skipped during mzML re-loading.
+
+    Args:
+        parquet_path: Path to .parquet file
+
+    Returns:
+        Set of (variant_key, spectrum_id) tuples
+    """
+    import pyarrow.parquet as pq
+
+    try:
+        table = pq.read_table(str(parquet_path), columns=["variant_key", "spectrum_id"])
+        vkeys = table.column("variant_key").to_pylist()
+        sids = table.column("spectrum_id").to_pylist()
+        return {(vk, sid) for vk, sid in zip(vkeys, sids)}
+    except Exception as e:
+        logger.warning(f"Could not read spectrum IDs from {parquet_path}: {e}")
+        return set()
+
+
+def read_cache_sidecar(cache_dir: str, fingerprint: str) -> Optional[dict]:
+    """
+    Read the sidecar JSON for a cache file.
+
+    Returns the metadata dict if found, None otherwise.
+    """
+    sidecar_path = Path(cache_dir) / f"{fingerprint}.json"
+    if sidecar_path.exists():
+        try:
+            with open(sidecar_path) as f:
+                return json.load(f)
+        except Exception as e:
+            logger.warning(f"Could not read cache sidecar: {e}")
     return None
 
 
@@ -103,6 +178,7 @@ def save_spectra_to_parquet(
     query_spectra: List[Tuple[str, "LoadedSpectrum"]],
     output_path: str,
     cache_metadata: Optional[dict] = None,
+    partial: bool = False,
 ) -> Optional[str]:
     """
     Save already-loaded spectra to a Parquet cache file.
@@ -114,6 +190,7 @@ def save_spectra_to_parquet(
         query_spectra: List of (variant_key, LoadedSpectrum) tuples
         output_path: Path for the output .parquet file
         cache_metadata: Optional dict of metadata to write to sidecar JSON
+        partial: If True, marks this cache as incomplete (more queries expected)
 
     Returns:
         Path to written file, or None on failure
@@ -197,6 +274,7 @@ def save_spectra_to_parquet(
         **provenance,
         "parquet_file": str(output),
         "file_size_mb": round(file_size_mb, 2),
+        "partial": partial,
     }
     if cache_metadata:
         sidecar.update(cache_metadata)
@@ -209,6 +287,127 @@ def save_spectra_to_parquet(
         logger.warning(f"Could not write sidecar JSON: {e}")
 
     return str(output)
+
+
+def save_search_checkpoint(
+    cache_dir: str,
+    fingerprint: str,
+    variant_groups: Dict[str, "VariantGroup"],
+) -> Optional[str]:
+    """
+    Serialize search results (variant groups) to a JSON checkpoint file.
+
+    Args:
+        cache_dir: Directory for checkpoint file
+        fingerprint: 12-char hex fingerprint
+        variant_groups: Dict of variant_key -> VariantGroup from search
+
+    Returns:
+        Path to written file, or None on failure
+    """
+    checkpoint_path = Path(cache_dir) / f"{fingerprint}_search.json"
+    checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
+
+    try:
+        data = {}
+        for variant_key, vg in variant_groups.items():
+            matches_list = []
+            for m in vg.matches:
+                matches_list.append({
+                    "peptidoform": m.peptidoform,
+                    "base_sequence": m.base_sequence,
+                    "spectrum_id": m.spectrum_id,
+                    "charge": m.charge,
+                    "score": m.score,
+                    "idxml_file": m.idxml_file,
+                    "mzml_filename": m.mzml_filename,
+                    "id_merge_index": m.id_merge_index,
+                    "mzml_resolved_path": m.mzml_resolved_path,
+                    "idxml_resolved_path": m.idxml_resolved_path,
+                })
+            data[variant_key] = {
+                "base_sequence": vg.base_sequence,
+                "modification_key": vg.modification_key,
+                "display_label": vg.display_label,
+                "matches": matches_list,
+            }
+
+        with open(checkpoint_path, "w") as f:
+            json.dump(data, f, indent=1)
+
+        total_psms = sum(len(vg.matches) for vg in variant_groups.values())
+        file_size_kb = checkpoint_path.stat().st_size / 1024
+        logger.info(
+            f"Search checkpoint saved: {total_psms} PSMs, "
+            f"{len(variant_groups)} variants ({file_size_kb:.0f} KB) -> {checkpoint_path}"
+        )
+        return str(checkpoint_path)
+
+    except Exception as e:
+        logger.warning(f"Could not save search checkpoint: {e}")
+        return None
+
+
+def load_search_checkpoint(
+    cache_dir: str,
+    fingerprint: str,
+) -> Optional[Dict]:
+    """
+    Load search checkpoint from JSON.
+
+    Args:
+        cache_dir: Directory to search for checkpoint
+        fingerprint: 12-char hex fingerprint
+
+    Returns:
+        Dict of variant_key -> VariantGroup if found and valid, None otherwise.
+    """
+    from src.peptide_search import PeptideMatch, VariantGroup
+
+    checkpoint_path = Path(cache_dir) / f"{fingerprint}_search.json"
+    if not checkpoint_path.exists():
+        return None
+
+    try:
+        with open(checkpoint_path) as f:
+            data = json.load(f)
+
+        variant_groups: Dict[str, VariantGroup] = {}
+        total_psms = 0
+
+        for variant_key, vg_data in data.items():
+            matches = []
+            for m_data in vg_data["matches"]:
+                matches.append(PeptideMatch(
+                    peptidoform=m_data["peptidoform"],
+                    base_sequence=m_data["base_sequence"],
+                    spectrum_id=m_data["spectrum_id"],
+                    charge=m_data["charge"],
+                    score=m_data["score"],
+                    idxml_file=m_data["idxml_file"],
+                    mzml_filename=m_data["mzml_filename"],
+                    id_merge_index=m_data["id_merge_index"],
+                    mzml_resolved_path=m_data.get("mzml_resolved_path", ""),
+                    idxml_resolved_path=m_data.get("idxml_resolved_path", ""),
+                ))
+            total_psms += len(matches)
+
+            variant_groups[variant_key] = VariantGroup(
+                base_sequence=vg_data["base_sequence"],
+                modification_key=vg_data["modification_key"],
+                display_label=vg_data["display_label"],
+                matches=matches,
+            )
+
+        logger.info(
+            f"Search checkpoint loaded: {total_psms} PSMs, "
+            f"{len(variant_groups)} variants from {checkpoint_path}"
+        )
+        return variant_groups
+
+    except Exception as e:
+        logger.warning(f"Could not load search checkpoint {checkpoint_path}: {e}")
+        return None
 
 
 def _spectrum_to_row(spec, variant_key: str, is_reference: bool) -> dict:
