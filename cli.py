@@ -422,7 +422,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
-    from src.export import sanitize_filename, create_export_directory
+    from src.export import sanitize_filename, shorten_stem, create_export_directory
     from src.spectrum_metrics import shorten_filenames
 
     # =========================================================================
@@ -838,7 +838,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
             query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
             single_label = (f"{Path(query.source_file).stem}"
                             f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-            query_stem = Path(query.source_file).stem[:30]
+            query_stem = shorten_stem(Path(query.source_file).stem)
             base_filename = f"{result.base_sequence}_{query_stem}"
             safe_filename = sanitize_filename(base_filename)
 
@@ -873,8 +873,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
             ref_label = (f"Ref: {Path(ref.source_file).stem}"
                          f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
 
-            query_stem = Path(query.source_file).stem[:30]
-            ref_stem = Path(ref.source_file).stem[:30]
+            query_stem = shorten_stem(Path(query.source_file).stem)
+            ref_stem = shorten_stem(Path(ref.source_file).stem)
             base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
             safe_filename = sanitize_filename(base_filename)
 
