@@ -616,7 +616,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
     }
 
     # Numbered folder: ProCa_2_run_001/, _002/, etc. Reuses matching folder.
-    root_dir, png_dir, svg_dir = find_or_create_export_directory(
+    root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
         cfg.export_dir, cfg.project_name, run_settings
     )
     log_info(f"Export directory: {root_dir}", cfg.quiet)
@@ -852,6 +852,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 safe_filename=safe_filename,
                 png_dir=str(png_dir),
                 svg_dir=str(svg_dir),
+                pdf_dir=str(pdf_dir),
                 export_formats=cfg.export_formats,
                 figsize=cfg.figsize,
                 dpi=cfg.dpi,
@@ -890,6 +891,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 safe_filename=safe_filename,
                 png_dir=str(png_dir),
                 svg_dir=str(svg_dir),
+                pdf_dir=str(pdf_dir),
                 export_formats=cfg.export_formats,
                 figsize=cfg.figsize,
                 dpi=cfg.dpi,
@@ -1015,6 +1017,9 @@ def run_pipeline(cfg: CLIConfig) -> int:
             if "svg" in task.export_formats and task.svg_dir:
                 if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
                     outputs_exist = False
+            if "pdf" in task.export_formats and task.pdf_dir:
+                if not (Path(task.pdf_dir) / task.folder_name / f"{task.safe_filename}.pdf").exists():
+                    outputs_exist = False
             if outputs_exist:
                 task.skip_plot = True
                 skipped += 1
@@ -1051,7 +1056,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
             ram_fraction=cfg.tmpfs_ram_fraction,
         )
 
-        with TmpfsStaging(str(png_dir), str(svg_dir), cfg.export_formats,
+        with TmpfsStaging(str(png_dir), str(svg_dir), str(pdf_dir), cfg.export_formats,
                           staging_config,
                           log_fn=lambda msg: log_info(msg, cfg.quiet)) as staging:
             for chunk in staging.iter_chunks(comparison_tasks):
@@ -1120,6 +1125,24 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 log_info(f"Summary XLSX: {xlsx_path}", cfg.quiet)
             except Exception as xlsx_err:
                 log_debug(f"Could not write XLSX: {xlsx_err}", cfg.verbose)
+
+            # Generate summary plots
+            try:
+                from src.summary_plots import generate_all_summary_plots
+                log_info("Generating summary plots...", cfg.quiet)
+                summary_plot_paths = generate_all_summary_plots(
+                    source=summary_df,
+                    output_dir=str(root_dir),
+                    metric="R² binned",
+                    formats=cfg.export_formats,
+                    dpi=cfg.dpi,
+                    title_prefix=cfg.project_name,
+                )
+                n_summary = sum(len(v) for v in summary_plot_paths.values())
+                log_info(f"Summary plots: {n_summary} files in {root_dir / 'summary'}", cfg.quiet)
+                results_summary["summary_plots"] = summary_plot_paths
+            except Exception as sp_err:
+                log_debug(f"Could not generate summary plots: {sp_err}", cfg.verbose)
 
         except Exception as summary_err:
             log_debug(f"Could not write summary: {summary_err}", cfg.verbose)
@@ -1196,7 +1219,7 @@ examples:
     # Export overrides
     parser.add_argument("--export-dir", help="Export directory path")
     parser.add_argument("--project-name", help="Project name for export folder")
-    parser.add_argument("--formats", nargs="+", choices=["png", "svg"], help="Export formats")
+    parser.add_argument("--formats", nargs="+", choices=["png", "svg", "pdf"], help="Export formats")
     parser.add_argument("--dpi", type=int, help="DPI for image export")
     parser.add_argument("--plot-unpaired", action="store_true", help="Plot spectra without matching reference")
 

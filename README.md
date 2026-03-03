@@ -26,6 +26,9 @@ Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/
   - [Streamlit Workflow Steps](#streamlit-workflow-steps)
   - [CLI Configuration](#cli-configuration)
   - [Comparison Metrics](#comparison-metrics)
+- **Standalone Scripts**
+  - [Summary & Per-Peptide Plots](#summary--per-peptide-plots) -- Cross-peptidoform summaries and per-peptide dumbbell plots
+  - [Parquet Conversion Tool](#parquet-conversion-tool) -- Batch mzML-to-Parquet conversion
 - **Reference**
   - [Full User Guide](docs/DOCUMENTATION.md) -- Comprehensive reference for every feature
   - [Detailed Documentation Index](#detailed-documentation-index)
@@ -216,6 +219,48 @@ See the [CLI Reference](docs/cli.md) for the full list of arguments, pipeline ph
 
 ---
 
+## Standalone Scripts
+
+In addition to the main CLI pipeline (`cli.py`), MSpecViz includes two standalone scripts for post-processing and data conversion.
+
+### Summary & Per-Peptide Plots
+
+`src/summary_plots.py` generates visualizations from the `comparison_summary.csv` produced by the main pipeline.
+
+**Summary plots** (cross-peptidoform): dual-axis bar+box, ridgeline distribution, and heatmap plots showing a chosen metric across all peptidoforms.
+
+**Per-peptide dumbbell plots**: For each peptidoform, shows R² (binned) vs R² (match) as connected dots for every query, faceted by reference. Highlights where the two R² metrics diverge.
+
+```bash
+# Summary plots (all types)
+python -m src.summary_plots exports/my_run/comparison_summary.csv
+
+# Per-peptide dumbbell plots
+python -m src.summary_plots exports/my_run/comparison_summary.csv --peptide-detail
+
+# List available metrics
+python -m src.summary_plots exports/my_run/comparison_summary.csv --list-metrics
+```
+
+Summary plots are saved to `{export_dir}/summary/`. Dumbbell plots are saved alongside mirror plots in `{export_dir}/png/{Peptide}/`.
+
+### Parquet Conversion Tool
+
+`tools/convert_mzml_to_parquet.py` converts idXML + mzML files into a single Parquet file for instant loading.
+
+```bash
+python tools/convert_mzml_to_parquet.py \
+  --idxml /path/to/*.idXML \
+  --mzml-dir /path/to/mzml_files/ \
+  --peptides "LGGNEQVTR,GAGSSEPVTGLDAK" \
+  --output exports/my_spectra.parquet \
+  --reference-substring "Synpep"
+```
+
+See [CLI Reference: Standalone Scripts](docs/cli.md#standalone-scripts) for the full list of arguments, and [Parquet Conversion Tool](tools/README.md) for detailed documentation.
+
+---
+
 ## Docker
 
 ```bash
@@ -317,11 +362,19 @@ conda run -n mspecviz python -m pytest test_gui.py -v
 
 | Guide | Description |
 |-------|-------------|
-| [CLI Reference](docs/cli.md) | Full CLI documentation: config options, arguments, pipeline phases, output structure |
+| [CLI Reference](docs/cli.md) | Full CLI documentation: config options, arguments, pipeline phases, output structure, standalone scripts |
 | [Spectrum Metrics](docs/spectrum_metrics.md) | Seven comparison metrics with equations: R2, cosine, entropy, Dice, Jaccard, shared ratio |
 | [Caching System](docs/caching.md) | Auto-caching, fingerprinting, interrupted runs, cache invalidation |
 | [Parquet Conversion Tool](tools/README.md) | CLI tool for standalone mzML-to-Parquet batch conversion |
 | [Example CLI Config](examples/config_cli.yaml) | Annotated YAML configuration file with every available option |
+
+### Standalone Scripts
+
+| Script | Description |
+|--------|-------------|
+| [`cli.py`](docs/cli.md) | Main analysis pipeline: search, load, annotate, plot, export |
+| [`src/summary_plots.py`](docs/cli.md#summary--per-peptide-plots-srcsummary_plotspy) | Summary plots (dual-axis, ridgeline, heatmap) and per-peptide dumbbell plots |
+| [`tools/convert_mzml_to_parquet.py`](tools/README.md) | Batch mzML+idXML → Parquet conversion for instant loading |
 
 ---
 

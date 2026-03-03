@@ -16,6 +16,13 @@ import pyopenms as oms
 logger = logging.getLogger(__name__)
 
 
+def _rebuild_peptide_match(*args):
+    """Reconstruct PeptideMatch from pickled args (avoids Streamlit reload identity issues)."""
+    import importlib
+    mod = importlib.import_module("src.peptide_search")
+    return mod.PeptideMatch(*args)
+
+
 @dataclass
 class PeptideMatch:
     """A single peptide-spectrum match with all metadata for mzML resolution."""
@@ -31,6 +38,15 @@ class PeptideMatch:
     # Resolved full paths for disambiguation (set when mzml_paths are provided)
     mzml_resolved_path: str = ""   # Full resolved path to the mzML file
     idxml_resolved_path: str = ""  # Full path to the source idXML file
+
+    def __reduce__(self):
+        """Custom pickle: always resolve via canonical module path."""
+        return (_rebuild_peptide_match, (
+            self.peptidoform, self.base_sequence, self.spectrum_id,
+            self.charge, self.score, self.idxml_file,
+            self.mzml_filename, self.id_merge_index,
+            self.mzml_resolved_path, self.idxml_resolved_path,
+        ))
 
 
 @dataclass

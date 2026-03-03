@@ -312,7 +312,7 @@ def show_fig(
     if not selection_session_state_key:
         st.plotly_chart(
             fig,
-            use_container_width=container_width,
+            width="stretch" if container_width else "content",
             config={
                 "displaylogo": False,
                 "modeBarButtonsToRemove": [
@@ -342,7 +342,7 @@ def show_fig(
                     "format": image_format,
                 },
             },
-            use_container_width=True,
+            width="stretch",
         )
 
 
@@ -357,7 +357,7 @@ def show_table(df: pd.DataFrame, download_name: str = "") -> pd.DataFrame:
     Returns:
         pd.DataFrame: The displayed dataframe.
     """
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df, width="stretch")
     if download_name:
         st.download_button(
             "Download Table",

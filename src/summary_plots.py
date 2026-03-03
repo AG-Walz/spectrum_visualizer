@@ -369,13 +369,13 @@ def plot_ridgeline(
     # Colorbar — manually positioned well below the x-axis labels
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    fig.subplots_adjust(left=0.20, top=0.96, bottom=0.18, wspace=0.05)
-    cbar_ax = fig.add_axes([0.25, 0.04, 0.35, 0.015])  # [left, bottom, width, height]
+    fig.subplots_adjust(left=0.20, top=0.97, bottom=0.14, wspace=0.05)
+    cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])  # [left, bottom, width, height]
     cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
     cbar.set_label(f"Median {_metric_label(metric)}", fontsize=9)
 
     if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
     return fig
 
 
@@ -730,8 +730,7 @@ def plot_dumbbell(
     axes[0].set_yticks(range(n_q))
     axes[0].set_yticklabels(short_q, fontsize=7 if n_q > 20 else 8)
 
-    # Legend: anchor well below axes so it never overlaps the plot.
-    # bbox_inches="tight" in savefig will include it in the final output.
+    # Legend inside the first axes at bottom-left (data clusters right)
     from matplotlib.lines import Line2D
     legend_elements = [
         Line2D([0], [0], marker="o", color="w", markerfacecolor=col_binned,
@@ -739,12 +738,10 @@ def plot_dumbbell(
         Line2D([0], [0], marker="D", color="w", markerfacecolor=col_match,
                markersize=8, label="R² (match)"),
     ]
-    fig.subplots_adjust(top=0.92, bottom=0.20)
-    fig.legend(handles=legend_elements, loc="lower center", ncol=2,
-               fontsize=9, framealpha=0.9, bbox_to_anchor=(0.5, 0.03))
+    axes[0].legend(handles=legend_elements, loc="lower left", ncol=1,
+                   fontsize=8, framealpha=0.9)
 
-    # Title: anchor well above axes so it never overlaps panel subtitles.
-    # bbox_inches="tight" in savefig will include it in the final output.
+    fig.subplots_adjust(top=0.92, bottom=0.10)
     fig.suptitle(title or peptidoform, fontsize=13, fontweight="bold", y=1.03)
     return fig
 
@@ -881,7 +878,7 @@ if __name__ == "__main__":
         help="Which plot types to generate (default: all)",
     )
     parser.add_argument(
-        "--formats", nargs="+", default=None, choices=["png", "svg"],
+        "--formats", nargs="+", default=None, choices=["png", "svg", "pdf"],
         help="Export formats (default: svg)",
     )
     parser.add_argument(

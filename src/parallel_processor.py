@@ -46,6 +46,7 @@ class ComparisonTask:
     safe_filename: str = ""
     png_dir: str = ""
     svg_dir: str = ""
+    pdf_dir: str = ""
 
     # Plot/export parameters
     export_formats: List[str] = field(default_factory=lambda: ["png"])
@@ -75,6 +76,7 @@ class ComparisonResult:
 
     png_path: str = ""
     svg_path: str = ""
+    pdf_path: str = ""
 
     # Dict with metrics for summary CSV (only for mirror tasks)
     summary_row: Optional[Dict] = None
@@ -133,7 +135,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                     dpi=task.dpi,
                     normalize=task.normalize,
                 )
-                png_path, svg_path = _save_task_figure(fig, task)
+                png_path, svg_path, pdf_path = _save_task_figure(fig, task)
                 import matplotlib.pyplot as plt
                 plt.close(fig)
                 del fig
@@ -152,7 +154,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 dpi=task.dpi,
                 normalize=task.normalize,
             )
-            png_path, svg_path = _save_task_figure(fig, task)
+            png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             import matplotlib.pyplot as plt
             plt.close(fig)
             del fig
@@ -163,6 +165,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             success=True,
             png_path=png_path,
             svg_path=svg_path,
+            pdf_path=pdf_path,
             summary_row=summary_row,
         )
 
@@ -175,10 +178,11 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         )
 
 
-def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str]:
-    """Save a matplotlib figure to PNG and/or SVG. Returns (png_path, svg_path)."""
+def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
+    """Save a matplotlib figure to PNG, SVG, and/or PDF. Returns (png_path, svg_path, pdf_path)."""
     png_path = ""
     svg_path = ""
+    pdf_path = ""
 
     if "png" in task.export_formats and task.png_dir:
         variant_dir = Path(task.png_dir) / task.folder_name
@@ -194,7 +198,14 @@ def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str]:
         fig.savefig(str(out), format="svg", bbox_inches="tight", facecolor="white")
         svg_path = str(out)
 
-    return png_path, svg_path
+    if "pdf" in task.export_formats and task.pdf_dir:
+        variant_dir = Path(task.pdf_dir) / task.folder_name
+        variant_dir.mkdir(parents=True, exist_ok=True)
+        out = variant_dir / f"{task.safe_filename}.pdf"
+        fig.savefig(str(out), format="pdf", bbox_inches="tight", facecolor="white")
+        pdf_path = str(out)
+
+    return png_path, svg_path, pdf_path
 
 
 # ============================================================================

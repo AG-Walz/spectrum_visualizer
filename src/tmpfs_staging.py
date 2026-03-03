@@ -69,12 +69,14 @@ class TmpfsStaging:
         self,
         final_png_dir: str,
         final_svg_dir: str,
+        final_pdf_dir: str,
         export_formats: List[str],
         config: Optional[StagingConfig] = None,
         log_fn: Optional[Callable[[str], None]] = None,
     ):
         self._final_png_dir = final_png_dir
         self._final_svg_dir = final_svg_dir
+        self._final_pdf_dir = final_pdf_dir
         self._export_formats = export_formats
         self._config = config or StagingConfig()
         self._log = log_fn or (lambda msg: None)
@@ -84,6 +86,7 @@ class TmpfsStaging:
         self._staging_dir: Optional[Path] = None
         self._staging_png_dir: Optional[str] = None
         self._staging_svg_dir: Optional[str] = None
+        self._staging_pdf_dir: Optional[str] = None
         self._budget_bytes: int = 0
         self._bytes_per_task: int = 0
 
@@ -141,12 +144,19 @@ class TmpfsStaging:
             svg_sub.mkdir(exist_ok=True)
             self._staging_svg_dir = str(svg_sub)
 
+        if "pdf" in self._export_formats and self._final_pdf_dir:
+            pdf_sub = staging_dir / "pdf"
+            pdf_sub.mkdir(exist_ok=True)
+            self._staging_pdf_dir = str(pdf_sub)
+
         # Estimate bytes per task
         bpt = 0
         if "svg" in self._export_formats:
             bpt += self._config.svg_size_estimate
         if "png" in self._export_formats:
             bpt += self._config.png_size_estimate
+        if "pdf" in self._export_formats:
+            bpt += self._config.png_size_estimate  # PDF ~similar size to PNG
         self._bytes_per_task = max(bpt, 1)
 
         # Register cleanup for crash / Ctrl+C
@@ -215,6 +225,8 @@ class TmpfsStaging:
                     task.png_dir = self._staging_png_dir
                 if self._staging_svg_dir and task.svg_dir:
                     task.svg_dir = self._staging_svg_dir
+                if self._staging_pdf_dir and task.pdf_dir:
+                    task.pdf_dir = self._staging_pdf_dir
 
             if i == 0:
                 # Include skip_tasks (metrics-only) in the first chunk
@@ -243,6 +255,16 @@ class TmpfsStaging:
             if src.exists() and any(src.iterdir()):
                 shutil.copytree(
                     str(src), self._final_svg_dir, dirs_exist_ok=True
+                )
+                shutil.rmtree(str(src))
+                src.mkdir(exist_ok=True)
+
+        # Copy PDF staging → final
+        if self._staging_pdf_dir and self._final_pdf_dir:
+            src = Path(self._staging_pdf_dir)
+            if src.exists() and any(src.iterdir()):
+                shutil.copytree(
+                    str(src), self._final_pdf_dir, dirs_exist_ok=True
                 )
                 shutil.rmtree(str(src))
                 src.mkdir(exist_ok=True)

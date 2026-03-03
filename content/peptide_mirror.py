@@ -820,7 +820,7 @@ def render_analysis():
         with export_col2:
             export_formats = st.multiselect(
                 "Export Formats",
-                options=['png'],
+                options=['png', 'svg', 'pdf'],
                 default=st.session_state.get(get_state_key('export_formats'), ['png']),
                 key=f"{STATE_PREFIX}_export_formats_input"
             )
@@ -1083,7 +1083,7 @@ def run_streaming_processing():
     }
 
     # Numbered folder: MSpecViz_analysis_001/, _002/, etc. Reuses matching folder.
-    root_dir, png_dir, svg_dir = find_or_create_export_directory(
+    root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
         export_dir, project_name, run_settings
     )
 
@@ -1388,6 +1388,7 @@ def run_streaming_processing():
                 safe_filename=safe_filename,
                 png_dir=str(png_dir),
                 svg_dir=str(svg_dir),
+                pdf_dir=str(pdf_dir),
                 export_formats=export_formats,
                 figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
                 dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
@@ -1426,6 +1427,7 @@ def run_streaming_processing():
                 safe_filename=safe_filename,
                 png_dir=str(png_dir),
                 svg_dir=str(svg_dir),
+                pdf_dir=str(pdf_dir),
                 export_formats=export_formats,
                 figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
                 dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
@@ -1554,6 +1556,9 @@ def run_streaming_processing():
                 if "svg" in task.export_formats and task.svg_dir:
                     if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
                         outputs_exist = False
+                if "pdf" in task.export_formats and task.pdf_dir:
+                    if not (Path(task.pdf_dir) / task.folder_name / f"{task.safe_filename}.pdf").exists():
+                        outputs_exist = False
                 if outputs_exist:
                     task.skip_plot = True
                     skipped += 1
@@ -1609,7 +1614,7 @@ def run_streaming_processing():
                 ram_fraction=get_settings_value(settings, "performance", "tmpfs_ram_fraction", default=0.40),
             )
 
-            with TmpfsStaging(str(png_dir), str(svg_dir), export_formats,
+            with TmpfsStaging(str(png_dir), str(svg_dir), str(pdf_dir), export_formats,
                               staging_config, log_fn=add_log) as staging:
                 for chunk in staging.iter_chunks(comparison_tasks):
                     run_parallel_comparisons(
@@ -1704,6 +1709,27 @@ def run_streaming_processing():
                 except Exception as xlsx_err:
                     add_log(f"Warning: Could not write XLSX: {xlsx_err}")
 
+                # Generate summary plots
+                try:
+                    from src.summary_plots import generate_all_summary_plots
+                    export_fmts = st.session_state.get("export_formats", ["png"])
+                    if isinstance(export_fmts, str):
+                        export_fmts = [export_fmts]
+                    export_dpi = st.session_state.get("export_dpi", 300)
+                    summary_plot_paths = generate_all_summary_plots(
+                        source=summary_df,
+                        output_dir=str(root_dir),
+                        metric="R² binned",
+                        formats=export_fmts,
+                        dpi=export_dpi,
+                    )
+                    n_sp = sum(len(v) for v in summary_plot_paths.values())
+                    results_summary["summary_plots"] = summary_plot_paths
+                    add_log(f"Summary plots: {n_sp} files")
+                except Exception as sp_err:
+                    add_log(f"Warning: Could not generate summary plots: {sp_err}")
+                    logger.warning(f"Summary plots failed: {sp_err}")
+
             except Exception as summary_err:
                 add_log(f"Warning: Could not write summary: {summary_err}")
                 logger.warning(f"Summary export failed: {summary_err}")
@@ -1742,6 +1768,19 @@ def display_streaming_results(results: dict):
         if summary_xlsx:
             parts.append(f"XLSX: `{summary_xlsx}`")
         st.caption(f"Comparison summary: {' | '.join(parts)}")
+
+    # Show summary plots
+    summary_plots = results.get("summary_plots", {})
+    if summary_plots:
+        from pathlib import Path
+        st.markdown("---")
+        st.subheader("Summary Plots")
+        for plot_type, paths in summary_plots.items():
+            png_path = paths.get("png", "")
+            if png_path and Path(png_path).exists():
+                label = plot_type.replace("_", " ").title()
+                with st.expander(label, expanded=(plot_type == "dual_axis")):
+                    st.image(png_path, width="stretch")
 
     if errors:
         with st.expander(f"⚠️ {len(errors)} Errors", expanded=False):

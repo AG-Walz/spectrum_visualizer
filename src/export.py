@@ -68,12 +68,14 @@ def create_export_directory(
     root_dir = Path(base_dir) / folder_name
     png_dir = root_dir / "png"
     svg_dir = root_dir / "svg"
+    pdf_dir = root_dir / "pdf"
 
     root_dir.mkdir(parents=True, exist_ok=True)
     png_dir.mkdir(exist_ok=True)
     svg_dir.mkdir(exist_ok=True)
+    pdf_dir.mkdir(exist_ok=True)
 
-    return root_dir, png_dir, svg_dir
+    return root_dir, png_dir, svg_dir, pdf_dir
 
 
 def _settings_fingerprint(run_settings: dict) -> str:
@@ -86,7 +88,7 @@ def find_or_create_export_directory(
     base_dir: str,
     project_name: str,
     run_settings: dict,
-) -> Tuple[Path, Path, Path]:
+) -> Tuple[Path, Path, Path, Path]:
     """
     Find an existing export directory matching run_settings, or create a new one.
 
@@ -159,8 +161,10 @@ def find_or_create_export_directory(
 
         png_dir = new_path / "png"
         svg_dir = new_path / "svg"
+        pdf_dir = new_path / "pdf"
         png_dir.mkdir(exist_ok=True)
         svg_dir.mkdir(exist_ok=True)
+        pdf_dir.mkdir(exist_ok=True)
 
         # Update timestamp in run_settings.json
         settings_file = new_path / "run_settings.json"
@@ -173,7 +177,7 @@ def find_or_create_export_directory(
         except Exception:
             pass
 
-        return new_path, png_dir, svg_dir
+        return new_path, png_dir, svg_dir, pdf_dir
 
     # No match — create next numbered folder
     next_num = max_num + 1
@@ -181,10 +185,12 @@ def find_or_create_export_directory(
     root_dir = base / folder_name
     png_dir = root_dir / "png"
     svg_dir = root_dir / "svg"
+    pdf_dir = root_dir / "pdf"
 
     root_dir.mkdir(parents=True, exist_ok=True)
     png_dir.mkdir(exist_ok=True)
     svg_dir.mkdir(exist_ok=True)
+    pdf_dir.mkdir(exist_ok=True)
 
     # Write run_settings.json
     settings_to_save = {
@@ -198,6 +204,6 @@ def find_or_create_export_directory(
     except Exception as e:
         logger.warning(f"Could not write run_settings.json: {e}")
 
-    return root_dir, png_dir, svg_dir
+    return root_dir, png_dir, svg_dir, pdf_dir
 
 

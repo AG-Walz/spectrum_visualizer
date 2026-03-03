@@ -274,3 +274,80 @@ python cli.py --config examples/config_cli.yaml \
 python cli.py --config examples/config_cli.yaml --quiet
 # Exit code: 0 = success, 1 = processing failure, 2 = config error
 ```
+
+---
+
+## Standalone Scripts
+
+MSpecViz includes two additional standalone scripts beyond the main CLI pipeline:
+
+### Summary & Per-Peptide Plots (`src/summary_plots.py`)
+
+Generates cross-peptidoform summary plots and per-peptide dumbbell plots from a `comparison_summary.csv` produced by the main pipeline.
+
+```bash
+# Generate all summary plots (dual-axis, ridgeline, heatmap)
+python -m src.summary_plots exports/my_run/comparison_summary.csv
+
+# Specify output directory and metric
+python -m src.summary_plots exports/my_run/comparison_summary.csv \
+  -o exports/my_run -m "R2 Binned"
+
+# Generate only specific plot types
+python -m src.summary_plots exports/my_run/comparison_summary.csv \
+  --plots dual_axis heatmap
+
+# Generate per-peptide dumbbell plots (R² binned vs R² match per query)
+python -m src.summary_plots exports/my_run/comparison_summary.csv \
+  --peptide-detail
+
+# Generate dumbbell plots for specific peptidoforms only
+python -m src.summary_plots exports/my_run/comparison_summary.csv \
+  --peptide-detail --peptidoforms "LGGNEQVTR/2" "GAGSSEPVTGLDAK/3"
+
+# Export as SVG
+python -m src.summary_plots exports/my_run/comparison_summary.csv \
+  --formats svg --dpi 300
+
+# List available metrics in the CSV
+python -m src.summary_plots exports/my_run/comparison_summary.csv --list-metrics
+```
+
+| Flag | Description |
+|------|-------------|
+| `csv` | **(positional, required)** Path to `comparison_summary.csv` |
+| `-o`, `--output-dir` | Output directory (default: same as CSV) |
+| `-m`, `--metric` | Metric to visualize (default: `R2 Binned`) |
+| `--plots` | Summary plot types: `dual_axis`, `ridgeline`, `heatmap` (default: all) |
+| `--formats` | Export formats: `png`, `svg` (default: `png`) |
+| `--dpi` | Image DPI (default: 300) |
+| `--title` | Title prefix for plots |
+| `--list-metrics` | List available metrics in the CSV and exit |
+| `--peptide-detail` | Generate per-peptide dumbbell plots instead of summary plots |
+| `--peptidoforms` | Specific peptidoforms to plot (default: all) |
+
+**Summary plots** are saved to `{output_dir}/summary/`. **Dumbbell plots** are saved alongside mirror plots in `{output_dir}/png/{Peptide}/` (and/or `svg/`).
+
+### Parquet Conversion Tool (`tools/convert_mzml_to_parquet.py`)
+
+Converts idXML + mzML files into a single Parquet file for instant loading on subsequent runs. Useful for large datasets or batch processing.
+
+```bash
+python tools/convert_mzml_to_parquet.py \
+  --idxml /path/to/*.idXML \
+  --mzml-dir /path/to/mzml_files/ \
+  --peptides "LGGNEQVTR,GAGSSEPVTGLDAK" \
+  --output exports/my_spectra.parquet \
+  --reference-substring "Synpep"
+```
+
+| Flag | Description |
+|------|-------------|
+| `--idxml` | **(required)** Path(s) to idXML file(s) |
+| `--mzml-dir` | **(required)** Directory containing mzML files |
+| `--peptides` | **(required)** Comma-separated list of target peptide sequences |
+| `--output` | **(required)** Output Parquet file path |
+| `--reference-substring` | Substring to identify reference mzML files |
+| `-v`, `--verbose` | Enable verbose logging |
+
+See [Parquet Conversion Tool](../tools/README.md) for full documentation.
