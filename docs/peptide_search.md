@@ -65,7 +65,7 @@ Matches are grouped into **VariantGroups** — one group per unique combination 
 
 ```
 PEPTIDEK|                → unmodified variant
-PEPTIDEK|Oxidation@M3    → oxidized variant
+PEPTIDEK|M3[Ox]          → oxidized variant
 ```
 
 Each VariantGroup contains a list of PeptideMatch objects with all the details needed to load the corresponding spectrum.
@@ -74,18 +74,22 @@ Each VariantGroup contains a list of PeptideMatch objects with all the details n
 
 ## Modification Extraction
 
-Modifications are extracted from each PeptideHit and formatted as human-readable strings:
+Modifications are extracted from each PeptideHit and formatted as compact inline strings using abbreviations for common modifications:
 
 | Modification Location | Format Example |
 |-----------------------|---------------|
-| N-terminal | `Acetyl@N-term` |
-| Residue-specific | `Oxidation@M5` (at position 5) |
-| C-terminal | `Amidated@C-term` |
+| N-terminal | `NTerm[Ac]` |
+| Residue-specific | `M5[Ox]` (Oxidation at position 5) |
+| C-terminal | `CTerm[Amidated]` |
 
-Multiple modifications are joined with `, `:
+Multiple modifications are joined with `|`:
 ```
-Oxidation@M5, Phospho@S8
+M5[Ox]|S8[Ph]
 ```
+
+Common abbreviations: Ox (Oxidation), Ph (Phospho), CAM (Carbamidomethyl), Ac (Acetyl), Deam (Deamidated), Me (Methylation). Unknown modifications use their full name.
+
+The **display label** shows modifications inline within the sequence: `PEPTM[Ox]DEK` instead of `PEPTMDEK [Oxidation@M5]`.
 
 The **modification key** (used for grouping) normalizes modifications so that the same chemical modification at the same position always produces the same string, regardless of idXML formatting differences.
 

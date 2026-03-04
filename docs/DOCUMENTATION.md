@@ -250,7 +250,7 @@ The results table shows:
 | Column | Meaning |
 |--------|---------|
 | **Peptide** | Base amino acid sequence |
-| **Modification** | Post-translational modifications found (e.g., Oxidation@M5) |
+| **Modification** | Post-translational modifications in compact notation (e.g., M5[Ox]) |
 | **PSMs** | Number of peptide-spectrum matches |
 | **idXML Files** | Number of idXML files containing this peptide |
 | **mzML Resolved** | Number of PSMs successfully mapped to mzML files |

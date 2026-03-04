@@ -974,6 +974,7 @@ def run_streaming_processing():
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
     from src.peak_annotation import prepare_spectrum_for_plot
+    from src.peptide_search import format_inline_sequence
     from src.export import sanitize_filename, shorten_stem, create_export_directory
     from src.spectrum_metrics import shorten_filenames
     from src.parallel_processor import ComparisonTask, run_parallel_comparisons
@@ -1360,7 +1361,7 @@ def run_streaming_processing():
         # Create folder for this variant
         if result.modification_key:
             folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
-            plot_title = f"{result.base_sequence} [{result.modification_key}]"
+            plot_title = format_inline_sequence(result.base_sequence, result.modification_key)
         else:
             folder_name = result.base_sequence
             plot_title = result.base_sequence

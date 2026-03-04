@@ -310,7 +310,7 @@ class TestLoadSpectraFromParquet:
                 "spectrum_id": "index=1",
                 "peptidoform": "PEPTM(Oxidation)DEK",
                 "base_sequence": "PEPTMDEK",
-                "variant_key": "PEPTMDEK|Oxidation@M5",
+                "variant_key": "PEPTMDEK|M5[Ox]",
                 "charge": 2,
                 "precursor_mz": 460.0,
                 "rt": 100.0,
@@ -325,7 +325,7 @@ class TestLoadSpectraFromParquet:
                 "spectrum_id": "index=2",
                 "peptidoform": "PEPTM(Oxidation)DEK",
                 "base_sequence": "PEPTMDEK",
-                "variant_key": "PEPTMDEK|Oxidation@M5",
+                "variant_key": "PEPTMDEK|M5[Ox]",
                 "charge": 2,
                 "precursor_mz": 460.0,
                 "rt": 105.0,
@@ -346,7 +346,7 @@ class TestLoadSpectraFromParquet:
         load_spectra_from_parquet(parquet_path, on_query_ready=on_query)
 
         assert len(query_results) == 1
-        assert query_results[0].modification_key == "Oxidation@M5"
+        assert query_results[0].modification_key == "M5[Ox]"
         assert query_results[0].base_sequence == "PEPTMDEK"
 
     def test_missing_file_error(self, tmp_path):

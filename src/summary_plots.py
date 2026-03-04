@@ -109,11 +109,14 @@ def prepare_summary_data(
             f"{[c for c in raw_df.columns if c in METRIC_COLUMNS]}"
         )
 
-    # Build peptidoform label
+    # Build peptidoform label using inline modification notation
+    from src.peptide_search import format_inline_sequence
     mod = raw_df["Modification"].fillna("").astype(str)
     raw_df["peptidoform"] = (
-        raw_df["Peptide"]
-        + mod.apply(lambda x: f"[{x}]" if x else "")
+        raw_df.apply(
+            lambda row: format_inline_sequence(row["Peptide"], mod[row.name]),
+            axis=1,
+        )
         + "/"
         + raw_df["Charge"].astype(str)
     )

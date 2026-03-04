@@ -64,7 +64,7 @@ When spectra are loaded (Step 6), the reference substring determines processing 
    - 5 queries + 3 references = 15 mirror plots
    - 10 queries + 2 references = 20 mirror plots
 
-3. **Matching is by peptide variant**: A query spectrum for `PEPTIDEK|Oxidation@M3` is only compared to reference spectra with the same variant key (`PEPTIDEK|Oxidation@M3`), not to `PEPTIDEK` without oxidation.
+3. **Matching is by peptide variant**: A query spectrum for `PEPTIDEK|M3[Ox]` is only compared to reference spectra with the same variant key (`PEPTIDEK|M3[Ox]`), not to `PEPTIDEK` without oxidation.
 
 ---
 

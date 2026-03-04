@@ -71,7 +71,7 @@ See [Spectrum Metrics](spectrum_metrics.md) for detailed explanations of each me
 
 The plot title shows the peptide sequence and modifications:
 - `LGGNEQVTR` — unmodified peptide
-- `PEPTMIDEK [Oxidation@M5]` — peptide with modification
+- `PEPTM[Ox]IDEK` — peptide with modification (inline compact notation)
 
 ### Center Line
 
@@ -205,7 +205,7 @@ exports/MSpecViz_analysis_20260219_143000/
     │   └── LGGNEQVTR_SampleB_vs_Reference01.png
     ├── GAGSSEPVTGLDAK/
     │   └── ...
-    └── PEPTMIDEK_Oxidation_M5/
+    └── PEPTMIDEK_M5_Ox_/
         └── ...
 ```
 

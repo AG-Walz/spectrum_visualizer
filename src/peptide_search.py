@@ -15,6 +15,93 @@ import pyopenms as oms
 
 logger = logging.getLogger(__name__)
 
+# Compact abbreviations for common post-translational modifications
+MOD_ABBREVIATIONS = {
+    "Oxidation": "Ox",
+    "Phospho": "Ph",
+    "Carbamidomethyl": "CAM",
+    "Acetyl": "Ac",
+    "Deamidated": "Deam",
+    "Methylation": "Me",
+    "Dimethyl": "DiMe",
+    "Ubiquitin": "GG",
+    "Pyro-carbamidomethyl": "Pyro-CAM",
+    "Pyro-glu": "Pyro",
+}
+
+
+def abbreviate_mod(name: str) -> str:
+    """Return short abbreviation for a modification, or the full name if unknown."""
+    return MOD_ABBREVIATIONS.get(name, name)
+
+
+def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
+    """
+    Build an inline-annotated sequence from base_sequence and compact modification_key.
+
+    Args:
+        base_sequence: Unmodified sequence, e.g. "PEPTMDEK"
+        modification_key: Compact mod key, e.g. "M5[Ox]" or "M5[Ox]|S3[Ph]"
+                          Terminal mods: "NTerm[Ac]", "CTerm[...]"
+
+    Returns:
+        Inline string, e.g. "PEPTM[Ox]DEK" or "PEPTMDEK" if no mods
+    """
+    if not modification_key:
+        return base_sequence
+
+    # Parse each mod entry: "M5[Ox]" -> (position=5, abbrev="Ox")
+    # Terminal mods: "NTerm[Ac]" -> (position=0, abbrev="Ac", is_nterm=True)
+    insertions = {}  # position (1-based) -> list of abbreviations to insert after that position
+    prefix_mods = []  # N-terminal mods shown as prefix
+    suffix_mods = []  # C-terminal mods shown as suffix
+
+    for entry in modification_key.split("|"):
+        entry = entry.strip()
+        if not entry:
+            continue
+
+        # Extract abbreviation from brackets
+        bracket_start = entry.find("[")
+        bracket_end = entry.find("]")
+        if bracket_start < 0 or bracket_end < 0:
+            continue
+
+        abbrev = entry[bracket_start:bracket_end + 1]  # e.g. "[Ox]"
+        prefix = entry[:bracket_start]  # e.g. "M5" or "NTerm" or "CTerm"
+
+        if prefix == "NTerm":
+            prefix_mods.append(abbrev)
+        elif prefix == "CTerm":
+            suffix_mods.append(abbrev)
+        else:
+            # Parse residue + position: "M5" -> position 5
+            # Find where digits start
+            pos_str = ""
+            for ch in prefix:
+                if ch.isdigit():
+                    pos_str += ch
+            if pos_str:
+                pos = int(pos_str)
+                if pos not in insertions:
+                    insertions[pos] = []
+                insertions[pos].append(abbrev)
+
+    # Build the inline sequence
+    parts = []
+    for part in prefix_mods:
+        parts.append(part)
+    for i, aa in enumerate(base_sequence):
+        parts.append(aa)
+        pos = i + 1  # 1-based position
+        if pos in insertions:
+            for abbrev in insertions[pos]:
+                parts.append(abbrev)
+    for part in suffix_mods:
+        parts.append(part)
+
+    return "".join(parts)
+
 
 def _rebuild_peptide_match(*args):
     """Reconstruct PeptideMatch from pickled args (avoids Streamlit reload identity issues)."""
@@ -53,7 +140,7 @@ class PeptideMatch:
 class VariantGroup:
     """Group of spectra for one peptide variant (sequence + modification)."""
     base_sequence: str
-    modification_key: str     # e.g., "Oxidation@M5" or "" for unmodified
+    modification_key: str     # e.g., "M5[Ox]" or "" for unmodified
     display_label: str        # Human-readable label
     matches: List[PeptideMatch] = field(default_factory=list)
     reference_spectra: List = field(default_factory=list)
@@ -117,7 +204,12 @@ def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], D
 
 
 def get_modification_string(peptide_hit) -> str:
-    """Extract modification string from a PeptideHit."""
+    """
+    Extract compact modification string from a PeptideHit.
+
+    Returns format like "M5[Ox]" or "M5[Ox]|S3[Ph]" for multiple mods.
+    Terminal mods: "NTerm[Ac]", "CTerm[...]".
+    """
     try:
         aa_seq = peptide_hit.getSequence()
         if not aa_seq.isModified():
@@ -128,20 +220,23 @@ def get_modification_string(peptide_hit) -> str:
         if aa_seq.hasNTerminalModification():
             mod = aa_seq.getNTerminalModification()
             if mod:
-                mods.append(f"NTerm:{mod.getFullId()}")
+                mod_name = mod.getFullId().split(" ")[0]  # Strip trailing details
+                mods.append(f"NTerm[{abbreviate_mod(mod_name)}]")
 
         # Check each residue
         for i in range(aa_seq.size()):
             residue = aa_seq.getResidue(i)
             if residue.isModified():
                 mod_name = residue.getModificationName()
-                mods.append(f"{mod_name}@{residue.getOneLetterCode()}{i+1}")
+                abbrev = abbreviate_mod(mod_name)
+                mods.append(f"{residue.getOneLetterCode()}{i+1}[{abbrev}]")
 
         # Check C-term modification
         if aa_seq.hasCTerminalModification():
             mod = aa_seq.getCTerminalModification()
             if mod:
-                mods.append(f"CTerm:{mod.getFullId()}")
+                mod_name = mod.getFullId().split(" ")[0]
+                mods.append(f"CTerm[{abbreviate_mod(mod_name)}]")
 
         return "|".join(mods) if mods else ""
     except Exception as e:
@@ -363,10 +458,7 @@ def search_peptides_in_idxmls(
                 mod_key = variant_key.split("|", 1)[1]
 
             if variant_key not in variant_groups:
-                if mod_key:
-                    display_label = f"{base_seq} [{mod_key}]"
-                else:
-                    display_label = base_seq
+                display_label = format_inline_sequence(base_seq, mod_key)
                 variant_groups[variant_key] = VariantGroup(
                     base_sequence=base_seq,
                     modification_key=mod_key,

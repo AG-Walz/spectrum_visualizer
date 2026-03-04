@@ -18,12 +18,12 @@ exports/
     │   │   ├── LGGNEQVTR_SampleA_vs_Reference01.png
     │   │   ├── LGGNEQVTR_SampleA_vs_Reference02.png
     │   │   └── LGGNEQVTR_SampleB_vs_Reference01.png
-    │   └── PEPTMIDEK_Oxidation_M5/
+    │   └── PEPTMIDEK_M5_Ox_/
     │       └── PEPTMIDEK_SampleA_vs_Reference01.png
     └── svg/                            # SVG plots (if enabled)
         ├── LGGNEQVTR/
         │   └── ...
-        └── PEPTMIDEK_Oxidation_M5/
+        └── PEPTMIDEK_M5_Ox_/
             └── ...
 ```
 
@@ -39,7 +39,7 @@ Characters invalid for filenames are replaced with underscores. The name is trun
 
 Plots are grouped by peptide variant:
 - Unmodified: `PEPTIDEK/`
-- Modified: `PEPTIDEK_Oxidation_M5/` (modification string sanitized for filesystem)
+- Modified: `PEPTIDEK_M5_Ox_/` (compact modification key sanitized for filesystem)
 
 ---
 
