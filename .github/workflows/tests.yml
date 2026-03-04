@@ -1,0 +1,39 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-file: environment.yml
+          environment-name: mspecviz
+          cache-environment: true
+
+      - name: Install test dependencies
+        shell: micromamba-shell {0}
+        run: pip install pytest
+
+      - name: Import smoke tests
+        shell: micromamba-shell {0}
+        run: python -m pytest tests/test_imports.py -v --tb=short
+
+      - name: Unit tests
+        shell: micromamba-shell {0}
+        run: python -m pytest tests/ -v --tb=short
+
+      - name: GUI tests
+        shell: micromamba-shell {0}
+        run: python -m pytest test_gui.py -v --tb=short
