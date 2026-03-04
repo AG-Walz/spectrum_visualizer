@@ -615,7 +615,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
         "plot_unpaired": cfg.plot_unpaired,
     }
 
-    # Numbered folder: ProCa_2_run_001/, _002/, etc. Reuses matching folder.
+    # Numbered folder: my_project_001/, _002/, etc. Reuses matching folder.
     root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
         cfg.export_dir, cfg.project_name, run_settings
     )

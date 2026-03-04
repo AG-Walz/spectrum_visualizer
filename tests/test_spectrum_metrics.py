@@ -86,16 +86,16 @@ class TestShortenFilenames:
         assert shorten_filenames([]) == []
 
     def test_single_file(self):
-        result = shorten_filenames(["ProCa_Anna_sample_A.mzML"])
-        assert result == ["ProCa_Anna_sample_A"]
+        result = shorten_filenames(["Experiment_batch1_sample_A.mzML"])
+        assert result == ["Experiment_batch1_sample_A"]
 
     def test_common_prefix_suffix(self):
         filenames = [
-            "ProCa_Anna_sample_A.mzML",
-            "ProCa_Anna_sample_B.mzML",
+            "Experiment_batch1_sample_A.mzML",
+            "Experiment_batch1_sample_B.mzML",
         ]
         result = shorten_filenames(filenames)
-        # Common prefix: ProCa, Anna, sample → removed
+        # Common prefix: Experiment, batch1, sample → removed
         # Result: just A and B (or sample_A, sample_B depending on algo)
         assert len(result) == 2
         assert result[0] != result[1]  # Must be distinct
@@ -280,13 +280,14 @@ class TestComputeAllMetrics:
 # ---------------------------------------------------------------------------
 
 class TestFormatMetricsText:
-    def test_contains_abbreviations(self):
+    def test_contains_metric_labels(self):
         metrics = {"R2m": 0.85, "R2b": 0.72, "Cos": 0.91, "Ent": 0.88,
                    "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
         text = format_metrics_text(metrics)
-        assert "R2m=" in text
-        assert "Cos=" in text
-        assert "Dice=" in text
+        assert "R² Matching" in text
+        assert "R² Binned" in text
+        assert "0.850" in text
+        assert "0.720" in text
 
     def test_nan_shows_na(self):
         metrics = {"R2m": float("nan"), "R2b": 0.72, "Cos": float("nan"),

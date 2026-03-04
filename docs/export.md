@@ -15,11 +15,11 @@ exports/
     ├── comparison_summary.xlsx         # Same data in Excel format
     ├── png/                            # PNG plot images
     │   ├── LGGNEQVTR/                 # One folder per peptide variant
-    │   │   ├── LGGNEQVTR_Patient01_vs_Synpep01.png
-    │   │   ├── LGGNEQVTR_Patient01_vs_Synpep02.png
-    │   │   └── LGGNEQVTR_Patient02_vs_Synpep01.png
+    │   │   ├── LGGNEQVTR_SampleA_vs_Reference01.png
+    │   │   ├── LGGNEQVTR_SampleA_vs_Reference02.png
+    │   │   └── LGGNEQVTR_SampleB_vs_Reference01.png
     │   └── PEPTMIDEK_Oxidation_M5/
-    │       └── PEPTMIDEK_Patient01_vs_Synpep01.png
+    │       └── PEPTMIDEK_SampleA_vs_Reference01.png
     └── svg/                            # SVG plots (if enabled)
         ├── LGGNEQVTR/
         │   └── ...
@@ -125,9 +125,9 @@ The "Query" and "Reference" columns use shortened names for readability. The sho
 
 Example:
 ```
-ProCa_Anna_C3_Patient_01.mzML  →  Patient_01
-ProCa_Anna_C3_Patient_02.mzML  →  Patient_02
-ProCa_Anna_C3_Synpep_01.mzML   →  Synpep_01
+Exp01_Sample_A.mzML   →  Sample_A
+Exp01_Sample_B.mzML   →  Sample_B
+Exp01_Synpep_01.mzML  →  Synpep_01
 ```
 
 The full filenames are preserved in the "Query File" and "Ref File" columns.

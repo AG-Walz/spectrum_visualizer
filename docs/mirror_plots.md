@@ -177,14 +177,14 @@ Exported plot filenames follow this pattern:
 {peptide}_{query_stem}_vs_{ref_stem}.png
 ```
 
-Example: `LGGNEQVTR_Patient01_C3_vs_Synpep01_C3.png`
+Example: `LGGNEQVTR_SampleA_vs_Reference01.png`
 
 **Single spectrum plots**:
 ```
 {peptide}_{source_stem}.png
 ```
 
-Example: `LGGNEQVTR_Patient01_C3.png`
+Example: `LGGNEQVTR_SampleA.png`
 
 Filenames are sanitized: invalid characters are removed, and names are truncated to a reasonable length.
 
@@ -200,9 +200,9 @@ exports/MSpecViz_analysis_20260219_143000/
 ├── comparison_summary.xlsx
 └── png/
     ├── LGGNEQVTR/
-    │   ├── LGGNEQVTR_Patient01_vs_Synpep01.png
-    │   ├── LGGNEQVTR_Patient01_vs_Synpep02.png
-    │   └── LGGNEQVTR_Patient02_vs_Synpep01.png
+    │   ├── LGGNEQVTR_SampleA_vs_Reference01.png
+    │   ├── LGGNEQVTR_SampleA_vs_Reference02.png
+    │   └── LGGNEQVTR_SampleB_vs_Reference01.png
     ├── GAGSSEPVTGLDAK/
     │   └── ...
     └── PEPTMIDEK_Oxidation_M5/

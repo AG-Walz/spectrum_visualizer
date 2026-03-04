@@ -24,7 +24,7 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
     Strip extensions, split on '_', remove common prefix/suffix tokens.
 
     Examples:
-        ["ProCa_Anna_sample_A.mzML", "ProCa_Anna_sample_B.mzML"]
+        ["Experiment_sample_A.mzML", "Experiment_sample_B.mzML"]
         -> ["sample_A", "sample_B"]
 
         Single file -> stem (no shortening needed)

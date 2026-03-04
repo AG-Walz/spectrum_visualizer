@@ -8,7 +8,7 @@
   "test": false,
   "image-format": "png",
   "data_directories": {
-    "default": "/mnt/volume"
+    "default": "/"
   },
   "models": {
     "default": "ms2pip_timsTOF2024",

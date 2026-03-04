@@ -177,7 +177,7 @@ Enter a **substring** that identifies your reference files. MSpecViz checks each
 - If the filename **contains** the substring (case-insensitive) → **Reference**
 - Otherwise → **Query**
 
-**Example**: If your reference files are named `Synpep_sample1.mzML`, `Synpep_sample2.mzML` and your query files are `Patient_A.mzML`, `Patient_B.mzML`, enter `Synpep`.
+**Example**: If your reference files are named `Reference_01.mzML`, `Reference_02.mzML` and your query files are `Sample_A.mzML`, `Sample_B.mzML`, enter `Reference`.
 
 ### Preview
 
@@ -456,7 +456,7 @@ All settings are in `settings.json`. Changes take effect on the next app restart
 ```json
 {
   "data_directories": {
-    "default": "/mnt/volume"          // Starting directory for file browser
+    "default": "/"                    // Starting directory for file browser
   },
   "ion_types": {
     "default": ["b", "y"],            // Default ion types selected

@@ -463,5 +463,5 @@ less-rich spectrum is fully captured.
    and Lipidomics Data Using Mass Spectrometry." In: *Frontiers in Data Science*.
    Springer. DOI: 10.1007/978-1-4939-6740-7_7
 
-4. specviz internal functions: `spectrum_correlation()` and
-   `new_spectrum_correlation()` in `/mnt/volume/nacho/specviz/core/correlation.py`
+4. MSpecViz internal functions: `spectrum_correlation()` and
+   `new_spectrum_correlation()` in `src/spectrum_metrics.py`

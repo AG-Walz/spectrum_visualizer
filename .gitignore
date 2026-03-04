@@ -31,5 +31,8 @@ config/
 .DS_Store
 Thumbs.db
 
+# Jupyter notebooks (may contain local paths and real data references)
+*.ipynb
+
 # Standalone scripts (not part of the application)
 main.py

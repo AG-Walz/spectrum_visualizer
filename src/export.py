@@ -93,7 +93,7 @@ def find_or_create_export_directory(
     Find an existing export directory matching run_settings, or create a new one.
 
     Naming: {project_name}_{NNN}_{YYYYMMDD}/
-      e.g.  ProCa_2_run_001_20260226/
+      e.g.  my_project_001_20260226/
 
     Each folder contains a run_settings.json with the full settings + fingerprint.
 
@@ -103,7 +103,7 @@ def find_or_create_export_directory(
 
     Args:
         base_dir: Parent directory (e.g. ./exports)
-        project_name: Project name (e.g. "ProCa_2_run")
+        project_name: Project name (e.g. "my_project")
         run_settings: Dict of all settings that affect output
 
     Returns:

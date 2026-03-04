@@ -119,22 +119,22 @@ library(arrow)
 df <- read_parquet("output.parquet")
 ```
 
-### Example with Real Data
+### Example with Data
 
 ```bash
-# Convert ProCa dataset
+# Convert a dataset to Parquet
 conda run -n mspecviz python tools/convert_mzml_to_parquet.py \
-  --idxml /mnt/volume/nacho/data/ProCa_Anna/small_dataset/mini_dataset/*.idXML \
-  --mzml-dir /mnt/volume/nacho/data/ProCa_Anna/small_dataset/mini_dataset/ \
+  --idxml /data/my_project/identifications/*.idXML \
+  --mzml-dir /data/my_project/spectra/ \
   --peptides "LGGNEQVTR,GAGSSEPVTGLDAK" \
-  --output exports/proca_spectra.parquet \
-  --reference-substring "Synpep" \
+  --output exports/my_spectra.parquet \
+  --reference-substring "Reference" \
   -v
 
 # Verify output
 conda run -n mspecviz python -c "
 import pyarrow.parquet as pq
-t = pq.read_table('exports/proca_spectra.parquet')
+t = pq.read_table('exports/my_spectra.parquet')
 print(t.schema)
 print(f'Rows: {len(t)}')
 print(t.to_pandas()[['source_mzml','spectrum_id','base_sequence','is_reference']].head(20))

@@ -66,7 +66,7 @@ def init_session_state():
     export_dir_default = get_settings_value(_get_settings(), "export", "default_directory", default="./exports")
     export_formats_default = get_settings_value(_get_settings(), "export", "formats", default=["png"])
     project_name_default = get_settings_value(_get_settings(), "export", "project_name", default="MSpecViz_analysis")
-    data_dir_default = get_settings_value(_get_settings(), "data_directories", "default", default="/mnt/volume")
+    data_dir_default = get_settings_value(_get_settings(), "data_directories", "default", default="/")
 
     # Annotation settings
     add_losses_default = get_settings_value(_get_settings(), "annotation", "add_losses", default=False)
@@ -180,7 +180,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
 
     # Initialize directory state
     if dir_key not in st.session_state:
-        st.session_state[dir_key] = "/mnt/volume"
+        st.session_state[dir_key] = "/"
 
     # Handle pending navigation (set by button callbacks)
     if nav_key in st.session_state and st.session_state[nav_key]:

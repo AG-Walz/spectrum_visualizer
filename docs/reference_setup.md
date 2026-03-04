@@ -9,7 +9,7 @@ This document explains how MSpecViz categorizes mzML files into **reference** an
 In a typical MSpecViz workflow, you compare experimental spectra against a known standard:
 
 - **Reference spectra**: From a trusted source — synthetic peptide library, well-characterized sample, or a specific experimental condition you want to compare against
-- **Query spectra**: The spectra you want to evaluate — patient samples, test conditions, replicates
+- **Query spectra**: The spectra you want to evaluate — experimental samples, test conditions, replicates
 
 Mirror plots place the query spectrum on **top** and the reference on the **bottom**, making it easy to visually assess agreement.
 
@@ -28,11 +28,11 @@ MSpecViz uses a **substring match** on mzML filenames to categorize files:
 
 Selected files:
 ```
-ProCa_Anna_C3_Synpep_01.mzML     → contains "Synpep" → Reference
-ProCa_Anna_C3_Synpep_02.mzML     → contains "Synpep" → Reference
-ProCa_Anna_C3_Patient_01.mzML    → does not contain → Query
-ProCa_Anna_C3_Patient_02.mzML    → does not contain → Query
-ProCa_Anna_C3_Patient_03.mzML    → does not contain → Query
+Exp01_Synpep_Rep01.mzML     → contains "Synpep" → Reference
+Exp01_Synpep_Rep02.mzML     → contains "Synpep" → Reference
+Exp01_Sample_A.mzML         → does not contain → Query
+Exp01_Sample_B.mzML         → does not contain → Query
+Exp01_Sample_C.mzML         → does not contain → Query
 ```
 
 ### Case Insensitivity
