@@ -11,6 +11,7 @@ import json
 import logging
 
 from src.common.common import page_setup
+from utils.helpers import format_time, get_nested as get_settings_value
 
 params = page_setup()
 
@@ -18,34 +19,6 @@ logger = logging.getLogger(__name__)
 
 # State key prefix for this workspace
 STATE_PREFIX = "peptide_mirror"
-
-
-def format_time(seconds: float) -> str:
-    """Format seconds as human-readable time."""
-    if seconds < 60:
-        return f"{seconds:.0f}s"
-    elif seconds < 3600:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins}m {secs}s"
-    else:
-        hours = int(seconds // 3600)
-        mins = int((seconds % 3600) // 60)
-        return f"{hours}h {mins}m"
-
-# ============================================================================
-# SETTINGS - loaded by page_setup() into st.session_state.settings
-# ============================================================================
-
-def get_settings_value(settings: dict, *keys, default=None):
-    """Safely get nested settings value."""
-    value = settings
-    for key in keys:
-        if isinstance(value, dict):
-            value = value.get(key)
-        else:
-            return default
-    return value if value is not None else default
 
 
 def _get_settings() -> dict:

@@ -134,9 +134,12 @@ def build_mzml_to_matches_map(
                 elif len(candidates) > 1:
                     # Ambiguous — pick first and warn
                     path_key = candidates[0]
+                    candidate_paths = [str(available_mzml_paths[c]) for c in candidates]
                     logger.warning(
                         f"Ambiguous mzML match for '{match.mzml_filename}': "
-                        f"{len(candidates)} files with same name"
+                        f"{len(candidates)} files with same name. "
+                        f"Using '{candidate_paths[0]}'. "
+                        f"All candidates: {candidate_paths}"
                     )
 
             if path_key:

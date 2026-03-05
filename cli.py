@@ -31,6 +31,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+from utils.helpers import format_time, get_nested as _get_nested
+
 logger = logging.getLogger("mspecviz.cli")
 
 
@@ -174,17 +176,6 @@ def load_settings_json() -> dict:
         with open(settings_path) as f:
             return json.load(f)
     return {}
-
-
-def _get_nested(d: dict, *keys, default=None):
-    """Safely get nested dict value."""
-    val = d
-    for k in keys:
-        if isinstance(val, dict):
-            val = val.get(k)
-        else:
-            return default
-    return val if val is not None else default
 
 
 def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
@@ -379,20 +370,6 @@ class TerminalProgress:
         sys.stdout.flush()
 
 
-def format_time(seconds: float) -> str:
-    """Format seconds as human-readable time."""
-    if seconds < 60:
-        return f"{seconds:.0f}s"
-    elif seconds < 3600:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins}m {secs}s"
-    else:
-        hours = int(seconds // 3600)
-        mins = int((seconds % 3600) // 60)
-        return f"{hours}h {mins}m"
-
-
 def log_info(msg: str, quiet: bool = False):
     """Print info message unless quiet."""
     if not quiet:
@@ -520,6 +497,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 partial_cache_path = partial_path
                 log_info(f"Partial cache found: {p_refs} refs, {p_queries} queries. "
                          f"Will resume loading remaining spectra.", cfg.quiet)
+            else:
+                partial_cache_path = None
 
     # =========================================================================
     # Phase 2: Peptide search (if not Parquet)

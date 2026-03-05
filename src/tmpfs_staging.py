@@ -89,6 +89,7 @@ class TmpfsStaging:
         self._staging_pdf_dir: Optional[str] = None
         self._budget_bytes: int = 0
         self._bytes_per_task: int = 0
+        self._atexit_registered: bool = False
 
     # ------------------------------------------------------------------
     # Context manager
@@ -159,8 +160,10 @@ class TmpfsStaging:
             bpt += self._config.png_size_estimate  # PDF ~similar size to PNG
         self._bytes_per_task = max(bpt, 1)
 
-        # Register cleanup for crash / Ctrl+C
-        atexit.register(self._cleanup)
+        # Register cleanup for crash / Ctrl+C (only once)
+        if not self._atexit_registered:
+            atexit.register(self._cleanup)
+            self._atexit_registered = True
 
         avail_gb = available_bytes / 1024**3
         budget_gb = budget_bytes / 1024**3

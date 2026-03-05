@@ -91,24 +91,15 @@ def _get_matching_intensities(
         (query_intensities, ref_intensities, shared_labels)
         Arrays may be empty if no overlap.
     """
-    q_ann = query_df[query_df["is_annotated"] == True].copy()
-    r_ann = ref_df[ref_df["is_annotated"] == True].copy()
+    q_ann = query_df[query_df["is_annotated"]].copy()
+    r_ann = ref_df[ref_df["is_annotated"]].copy()
 
     if q_ann.empty or r_ann.empty:
         return np.array([]), np.array([]), []
 
     # Build label -> intensity maps (take max intensity if duplicate annotations)
-    q_map: Dict[str, float] = {}
-    for _, row in q_ann.iterrows():
-        label = row["annotation"]
-        if label not in q_map or row["intensity"] > q_map[label]:
-            q_map[label] = row["intensity"]
-
-    r_map: Dict[str, float] = {}
-    for _, row in r_ann.iterrows():
-        label = row["annotation"]
-        if label not in r_map or row["intensity"] > r_map[label]:
-            r_map[label] = row["intensity"]
+    q_map = q_ann.groupby("annotation")["intensity"].max().to_dict()
+    r_map = r_ann.groupby("annotation")["intensity"].max().to_dict()
 
     shared = sorted(set(q_map.keys()) & set(r_map.keys()))
     if not shared:

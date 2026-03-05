@@ -47,7 +47,7 @@ def shorten_stem(stem: str, max_len: int = 30) -> str:
 def create_export_directory(
     base_dir: str,
     experiment_name: str = None
-) -> Tuple[Path, Path, Path]:
+) -> Tuple[Path, Path, Path, Path]:
     """
     Create export directory structure.
 
@@ -56,7 +56,7 @@ def create_export_directory(
         experiment_name: Optional name for the experiment
 
     Returns:
-        Tuple of (root_dir, png_dir, svg_dir)
+        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
     """
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
@@ -107,7 +107,7 @@ def find_or_create_export_directory(
         run_settings: Dict of all settings that affect output
 
     Returns:
-        Tuple of (root_dir, png_dir, svg_dir)
+        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
     """
     base = Path(base_dir)
     base.mkdir(parents=True, exist_ok=True)
