@@ -380,7 +380,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
     Returns exit code: 0 = success, 1 = processing failure.
     """
-    from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
+    from src.spectrum_loader import StreamingResult
 
     # =========================================================================
     # Phase 0: Validate inputs
@@ -631,6 +631,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
         write_comparison_summary,
         detect_parquet_cache,
         save_parquet_cache,
+        stream_spectra,
+        accumulate_plot_result,
     )
     comparison_tasks: List[ComparisonTask] = []
     task_counter = [0]
@@ -768,70 +770,22 @@ def run_pipeline(cfg: CLIConfig) -> int:
     log_info("", cfg.quiet)  # blank line before progress
 
     try:
-        if use_parquet:
-            log_info(f"Loading from Parquet: {Path(cfg.parquet_file).name}", cfg.quiet)
-            _parquet_refs = load_spectra_from_parquet(
-                parquet_path=cfg.parquet_file,
-                reference_substring=cfg.reference_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                error_callback=on_error,
-            )
-            _cached_references.update(_parquet_refs)
-        elif partial_cache_path:
-            # Resume from partial cache: load cached data, then stream remaining
-            log_info(f"Resuming from partial cache: {Path(partial_cache_path).name}", cfg.quiet)
-
-            # Step 1: Load partial Parquet through callbacks (populates tasks/annotations)
-            _parquet_refs = load_spectra_from_parquet(
-                parquet_path=partial_cache_path,
-                reference_substring=cfg.reference_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                error_callback=on_error,
-            )
-            _cached_references.update(_parquet_refs)
-
-            cached_refs = results_summary["reference_spectra"]
-            cached_queries = results_summary["query_spectra"]
-            log_info(f"Partial cache loaded: {cached_refs} refs, {cached_queries} queries", cfg.quiet)
-
-            # Step 2: Build skip set from partial cache
-            from src.parquet_cache import get_cached_spectrum_ids
-            skip_ids = get_cached_spectrum_ids(partial_cache_path)
-            log_info(f"Skip set: {len(skip_ids)} spectra already cached", cfg.quiet)
-
-            # Step 3: Stream remaining spectra from mzML
-            _streaming_refs = load_spectra_streaming(
-                variant_groups=variant_groups,
-                mzml_paths=mzml_paths,
-                reference_substring=cfg.reference_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                on_file_start=on_file_start,
-                on_file_complete=on_file_complete,
-                error_callback=on_error,
-                workers=cfg.workers,
-                skip_ids=skip_ids,
-            )
-            # Merge any new references
-            for vk, specs in _streaming_refs.items():
-                if specs:
-                    if vk not in _cached_references:
-                        _cached_references[vk] = []
-                    _cached_references[vk].extend(specs)
-        else:
-            _streaming_refs = load_spectra_streaming(
-                variant_groups=variant_groups,
-                mzml_paths=mzml_paths,
-                reference_substring=cfg.reference_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                on_file_start=on_file_start,
-                on_file_complete=on_file_complete,
-                error_callback=on_error,
-                workers=cfg.workers,
-            )
+        stream_spectra(
+            use_parquet=use_parquet,
+            parquet_file=cfg.parquet_file,
+            partial_cache_path=partial_cache_path,
+            variant_groups=variant_groups,
+            mzml_paths=mzml_paths,
+            reference_substring=cfg.reference_substring,
+            workers=cfg.workers,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            on_file_start=on_file_start,
+            on_file_complete=on_file_complete,
+            on_error=on_error,
+            cached_references=_cached_references,
+            log_fn=lambda msg: log_info(msg, cfg.quiet),
+        )
 
         # Finish progress bars
         if ref_progress and not refs_done[0]:
@@ -875,16 +829,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
         def on_plot_complete_chunked(result, completed, total):
             _global_completed[0] += 1
             plot_progress.update(_global_completed[0])
-            if result.success:
-                results_summary["plots_generated"] += 1
-                if result.png_path:
-                    results_summary["files_exported"]["png"].append(result.png_path)
-                if result.svg_path:
-                    results_summary["files_exported"]["svg"].append(result.svg_path)
-                if result.summary_row:
-                    summary_rows.append(result.summary_row)
-            else:
-                results_summary["errors"].append(f"Plot error: {result.error}")
+            accumulate_plot_result(result, results_summary, summary_rows)
 
         staging_config = StagingConfig(
             enabled=cfg.tmpfs_staging,

@@ -12,6 +12,8 @@ Extracted functions:
     mark_skipped_tasks()         – set skip_plot=True for already-exported tasks
     detect_parquet_cache()       – find complete/partial Parquet cache for inputs
     save_parquet_cache()         – save spectra to Parquet with logging
+    stream_spectra()             – dispatch loading: Parquet / partial-resume / mzML
+    accumulate_plot_result()     – update results_summary + summary_rows from one result
 """
 import logging
 from dataclasses import dataclass
@@ -560,3 +562,156 @@ def save_parquet_cache(
             log_fn(f"Warning: cache save failed: {cache_err}")
         logger.warning("Cache save failed", exc_info=True)
     return False
+
+
+# ---------------------------------------------------------------------------
+# Spectrum loading dispatch
+# ---------------------------------------------------------------------------
+
+def stream_spectra(
+    use_parquet: bool,
+    parquet_file: Optional[str],
+    partial_cache_path: Optional[str],
+    variant_groups: Optional[dict],
+    mzml_paths: Optional[list],
+    reference_substring: str,
+    workers: int,
+    on_reference_loaded: Callable,
+    on_query_ready: Callable,
+    on_file_start: Optional[Callable],
+    on_file_complete: Optional[Callable],
+    on_error: Callable,
+    cached_references: Dict[str, list],
+    log_fn: Optional[Callable[[str], None]] = None,
+) -> None:
+    """
+    Dispatch spectrum loading to the appropriate backend and populate cached_references.
+
+    Three paths — selected by the combination of use_parquet / partial_cache_path:
+
+    1. **Parquet fast path** (use_parquet=True):
+       Load all spectra from *parquet_file* via callbacks.
+
+    2. **Partial-resume path** (partial_cache_path set):
+       First replay the partial Parquet through callbacks, then stream the
+       remaining spectra from mzML files (skipping already-cached IDs).
+
+    3. **Fresh mzML path** (neither):
+       Stream all spectra from mzML files.
+
+    *cached_references* is updated in-place with any reference spectra encountered.
+
+    Args:
+        use_parquet:          True when loading from a complete Parquet file
+        parquet_file:         Path to the Parquet file (required when use_parquet)
+        partial_cache_path:   Path to an incomplete Parquet file (resume path)
+        variant_groups:       Variant → VariantGroup mapping (mzML path only)
+        mzml_paths:           List of mzML Path objects (mzML path only)
+        reference_substring:  Substring identifying reference files
+        workers:              Number of parallel workers for mzML streaming
+        on_reference_loaded:  Callback(variant_key, count) for loaded references
+        on_query_ready:       Callback(StreamingResult) for each ready query
+        on_file_start:        Optional callback(filename, is_reference)
+        on_file_complete:     Optional callback(filename, loaded, not_found)
+        on_error:             Callback(error_msg) for errors
+        cached_references:    Mutable dict updated with reference spectra in-place
+        log_fn:               Optional callable(str) for status messages
+    """
+    from src.spectrum_loader import load_spectra_from_parquet, load_spectra_streaming
+
+    if use_parquet:
+        if log_fn:
+            log_fn(f"Loading from Parquet: {Path(parquet_file).name}")
+        refs = load_spectra_from_parquet(
+            parquet_path=parquet_file,
+            reference_substring=reference_substring,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            error_callback=on_error,
+        )
+        cached_references.update(refs)
+
+    elif partial_cache_path:
+        if log_fn:
+            log_fn(f"Resuming from partial cache: {Path(partial_cache_path).name}")
+
+        # Step 1: Replay partial Parquet through callbacks
+        refs = load_spectra_from_parquet(
+            parquet_path=partial_cache_path,
+            reference_substring=reference_substring,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            error_callback=on_error,
+        )
+        cached_references.update(refs)
+
+        # Step 2: Build skip set from partial cache
+        from src.parquet_cache import get_cached_spectrum_ids
+        skip_ids = get_cached_spectrum_ids(partial_cache_path)
+        if log_fn:
+            log_fn(f"Skip set: {len(skip_ids)} spectra already cached")
+
+        # Step 3: Stream remaining spectra, skipping already-cached IDs
+        new_refs = load_spectra_streaming(
+            variant_groups=variant_groups,
+            mzml_paths=mzml_paths,
+            reference_substring=reference_substring,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            on_file_start=on_file_start,
+            on_file_complete=on_file_complete,
+            error_callback=on_error,
+            workers=workers,
+            skip_ids=skip_ids,
+        )
+        for vk, specs in new_refs.items():
+            if specs:
+                if vk not in cached_references:
+                    cached_references[vk] = []
+                cached_references[vk].extend(specs)
+
+    else:
+        load_spectra_streaming(
+            variant_groups=variant_groups,
+            mzml_paths=mzml_paths,
+            reference_substring=reference_substring,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            on_file_start=on_file_start,
+            on_file_complete=on_file_complete,
+            error_callback=on_error,
+            workers=workers,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Plot result accumulation
+# ---------------------------------------------------------------------------
+
+def accumulate_plot_result(
+    plot_result,
+    results_summary: dict,
+    summary_rows: list,
+) -> None:
+    """
+    Update results_summary and summary_rows from a single ComparisonResult.
+
+    Intended to be called from an on_plot_complete callback in both CLI and
+    Streamlit, keeping the data-accumulation logic in one place while each
+    caller handles its own progress-bar UI.
+
+    Args:
+        plot_result:    ComparisonResult from run_parallel_comparisons
+        results_summary: Mutable dict with "plots_generated", "files_exported", "errors"
+        summary_rows:   Mutable list of metric dicts for summary CSV/XLSX
+    """
+    if plot_result.success:
+        results_summary["plots_generated"] += 1
+        if plot_result.png_path:
+            results_summary["files_exported"]["png"].append(plot_result.png_path)
+        if plot_result.svg_path:
+            results_summary["files_exported"]["svg"].append(plot_result.svg_path)
+        if plot_result.summary_row:
+            summary_rows.append(plot_result.summary_row)
+    else:
+        results_summary["errors"].append(f"Plot error: {plot_result.error}")

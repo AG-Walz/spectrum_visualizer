@@ -959,7 +959,7 @@ def run_streaming_processing():
     - Parquet fast path: load from pre-converted .parquet file
     - mzML path: stream from mzML files with optimized index building
     """
-    from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
+    from src.spectrum_loader import StreamingResult
     from src.parallel_processor import ComparisonTask, run_parallel_comparisons
     from src.pipeline import (
         annotate_spectrum as pipeline_annotate,
@@ -968,6 +968,8 @@ def run_streaming_processing():
         write_comparison_summary,
         detect_parquet_cache,
         save_parquet_cache,
+        stream_spectra,
+        accumulate_plot_result,
     )
 
     # Get state
@@ -1343,71 +1345,22 @@ def run_streaming_processing():
     try:
         streaming_workers = st.session_state.get(get_state_key('workers'), 4)
 
-        if use_parquet:
-            # FAST PATH: Load from Parquet
-            add_log(f"Loading from Parquet: {parquet_file}")
-            _parquet_refs = load_spectra_from_parquet(
-                parquet_path=parquet_file,
-                reference_substring=ref_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                error_callback=on_error,
-            )
-            _cached_references.update(_parquet_refs)
-        elif partial_cache_path:
-            # RESUME PATH: Load partial cache, then stream remaining from mzML
-            add_log(f"Resuming from partial cache: {partial_cache_path}")
-
-            # Step 1: Load partial Parquet through callbacks
-            _parquet_refs = load_spectra_from_parquet(
-                parquet_path=partial_cache_path,
-                reference_substring=ref_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                error_callback=on_error,
-            )
-            _cached_references.update(_parquet_refs)
-
-            cached_refs = results_summary["reference_spectra"]
-            cached_queries = results_summary["query_spectra"]
-            add_log(f"Partial cache loaded: {cached_refs} refs, {cached_queries} queries")
-
-            # Step 2: Build skip set from partial cache
-            from src.parquet_cache import get_cached_spectrum_ids
-            skip_ids = get_cached_spectrum_ids(partial_cache_path)
-            add_log(f"Skip set: {len(skip_ids)} spectra already cached")
-
-            # Step 3: Stream remaining spectra from mzML
-            _streaming_refs = load_spectra_streaming(
-                variant_groups=variant_groups,
-                mzml_paths=mzml_paths,
-                reference_substring=ref_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                on_file_start=on_file_start,
-                on_file_complete=on_file_complete,
-                error_callback=on_error,
-                workers=streaming_workers,
-                skip_ids=skip_ids,
-            )
-            for vk, specs in _streaming_refs.items():
-                if specs:
-                    if vk not in _cached_references:
-                        _cached_references[vk] = []
-                    _cached_references[vk].extend(specs)
-        else:
-            # STANDARD PATH: Load from mzML
-            _streaming_refs = load_spectra_streaming(
-                variant_groups=variant_groups,
-                mzml_paths=mzml_paths,
-                reference_substring=ref_substring,
-                on_reference_loaded=on_reference_loaded,
-                on_query_ready=on_query_ready,
-                on_file_start=on_file_start,
-                on_file_complete=on_file_complete,
-                error_callback=on_error,
-                workers=streaming_workers,
-            )
+        stream_spectra(
+            use_parquet=use_parquet,
+            parquet_file=parquet_file,
+            partial_cache_path=partial_cache_path,
+            variant_groups=variant_groups,
+            mzml_paths=mzml_paths,
+            reference_substring=ref_substring,
+            workers=streaming_workers,
+            on_reference_loaded=on_reference_loaded,
+            on_query_ready=on_query_ready,
+            on_file_start=on_file_start,
+            on_file_complete=on_file_complete,
+            on_error=on_error,
+            cached_references=_cached_references,
+            log_fn=add_log,
+        )
 
         # Finalize annotation progress
         query_progress_bar.progress(1.0)
@@ -1450,16 +1403,7 @@ def run_streaming_processing():
             def on_plot_complete_chunked(result, completed, total):
                 _global_completed[0] += 1
                 gc = _global_completed[0]
-                if result.success:
-                    results_summary["plots_generated"] += 1
-                    if result.png_path:
-                        results_summary["files_exported"]["png"].append(result.png_path)
-                    if result.svg_path:
-                        results_summary["files_exported"]["svg"].append(result.svg_path)
-                    if result.summary_row:
-                        summary_rows.append(result.summary_row)
-                else:
-                    results_summary["errors"].append(f"Plot error: {result.error}")
+                accumulate_plot_result(result, results_summary, summary_rows)
 
                 frac = min(gc / total_tasks, 1.0)
                 plot_progress_bar.progress(frac)
