@@ -6,7 +6,7 @@ Tests cover:
 - Provenance (source_mzml field)
 - variant_key grouping
 - is_reference flag
-- Fast index (open_indexed_mzml_fast) equivalence
+- Fast index (open_indexed_mzml_fast) tests
 - _extract_id_number helper
 """
 import json
@@ -25,7 +25,6 @@ from src.spectrum_loader import (
     clean_spectrum_id,
     find_spectrum_index,
     load_spectra_from_parquet,
-    open_indexed_mzml,
     open_indexed_mzml_fast,
 )
 

@@ -150,58 +150,6 @@ def build_mzml_to_matches_map(
     return mzml_to_matches
 
 
-def open_indexed_mzml(mzml_path: str) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
-    """
-    Open an mzML file with indexed access and build ID lookup.
-
-    Args:
-        mzml_path: Path to mzML file
-
-    Returns:
-        Tuple of (OnDiscMSExperiment, native_id_to_index_dict)
-    """
-    indexed_exp = oms.OnDiscMSExperiment()
-    indexed_exp.openFile(str(mzml_path))
-
-    n_spectra = indexed_exp.getNrSpectra()
-    id_to_index = {}
-
-    # Detect the ID format and index offset from first spectrum
-    id_format = "unknown"
-    index_offset = 0
-    if n_spectra > 0:
-        first_id = indexed_exp.getSpectrum(0).getNativeID()
-        if "index=" in first_id:
-            id_format = "index"
-            # Detect 0-based vs 1-based indexing
-            first_num = _extract_id_number(first_id)
-            if first_num is not None:
-                index_offset = first_num  # 0 for 0-based, 1 for 1-based
-        elif "scan=" in first_id:
-            id_format = "scan"
-        elif "spectrum=" in first_id:
-            id_format = "spectrum"
-
-    id_to_index["__format__"] = id_format
-    id_to_index["__n_spectra__"] = n_spectra
-    id_to_index["__index_offset__"] = index_offset
-
-    # Build lookup map for all spectra
-    for i in range(n_spectra):
-        try:
-            spec = indexed_exp.getSpectrum(i)
-            native_id = spec.getNativeID()
-            id_to_index[native_id] = i
-
-            # Also store by extracted number for flexibility
-            num_match = re.search(r'(\d+)', native_id)
-            if num_match:
-                id_to_index[f"_num_{num_match.group(1)}"] = i
-        except Exception:
-            continue
-
-    return indexed_exp, id_to_index
-
 
 def _extract_id_number(native_id: str) -> Optional[int]:
     """Extract the numeric value from a native ID string."""
@@ -477,8 +425,7 @@ def _load_spectra_from_mzml(
 
                 spectrum = indexed_exp.getSpectrum(idx)
 
-                mz_array = np.array([p.getMZ() for p in spectrum])
-                intensity_array = np.array([p.getIntensity() for p in spectrum])
+                mz_array, intensity_array = spectrum.get_peaks()
 
                 precursor_mz = 0.0
                 precursor_charge = match.charge
@@ -514,180 +461,6 @@ def _load_spectra_from_mzml(
 
     return display_name, is_reference, loaded, loaded_count, not_found_count, errors
 
-
-def load_matched_spectra(
-    variant_groups: Dict[str, VariantGroup],
-    mzml_paths: List[Path],
-    reference_substring: str = "",
-    progress_callback: Optional[Callable[[LoadingProgress], None]] = None,
-    error_callback: Optional[Callable[[str], None]] = None
-) -> Dict[str, VariantGroup]:
-    """
-    Load spectra for all matches in variant groups.
-
-    Uses pre-resolved mzML filenames from the search phase.
-
-    Args:
-        variant_groups: Dict of variant_key -> VariantGroup with matches
-        mzml_paths: List of available mzML paths
-        reference_substring: Substring to identify reference files
-        progress_callback: Optional callback(LoadingProgress) for progress updates
-        error_callback: Optional callback(error_message) for immediate error reporting
-
-    Returns:
-        Updated variant_groups with loaded spectra
-    """
-    from src.path_utils import disambiguate_paths
-
-    # Build available mzML lookup keyed by resolved lowercase path (collision-free)
-    mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
-
-    # Compute disambiguated display names
-    mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])
-
-    # Build mapping using resolved paths
-    mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
-
-    # Calculate totals for progress
-    total_expected = sum(len(matches) for matches in mzml_to_matches.values())
-
-    # Count unresolved matches
-    matched_set = set()
-    for matches in mzml_to_matches.values():
-        for match, _ in matches:
-            matched_set.add(id(match))
-
-    total_unresolved = 0
-    for vg in variant_groups.values():
-        for match in vg.matches:
-            if id(match) not in matched_set:
-                total_unresolved += 1
-
-    if total_unresolved > 0:
-        error_msg = f"{total_unresolved} PSMs could not be mapped to available mzML files"
-        if error_callback:
-            error_callback(error_msg)
-        logger.warning(error_msg)
-
-    if not mzml_to_matches:
-        error_msg = "No mzML files could be mapped to matches"
-        if error_callback:
-            error_callback(error_msg)
-        logger.warning(error_msg)
-        return variant_groups
-
-    # Initialize progress
-    progress = LoadingProgress(
-        total_files=len(mzml_to_matches),
-        spectra_expected=total_expected
-    )
-
-    # Track loaded spectra by variant
-    loaded_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
-
-    # Process each mzML file
-    for path_key, matches_for_file in mzml_to_matches.items():
-        mzml_path = mzml_path_map[path_key]
-        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
-        is_reference = reference_substring and reference_substring.lower() in mzml_path.name.lower()
-
-        progress.start_file(display_name, len(matches_for_file))
-
-        if progress_callback:
-            progress_callback(progress)
-
-        try:
-            # Open indexed file (fast path: only look up needed spectra)
-            needed_ids = [match.spectrum_id for match, _ in matches_for_file]
-            indexed_exp, id_to_index = open_indexed_mzml_fast(str(mzml_path), needed_ids=needed_ids)
-            n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
-            logger.info(f"Opened {display_name} ({n_spectra} spectra, {len(matches_for_file)} to load)")
-
-            # Load each matched spectrum
-            for match, variant_key in matches_for_file:
-                try:
-                    idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
-
-                    if idx is None:
-                        progress.spectrum_not_found()
-                        error_msg = f"Spectrum not found: {match.spectrum_id} in {display_name}"
-                        progress.add_error(error_msg)
-                        if error_callback:
-                            error_callback(error_msg)
-                        continue
-
-                    spectrum = indexed_exp.getSpectrum(idx)
-
-                    # Extract data
-                    mz_array = np.array([p.getMZ() for p in spectrum])
-                    intensity_array = np.array([p.getIntensity() for p in spectrum])
-
-                    # Get precursor info
-                    precursor_mz = 0.0
-                    precursor_charge = match.charge
-                    if spectrum.getPrecursors():
-                        prec = spectrum.getPrecursors()[0]
-                        precursor_mz = prec.getMZ()
-                        if prec.getCharge() > 0:
-                            precursor_charge = prec.getCharge()
-
-                    # Create LoadedSpectrum
-                    loaded = LoadedSpectrum(
-                        spectrum_id=match.spectrum_id,
-                        mz=mz_array,
-                        intensity=intensity_array,
-                        precursor_mz=precursor_mz,
-                        precursor_charge=precursor_charge,
-                        peptidoform=match.peptidoform,
-                        base_sequence=match.base_sequence,
-                        source_file=display_name,
-                        is_reference=is_reference,
-                        rt=spectrum.getRT() if spectrum.getRT() else 0.0,
-                        match=match
-                    )
-
-                    loaded_spectra[variant_key].append(loaded)
-                    progress.spectrum_loaded()
-
-                except Exception as e:
-                    progress.spectrum_not_found()
-                    error_msg = f"Error loading {match.spectrum_id}: {e}"
-                    progress.add_error(error_msg)
-                    if error_callback:
-                        error_callback(error_msg)
-                    continue
-
-            progress.file_complete()
-
-            # Update progress after each file
-            if progress_callback:
-                progress_callback(progress)
-
-        except Exception as e:
-            error_msg = f"Error processing {mzml_path.name}: {e}"
-            progress.add_error(error_msg)
-            if error_callback:
-                error_callback(error_msg)
-            logger.error(error_msg)
-            progress.file_complete()
-            if progress_callback:
-                progress_callback(progress)
-            continue
-
-    # Assign loaded spectra to variant groups
-    for variant_key, spectra in loaded_spectra.items():
-        if variant_key in variant_groups:
-            vg = variant_groups[variant_key]
-            for spec in spectra:
-                if spec.is_reference:
-                    vg.reference_spectra.append(spec)
-                else:
-                    vg.query_spectra.append(spec)
-
-    # Log summary
-    logger.info(f"Loaded {progress.spectra_loaded} spectra, {progress.spectra_not_found} not found, across {progress.files_done} files")
-
-    return variant_groups
 
 
 @dataclass
@@ -1016,14 +789,27 @@ def load_spectra_from_parquet(
     else:
         df["is_reference"] = False
 
-    # Build VariantGroup-like structures from the Parquet data
+    # Build VariantGroup-like structures from the Parquet data.
+    # Extract columns upfront to avoid per-row boxing overhead of iterrows().
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {}
     query_spectra_by_variant: Dict[str, List[LoadedSpectrum]] = {}
     variant_info: Dict[str, Tuple[str, str]] = {}  # variant_key -> (base_sequence, mod_key)
 
-    for _, row in df.iterrows():
-        variant_key = row["variant_key"]
-        base_seq = row["base_sequence"]
+    col_variant_key = df["variant_key"].to_numpy()
+    col_base_seq    = df["base_sequence"].to_numpy()
+    col_spec_id     = df["spectrum_id"].to_numpy()
+    col_peptidoform = df["peptidoform"].to_numpy()
+    col_source_mzml = df["source_mzml"].to_numpy()
+    col_precursor_mz = df["precursor_mz"].to_numpy(dtype=float)
+    col_charge      = df["charge"].to_numpy(dtype=int)
+    col_is_ref      = df["is_reference"].to_numpy(dtype=bool)
+    col_rt          = df["rt"].to_numpy(dtype=float) if "rt" in df.columns else np.zeros(len(df))
+    col_mz          = df["mz"].to_numpy()
+    col_int         = df["intensity"].to_numpy()
+
+    for i in range(len(df)):
+        variant_key = col_variant_key[i]
+        base_seq    = col_base_seq[i]
 
         # Derive modification_key from variant_key
         if "|" in variant_key:
@@ -1036,23 +822,22 @@ def load_spectra_from_parquet(
             reference_spectra[variant_key] = []
             query_spectra_by_variant[variant_key] = []
 
-        # Convert list columns to numpy arrays
-        mz_data = row["mz"]
-        int_data = row["intensity"]
-        mz_arr = np.array(mz_data, dtype=np.float64) if mz_data is not None else np.array([])
+        mz_data = col_mz[i]
+        int_data = col_int[i]
+        mz_arr  = np.array(mz_data,  dtype=np.float64) if mz_data  is not None else np.array([])
         int_arr = np.array(int_data, dtype=np.float64) if int_data is not None else np.array([])
 
         loaded = LoadedSpectrum(
-            spectrum_id=row["spectrum_id"],
+            spectrum_id=col_spec_id[i],
             mz=mz_arr,
             intensity=int_arr,
-            precursor_mz=float(row["precursor_mz"]),
-            precursor_charge=int(row["charge"]),
-            peptidoform=row["peptidoform"],
+            precursor_mz=col_precursor_mz[i],
+            precursor_charge=int(col_charge[i]),
+            peptidoform=col_peptidoform[i],
             base_sequence=base_seq,
-            source_file=row["source_mzml"],
-            is_reference=bool(row["is_reference"]),
-            rt=float(row.get("rt", 0.0)),
+            source_file=col_source_mzml[i],
+            is_reference=bool(col_is_ref[i]),
+            rt=float(col_rt[i]),
         )
 
         if loaded.is_reference:

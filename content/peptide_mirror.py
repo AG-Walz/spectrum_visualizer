@@ -33,20 +33,17 @@ def get_state_key(key: str) -> str:
 
 def init_session_state():
     """Initialize session state with defaults from settings.json."""
-    # Get defaults from settings.json (same values used by main.py)
-    ion_types_default = get_settings_value(_get_settings(), "ion_types", "default", default=["b", "y"])
-    mz_tolerance_default = get_settings_value(_get_settings(), "mz_tolerance", "default", default=0.02)
-    export_dir_default = get_settings_value(_get_settings(), "export", "default_directory", default="./exports")
-    export_formats_default = get_settings_value(_get_settings(), "export", "formats", default=["png"])
-    project_name_default = get_settings_value(_get_settings(), "export", "project_name", default="MSpecViz_analysis")
-    data_dir_default = get_settings_value(_get_settings(), "data_directories", "default", default="/")
-
-    # Annotation settings
-    add_losses_default = get_settings_value(_get_settings(), "annotation", "add_losses", default=False)
-    add_first_prefix_default = get_settings_value(_get_settings(), "annotation", "add_first_prefix_ion", default=True)
-    remove_precursor_default = get_settings_value(_get_settings(), "annotation", "remove_precursor_peaks", default=False)
-
-    workers_default = get_settings_value(_get_settings(), "performance", "workers", default=4)
+    _settings = _get_settings()
+    ion_types_default = get_settings_value(_settings, "ion_types", "default", default=["b", "y"])
+    mz_tolerance_default = get_settings_value(_settings, "mz_tolerance", "default", default=0.02)
+    export_dir_default = get_settings_value(_settings, "export", "default_directory", default="./exports")
+    export_formats_default = get_settings_value(_settings, "export", "formats", default=["png"])
+    project_name_default = get_settings_value(_settings, "export", "project_name", default="MSpecViz_analysis")
+    data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
+    add_losses_default = get_settings_value(_settings, "annotation", "add_losses", default=False)
+    add_first_prefix_default = get_settings_value(_settings, "annotation", "add_first_prefix_ion", default=True)
+    remove_precursor_default = get_settings_value(_settings, "annotation", "remove_precursor_peaks", default=False)
+    workers_default = get_settings_value(_settings, "performance", "workers", default=4)
 
     defaults = {
         'idxml_dir': data_dir_default,
@@ -144,6 +141,27 @@ def render_file_selection():
         return False
 
 
+@st.cache_data(ttl=10)
+def _list_subdirectories(path: str) -> list:
+    """Return sorted list of subdirectory paths. Cached for 10 s to avoid per-rerun I/O."""
+    try:
+        return sorted(str(d) for d in Path(path).iterdir() if d.is_dir())
+    except (PermissionError, OSError):
+        return []
+
+
+@st.cache_data(ttl=10)
+def _list_files(path: str, extensions: tuple) -> list:
+    """Return sorted list of matching file paths. Cached for 10 s to avoid per-rerun I/O."""
+    try:
+        files = []
+        for ext in extensions:
+            files.extend(Path(path).glob(f"*{ext}"))
+        return sorted(str(f) for f in files)
+    except (PermissionError, OSError):
+        return []
+
+
 def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
     """Render a directory browser with file selection."""
     # State keys
@@ -171,7 +189,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
         new_path = st.text_input(
             "Path",
             value=current_dir,
-            key=f"{key_prefix}_path_input_{hash(current_dir) % 10000}",  # Dynamic key forces refresh
+            key=f"{key_prefix}_path_input_{abs(hash(current_dir))}",  # Dynamic key forces refresh
             label_visibility="collapsed",
             placeholder="Enter path..."
         )
@@ -188,7 +206,8 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
 
     # Show clickable subdirectories
     try:
-        subdirs = sorted([d for d in Path(current_dir).iterdir() if d.is_dir()])
+        subdir_paths = _list_subdirectories(current_dir)
+        subdirs = [Path(d) for d in subdir_paths]
         if subdirs:
             st.caption("Click folder to navigate:")
             # Display folders in a grid
@@ -211,8 +230,6 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
                                 st.rerun()
             if len(subdirs) > max_folders:
                 st.caption(f"... and {len(subdirs) - max_folders} more folders")
-    except PermissionError:
-        st.warning("Permission denied")
     except Exception as e:
         st.error(f"Cannot access: {e}")
 
@@ -220,10 +237,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
 
     # Get matching files
     try:
-        all_files = []
-        for ext in extensions:
-            all_files.extend(Path(current_dir).glob(f"*{ext}"))
-        all_files = sorted(all_files, key=lambda x: x.name)
+        all_files = [Path(f) for f in _list_files(current_dir, tuple(extensions))]
 
         # Filter input
         filter_text = st.text_input(
@@ -946,11 +960,15 @@ def run_streaming_processing():
     - mzML path: stream from mzML files with optimized index building
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
-    from src.peak_annotation import prepare_spectrum_for_plot
-    from src.peptide_search import format_inline_sequence
-    from src.export import sanitize_filename, shorten_stem, create_export_directory
-    from src.spectrum_metrics import shorten_filenames
     from src.parallel_processor import ComparisonTask, run_parallel_comparisons
+    from src.pipeline import (
+        annotate_spectrum as pipeline_annotate,
+        ensure_references_annotated,
+        build_comparison_tasks,
+        write_comparison_summary,
+        detect_parquet_cache,
+        save_parquet_cache,
+    )
 
     # Get state
     parquet_file = st.session_state.get(get_state_key('parquet_file'))
@@ -978,39 +996,33 @@ def run_streaming_processing():
     loaded_from_cache = False
     cache_dir = None
     cache_fingerprint = None
+    partial_cache_path = None
 
     settings = _get_settings()
     cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
     cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
 
-    partial_cache_path = None
-
     if not parquet_file and cache_enabled:
-        # Only auto-detect when user hasn't manually specified a Parquet file
         idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
         peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
         peptides_list = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
 
         if idxmls and mzmls and peptides_list:
-            from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
-            cache_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_list, ref_substring)
-            cache_dir = str(Path(export_dir) / cache_subdir)
-
-            # Check for complete cache first
-            cached_path = find_existing_cache(cache_dir, cache_fingerprint)
-            if cached_path:
-                parquet_file = cached_path
+            _cache = detect_parquet_cache(
+                idxml_files=idxmls,
+                mzml_files=mzmls,
+                peptides=peptides_list,
+                reference_substring=ref_substring,
+                export_dir=export_dir,
+                cache_subdir=cache_subdir,
+                log_fn=st.info,
+            )
+            cache_fingerprint = _cache.cache_fingerprint
+            cache_dir = _cache.cache_dir
+            partial_cache_path = _cache.partial_cache_path
+            if _cache.parquet_path:
+                parquet_file = _cache.parquet_path
                 loaded_from_cache = True
-                st.info(f"Cache found! Loading from: {Path(cached_path).name}")
-            else:
-                # Check for partial (incomplete) cache
-                partial_path = find_existing_cache(cache_dir, cache_fingerprint, allow_partial=True)
-                if partial_path:
-                    from src.parquet_cache import get_parquet_row_counts
-                    p_refs, p_queries = get_parquet_row_counts(partial_path)
-                    partial_cache_path = partial_path
-                    st.info(f"Partial cache found ({p_refs} refs, {p_queries} queries). "
-                            f"Resuming — loading remaining spectra from mzML.")
 
     use_parquet = bool(parquet_file)
 
@@ -1155,93 +1167,49 @@ def run_streaming_processing():
         has_refs = _cached_references and any(_cached_references.values())
         if not has_refs and not _cached_queries:
             return
-        try:
-            from src.parquet_cache import save_spectra_to_parquet
-            c_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
 
-            idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
-            peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
-            peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+        idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
+        peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
+        peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+        cache_metadata = {
+            "fingerprint": cache_fingerprint,
+            "export_root": str(root_dir),
+            "idxml_files": idxmls_for_meta,
+            "mzml_files": mzmls,
+            "target_peptides": peptides_for_meta,
+            "reference_substring": ref_substring,
+        }
 
-            cache_metadata = {
-                "fingerprint": cache_fingerprint,
-                "export_root": str(root_dir),
-                "idxml_files": idxmls_for_meta,
-                "mzml_files": mzmls,
-                "target_peptides": peptides_for_meta,
-                "reference_substring": ref_substring,
-            }
+        def _log(msg: str):
+            add_log(f"[{stage}] {msg}")
+            if not partial and "Cache saved" in msg:
+                st.caption(f"Cache saved for instant loading next time: {msg.split(': ', 1)[-1]}")
 
-            saved = save_spectra_to_parquet(
-                reference_spectra=_cached_references,
-                query_spectra=_cached_queries,
-                output_path=c_path,
-                cache_metadata=cache_metadata,
-                partial=partial,
-            )
-            if saved:
-                if not partial:
-                    _cache_complete[0] = True
-                tag = "partial" if partial else "complete"
-                add_log(f"Cache saved [{tag}] ({stage}): {Path(saved).name}")
-                if not partial:
-                    st.caption(f"Cache saved for instant loading next time: {Path(saved).name}")
-        except Exception as cache_err:
-            add_log(f"Warning: cache save failed ({stage}): {cache_err}")
-            logger.warning(f"Cache save failed ({stage}): {cache_err}")
+        save_parquet_cache(
+            cached_references=_cached_references,
+            cached_queries=_cached_queries,
+            cache_path=str(Path(cache_dir) / f"{cache_fingerprint}.parquet"),
+            cache_metadata=cache_metadata,
+            cache_complete=_cache_complete,
+            partial=partial,
+            log_fn=_log,
+        )
 
     # Task collection for parallel processing
     comparison_tasks: List[ComparisonTask] = []
     task_counter = [0]
 
-    def annotate_spectrum(spectrum, is_reference=False):
-        """Annotate a spectrum for plotting (same as main.py)."""
-        spec_type = "reference" if is_reference else "query"
-
-        # Validate input data
-        if spectrum.mz is None or len(spectrum.mz) == 0:
-            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Empty m/z array"
-            results_summary["errors"].append(error_msg)
-            add_log(f"    ❌ {error_msg}")
-            return None
-
-        if spectrum.intensity is None or len(spectrum.intensity) == 0:
-            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Empty intensity array"
-            results_summary["errors"].append(error_msg)
-            add_log(f"    ❌ {error_msg}")
-            return None
-
-        if not spectrum.peptidoform:
-            error_msg = f"Annotation error ({spec_type}): Missing peptidoform"
-            results_summary["errors"].append(error_msg)
-            add_log(f"    ❌ {error_msg}")
-            return None
-
-        if spectrum.precursor_charge <= 0:
-            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}): Invalid charge {spectrum.precursor_charge}"
-            results_summary["errors"].append(error_msg)
-            add_log(f"    ❌ {error_msg}")
-            return None
-
-        try:
-            df = prepare_spectrum_for_plot(
-                mz=spectrum.mz,
-                intensity=spectrum.intensity,
-                peptidoform=spectrum.peptidoform,
-                charge=spectrum.precursor_charge,
-                ion_types=ion_types,
-                mz_tolerance=mz_tolerance,
-                add_losses=add_losses,
-                add_first_prefix_ion=add_first_prefix_ion,
-                remove_precursor_peaks=remove_precursor_peaks,
-                normalize=normalize,
-            )
-            return df
-        except Exception as e:
-            error_msg = f"Annotation error ({spec_type} {spectrum.peptidoform}, charge={spectrum.precursor_charge}, peaks={len(spectrum.mz)}): {e}"
-            results_summary["errors"].append(error_msg)
-            add_log(f"    ❌ {error_msg}")
-            return None
+    # Annotation kwargs shared by all pipeline calls
+    _annotation_kwargs = dict(
+        ion_types=ion_types,
+        mz_tolerance=mz_tolerance,
+        add_losses=add_losses,
+        add_first_prefix_ion=add_first_prefix_ion,
+        remove_precursor_peaks=remove_precursor_peaks,
+        normalize=normalize,
+    )
+    _figsize = tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8]))
+    _dpi = get_settings_value(_get_settings(), "export", "dpi", default=300)
 
     def on_reference_loaded(variant_key: str, count: int):
         """Called when all references for a variant are loaded."""
@@ -1317,102 +1285,41 @@ def run_streaming_processing():
                                         f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)")
 
         # Annotate query spectrum
-        query_df = annotate_spectrum(query, is_reference=False)
+        query_df = pipeline_annotate(
+            query, errors=results_summary["errors"],
+            log_fn=lambda msg: add_log(f"❌ {msg}"),
+            **_annotation_kwargs,
+        )
         if query_df is None:
             return
 
         # Ensure references are annotated (cache them)
-        if result.variant_key not in annotated_references:
-            annotated_references[result.variant_key] = []
-            for ref in refs:
-                ref_df = annotate_spectrum(ref, is_reference=True)
-                if ref_df is not None:
-                    annotated_references[result.variant_key].append((ref, ref_df))
+        ref_data = ensure_references_annotated(
+            result.variant_key, refs, annotated_references,
+            _annotation_kwargs, results_summary["errors"],
+            log_fn=lambda msg: add_log(f"❌ {msg}"),
+        )
 
-        ref_data = annotated_references.get(result.variant_key, [])
-
-        # Create folder for this variant
-        if result.modification_key:
-            folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
-            plot_title = format_inline_sequence(result.base_sequence, result.modification_key)
-        else:
-            folder_name = result.base_sequence
-            plot_title = result.base_sequence
-
-        if not ref_data:
-            if not plot_unpaired:
-                add_log(f"  Skipped (no reference): {Path(query.source_file).stem}")
-                return
-
-            # Build single spectrum task
-            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-            single_label = (f"{Path(query.source_file).stem}"
-                            f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-            query_stem = shorten_stem(Path(query.source_file).stem)
-            base_filename = f"{result.base_sequence}_{query_stem}"
-            safe_filename = sanitize_filename(base_filename)
-
-            comparison_tasks.append(ComparisonTask(
-                task_id=task_counter[0],
-                task_type="single",
-                query_df=query_df,
-                query_label=single_label,
-                plot_title=plot_title,
-                folder_name=folder_name,
-                safe_filename=safe_filename,
-                png_dir=str(png_dir),
-                svg_dir=str(svg_dir),
-                pdf_dir=str(pdf_dir),
-                export_formats=export_formats,
-                figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
-                dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
-                normalize=normalize,
-                query_file=Path(query.source_file).name,
-                peptide=result.base_sequence,
-                modification=result.modification_key or "",
-                charge=query.precursor_charge,
-            ))
-            task_counter[0] += 1
-            return
-
-        # Build mirror task for each reference
-        for ref, ref_df in ref_data:
-            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-            ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
-            query_label = (f"Query: {Path(query.source_file).stem}"
-                           f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-            ref_label = (f"Ref: {Path(ref.source_file).stem}"
-                         f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
-
-            query_stem = shorten_stem(Path(query.source_file).stem)
-            ref_stem = shorten_stem(Path(ref.source_file).stem)
-            base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
-            safe_filename = sanitize_filename(base_filename)
-
-            comparison_tasks.append(ComparisonTask(
-                task_id=task_counter[0],
-                task_type="mirror",
-                query_df=query_df,
-                ref_df=ref_df,
-                query_label=query_label,
-                ref_label=ref_label,
-                plot_title=plot_title,
-                folder_name=folder_name,
-                safe_filename=safe_filename,
-                png_dir=str(png_dir),
-                svg_dir=str(svg_dir),
-                pdf_dir=str(pdf_dir),
-                export_formats=export_formats,
-                figsize=tuple(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8])),
-                dpi=get_settings_value(_get_settings(), "export", "dpi", default=300),
-                normalize=normalize,
-                query_file=Path(query.source_file).name,
-                ref_file=Path(ref.source_file).name,
-                peptide=result.base_sequence,
-                modification=result.modification_key or "",
-                charge=query.precursor_charge,
-            ))
-            task_counter[0] += 1
+        # Build comparison tasks
+        new_tasks = build_comparison_tasks(
+            query=query,
+            ref_data=ref_data,
+            query_df=query_df,
+            base_sequence=result.base_sequence,
+            modification_key=result.modification_key,
+            png_dir=str(png_dir),
+            svg_dir=str(svg_dir),
+            pdf_dir=str(pdf_dir),
+            export_formats=export_formats,
+            figsize=_figsize,
+            dpi=_dpi,
+            normalize=normalize,
+            plot_unpaired=plot_unpaired,
+            task_counter=task_counter,
+        )
+        if not new_tasks and not ref_data and not plot_unpaired:
+            add_log(f"  Skipped (no reference): {Path(query.source_file).stem}")
+        comparison_tasks.extend(new_tasks)
 
     def on_file_start(filename: str, is_reference: bool):
         """Called when starting to process a file."""
@@ -1521,21 +1428,8 @@ def run_streaming_processing():
 
             # Check for existing plot files (resumable runs)
             # Uses final disk paths — before any tmpfs rewriting
-            skipped = 0
-            for task in comparison_tasks:
-                outputs_exist = True
-                if "png" in task.export_formats and task.png_dir:
-                    if not (Path(task.png_dir) / task.folder_name / f"{task.safe_filename}.png").exists():
-                        outputs_exist = False
-                if "svg" in task.export_formats and task.svg_dir:
-                    if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
-                        outputs_exist = False
-                if "pdf" in task.export_formats and task.pdf_dir:
-                    if not (Path(task.pdf_dir) / task.folder_name / f"{task.safe_filename}.pdf").exists():
-                        outputs_exist = False
-                if outputs_exist:
-                    task.skip_plot = True
-                    skipped += 1
+            from src.pipeline import mark_skipped_tasks
+            skipped = mark_skipped_tasks(comparison_tasks)
 
             if skipped > 0:
                 add_log(f"Skipping {skipped}/{len(comparison_tasks)} plots (already on disk)")
@@ -1631,82 +1525,20 @@ def run_streaming_processing():
         # =====================================================================
         # Write comparison summary CSV + XLSX
         # =====================================================================
-        if summary_rows:
-            try:
-                import pandas as _pd
-                summary_df = _pd.DataFrame(summary_rows)
-
-                # Shorten filenames for readability
-                all_filenames = list(set(
-                    summary_df["query_file"].tolist() + summary_df["ref_file"].tolist()
-                ))
-                short_map = dict(zip(all_filenames, shorten_filenames(all_filenames)))
-                summary_df.insert(0, "query_short", summary_df["query_file"].map(short_map))
-                summary_df.insert(1, "ref_short", summary_df["ref_file"].map(short_map))
-
-                # Reorder columns
-                col_order = [
-                    "query_short", "ref_short", "peptide", "modification", "charge",
-                    "R2m", "R2b", "Cos", "Ent", "Dice", "Jacc", "ShR",
-                    "total_q", "total_r", "ann_q", "ann_r", "shared",
-                    "query_file", "ref_file",
-                ]
-                summary_df = summary_df[[c for c in col_order if c in summary_df.columns]]
-
-                # Rename for display
-                rename_map = {
-                    "query_short": "Query", "ref_short": "Reference",
-                    "peptide": "Peptide", "modification": "Modification",
-                    "charge": "Charge",
-                    "R2m": "R² match", "R2b": "R² binned",
-                    "Cos": "Cosine", "Ent": "Entropy",
-                    "Dice": "Dice", "Jacc": "Jaccard", "ShR": "SharedRatio",
-                    "total_q": "Peaks (Q)", "total_r": "Peaks (R)",
-                    "ann_q": "Annotated (Q)", "ann_r": "Annotated (R)",
-                    "shared": "Shared Ions",
-                    "query_file": "Query File", "ref_file": "Ref File",
-                }
-                summary_df = summary_df.rename(columns=rename_map)
-
-                # Write CSV (primary)
-                csv_path = root_dir / "comparison_summary.csv"
-                summary_df.to_csv(csv_path, index=False)
-                results_summary["summary_csv"] = str(csv_path)
-                add_log(f"Summary CSV: {csv_path}")
-
-                # Write XLSX (secondary)
-                try:
-                    xlsx_path = root_dir / "comparison_summary.xlsx"
-                    summary_df.to_excel(xlsx_path, index=False, sheet_name="Comparisons")
-                    results_summary["summary_xlsx"] = str(xlsx_path)
-                    add_log(f"Summary XLSX: {xlsx_path}")
-                except Exception as xlsx_err:
-                    add_log(f"Warning: Could not write XLSX: {xlsx_err}")
-
-                # Generate summary plots
-                try:
-                    from src.summary_plots import generate_all_summary_plots
-                    export_fmts = st.session_state.get("export_formats", ["png"])
-                    if isinstance(export_fmts, str):
-                        export_fmts = [export_fmts]
-                    export_dpi = st.session_state.get("export_dpi", 300)
-                    summary_plot_paths = generate_all_summary_plots(
-                        source=summary_df,
-                        output_dir=str(root_dir),
-                        metric="R² binned",
-                        formats=export_fmts,
-                        dpi=export_dpi,
-                    )
-                    n_sp = sum(len(v) for v in summary_plot_paths.values())
-                    results_summary["summary_plots"] = summary_plot_paths
-                    add_log(f"Summary plots: {n_sp} files")
-                except Exception as sp_err:
-                    add_log(f"Warning: Could not generate summary plots: {sp_err}")
-                    logger.warning(f"Summary plots failed: {sp_err}")
-
-            except Exception as summary_err:
-                add_log(f"Warning: Could not write summary: {summary_err}")
-                logger.warning(f"Summary export failed: {summary_err}")
+        summary_result = write_comparison_summary(
+            summary_rows=summary_rows,
+            root_dir=root_dir,
+            export_formats=export_formats,
+            dpi=_dpi,
+            project_name=project_name,
+            log_fn=add_log,
+        )
+        if summary_result.get("csv"):
+            results_summary["summary_csv"] = summary_result["csv"]
+        if summary_result.get("xlsx"):
+            results_summary["summary_xlsx"] = summary_result["xlsx"]
+        if summary_result.get("summary_plots"):
+            results_summary["summary_plots"] = summary_result["summary_plots"]
 
         # Save point 3: after summary export
         _try_save_cache("after summary")

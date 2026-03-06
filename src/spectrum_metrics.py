@@ -111,6 +111,28 @@ def _get_matching_intensities(
     return q_ints, r_ints, shared
 
 
+def _r2_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
+    """R² from pre-computed matched intensity arrays (no DataFrame lookup)."""
+    if len(q_ints) < 2:
+        return float("nan")
+    from sklearn.linear_model import LinearRegression
+    model = LinearRegression()
+    model.fit(q_ints.reshape(-1, 1), r_ints)
+    return float(model.score(q_ints.reshape(-1, 1), r_ints))
+
+
+def _cosine_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
+    """Cosine similarity from pre-computed matched intensity arrays."""
+    if len(q_ints) == 0:
+        return float("nan")
+    dot = np.dot(q_ints, r_ints)
+    norm_q = np.linalg.norm(q_ints)
+    norm_r = np.linalg.norm(r_ints)
+    if norm_q == 0 or norm_r == 0:
+        return float("nan")
+    return float(dot / (norm_q * norm_r))
+
+
 # ---------------------------------------------------------------------------
 # Metric functions — all take (query_df, ref_df) annotated DataFrames
 # ---------------------------------------------------------------------------
@@ -121,14 +143,8 @@ def compute_r2_matching(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
 
     Reference: specviz spectrum_correlation()
     """
-    q_ints, r_ints, shared = _get_matching_intensities(query_df, ref_df)
-    if len(shared) < 2:
-        return float("nan")
-
-    from sklearn.linear_model import LinearRegression
-    model = LinearRegression()
-    model.fit(q_ints.reshape(-1, 1), r_ints)
-    return float(model.score(q_ints.reshape(-1, 1), r_ints))
+    q_ints, r_ints, _ = _get_matching_intensities(query_df, ref_df)
+    return _r2_from_arrays(q_ints, r_ints)
 
 
 def compute_r2_binned(
@@ -195,18 +211,8 @@ def compute_cosine_similarity(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> f
 
     Reference: Stein & Scott 1994
     """
-    q_ints, r_ints, shared = _get_matching_intensities(query_df, ref_df)
-    if len(shared) == 0:
-        return float("nan")
-
-    dot = np.dot(q_ints, r_ints)
-    norm_q = np.linalg.norm(q_ints)
-    norm_r = np.linalg.norm(r_ints)
-
-    if norm_q == 0 or norm_r == 0:
-        return float("nan")
-
-    return float(dot / (norm_q * norm_r))
+    q_ints, r_ints, _ = _get_matching_intensities(query_df, ref_df)
+    return _cosine_from_arrays(q_ints, r_ints)
 
 
 def compute_spectral_entropy_similarity(
@@ -249,7 +255,7 @@ def compute_shared_peak_dice(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> fl
 
     Dice = 2 * shared / (ann_q + ann_r)
     """
-    q_ints, r_ints, shared = _get_matching_intensities(query_df, ref_df)
+    _, _, shared = _get_matching_intensities(query_df, ref_df)
     ann_q = query_df["is_annotated"].sum() if "is_annotated" in query_df.columns else 0
     ann_r = ref_df["is_annotated"].sum() if "is_annotated" in ref_df.columns else 0
 
@@ -266,7 +272,7 @@ def compute_shared_peak_jaccard(query_df: pd.DataFrame, ref_df: pd.DataFrame) ->
 
     Jaccard = shared / (ann_q + ann_r - shared)
     """
-    q_ints, r_ints, shared = _get_matching_intensities(query_df, ref_df)
+    _, _, shared = _get_matching_intensities(query_df, ref_df)
     ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
     ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
 
@@ -283,7 +289,7 @@ def compute_shared_peak_ratio(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> f
 
     Measures completeness relative to the smaller set.
     """
-    q_ints, r_ints, shared = _get_matching_intensities(query_df, ref_df)
+    _, _, shared = _get_matching_intensities(query_df, ref_df)
     ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
     ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
 
@@ -305,29 +311,37 @@ def compute_all_metrics(
     """
     Compute all 7 comparison metrics plus context counts.
 
+    Calls _get_matching_intensities exactly once and passes pre-computed
+    arrays to the pure math helpers, avoiding 5x redundant groupby operations.
+
     Returns dict with keys:
         Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
         Counts:   total_q, total_r, ann_q, ann_r, shared
     """
-    # Pre-compute shared info (avoids redundant work across metrics)
-    _, _, shared_labels = _get_matching_intensities(query_df, ref_df)
+    # Single shared-intensity computation for all annotation-based metrics
+    q_ints, r_ints, shared_labels = _get_matching_intensities(query_df, ref_df)
+    n_shared = len(shared_labels)
 
     ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
     ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
 
+    denom_dice = ann_q + ann_r
+    denom_jacc = ann_q + ann_r - n_shared
+    denom_shr = min(ann_q, ann_r)
+
     return {
-        "R2m": compute_r2_matching(query_df, ref_df),
+        "R2m": _r2_from_arrays(q_ints, r_ints),
         "R2b": compute_r2_binned(query_df, ref_df),
-        "Cos": compute_cosine_similarity(query_df, ref_df),
+        "Cos": _cosine_from_arrays(q_ints, r_ints),
         "Ent": compute_spectral_entropy_similarity(query_df, ref_df),
-        "Dice": compute_shared_peak_dice(query_df, ref_df),
-        "Jacc": compute_shared_peak_jaccard(query_df, ref_df),
-        "ShR": compute_shared_peak_ratio(query_df, ref_df),
+        "Dice": float(2 * n_shared / denom_dice) if denom_dice else float("nan"),
+        "Jacc": float(n_shared / denom_jacc) if denom_jacc else float("nan"),
+        "ShR": float(n_shared / denom_shr) if denom_shr else float("nan"),
         "total_q": len(query_df),
         "total_r": len(ref_df),
         "ann_q": ann_q,
         "ann_r": ann_r,
-        "shared": len(shared_labels),
+        "shared": n_shared,
     }
 
 

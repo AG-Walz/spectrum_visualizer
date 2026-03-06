@@ -46,14 +46,17 @@ def shorten_stem(stem: str, max_len: int = 30) -> str:
 
 def create_export_directory(
     base_dir: str,
-    experiment_name: str = None
+    experiment_name: str = None,
+    formats: list = None,
 ) -> Tuple[Path, Path, Path, Path]:
     """
-    Create export directory structure.
+    Create export directory structure, creating only subdirs for requested formats.
 
     Args:
         base_dir: Base output directory
         experiment_name: Optional name for the experiment
+        formats: List of export formats (e.g. ["png", "svg"]). Creates all
+                 format subdirs when None (backwards-compatible default).
 
     Returns:
         Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
@@ -71,9 +74,15 @@ def create_export_directory(
     pdf_dir = root_dir / "pdf"
 
     root_dir.mkdir(parents=True, exist_ok=True)
-    png_dir.mkdir(exist_ok=True)
-    svg_dir.mkdir(exist_ok=True)
-    pdf_dir.mkdir(exist_ok=True)
+
+    # Only create subdirectories for the requested formats
+    create_all = formats is None
+    if create_all or "png" in formats:
+        png_dir.mkdir(exist_ok=True)
+    if create_all or "svg" in formats:
+        svg_dir.mkdir(exist_ok=True)
+    if create_all or "pdf" in formats:
+        pdf_dir.mkdir(exist_ok=True)
 
     return root_dir, png_dir, svg_dir, pdf_dir
 

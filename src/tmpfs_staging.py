@@ -30,6 +30,13 @@ from typing import Callable, Iterator, List, Optional
 
 logger = logging.getLogger(__name__)
 
+# Ordered list of (format, staging_attr, final_attr) used throughout the class
+_FMT_ATTRS = [
+    ("png", "_staging_png_dir", "_final_png_dir"),
+    ("svg", "_staging_svg_dir", "_final_svg_dir"),
+    ("pdf", "_staging_pdf_dir", "_final_pdf_dir"),
+]
+
 
 # ============================================================================
 # Configuration
@@ -134,21 +141,13 @@ class TmpfsStaging:
         self._staging_dir = staging_dir
         self._budget_bytes = budget_bytes
 
-        # Create format-specific subdirs mirroring the final layout
-        if "png" in self._export_formats and self._final_png_dir:
-            png_sub = staging_dir / "png"
-            png_sub.mkdir(exist_ok=True)
-            self._staging_png_dir = str(png_sub)
-
-        if "svg" in self._export_formats and self._final_svg_dir:
-            svg_sub = staging_dir / "svg"
-            svg_sub.mkdir(exist_ok=True)
-            self._staging_svg_dir = str(svg_sub)
-
-        if "pdf" in self._export_formats and self._final_pdf_dir:
-            pdf_sub = staging_dir / "pdf"
-            pdf_sub.mkdir(exist_ok=True)
-            self._staging_pdf_dir = str(pdf_sub)
+        # Create format-specific subdirs — one loop instead of three blocks
+        for fmt, staging_attr, final_attr in _FMT_ATTRS:
+            final_dir = getattr(self, final_attr)
+            if fmt in self._export_formats and final_dir:
+                sub = staging_dir / fmt
+                sub.mkdir(exist_ok=True)
+                setattr(self, staging_attr, str(sub))
 
         # Estimate bytes per task
         bpt = 0
@@ -224,12 +223,11 @@ class TmpfsStaging:
 
             # Rewrite paths on writing tasks to point at staging dir
             for task in chunk_writing:
-                if self._staging_png_dir and task.png_dir:
-                    task.png_dir = self._staging_png_dir
-                if self._staging_svg_dir and task.svg_dir:
-                    task.svg_dir = self._staging_svg_dir
-                if self._staging_pdf_dir and task.pdf_dir:
-                    task.pdf_dir = self._staging_pdf_dir
+                for fmt, staging_attr, _ in _FMT_ATTRS:
+                    staging_d = getattr(self, staging_attr)
+                    task_dir_attr = f"{fmt}_dir"
+                    if staging_d and getattr(task, task_dir_attr):
+                        setattr(task, task_dir_attr, staging_d)
 
             if i == 0:
                 # Include skip_tasks (metrics-only) in the first chunk
@@ -242,35 +240,16 @@ class TmpfsStaging:
         if not self._active or self._staging_dir is None:
             return
 
-        # Copy PNG staging → final
-        if self._staging_png_dir and self._final_png_dir:
-            src = Path(self._staging_png_dir)
-            if src.exists() and any(src.iterdir()):
-                shutil.copytree(
-                    str(src), self._final_png_dir, dirs_exist_ok=True
-                )
-                shutil.rmtree(str(src))
-                src.mkdir(exist_ok=True)
-
-        # Copy SVG staging → final
-        if self._staging_svg_dir and self._final_svg_dir:
-            src = Path(self._staging_svg_dir)
-            if src.exists() and any(src.iterdir()):
-                shutil.copytree(
-                    str(src), self._final_svg_dir, dirs_exist_ok=True
-                )
-                shutil.rmtree(str(src))
-                src.mkdir(exist_ok=True)
-
-        # Copy PDF staging → final
-        if self._staging_pdf_dir and self._final_pdf_dir:
-            src = Path(self._staging_pdf_dir)
-            if src.exists() and any(src.iterdir()):
-                shutil.copytree(
-                    str(src), self._final_pdf_dir, dirs_exist_ok=True
-                )
-                shutil.rmtree(str(src))
-                src.mkdir(exist_ok=True)
+        # One loop instead of three identical copy-then-rmtree blocks
+        for _, staging_attr, final_attr in _FMT_ATTRS:
+            staging_d = getattr(self, staging_attr)
+            final_d = getattr(self, final_attr)
+            if staging_d and final_d:
+                src = Path(staging_d)
+                if src.exists() and any(src.iterdir()):
+                    shutil.copytree(str(src), final_d, dirs_exist_ok=True)
+                    shutil.rmtree(str(src))
+                    src.mkdir(exist_ok=True)
 
     # ------------------------------------------------------------------
     # Internal

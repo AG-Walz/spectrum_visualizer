@@ -226,49 +226,32 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
     if "substring" in ref:
         cfg.reference_substring = ref["substring"] or ""
 
-    ann = yaml_cfg.get("annotation", {})
-    if "ion_types" in ann:
-        cfg.ion_types = ann["ion_types"]
-    if "mz_tolerance" in ann:
-        cfg.mz_tolerance = float(ann["mz_tolerance"])
-    if "add_losses" in ann:
-        cfg.add_losses = bool(ann["add_losses"])
-    if "add_first_prefix_ion" in ann:
-        cfg.add_first_prefix_ion = bool(ann["add_first_prefix_ion"])
-    if "remove_precursor_peaks" in ann:
-        cfg.remove_precursor_peaks = bool(ann["remove_precursor_peaks"])
-    if "intensity_mode" in ann:
-        cfg.intensity_mode = ann["intensity_mode"]
-
-    exp = yaml_cfg.get("export", {})
-    if "directory" in exp:
-        cfg.export_dir = exp["directory"]
-    if "project_name" in exp:
-        cfg.project_name = exp["project_name"]
-    if "formats" in exp:
-        cfg.export_formats = exp["formats"]
-    if "dpi" in exp:
-        cfg.dpi = int(exp["dpi"])
-    if "figsize" in exp:
-        cfg.figsize = tuple(exp["figsize"])
-    if "plot_unpaired" in exp:
-        cfg.plot_unpaired = bool(exp["plot_unpaired"])
-
-    cache = yaml_cfg.get("cache", {})
-    if "enabled" in cache:
-        cfg.cache_enabled = bool(cache["enabled"])
-    if "subdirectory" in cache:
-        cfg.cache_subdirectory = cache["subdirectory"]
-
-    perf = yaml_cfg.get("performance", {})
-    if "workers" in perf:
-        cfg.workers = int(perf["workers"])
-    if "tmpfs_staging" in perf:
-        cfg.tmpfs_staging = bool(perf["tmpfs_staging"])
-    if "tmpfs_path" in perf:
-        cfg.tmpfs_path = str(perf["tmpfs_path"])
-    if "tmpfs_ram_fraction" in perf:
-        cfg.tmpfs_ram_fraction = float(perf["tmpfs_ram_fraction"])
+    # Declarative mapping: ((yaml_section, yaml_key), (cfg_attr, cast_fn))
+    # Processed in one loop instead of ~30 repetitive if/set blocks.
+    _YAML_TO_CFG = [
+        (("annotation", "ion_types"),              ("ion_types",              list)),
+        (("annotation", "mz_tolerance"),           ("mz_tolerance",           float)),
+        (("annotation", "add_losses"),             ("add_losses",             bool)),
+        (("annotation", "add_first_prefix_ion"),   ("add_first_prefix_ion",   bool)),
+        (("annotation", "remove_precursor_peaks"), ("remove_precursor_peaks", bool)),
+        (("annotation", "intensity_mode"),         ("intensity_mode",         str)),
+        (("export", "directory"),                  ("export_dir",             str)),
+        (("export", "project_name"),               ("project_name",           str)),
+        (("export", "formats"),                    ("export_formats",         list)),
+        (("export", "dpi"),                        ("dpi",                    int)),
+        (("export", "figsize"),                    ("figsize",                tuple)),
+        (("export", "plot_unpaired"),              ("plot_unpaired",          bool)),
+        (("cache", "enabled"),                     ("cache_enabled",          bool)),
+        (("cache", "subdirectory"),                ("cache_subdirectory",     str)),
+        (("performance", "workers"),               ("workers",                int)),
+        (("performance", "tmpfs_staging"),         ("tmpfs_staging",          bool)),
+        (("performance", "tmpfs_path"),            ("tmpfs_path",             str)),
+        (("performance", "tmpfs_ram_fraction"),    ("tmpfs_ram_fraction",     float)),
+    ]
+    for (section, key), (attr, cast) in _YAML_TO_CFG:
+        val = yaml_cfg.get(section, {}).get(key)
+        if val is not None:
+            setattr(cfg, attr, cast(val))
 
     # Layer 3: CLI argument overrides
     if cli_args.idxml:
@@ -398,10 +381,6 @@ def run_pipeline(cfg: CLIConfig) -> int:
     Returns exit code: 0 = success, 1 = processing failure.
     """
     from src.spectrum_loader import load_spectra_streaming, load_spectra_from_parquet, StreamingResult
-    from src.peak_annotation import prepare_spectrum_for_plot
-    from src.peptide_search import format_inline_sequence
-    from src.export import sanitize_filename, shorten_stem, create_export_directory
-    from src.spectrum_metrics import shorten_filenames
 
     # =========================================================================
     # Phase 0: Validate inputs
@@ -470,35 +449,25 @@ def run_pipeline(cfg: CLIConfig) -> int:
     loaded_from_cache = False
     cache_dir = None
     cache_fingerprint = None
-
-    partial_cache_path = None  # set if a partial (incomplete) cache is found
+    partial_cache_path = None
 
     if not use_parquet and cfg.cache_enabled:
-        from src.parquet_cache import compute_cache_fingerprint, find_existing_cache
-
-        cache_fingerprint = compute_cache_fingerprint(
-            cfg.idxml_files, cfg.mzml_files, cfg.peptides, cfg.reference_substring
+        _cache = detect_parquet_cache(
+            idxml_files=cfg.idxml_files,
+            mzml_files=cfg.mzml_files,
+            peptides=cfg.peptides,
+            reference_substring=cfg.reference_substring,
+            export_dir=cfg.export_dir,
+            cache_subdir=cfg.cache_subdirectory,
+            log_fn=lambda msg: log_info(msg, cfg.quiet),
         )
-        cache_dir = str(Path(cfg.export_dir) / cfg.cache_subdirectory)
-
-        # Check for complete cache first
-        cached_path = find_existing_cache(cache_dir, cache_fingerprint)
-        if cached_path:
-            cfg.parquet_file = cached_path
+        cache_fingerprint = _cache.cache_fingerprint
+        cache_dir = _cache.cache_dir
+        partial_cache_path = _cache.partial_cache_path
+        if _cache.parquet_path:
+            cfg.parquet_file = _cache.parquet_path
             use_parquet = True
             loaded_from_cache = True
-            log_info(f"Cache hit! Loading from: {Path(cached_path).name}", cfg.quiet)
-        else:
-            # Check for partial (incomplete) cache
-            partial_path = find_existing_cache(cache_dir, cache_fingerprint, allow_partial=True)
-            if partial_path:
-                from src.parquet_cache import get_parquet_row_counts
-                p_refs, p_queries = get_parquet_row_counts(partial_path)
-                partial_cache_path = partial_path
-                log_info(f"Partial cache found: {p_refs} refs, {p_queries} queries. "
-                         f"Will resume loading remaining spectra.", cfg.quiet)
-            else:
-                partial_cache_path = None
 
     # =========================================================================
     # Phase 2: Peptide search (if not Parquet)
@@ -655,53 +624,32 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
     # Task collection for parallel processing
     from src.parallel_processor import ComparisonTask
+    from src.pipeline import (
+        annotate_spectrum as pipeline_annotate,
+        ensure_references_annotated,
+        build_comparison_tasks,
+        write_comparison_summary,
+        detect_parquet_cache,
+        save_parquet_cache,
+    )
     comparison_tasks: List[ComparisonTask] = []
     task_counter = [0]
 
-    # --- Annotation helper ---
-    def annotate_spectrum(spectrum, is_reference=False):
-        spec_type = "reference" if is_reference else "query"
-
-        if spectrum.mz is None or len(spectrum.mz) == 0:
-            results_summary["errors"].append(f"Empty m/z: {spec_type} {spectrum.peptidoform}")
-            return None
-        if spectrum.intensity is None or len(spectrum.intensity) == 0:
-            results_summary["errors"].append(f"Empty intensity: {spec_type} {spectrum.peptidoform}")
-            return None
-        if not spectrum.peptidoform:
-            results_summary["errors"].append(f"Missing peptidoform: {spec_type}")
-            return None
-        if spectrum.precursor_charge <= 0:
-            results_summary["errors"].append(f"Invalid charge: {spec_type} {spectrum.peptidoform}")
-            return None
-
-        try:
-            return prepare_spectrum_for_plot(
-                mz=spectrum.mz,
-                intensity=spectrum.intensity,
-                peptidoform=spectrum.peptidoform,
-                charge=spectrum.precursor_charge,
-                ion_types=cfg.ion_types,
-                mz_tolerance=cfg.mz_tolerance,
-                add_losses=cfg.add_losses,
-                add_first_prefix_ion=cfg.add_first_prefix_ion,
-                remove_precursor_peaks=cfg.remove_precursor_peaks,
-                normalize=cfg.normalize,
-            )
-        except Exception as e:
-            results_summary["errors"].append(f"Annotation error ({spec_type} {spectrum.peptidoform}): {e}")
-            return None
+    # Annotation kwargs shared by all pipeline calls
+    _annotation_kwargs = dict(
+        ion_types=cfg.ion_types,
+        mz_tolerance=cfg.mz_tolerance,
+        add_losses=cfg.add_losses,
+        add_first_prefix_ion=cfg.add_first_prefix_ion,
+        remove_precursor_peaks=cfg.remove_precursor_peaks,
+        normalize=cfg.normalize,
+    )
 
     # --- Cache save helper (supports partial + complete saves) ---
     _cache_complete = [False]  # True once a complete (non-partial) save succeeds
 
     def _try_save_cache(stage: str, partial: bool = False):
-        """Save Parquet cache. Overwrites previous saves with updated data.
-
-        Args:
-            stage: Label for logging (e.g. "after refs", "incremental 500")
-            partial: If True, marks cache as incomplete (more queries expected)
-        """
+        """Save Parquet cache. Overwrites previous saves with updated data."""
         if _cache_complete[0]:
             return  # Complete cache already saved, no need to overwrite
         if (loaded_from_cache
@@ -709,39 +657,26 @@ def run_pipeline(cfg: CLIConfig) -> int:
                 or not cfg.cache_enabled
                 or not cache_fingerprint):
             return
-        # For partial saves, need at least references; for complete, need queries
         has_refs = _cached_references and any(_cached_references.values())
         if not has_refs and not _cached_queries:
             return
-        try:
-            from src.parquet_cache import save_spectra_to_parquet
-
-            cache_path = str(Path(cache_dir) / f"{cache_fingerprint}.parquet")
-            cache_metadata = {
-                "fingerprint": cache_fingerprint,
-                "export_root": str(root_dir),
-                "idxml_files": cfg.idxml_files,
-                "mzml_files": cfg.mzml_files,
-                "target_peptides": cfg.peptides,
-                "reference_substring": cfg.reference_substring,
-            }
-            saved = save_spectra_to_parquet(
-                reference_spectra=_cached_references,
-                query_spectra=_cached_queries,
-                output_path=cache_path,
-                cache_metadata=cache_metadata,
-                partial=partial,
-            )
-            if saved:
-                if not partial:
-                    _cache_complete[0] = True
-                n_refs = sum(len(v) for v in _cached_references.values())
-                tag = "partial" if partial else "complete"
-                log_info(f"Cache saved [{tag}] ({stage}): {Path(saved).name} "
-                         f"({len(_cached_queries)} queries, {n_refs} refs)",
-                         cfg.quiet)
-        except Exception as cache_err:
-            log_info(f"Warning: cache save failed ({stage}): {cache_err}", cfg.quiet)
+        cache_metadata = {
+            "fingerprint": cache_fingerprint,
+            "export_root": str(root_dir),
+            "idxml_files": cfg.idxml_files,
+            "mzml_files": cfg.mzml_files,
+            "target_peptides": cfg.peptides,
+            "reference_substring": cfg.reference_substring,
+        }
+        save_parquet_cache(
+            cached_references=_cached_references,
+            cached_queries=_cached_queries,
+            cache_path=str(Path(cache_dir) / f"{cache_fingerprint}.parquet"),
+            cache_metadata=cache_metadata,
+            cache_complete=_cache_complete,
+            partial=partial,
+            log_fn=lambda msg: log_info(f"[{stage}] {msg}", cfg.quiet),
+        )
 
     # --- Callbacks ---
     # Incremental cache save interval
@@ -787,102 +722,36 @@ def run_pipeline(cfg: CLIConfig) -> int:
         query_progress.update()
 
         # Annotate query
-        query_df = annotate_spectrum(query, is_reference=False)
+        query_df = pipeline_annotate(query, errors=results_summary["errors"], **_annotation_kwargs)
         if query_df is None:
             return
 
         # Ensure references are annotated (cached per variant)
-        if result.variant_key not in annotated_references:
-            annotated_references[result.variant_key] = []
-            for ref in refs:
-                ref_df = annotate_spectrum(ref, is_reference=True)
-                if ref_df is not None:
-                    annotated_references[result.variant_key].append((ref, ref_df))
+        ref_data = ensure_references_annotated(
+            result.variant_key, refs, annotated_references,
+            _annotation_kwargs, results_summary["errors"],
+        )
 
-        ref_data = annotated_references.get(result.variant_key, [])
-
-        # Folder and title
-        if result.modification_key:
-            folder_name = f"{result.base_sequence}_{sanitize_filename(result.modification_key)}"
-            plot_title = format_inline_sequence(result.base_sequence, result.modification_key)
-        else:
-            folder_name = result.base_sequence
-            plot_title = result.base_sequence
-
-        if not ref_data:
-            if not cfg.plot_unpaired:
-                log_debug(f"  Skipped (no reference): {Path(query.source_file).stem}", cfg.verbose)
-                return
-
-            # Build single spectrum task
-            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-            single_label = (f"{Path(query.source_file).stem}"
-                            f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-            query_stem = shorten_stem(Path(query.source_file).stem)
-            base_filename = f"{result.base_sequence}_{query_stem}"
-            safe_filename = sanitize_filename(base_filename)
-
-            comparison_tasks.append(ComparisonTask(
-                task_id=task_counter[0],
-                task_type="single",
-                query_df=query_df,
-                query_label=single_label,
-                plot_title=plot_title,
-                folder_name=folder_name,
-                safe_filename=safe_filename,
-                png_dir=str(png_dir),
-                svg_dir=str(svg_dir),
-                pdf_dir=str(pdf_dir),
-                export_formats=cfg.export_formats,
-                figsize=cfg.figsize,
-                dpi=cfg.dpi,
-                normalize=cfg.normalize,
-                query_file=Path(query.source_file).name,
-                peptide=result.base_sequence,
-                modification=result.modification_key or "",
-                charge=query.precursor_charge,
-            ))
-            task_counter[0] += 1
-            return
-
-        # Build mirror task for each reference
-        for ref, ref_df in ref_data:
-            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
-            ref_rt = f"{ref.rt:.1f}" if ref.rt else "N/A"
-            query_label = (f"Query: {Path(query.source_file).stem}"
-                           f"  (RT: {query_rt}, ID: {query.spectrum_id})")
-            ref_label = (f"Ref: {Path(ref.source_file).stem}"
-                         f"  (RT: {ref_rt}, ID: {ref.spectrum_id})")
-
-            query_stem = shorten_stem(Path(query.source_file).stem)
-            ref_stem = shorten_stem(Path(ref.source_file).stem)
-            base_filename = f"{result.base_sequence}_{query_stem}_vs_{ref_stem}"
-            safe_filename = sanitize_filename(base_filename)
-
-            comparison_tasks.append(ComparisonTask(
-                task_id=task_counter[0],
-                task_type="mirror",
-                query_df=query_df,
-                ref_df=ref_df,
-                query_label=query_label,
-                ref_label=ref_label,
-                plot_title=plot_title,
-                folder_name=folder_name,
-                safe_filename=safe_filename,
-                png_dir=str(png_dir),
-                svg_dir=str(svg_dir),
-                pdf_dir=str(pdf_dir),
-                export_formats=cfg.export_formats,
-                figsize=cfg.figsize,
-                dpi=cfg.dpi,
-                normalize=cfg.normalize,
-                query_file=Path(query.source_file).name,
-                ref_file=Path(ref.source_file).name,
-                peptide=result.base_sequence,
-                modification=result.modification_key or "",
-                charge=query.precursor_charge,
-            ))
-            task_counter[0] += 1
+        # Build comparison tasks
+        new_tasks = build_comparison_tasks(
+            query=query,
+            ref_data=ref_data,
+            query_df=query_df,
+            base_sequence=result.base_sequence,
+            modification_key=result.modification_key,
+            png_dir=str(png_dir),
+            svg_dir=str(svg_dir),
+            pdf_dir=str(pdf_dir),
+            export_formats=cfg.export_formats,
+            figsize=cfg.figsize,
+            dpi=cfg.dpi,
+            normalize=cfg.normalize,
+            plot_unpaired=cfg.plot_unpaired,
+            task_counter=task_counter,
+        )
+        if not new_tasks and not ref_data and not cfg.plot_unpaired:
+            log_debug(f"  Skipped (no reference): {Path(query.source_file).stem}", cfg.verbose)
+        comparison_tasks.extend(new_tasks)
 
     def on_file_start(filename: str, is_reference: bool):
         file_type = "reference" if is_reference else "query"
@@ -988,21 +857,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
         # Check for existing plot files (resumable runs)
         # Uses final disk paths — before any tmpfs rewriting
-        skipped = 0
-        for task in comparison_tasks:
-            outputs_exist = True
-            if "png" in task.export_formats and task.png_dir:
-                if not (Path(task.png_dir) / task.folder_name / f"{task.safe_filename}.png").exists():
-                    outputs_exist = False
-            if "svg" in task.export_formats and task.svg_dir:
-                if not (Path(task.svg_dir) / task.folder_name / f"{task.safe_filename}.svg").exists():
-                    outputs_exist = False
-            if "pdf" in task.export_formats and task.pdf_dir:
-                if not (Path(task.pdf_dir) / task.folder_name / f"{task.safe_filename}.pdf").exists():
-                    outputs_exist = False
-            if outputs_exist:
-                task.skip_plot = True
-                skipped += 1
+        from src.pipeline import mark_skipped_tasks
+        skipped = mark_skipped_tasks(comparison_tasks)
 
         if skipped > 0:
             log_info(f"Skipping {skipped}/{len(comparison_tasks)} plots (already on disk)", cfg.quiet)
@@ -1059,73 +915,22 @@ def run_pipeline(cfg: CLIConfig) -> int:
     # =========================================================================
     # Phase 5: Write comparison summary CSV + XLSX
     # =========================================================================
-    if summary_rows:
-        try:
-            import pandas as _pd
-            summary_df = _pd.DataFrame(summary_rows)
-
-            all_filenames = list(set(
-                summary_df["query_file"].tolist() + summary_df["ref_file"].tolist()
-            ))
-            short_map = dict(zip(all_filenames, shorten_filenames(all_filenames)))
-            summary_df.insert(0, "query_short", summary_df["query_file"].map(short_map))
-            summary_df.insert(1, "ref_short", summary_df["ref_file"].map(short_map))
-
-            col_order = [
-                "query_short", "ref_short", "peptide", "modification", "charge",
-                "R2m", "R2b", "Cos", "Ent", "Dice", "Jacc", "ShR",
-                "total_q", "total_r", "ann_q", "ann_r", "shared",
-                "query_file", "ref_file",
-            ]
-            summary_df = summary_df[[c for c in col_order if c in summary_df.columns]]
-
-            rename_map = {
-                "query_short": "Query", "ref_short": "Reference",
-                "peptide": "Peptide", "modification": "Modification",
-                "charge": "Charge",
-                "R2m": "R² match", "R2b": "R² binned",
-                "Cos": "Cosine", "Ent": "Entropy",
-                "Dice": "Dice", "Jacc": "Jaccard", "ShR": "SharedRatio",
-                "total_q": "Peaks (Q)", "total_r": "Peaks (R)",
-                "ann_q": "Annotated (Q)", "ann_r": "Annotated (R)",
-                "shared": "Shared Ions",
-                "query_file": "Query File", "ref_file": "Ref File",
-            }
-            summary_df = summary_df.rename(columns=rename_map)
-
-            csv_path = root_dir / "comparison_summary.csv"
-            summary_df.to_csv(csv_path, index=False)
-            results_summary["summary_csv"] = str(csv_path)
-            log_info(f"Summary CSV: {csv_path}", cfg.quiet)
-
-            try:
-                xlsx_path = root_dir / "comparison_summary.xlsx"
-                summary_df.to_excel(xlsx_path, index=False, sheet_name="Comparisons")
-                results_summary["summary_xlsx"] = str(xlsx_path)
-                log_info(f"Summary XLSX: {xlsx_path}", cfg.quiet)
-            except Exception as xlsx_err:
-                log_debug(f"Could not write XLSX: {xlsx_err}", cfg.verbose)
-
-            # Generate summary plots
-            try:
-                from src.summary_plots import generate_all_summary_plots
-                log_info("Generating summary plots...", cfg.quiet)
-                summary_plot_paths = generate_all_summary_plots(
-                    source=summary_df,
-                    output_dir=str(root_dir),
-                    metric="R² binned",
-                    formats=cfg.export_formats,
-                    dpi=cfg.dpi,
-                    title_prefix=cfg.project_name,
-                )
-                n_summary = sum(len(v) for v in summary_plot_paths.values())
-                log_info(f"Summary plots: {n_summary} files in {root_dir / 'summary'}", cfg.quiet)
-                results_summary["summary_plots"] = summary_plot_paths
-            except Exception as sp_err:
-                log_debug(f"Could not generate summary plots: {sp_err}", cfg.verbose)
-
-        except Exception as summary_err:
-            log_debug(f"Could not write summary: {summary_err}", cfg.verbose)
+    summary_result = write_comparison_summary(
+        summary_rows=summary_rows,
+        root_dir=root_dir,
+        export_formats=cfg.export_formats,
+        dpi=cfg.dpi,
+        project_name=cfg.project_name,
+        log_fn=lambda msg: log_info(msg, cfg.quiet),
+    )
+    if summary_result.get("csv"):
+        results_summary["summary_csv"] = summary_result["csv"]
+    if summary_result.get("xlsx"):
+        results_summary["summary_xlsx"] = summary_result["xlsx"]
+    if summary_result.get("summary_plots"):
+        results_summary["summary_plots"] = summary_result["summary_plots"]
+        n_summary = sum(len(v) for v in summary_result["summary_plots"].values())
+        log_info(f"Summary plots: {n_summary} files in {root_dir / 'summary'}", cfg.quiet)
 
     # Save point 3: after summary export
     _try_save_cache("after summary")

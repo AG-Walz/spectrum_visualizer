@@ -7,6 +7,10 @@ import logging
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib.figure import Figure
+
 import numpy as np
 import pandas as pd
 
@@ -61,6 +65,64 @@ def get_ion_color(annotation: str, color_map: Dict[str, str] = None) -> str:
     return color_map.get("unannotated", "#AAAAAA")
 
 
+def _plot_peaks_vectorized(
+    ax,
+    df: pd.DataFrame,
+    sign: float,
+    ann_offset: float,
+    color_map: Dict[str, str],
+    show_annotations: bool,
+    annotation_fontsize: int,
+    va_label: str,
+):
+    """
+    Plot all peaks in df with a single vlines() call per color group.
+
+    Args:
+        ax: matplotlib Axes
+        df: DataFrame with mz, intensity, annotation columns (intensities already signed/normalized)
+        sign: +1 for upper (query), -1 for lower (reference)
+        ann_offset: vertical offset for annotation text
+        color_map: ion color mapping
+        show_annotations: whether to render text labels
+        annotation_fontsize: font size for labels
+        va_label: 'bottom' (upper) or 'top' (lower)
+    """
+    if df.empty:
+        return
+
+    # Compute color per peak (vectorized via map)
+    df = df.copy()
+    df["_color"] = df["annotation"].map(lambda a: get_ion_color(a, color_map))
+
+    # Single vlines() call per unique color — much faster than one call per peak
+    for color, group in df.groupby("_color", sort=False):
+        ax.vlines(
+            group["mz"].values,
+            0,
+            group["intensity"].values,
+            colors=color,
+            linewidth=1.5,
+            alpha=0.8,
+        )
+
+    # Annotation text — only annotated peaks (typically few)
+    if show_annotations:
+        ann_mask = df["annotation"].ne("unannotated") & df["annotation"].ne("")
+        for _, peak in df[ann_mask].iterrows():
+            y_pos = peak["intensity"] + sign * ann_offset
+            ax.text(
+                peak["mz"],
+                y_pos,
+                peak["annotation"],
+                fontsize=annotation_fontsize,
+                color=peak["_color"],
+                ha="center",
+                va=va_label,
+                rotation=0,
+            )
+
+
 def create_mirror_plot(
     upper_spectrum: pd.DataFrame,
     lower_spectrum: pd.DataFrame,
@@ -95,11 +157,6 @@ def create_mirror_plot(
     Returns:
         matplotlib.figure.Figure object
     """
-    # Import matplotlib with non-interactive backend
-    import matplotlib
-    matplotlib.use('Agg')
-    from matplotlib.figure import Figure
-
     if color_map is None:
         color_map = ION_COLORS
 
@@ -119,38 +176,27 @@ def create_mirror_plot(
     if not upper_spectrum.empty and len(upper_spectrum) > 0:
         upper_df = upper_spectrum.copy()
 
-        # Ensure annotation column exists
-        if 'annotation' not in upper_df.columns:
-            upper_df['annotation'] = 'unannotated'
+        if "annotation" not in upper_df.columns:
+            upper_df["annotation"] = "unannotated"
 
-        # Normalize if requested
         if normalize:
             max_int = upper_df["intensity"].max()
             if max_int > 0:
                 upper_df["intensity"] = upper_df["intensity"] / max_int
 
-        # Plot each peak
-        for _, peak in upper_df.iterrows():
-            annotation = peak.get('annotation', 'unannotated')
-            color = get_ion_color(annotation, color_map)
-            ax.vlines(peak['mz'], 0, peak['intensity'],
-                     colors=color, linewidth=1.5, alpha=0.8)
-
-            # Add annotation label
-            if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] + ann_offset, annotation,
-                       fontsize=annotation_fontsize, color=color,
-                       ha='center', va='bottom', rotation=0)
+        _plot_peaks_vectorized(
+            ax, upper_df, sign=1, ann_offset=ann_offset,
+            color_map=color_map, show_annotations=show_annotations,
+            annotation_fontsize=annotation_fontsize, va_label="bottom",
+        )
 
     # Process lower spectrum (negative/mirrored intensities)
     if not lower_spectrum.empty and len(lower_spectrum) > 0:
         lower_df = lower_spectrum.copy()
 
-        # Ensure annotation column exists
-        if 'annotation' not in lower_df.columns:
-            lower_df['annotation'] = 'unannotated'
+        if "annotation" not in lower_df.columns:
+            lower_df["annotation"] = "unannotated"
 
-        # Normalize and mirror (or just mirror for raw mode)
         if normalize:
             max_int = lower_df["intensity"].max()
             if max_int > 0:
@@ -158,18 +204,11 @@ def create_mirror_plot(
         else:
             lower_df["intensity"] = lower_df["intensity"] * -1
 
-        # Plot each peak
-        for _, peak in lower_df.iterrows():
-            annotation = peak.get('annotation', 'unannotated')
-            color = get_ion_color(annotation, color_map)
-            ax.vlines(peak['mz'], 0, peak['intensity'],
-                     colors=color, linewidth=1.5, alpha=0.8)
-
-            # Add annotation label
-            if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] - ann_offset, annotation,
-                       fontsize=annotation_fontsize, color=color,
-                       ha='center', va='top', rotation=0)
+        _plot_peaks_vectorized(
+            ax, lower_df, sign=-1, ann_offset=ann_offset,
+            color_map=color_map, show_annotations=show_annotations,
+            annotation_fontsize=annotation_fontsize, va_label="top",
+        )
 
     # Set axis limits
     all_mz = []
@@ -186,54 +225,49 @@ def create_mirror_plot(
     if normalize:
         ax.set_ylim(-1.2, 1.2)
     else:
-        # Auto-scale for raw intensities
         upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
         lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
         y_max = max(upper_max, lower_max) * 1.2
         ax.set_ylim(-y_max, y_max)
 
     # Add center line
-    ax.axhline(y=0, color='black', linewidth=1, alpha=0.5)
+    ax.axhline(y=0, color="black", linewidth=1, alpha=0.5)
 
-    # Add labels at the sides - positioned above/below intensity 1.0 to avoid overlap
-    # Upper label at top of plot area (above intensity 1.0)
+    # Labels at the sides
     ax.text(0.02, 0.99, upper_label, transform=ax.transAxes,
-            fontsize=9, fontweight='bold', va='top', ha='left',
-            color='#333333',
-            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
-    # Lower label at bottom of plot area (below intensity -1.0)
+            fontsize=9, fontweight="bold", va="top", ha="left",
+            color="#333333",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
     ax.text(0.02, 0.01, lower_label, transform=ax.transAxes,
-            fontsize=9, fontweight='bold', va='bottom', ha='left',
-            color='#333333',
-            bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
+            fontsize=9, fontweight="bold", va="bottom", ha="left",
+            color="#333333",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
 
-    # Metrics overlay in upper-right (below title, above peaks)
+    # Metrics overlay in upper-right
     if metrics_text:
         ax.text(0.98, 0.82, metrics_text, transform=ax.transAxes,
-                fontsize=10, fontfamily='monospace', va='top', ha='right',
-                color='#333333',
-                bbox=dict(boxstyle='round,pad=0.4', facecolor='white',
-                         edgecolor='#CCCCCC', alpha=0.85))
+                fontsize=10, fontfamily="monospace", va="top", ha="right",
+                color="#333333",
+                bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                          edgecolor="#CCCCCC", alpha=0.85))
 
     # Styling
-    ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
     ylabel = "Relative Intensity" if normalize else "Intensity"
-    ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
     ax.grid(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
     if normalize:
-        # Custom y-axis labels (only show ticks at actual intensity values)
         ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
-        ax.set_yticklabels(['1.0', '0.5', '0', '0.5', '1.0'])
+        ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
     else:
-        # Auto ticks with absolute values
         ax.yaxis.set_major_formatter(
             matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
         )
-    ax.tick_params(axis='y', which='both', length=4)
+    ax.tick_params(axis="y", which="both", length=4)
 
     fig.tight_layout()
 
@@ -267,10 +301,6 @@ def create_single_spectrum_plot(
     Returns:
         matplotlib.figure.Figure object
     """
-    import matplotlib
-    matplotlib.use('Agg')
-    from matplotlib.figure import Figure
-
     if color_map is None:
         color_map = ION_COLORS
 
@@ -281,10 +311,9 @@ def create_single_spectrum_plot(
     if not spectrum.empty and len(spectrum) > 0:
         df = spectrum.copy()
 
-        if 'annotation' not in df.columns:
-            df['annotation'] = 'unannotated'
+        if "annotation" not in df.columns:
+            df["annotation"] = "unannotated"
 
-        # Normalize if requested
         if normalize:
             max_int = df["intensity"].max()
             if max_int > 0:
@@ -293,16 +322,11 @@ def create_single_spectrum_plot(
         else:
             ann_offset = df["intensity"].max() * 0.03 if len(df) > 0 else 1
 
-        for _, peak in df.iterrows():
-            annotation = peak.get('annotation', 'unannotated')
-            color = get_ion_color(annotation, color_map)
-            ax.vlines(peak['mz'], 0, peak['intensity'],
-                     colors=color, linewidth=1.5, alpha=0.8)
-
-            if show_annotations and annotation and annotation != 'unannotated':
-                ax.text(peak['mz'], peak['intensity'] + ann_offset, annotation,
-                       fontsize=annotation_fontsize, color=color,
-                       ha='center', va='bottom', rotation=0)
+        _plot_peaks_vectorized(
+            ax, df, sign=1, ann_offset=ann_offset,
+            color_map=color_map, show_annotations=show_annotations,
+            annotation_fontsize=annotation_fontsize, va_label="bottom",
+        )
 
     # Axis limits
     if not spectrum.empty:
@@ -320,22 +344,22 @@ def create_single_spectrum_plot(
     # Label in top-left
     if label:
         ax.text(0.02, 0.99, label, transform=ax.transAxes,
-                fontsize=9, fontweight='bold', va='top', ha='left',
-                color='#333333',
-                bbox=dict(boxstyle='round,pad=0.2', facecolor='white', edgecolor='none', alpha=0.8))
+                fontsize=9, fontweight="bold", va="top", ha="left",
+                color="#333333",
+                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
 
     # Styling
-    ax.set_xlabel("m/z", fontsize=12, fontweight='bold')
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
     ylabel = "Relative Intensity" if normalize else "Intensity"
-    ax.set_ylabel(ylabel, fontsize=12, fontweight='bold')
-    ax.set_title(title, fontsize=14, fontweight='bold', pad=15)
+    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
     ax.grid(False)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
 
     if normalize:
         ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.tick_params(axis='y', which='both', length=4)
+    ax.tick_params(axis="y", which="both", length=4)
 
     fig.tight_layout()
 
@@ -360,9 +384,6 @@ def create_legend_figure(
     Returns:
         matplotlib Figure with legend
     """
-    import matplotlib
-    matplotlib.use('Agg')
-    from matplotlib.figure import Figure
     from matplotlib.patches import Patch
 
     if color_map is None:
@@ -373,7 +394,7 @@ def create_legend_figure(
 
     fig = Figure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
-    ax.axis('off')
+    ax.axis("off")
 
     # Create legend patches
     patches = []
@@ -382,14 +403,14 @@ def create_legend_figure(
             label = ion_type if ion_type != "unannotated" else "unassigned"
             patches.append(Patch(facecolor=color_map[ion_type], label=label))
 
-    ax.legend(handles=patches, loc='center', ncol=min(4, len(patches)),
+    ax.legend(handles=patches, loc="center", ncol=min(4, len(patches)),
               frameon=False, fontsize=10)
 
     fig.tight_layout()
     return fig
 
 
-def figure_to_bytes(fig, format: str = 'png') -> bytes:
+def figure_to_bytes(fig, format: str = "png") -> bytes:
     """
     Convert a matplotlib figure to bytes.
 
@@ -401,12 +422,12 @@ def figure_to_bytes(fig, format: str = 'png') -> bytes:
         Bytes of the image
     """
     buf = BytesIO()
-    fig.savefig(buf, format=format, bbox_inches='tight', facecolor='white')
+    fig.savefig(buf, format=format, bbox_inches="tight", facecolor="white")
     buf.seek(0)
     return buf.read()
 
 
-def figure_to_base64(fig, format: str = 'png') -> str:
+def figure_to_base64(fig, format: str = "png") -> str:
     """
     Convert a matplotlib figure to base64 encoded string.
 
@@ -414,4 +435,4 @@ def figure_to_base64(fig, format: str = 'png') -> str:
     """
     import base64
     img_bytes = figure_to_bytes(fig, format)
-    return base64.b64encode(img_bytes).decode('utf-8')
+    return base64.b64encode(img_bytes).decode("utf-8")

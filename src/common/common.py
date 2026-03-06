@@ -279,17 +279,17 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
 
 def v_space(n: int, col=None) -> None:
     """
-    Prints empty strings to create vertical space in the Streamlit app.
+    Writes empty strings to create vertical space in the Streamlit app.
 
     Args:
-        n (int): Number of empty lines to print.
+        n (int): Number of empty lines to add.
         col: A streamlit column to add vertical space in.
     """
     for _ in range(n):
         if col:
-            col.write("#")
+            col.write("")
         else:
-            st.write("#")
+            st.write("")
 
 
 def show_fig(

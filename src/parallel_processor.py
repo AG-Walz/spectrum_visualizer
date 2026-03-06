@@ -64,6 +64,16 @@ class ComparisonTask:
     modification: str = ""
     charge: int = 0
 
+    def outputs_exist(self) -> bool:
+        """Return True if every requested output format already exists on disk."""
+        fmt_dirs = {"png": self.png_dir, "svg": self.svg_dir, "pdf": self.pdf_dir}
+        for fmt, fmt_dir in fmt_dirs.items():
+            if fmt in self.export_formats and fmt_dir:
+                out = Path(fmt_dir) / self.folder_name / f"{self.safe_filename}.{fmt}"
+                if not out.exists():
+                    return False
+        return True
+
 
 @dataclass
 class ComparisonResult:
@@ -101,6 +111,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         summary_row = None
         png_path = ""
         svg_path = ""
+        pdf_path = ""
 
         if task.task_type == "mirror" and task.ref_df is not None:
             # --- Metrics (always computed for summary CSV) ---
@@ -178,34 +189,32 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         )
 
 
+# Format → savefig keyword and extension mapping
+_FORMAT_SAVE_KWARGS: Dict[str, dict] = {
+    "png": {"format": "png"},
+    "svg": {"format": "svg"},
+    "pdf": {"format": "pdf"},
+}
+
+
 def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
-    """Save a matplotlib figure to PNG, SVG, and/or PDF. Returns (png_path, svg_path, pdf_path)."""
-    png_path = ""
-    svg_path = ""
-    pdf_path = ""
+    """Save a matplotlib figure to each requested format. Returns (png_path, svg_path, pdf_path)."""
+    fmt_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
+    paths = {"png": "", "svg": "", "pdf": ""}
 
-    if "png" in task.export_formats and task.png_dir:
-        variant_dir = Path(task.png_dir) / task.folder_name
+    for fmt, fmt_dir in fmt_dirs.items():
+        if fmt not in task.export_formats or not fmt_dir:
+            continue
+        variant_dir = Path(fmt_dir) / task.folder_name
         variant_dir.mkdir(parents=True, exist_ok=True)
-        out = variant_dir / f"{task.safe_filename}.png"
-        fig.savefig(str(out), dpi=task.dpi, bbox_inches="tight", facecolor="white")
-        png_path = str(out)
+        out = variant_dir / f"{task.safe_filename}.{fmt}"
+        save_kwargs = {"bbox_inches": "tight", "facecolor": "white", **_FORMAT_SAVE_KWARGS[fmt]}
+        if fmt == "png":
+            save_kwargs["dpi"] = task.dpi
+        fig.savefig(str(out), **save_kwargs)
+        paths[fmt] = str(out)
 
-    if "svg" in task.export_formats and task.svg_dir:
-        variant_dir = Path(task.svg_dir) / task.folder_name
-        variant_dir.mkdir(parents=True, exist_ok=True)
-        out = variant_dir / f"{task.safe_filename}.svg"
-        fig.savefig(str(out), format="svg", bbox_inches="tight", facecolor="white")
-        svg_path = str(out)
-
-    if "pdf" in task.export_formats and task.pdf_dir:
-        variant_dir = Path(task.pdf_dir) / task.folder_name
-        variant_dir.mkdir(parents=True, exist_ok=True)
-        out = variant_dir / f"{task.safe_filename}.pdf"
-        fig.savefig(str(out), format="pdf", bbox_inches="tight", facecolor="white")
-        pdf_path = str(out)
-
-    return png_path, svg_path, pdf_path
+    return paths["png"], paths["svg"], paths["pdf"]
 
 
 # ============================================================================

@@ -3,6 +3,7 @@ Peak annotation for MS/MS spectra.
 
 Generates theoretical fragment ions and annotates experimental peaks.
 """
+import functools
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -43,16 +44,94 @@ def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
             raise ValueError(f"Cannot convert peptidoform: {peptidoform_str}")
 
 
+@functools.lru_cache(maxsize=1024)
+def _generate_fragments_impl(
+    peptidoform: str,
+    charge: int,
+    ion_types: tuple,          # tuple (hashable) — converted from list by caller
+    max_fragment_charge: int,
+    add_losses: bool,
+    add_first_prefix_ion: bool,
+) -> pd.DataFrame:
+    """
+    Cached implementation of theoretical fragment generation.
+
+    Returns the same DataFrame object on repeated calls with identical
+    arguments — callers must not mutate the returned DataFrame.
+    """
+    try:
+        aa_seq = peptidoform_to_aasequence(peptidoform)
+    except ValueError as e:
+        logger.error(f"Failed to generate fragments: {e}")
+        return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge"])
+
+    # Configure theoretical spectrum generator
+    tsg = oms.TheoreticalSpectrumGenerator()
+    params = tsg.getParameters()
+
+    ion_types_list = list(ion_types)
+    for ion in ["a", "b", "c", "x", "y", "z"]:
+        params.setValue(f"add_{ion}_ions", "true" if ion in ion_types_list else "false")
+
+    params.setValue("add_metainfo", "true")
+    params.setValue("add_losses", "true" if add_losses else "false")
+    params.setValue("add_precursor_peaks", "true")
+    params.setValue("add_all_precursor_charges", "true")
+    params.setValue("add_first_prefix_ion", "true" if add_first_prefix_ion else "false")
+    params.setValue("add_abundant_immonium_ions", "true" if "immonium" in ion_types_list else "false")
+
+    tsg.setParameters(params)
+
+    # Generate spectrum
+    theo_spec = oms.MSSpectrum()
+    tsg.getSpectrum(theo_spec, aa_seq, 1, max_fragment_charge)
+
+    if theo_spec.size() > 1:
+        theo_spec.sortByPosition()
+
+    if theo_spec.size() == 0:
+        return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge"])
+
+    # Use batch API — much faster than iterating Peak1D objects
+    mzs, ints = theo_spec.get_peaks()
+
+    # Extract annotations from StringDataArrays
+    string_arrays = theo_spec.getStringDataArrays()
+    int_arrays = theo_spec.getIntegerDataArrays()
+
+    if string_arrays:
+        annotations = [n.decode() if isinstance(n, bytes) else str(n) for n in string_arrays[0]]
+    else:
+        annotations = [""] * theo_spec.size()
+
+    if int_arrays:
+        charges = list(int_arrays[0])
+    else:
+        charges = [1] * theo_spec.size()
+
+    return pd.DataFrame({
+        "mz": mzs,
+        "intensity": ints,
+        "annotation": annotations,
+        "charge": charges,
+    })
+
+
 def generate_theoretical_fragments(
     peptidoform: str,
     charge: int = 2,
     ion_types: List[str] = None,
     max_fragment_charge: int = 2,
     add_losses: bool = False,
-    add_first_prefix_ion: bool = True
+    add_first_prefix_ion: bool = True,
 ) -> pd.DataFrame:
     """
     Generate theoretical fragment ions for a peptide.
+
+    Results are cached by (peptidoform, charge, ion_types, add_losses,
+    add_first_prefix_ion) using functools.lru_cache — identical calls within
+    the same process (e.g. many query spectra for the same peptidoform) pay
+    the PyOpenMS cost only once.
 
     Args:
         peptidoform: Peptidoform string (with or without modifications)
@@ -64,69 +143,19 @@ def generate_theoretical_fragments(
 
     Returns:
         DataFrame with columns: mz, intensity (relative), annotation, charge
+        Do NOT modify the returned DataFrame — it is shared across callers.
     """
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 
-    try:
-        aa_seq = peptidoform_to_aasequence(peptidoform)
-    except ValueError as e:
-        logger.error(f"Failed to generate fragments: {e}")
-        return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge"])
-
-    # Configure theoretical spectrum generator
-    tsg = oms.TheoreticalSpectrumGenerator()
-    params = tsg.getParameters()
-
-    # Set ion types
-    for ion in ["a", "b", "c", "x", "y", "z"]:
-        params.setValue(f"add_{ion}_ions", "true" if ion in ion_types else "false")
-
-    params.setValue("add_metainfo", "true")
-    params.setValue("add_losses", "true" if add_losses else "false")
-    # Always generate precursor peaks at all charges for identification purposes
-    params.setValue("add_precursor_peaks", "true")
-    params.setValue("add_all_precursor_charges", "true")
-    params.setValue("add_first_prefix_ion", "true" if add_first_prefix_ion else "false")
-    params.setValue("add_abundant_immonium_ions", "true" if "immonium" in ion_types else "false")
-
-    tsg.setParameters(params)
-
-    # Generate spectrum
-    theo_spec = oms.MSSpectrum()
-    tsg.getSpectrum(theo_spec, aa_seq, 1, max_fragment_charge)
-
-    if theo_spec.size() > 1:
-        theo_spec.sortByPosition()
-
-    # Convert to DataFrame
-    if theo_spec.size() == 0:
-        return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge"])
-
-    # Extract annotations from StringDataArrays
-    string_arrays = theo_spec.getStringDataArrays()
-    int_arrays = theo_spec.getIntegerDataArrays()
-
-    annotations = []
-    if string_arrays:
-        annotations = [n.decode() if isinstance(n, bytes) else str(n) for n in string_arrays[0]]
-    else:
-        annotations = [""] * theo_spec.size()
-
-    charges = []
-    if int_arrays:
-        charges = list(int_arrays[0])
-    else:
-        charges = [1] * theo_spec.size()
-
-    data = {
-        "mz": [peak.getMZ() for peak in theo_spec],
-        "intensity": [peak.getIntensity() for peak in theo_spec],
-        "annotation": annotations,
-        "charge": charges
-    }
-
-    return pd.DataFrame(data)
+    return _generate_fragments_impl(
+        peptidoform,
+        charge,
+        tuple(ion_types),
+        max_fragment_charge,
+        add_losses,
+        add_first_prefix_ion,
+    )
 
 
 def annotate_spectrum(
@@ -150,22 +179,17 @@ def annotate_spectrum(
     if len(exp_mz) == 0:
         return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge", "is_annotated"])
 
-    # Create experimental spectrum object
+    # Build experimental MSSpectrum using batch API (faster than push_back loop)
     exp_spec = oms.MSSpectrum()
-    for mz, intensity in zip(exp_mz, exp_intensity):
-        peak = oms.Peak1D()
-        peak.setMZ(mz)
-        peak.setIntensity(intensity)
-        exp_spec.push_back(peak)
+    exp_spec.set_peaks([list(exp_mz), list(exp_intensity)])
     exp_spec.sortByPosition()
 
-    # Create theoretical spectrum object
+    # Build theoretical MSSpectrum using batch API
     theo_spec = oms.MSSpectrum()
-    for _, row in theo_fragments.iterrows():
-        peak = oms.Peak1D()
-        peak.setMZ(row['mz'])
-        peak.setIntensity(row['intensity'])
-        theo_spec.push_back(peak)
+    theo_spec.set_peaks([
+        theo_fragments["mz"].tolist(),
+        theo_fragments["intensity"].tolist(),
+    ])
     theo_spec.sortByPosition()
 
     # Perform alignment
@@ -269,7 +293,8 @@ def prepare_spectrum_for_plot(
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 
-    # Generate theoretical fragments (always includes precursor at all charges for identification)
+    # Generate theoretical fragments — lru_cache avoids repeated PyOpenMS calls
+    # for the same peptidoform+charge+ion_types combination.
     theo_frags = generate_theoretical_fragments(
         peptidoform,
         charge=charge,
@@ -295,7 +320,6 @@ def prepare_spectrum_for_plot(
 
     # Remove precursor peaks if requested
     if remove_precursor_peaks:
-        # First identify precursor peaks (they have annotation starting with [M or containing precursor)
         def is_precursor_annotation(ann):
             if not ann or ann == "unannotated":
                 return False
