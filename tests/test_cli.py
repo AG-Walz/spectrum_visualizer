@@ -318,3 +318,45 @@ class TestLoadConfig:
         )
         assert len(cfg.mzml_files) == 1
         assert "run2" in cfg.mzml_files[0]
+
+    def test_yaml_filter_with_cli_files(self, tmp_path):
+        # YAML sets the filter; CLI provides --idxml (not YAML idxml_files).
+        # Filter must apply to the CLI-expanded files.
+        (tmp_path / "run1.idXML").touch()
+        (tmp_path / "run2.idXML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {"idxml_filter": "run1"},  # filter only, no files
+        })
+        cfg = load_config(
+            yaml_path,
+            self._make_cli_args(idxml=[str(tmp_path / "*.idXML")]),
+        )
+        assert len(cfg.idxml_files) == 1
+        assert "run1" in cfg.idxml_files[0]
+
+    def test_cli_filter_overrides_yaml_filter(self, tmp_path):
+        # YAML has filter="run1" and files; CLI changes filter to "run2".
+        # The final file list must reflect the CLI filter applied to the full
+        # (unfiltered) glob, not "run2 applied to already-run1-filtered files".
+        (tmp_path / "run1.idXML").touch()
+        (tmp_path / "run2.idXML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {
+                "idxml_files": [str(tmp_path / "*.idXML")],
+                "idxml_filter": "run1",
+            },
+        })
+        cfg = load_config(yaml_path, self._make_cli_args(idxml_filter="run2"))
+        assert len(cfg.idxml_files) == 1
+        assert "run2" in cfg.idxml_files[0]
+
+    def test_filter_zero_results_returns_empty_list(self, tmp_path):
+        (tmp_path / "run1.idXML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {
+                "idxml_files": [str(tmp_path / "*.idXML")],
+                "idxml_filter": "nomatch",
+            },
+        })
+        cfg = load_config(yaml_path, self._make_cli_args())
+        assert cfg.idxml_files == []

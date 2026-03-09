@@ -232,13 +232,9 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
     if inp.get("mzml_filter"):
         cfg.mzml_filter = inp["mzml_filter"]
     if inp.get("idxml_files"):
-        cfg.idxml_files = _filter_files_by_substring(
-            _expand_file_globs(inp["idxml_files"]), cfg.idxml_filter
-        )
+        cfg.idxml_files = _expand_file_globs(inp["idxml_files"])
     if inp.get("mzml_files"):
-        cfg.mzml_files = _filter_files_by_substring(
-            _expand_file_globs(inp["mzml_files"]), cfg.mzml_filter
-        )
+        cfg.mzml_files = _expand_file_globs(inp["mzml_files"])
     if inp.get("parquet_file"):
         p = Path(inp["parquet_file"]).resolve()
         cfg.parquet_file = str(p) if p.exists() else None
@@ -283,18 +279,9 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
     if cli_args.mzml_filter is not None:
         cfg.mzml_filter = cli_args.mzml_filter
     if cli_args.idxml:
-        cfg.idxml_files = _filter_files_by_substring(
-            _expand_file_globs(cli_args.idxml), cfg.idxml_filter
-        )
-    elif cfg.idxml_filter and cfg.idxml_files:
-        # Filter already-loaded files when filter was set but --idxml wasn't re-specified
-        cfg.idxml_files = _filter_files_by_substring(cfg.idxml_files, cfg.idxml_filter)
+        cfg.idxml_files = _expand_file_globs(cli_args.idxml)
     if cli_args.mzml:
-        cfg.mzml_files = _filter_files_by_substring(
-            _expand_file_globs(cli_args.mzml), cfg.mzml_filter
-        )
-    elif cfg.mzml_filter and cfg.mzml_files:
-        cfg.mzml_files = _filter_files_by_substring(cfg.mzml_files, cfg.mzml_filter)
+        cfg.mzml_files = _expand_file_globs(cli_args.mzml)
     if cli_args.parquet:
         p = Path(cli_args.parquet).resolve()
         cfg.parquet_file = str(p)
@@ -334,6 +321,14 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.verbose = True
     if cli_args.quiet:
         cfg.quiet = True
+
+    # Apply file filters exactly once, after all three layers are fully merged.
+    # This eliminates double-filtering and ensures a CLI --idxml-filter always
+    # applies to the final file list regardless of which layer provided the files.
+    if cfg.idxml_filter:
+        cfg.idxml_files = _filter_files_by_substring(cfg.idxml_files, cfg.idxml_filter)
+    if cfg.mzml_filter:
+        cfg.mzml_files = _filter_files_by_substring(cfg.mzml_files, cfg.mzml_filter)
 
     return cfg
 
@@ -426,10 +421,22 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
     if not use_parquet:
         if not cfg.idxml_files:
-            log_error("No idXML files specified")
+            if cfg.idxml_filter:
+                log_error(
+                    f"No idXML files remain after applying filter '{cfg.idxml_filter}'. "
+                    "Check your paths and filter string, or re-provide --idxml with the new filter."
+                )
+            else:
+                log_error("No idXML files specified")
             return 1
         if not cfg.mzml_files:
-            log_error("No mzML files specified")
+            if cfg.mzml_filter:
+                log_error(
+                    f"No mzML files remain after applying filter '{cfg.mzml_filter}'. "
+                    "Check your paths and filter string, or re-provide --mzml with the new filter."
+                )
+            else:
+                log_error("No mzML files specified")
             return 1
 
         # Validate files exist
