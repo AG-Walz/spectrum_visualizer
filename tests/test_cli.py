@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from cli import (
     CLIConfig,
     _expand_file_globs,
+    _filter_files_by_substring,
     _load_peptides,
     _strip_modifications,
     create_parser,
@@ -83,6 +84,37 @@ class TestLoadPeptides:
         pep_file.write_text("\n\nLGGNEQVTR\n\n\n")
         result = _load_peptides(str(pep_file))
         assert result == ["LGGNEQVTR"]
+
+
+# ---------------------------------------------------------------------------
+# _filter_files_by_substring
+# ---------------------------------------------------------------------------
+
+class TestFilterFilesBySubstring:
+    def test_empty_filter_returns_all(self, tmp_path):
+        files = ["/data/run1.mzML", "/data/run2.mzML"]
+        assert _filter_files_by_substring(files, "") == files
+
+    def test_case_insensitive(self):
+        files = ["/data/Standard_001.mzML", "/data/query_001.mzML"]
+        assert _filter_files_by_substring(files, "standard") == ["/data/Standard_001.mzML"]
+        assert _filter_files_by_substring(files, "STANDARD") == ["/data/Standard_001.mzML"]
+
+    def test_matches_filename_only_not_directory(self):
+        files = ["/run1/data.mzML", "/data/run2.mzML"]
+        # "run1" is in the directory of the first but NOT in its filename
+        result = _filter_files_by_substring(files, "run1")
+        assert result == []
+
+    def test_no_match_returns_empty(self):
+        files = ["/data/run1.mzML", "/data/run2.mzML"]
+        assert _filter_files_by_substring(files, "xyz") == []
+
+    def test_partial_match(self):
+        files = ["/data/ProCa_run1.idXML", "/data/ProCa_run2.idXML", "/data/other.idXML"]
+        result = _filter_files_by_substring(files, "ProCa")
+        assert len(result) == 2
+        assert "/data/other.idXML" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -185,7 +217,8 @@ class TestLoadConfig:
         """Build a Namespace mimicking argparse output with all defaults None/False."""
         defaults = dict(
             config="dummy.yaml",
-            idxml=None, mzml=None, parquet=None, peptides=None,
+            idxml=None, idxml_filter=None, mzml=None, mzml_filter=None,
+            parquet=None, peptides=None,
             reference_substring=None,
             ion_types=None, mz_tolerance=None,
             add_losses=False, no_first_prefix_ion=False,
@@ -233,3 +266,55 @@ class TestLoadConfig:
         })
         cfg = load_config(yaml_path, self._make_cli_args())
         assert cfg.reference_substring == "Reference"
+
+    def test_yaml_idxml_filter(self, tmp_path):
+        # Create two idXML files; filter should keep only the one matching "run1"
+        (tmp_path / "run1_sample.idXML").touch()
+        (tmp_path / "run2_sample.idXML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {
+                "idxml_files": [str(tmp_path / "*.idXML")],
+                "idxml_filter": "run1",
+            },
+        })
+        cfg = load_config(yaml_path, self._make_cli_args())
+        assert len(cfg.idxml_files) == 1
+        assert "run1" in cfg.idxml_files[0]
+
+    def test_yaml_mzml_filter(self, tmp_path):
+        (tmp_path / "Standard_001.mzML").touch()
+        (tmp_path / "query_001.mzML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {
+                "mzml_files": [str(tmp_path / "*.mzML")],
+                "mzml_filter": "Standard",
+            },
+        })
+        cfg = load_config(yaml_path, self._make_cli_args())
+        assert len(cfg.mzml_files) == 1
+        assert "Standard" in cfg.mzml_files[0]
+
+    def test_cli_filter_overrides_yaml(self, tmp_path):
+        # YAML has no filter; CLI narrows files already loaded from YAML
+        (tmp_path / "run1.idXML").touch()
+        (tmp_path / "run2.idXML").touch()
+        yaml_path = self._make_yaml(tmp_path, {
+            "input": {"idxml_files": [str(tmp_path / "*.idXML")]},
+        })
+        cfg = load_config(yaml_path, self._make_cli_args(idxml_filter="run1"))
+        assert len(cfg.idxml_files) == 1
+        assert "run1" in cfg.idxml_files[0]
+
+    def test_cli_filter_applies_when_idxml_also_given(self, tmp_path):
+        (tmp_path / "run1.mzML").touch()
+        (tmp_path / "run2.mzML").touch()
+        yaml_path = self._make_yaml(tmp_path, {})
+        cfg = load_config(
+            yaml_path,
+            self._make_cli_args(
+                mzml=[str(tmp_path / "*.mzML")],
+                mzml_filter="run2",
+            ),
+        )
+        assert len(cfg.mzml_files) == 1
+        assert "run2" in cfg.mzml_files[0]

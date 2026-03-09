@@ -49,6 +49,10 @@ class CLIConfig:
     mzml_files: List[str] = field(default_factory=list)
     parquet_file: Optional[str] = None
 
+    # Input filters (case-insensitive substring on filename, same as app UI)
+    idxml_filter: str = ""
+    mzml_filter: str = ""
+
     # Peptides
     peptides: List[str] = field(default_factory=list)
 
@@ -115,6 +119,18 @@ def _expand_file_globs(patterns: List[str]) -> List[str]:
                     result.append(p)
                     seen.add(p)
     return result
+
+
+def _filter_files_by_substring(files: List[str], substring: str) -> List[str]:
+    """Filter a list of file paths by a case-insensitive substring on the filename.
+
+    Mirrors the app UI filter: ``filter_lower in f.name.lower()``.
+    Returns the original list unchanged when substring is empty.
+    """
+    if not substring:
+        return files
+    sub_lower = substring.lower()
+    return [f for f in files if sub_lower in Path(f).name.lower()]
 
 
 def _strip_modifications(seq: str) -> str:
@@ -211,10 +227,18 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         yaml_cfg = yaml.safe_load(f) or {}
 
     inp = yaml_cfg.get("input", {})
+    if inp.get("idxml_filter"):
+        cfg.idxml_filter = inp["idxml_filter"]
+    if inp.get("mzml_filter"):
+        cfg.mzml_filter = inp["mzml_filter"]
     if inp.get("idxml_files"):
-        cfg.idxml_files = _expand_file_globs(inp["idxml_files"])
+        cfg.idxml_files = _filter_files_by_substring(
+            _expand_file_globs(inp["idxml_files"]), cfg.idxml_filter
+        )
     if inp.get("mzml_files"):
-        cfg.mzml_files = _expand_file_globs(inp["mzml_files"])
+        cfg.mzml_files = _filter_files_by_substring(
+            _expand_file_globs(inp["mzml_files"]), cfg.mzml_filter
+        )
     if inp.get("parquet_file"):
         p = Path(inp["parquet_file"]).resolve()
         cfg.parquet_file = str(p) if p.exists() else None
@@ -254,10 +278,23 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
             setattr(cfg, attr, cast(val))
 
     # Layer 3: CLI argument overrides
+    if cli_args.idxml_filter is not None:
+        cfg.idxml_filter = cli_args.idxml_filter
+    if cli_args.mzml_filter is not None:
+        cfg.mzml_filter = cli_args.mzml_filter
     if cli_args.idxml:
-        cfg.idxml_files = _expand_file_globs(cli_args.idxml)
+        cfg.idxml_files = _filter_files_by_substring(
+            _expand_file_globs(cli_args.idxml), cfg.idxml_filter
+        )
+    elif cfg.idxml_filter and cfg.idxml_files:
+        # Filter already-loaded files when filter was set but --idxml wasn't re-specified
+        cfg.idxml_files = _filter_files_by_substring(cfg.idxml_files, cfg.idxml_filter)
     if cli_args.mzml:
-        cfg.mzml_files = _expand_file_globs(cli_args.mzml)
+        cfg.mzml_files = _filter_files_by_substring(
+            _expand_file_globs(cli_args.mzml), cfg.mzml_filter
+        )
+    elif cfg.mzml_filter and cfg.mzml_files:
+        cfg.mzml_files = _filter_files_by_substring(cfg.mzml_files, cfg.mzml_filter)
     if cli_args.parquet:
         p = Path(cli_args.parquet).resolve()
         cfg.parquet_file = str(p)
@@ -430,6 +467,10 @@ def run_pipeline(cfg: CLIConfig) -> int:
         log_info(f"Input:      Parquet ({Path(cfg.parquet_file).name})", cfg.quiet)
     else:
         log_info(f"Input:      {len(cfg.idxml_files)} idXML, {len(cfg.mzml_files)} mzML files", cfg.quiet)
+        if cfg.idxml_filter:
+            log_info(f"  idXML filter: '{cfg.idxml_filter}'", cfg.quiet)
+        if cfg.mzml_filter:
+            log_info(f"  mzML filter:  '{cfg.mzml_filter}'", cfg.quiet)
         log_info(f"Peptides:   {', '.join(cfg.peptides[:5])}{'...' if len(cfg.peptides) > 5 else ''}", cfg.quiet)
 
     if cfg.reference_substring:
@@ -933,7 +974,13 @@ examples:
 
     # Input overrides
     parser.add_argument("--idxml", nargs="+", help="idXML file paths (overrides config)")
+    parser.add_argument("--idxml-filter", default=None,
+                        help="Case-insensitive substring filter on idXML filenames "
+                             "(e.g. 'run1' keeps only files whose name contains 'run1')")
     parser.add_argument("--mzml", nargs="+", help="mzML file paths (overrides config)")
+    parser.add_argument("--mzml-filter", default=None,
+                        help="Case-insensitive substring filter on mzML filenames "
+                             "(e.g. 'Standard' keeps only files whose name contains 'Standard')")
     parser.add_argument("--parquet", help="Parquet file path (skips search + mzML loading)")
     parser.add_argument("--peptides", help="Path to peptides .txt file (one per line, overrides config)")
     parser.add_argument("--reference-substring", help="Reference file identifier substring")

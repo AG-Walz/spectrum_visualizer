@@ -7,12 +7,21 @@ Get up and running in 5 minutes. For detailed explanations, see the [Full Docume
 ## Installation
 
 ```bash
-conda env create -f environment.yml
+conda env create -f environment.yml   # first time only
 conda activate mspecviz
-streamlit run app.py
 ```
 
-Open http://localhost:8501 in your browser. If connecting to a remote server, see [Remote Access](../README.md#remote-access-ssh-tunnel).
+**Streamlit app** (interactive, browser-based):
+```bash
+streamlit run app.py
+```
+Open http://localhost:8501. If connecting to a remote server, see [Remote Access](../README.md#remote-access-ssh-tunnel).
+
+**CLI pipeline** (batch processing, no browser needed):
+```bash
+python cli.py --config examples/config_cli.yaml
+```
+See the [CLI Reference](cli.md) for the full configuration reference.
 
 ---
 

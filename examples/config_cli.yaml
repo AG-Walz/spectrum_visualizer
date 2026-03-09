@@ -26,9 +26,17 @@ input:
     - /path/to/your/data/*.idXML             # all idXML files in a directory
     # - /path/to/more/data/**/*.idXML        # recursive: all subdirectories
 
+  # Optional: keep only idXML files whose *filename* contains this substring
+  # (case-insensitive). Same logic as the "Filter files" box in the app UI.
+  # Handy for debugging a large glob without changing the paths above.
+  # idxml_filter: "run1"
+
   mzml_files:
     - /path/to/your/data/*.mzML              # all mzML files in a directory
     # - /path/to/more/data/**/*.mzML         # recursive: all subdirectories
+
+  # Optional: same substring filter for mzML filenames.
+  # mzml_filter: "Standard"
 
   # Optional: pre-converted Parquet file. If set, the pipeline skips
   # peptide search and mzML loading entirely — loads instantly.

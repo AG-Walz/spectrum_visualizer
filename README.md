@@ -11,7 +11,7 @@ Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/
 - **Getting Started**
   - [Requirements](#requirements)
   - [Installation](#installation)
-  - [Running the App](#running-the-app)
+  - [Two ways to run MSpecViz](#two-ways-to-run-mspecviz) — Streamlit app and CLI pipeline
   - [Remote Access (SSH Tunnel)](#remote-access-ssh-tunnel)
   - [Quick Start Guide](docs/QUICKSTART.md) -- 5-minute walkthrough
 - **Usage Modes**
@@ -38,18 +38,30 @@ Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/
 
 ## Requirements
 
-- Python 3.11+
-- Conda (Miniconda or Anaconda)
+- **Conda** (Miniconda or Anaconda) — manages all dependencies
+- **Python 3.11** — pinned by `environment.yml`
+- Core dependencies (installed automatically): PyOpenMS, Streamlit ≥ 1.48, Pandas, NumPy, Bokeh, Plotly, psm_utils, scikit-learn, koinapy
+
+No manual package installation is needed — `environment.yml` pins everything.
 
 ## Installation
 
 ```bash
 git clone <repository-url>
 cd MSpecViz
-conda env create -f environment.yml
+conda env create -f environment.yml   # creates the 'mspecviz' environment
 ```
 
-## Running the App
+This downloads and installs all dependencies into an isolated `mspecviz` conda environment. Subsequent commands must be run inside that environment (see below).
+
+## Two ways to run MSpecViz
+
+MSpecViz has two interfaces that share the same analysis backend — results are identical regardless of which you use:
+
+| Interface | Best for |
+|-----------|----------|
+| **Streamlit web app** | Interactive analysis, browsing results in real time |
+| **CLI pipeline** | Batch processing, scripting, HPC job submission |
 
 ### Streamlit Web App
 
@@ -58,7 +70,12 @@ conda activate mspecviz
 streamlit run app.py
 ```
 
-Open http://localhost:8501 in your browser.
+Open http://localhost:8501 in your browser. For a full walkthrough see the [Quick Start Guide](docs/QUICKSTART.md).
+
+Alternatively, without activating the environment first:
+```bash
+conda run -n mspecviz streamlit run app.py
+```
 
 ### CLI Pipeline
 
@@ -67,7 +84,12 @@ conda activate mspecviz
 python cli.py --config examples/config_cli.yaml
 ```
 
-See [CLI Pipeline](#cli-pipeline) below or the [CLI Reference](docs/cli.md) for the complete documentation.
+The CLI reads a YAML config file and runs the full pipeline without a browser. See [CLI Pipeline](#cli-pipeline) below or the [CLI Reference](docs/cli.md) for the complete documentation.
+
+Alternatively, without activating first:
+```bash
+conda run -n mspecviz python cli.py --config examples/config_cli.yaml
+```
 
 ### Remote Access (SSH Tunnel)
 
@@ -210,6 +232,9 @@ python cli.py --config my_config.yaml --workers 8
 
 # Re-run from cached Parquet (instant)
 python cli.py --config my_config.yaml --parquet exports/previous_run/.mspecviz_cache/abc123.parquet
+
+# Narrow a large glob to a subset for debugging (case-insensitive filename match)
+python cli.py --config my_config.yaml --idxml-filter run1 --mzml-filter run1
 
 # Quiet mode for scripting (exit codes: 0=success, 1=failure, 2=config error)
 python cli.py --config my_config.yaml --quiet
