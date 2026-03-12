@@ -47,6 +47,11 @@ input:
     - /path/to/data/*.mzML
   # parquet_file: /path/to/cache.parquet  # skip search + mzML loading
 
+  # Recursive directory scanning (default: false).
+  # When true, any directory path in idxml_files / mzml_files is scanned
+  # recursively for matching files instead of only the immediate directory.
+  # recursive: true
+
   # Optional substring filters (same logic as the app UI filter box):
   # keep only files whose full path contains the substring (case-insensitive).
   # idxml_filter: "run1"
@@ -54,6 +59,7 @@ input:
 ```
 
 - **Glob patterns** are expanded before processing (`*`, `**`, `?` all work).
+- **`recursive`** (optional, default `false`): When a path in `idxml_files` or `mzml_files` is a directory, expand it recursively instead of only listing the immediate directory. Has no effect on glob patterns (use `**` in the glob itself for that). Can also be set via `--recursive` / `--no-recursive`.
 - **`idxml_filter` / `mzml_filter`** (optional): After glob expansion, discard any file whose full path does not contain the given substring (case-insensitive). Matches against the entire path, so directory names (e.g. `filtered/`) are included. Useful for narrowing a large glob to a subset without changing the glob itself.
 - **`parquet_file`** (optional): If set, the pipeline skips peptide search and mzML loading. Use this for instant re-runs after the first analysis.
 
@@ -137,6 +143,8 @@ Every config setting can be overridden from the command line.
 | `--idxml-filter SUBSTR` | Keep only idXML files whose full path contains `SUBSTR` (case-insensitive; matches filenames and directory names) |
 | `--mzml FILE [FILE ...]` | mzML file paths (overrides config) |
 | `--mzml-filter SUBSTR` | Keep only mzML files whose full path contains `SUBSTR` (case-insensitive) |
+| `--recursive` | Recursively scan directory paths for idXML/mzML files |
+| `--no-recursive` | Disable recursive scanning (overrides `recursive: true` in YAML) |
 | `--parquet PATH` | Parquet file (skips search + mzML loading) |
 | `--peptides PATH` | Peptides .txt file (one per line) |
 | `--reference-substring STR` | Reference file identifier substring |

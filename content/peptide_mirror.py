@@ -151,12 +151,15 @@ def _list_subdirectories(path: str) -> list:
 
 
 @st.cache_data(ttl=10)
-def _list_files(path: str, extensions: tuple) -> list:
+def _list_files(path: str, extensions: tuple, recursive: bool = False) -> list:
     """Return sorted list of matching file paths. Cached for 10 s to avoid per-rerun I/O."""
     try:
         files = []
         for ext in extensions:
-            files.extend(Path(path).glob(f"*{ext}"))
+            if recursive:
+                files.extend(Path(path).rglob(f"*{ext}"))
+            else:
+                files.extend(Path(path).glob(f"*{ext}"))
         return sorted(str(f) for f in files)
     except (PermissionError, OSError):
         return []
@@ -235,73 +238,91 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
 
     st.markdown("---")
 
+    # Recursive toggle and file listing
+    recursive = st.checkbox(
+        "Include subdirectories",
+        value=False,
+        key=f"{key_prefix}_recursive",
+        help="Scan all subdirectories of the current folder for matching files",
+    )
+
     # Get matching files
     try:
-        all_files = [Path(f) for f in _list_files(current_dir, tuple(extensions))]
+        all_files = [Path(f) for f in _list_files(current_dir, tuple(extensions), recursive)]
 
-        # Filter input
+        # In recursive mode use relative paths as labels (avoids name collisions across subdirs)
+        current_path = Path(current_dir)
+        if recursive:
+            file_labels = [str(f.relative_to(current_path)) for f in all_files]
+        else:
+            file_labels = [f.name for f in all_files]
+        # Map label → full path string for lookup
+        label_to_path = {lbl: str(f) for lbl, f in zip(file_labels, all_files)}
+
+        # Filter input — matches against the label (relative path in recursive mode)
         filter_text = st.text_input(
             "Filter files",
             key=f"{key_prefix}_filter",
             placeholder="Type to filter filenames..."
         )
 
-        # Apply filter
         if filter_text:
             filter_lower = filter_text.lower()
-            filtered_files = [f for f in all_files if filter_lower in f.name.lower()]
+            filtered_labels = [lbl for lbl in file_labels if filter_lower in lbl.lower()]
         else:
-            filtered_files = all_files
+            filtered_labels = file_labels
 
-        if filtered_files:
-            file_names = [f.name for f in filtered_files]
-
+        if filtered_labels:
             # Get ALL currently selected files (from all directories)
-            all_selected_paths = st.session_state.get(get_state_key(state_key), [])
+            all_selected_paths = set(st.session_state.get(get_state_key(state_key), []))
 
-            # Separate selections: current directory vs other directories
-            current_dir_selections = [p for p in all_selected_paths if Path(p).parent == Path(current_dir)]
-            other_dir_selections = [p for p in all_selected_paths if Path(p).parent != Path(current_dir)]
+            # In recursive mode, "current scope" covers the entire subtree rooted at current_dir
+            if recursive:
+                current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
+                other_dir_selections = [p for p in st.session_state.get(get_state_key(state_key), [])
+                                        if p not in current_scope_paths]
+            else:
+                current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
+                other_dir_selections = [p for p in st.session_state.get(get_state_key(state_key), [])
+                                        if Path(p).parent != current_path]
 
-            # Get names of files selected in current directory (for multiselect default)
-            current_dir_names = [Path(p).name for p in current_dir_selections if Path(p).exists()]
-            valid_defaults = [n for n in current_dir_names if n in file_names]
+            # Determine which filtered labels are already selected
+            valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
 
-            # Check if all files in current directory are selected
-            all_in_dir_selected = set(valid_defaults) == set(file_names) and len(valid_defaults) > 0
+            # Check if all filtered files are already selected
+            all_in_scope_selected = set(valid_defaults) == set(filtered_labels) and len(valid_defaults) > 0
 
-            # Select All checkbox (for current directory only)
+            # Select All checkbox
             select_all = st.checkbox(
-                f"Select all {len(filtered_files)} files" + (f" (filtered from {len(all_files)})" if filter_text else ""),
-                value=all_in_dir_selected,
+                f"Select all {len(filtered_labels)} files" + (f" (filtered from {len(file_labels)})" if filter_text else ""),
+                value=all_in_scope_selected,
                 key=select_all_key
             )
 
             if select_all:
-                # All files in current directory selected
-                selected_names = file_names
+                selected_labels = filtered_labels
             else:
-                # Manual selection via multiselect
-                selected_names = st.multiselect(
-                    "Select files from this folder:",
-                    options=file_names,
-                    default=valid_defaults if not all_in_dir_selected else [],
+                selected_labels = st.multiselect(
+                    "Select files from this folder" + (" and subdirectories:" if recursive else ":"),
+                    options=filtered_labels,
+                    default=valid_defaults if not all_in_scope_selected else [],
                     key=f"{key_prefix}_files"
                 )
 
-            # Build new selection: other directories + current directory selections
-            # Deduplicate exact same paths (preserves order)
-            current_dir_selected_paths = [str(f) for f in filtered_files if f.name in selected_names]
-            merged_selections = list(dict.fromkeys(other_dir_selections + current_dir_selected_paths))
+            # Build new selection: other directories + current scope selections
+            current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
+            merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
             st.session_state[get_state_key(state_key)] = merged_selections
 
-            if current_dir_selected_paths:
-                st.success(f"✅ {len(current_dir_selected_paths)} file(s) selected from this folder")
+            if current_selected_paths:
+                st.success(f"✅ {len(current_selected_paths)} file(s) selected from this folder" +
+                           (" and subdirectories" if recursive else ""))
         else:
             if filter_text:
                 st.info(f"No files match filter '{filter_text}'")
             else:
-                st.info(f"No {extensions[0]} files in this directory")
+                st.info(f"No {extensions[0]} files in this directory" +
+                        (" or subdirectories" if recursive else ""))
 
     except Exception as e:
         st.error(f"Error listing files: {e}")

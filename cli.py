@@ -53,6 +53,9 @@ class CLIConfig:
     idxml_filter: str = ""
     mzml_filter: str = ""
 
+    # Recursive directory scanning
+    recursive: bool = False
+
     # Peptides
     peptides: List[str] = field(default_factory=list)
 
@@ -118,6 +121,38 @@ def _expand_file_globs(patterns: List[str]) -> List[str]:
                 if p not in seen:
                     result.append(p)
                     seen.add(p)
+    return result
+
+
+def _expand_directories(files: List[str], extensions: List[str], recursive: bool) -> List[str]:
+    """Replace any directory entries in *files* with matching files from that directory.
+
+    File entries are kept as-is.  Directory entries are scanned for files whose
+    suffix (case-insensitive) matches any of *extensions*.  When *recursive* is
+    True the scan descends into all subdirectories; otherwise only the immediate
+    directory is scanned.
+
+    Returns a deduplicated, sorted-within-each-expanded-dir list.
+    """
+    result: List[str] = []
+    seen: set = set()
+    ext_lower = [e.lower() for e in extensions]
+
+    for f in files:
+        p = Path(f)
+        if p.is_dir():
+            candidates = sorted(p.rglob("*") if recursive else p.glob("*"))
+            for fp in candidates:
+                if fp.is_file() and fp.suffix.lower() in ext_lower:
+                    s = str(fp.resolve())
+                    if s not in seen:
+                        result.append(s)
+                        seen.add(s)
+        else:
+            s = str(p.resolve()) if p.exists() else str(p)
+            if s not in seen:
+                result.append(s)
+                seen.add(s)
     return result
 
 
@@ -232,6 +267,8 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.idxml_filter = inp["idxml_filter"]
     if inp.get("mzml_filter"):
         cfg.mzml_filter = inp["mzml_filter"]
+    if inp.get("recursive") is not None:
+        cfg.recursive = bool(inp["recursive"])
     if inp.get("idxml_files"):
         cfg.idxml_files = _expand_file_globs(inp["idxml_files"])
     if inp.get("mzml_files"):
@@ -279,6 +316,10 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.idxml_filter = cli_args.idxml_filter
     if cli_args.mzml_filter is not None:
         cfg.mzml_filter = cli_args.mzml_filter
+    if cli_args.recursive:
+        cfg.recursive = True
+    if cli_args.no_recursive:
+        cfg.recursive = False
     if cli_args.idxml:
         cfg.idxml_files = _expand_file_globs(cli_args.idxml)
     if cli_args.mzml:
@@ -322,6 +363,11 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.verbose = True
     if cli_args.quiet:
         cfg.quiet = True
+
+    # Expand directory entries (after all three layers are merged so the
+    # recursive flag is already at its final value).
+    cfg.idxml_files = _expand_directories(cfg.idxml_files, ['.idXML', '.idxml'], cfg.recursive)
+    cfg.mzml_files = _expand_directories(cfg.mzml_files, ['.mzML', '.mzml'], cfg.recursive)
 
     # Apply file filters exactly once, after all three layers are fully merged.
     # This eliminates double-filtering and ensures a CLI --idxml-filter always
@@ -475,6 +521,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
         log_info(f"Input:      Parquet ({Path(cfg.parquet_file).name})", cfg.quiet)
     else:
         log_info(f"Input:      {len(cfg.idxml_files)} idXML, {len(cfg.mzml_files)} mzML files", cfg.quiet)
+        if cfg.recursive:
+            log_info("  recursive:    yes", cfg.quiet)
         if cfg.idxml_filter:
             log_info(f"  idXML filter: '{cfg.idxml_filter}'", cfg.quiet)
         if cfg.mzml_filter:
@@ -992,6 +1040,10 @@ examples:
     parser.add_argument("--mzml-filter", default=None,
                         help="Case-insensitive substring filter on mzML filenames "
                              "(e.g. 'Standard' keeps only files whose name contains 'Standard')")
+    parser.add_argument("--recursive", action="store_true", default=False,
+                        help="Recursively scan input directories for idXML/mzML files")
+    parser.add_argument("--no-recursive", action="store_true", default=False,
+                        help="Disable recursive directory scanning (overrides config recursive: true)")
     parser.add_argument("--parquet", help="Parquet file path (skips search + mzML loading)")
     parser.add_argument("--peptides", help="Path to peptides .txt file (one per line, overrides config)")
     parser.add_argument("--reference-substring", help="Reference file identifier substring")

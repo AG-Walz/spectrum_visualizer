@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from cli import (
     CLIConfig,
+    _expand_directories,
     _expand_file_globs,
     _filter_files_by_substring,
     _load_peptides,
@@ -218,6 +219,7 @@ class TestLoadConfig:
         defaults = dict(
             config="dummy.yaml",
             idxml=None, idxml_filter=None, mzml=None, mzml_filter=None,
+            recursive=False, no_recursive=False,
             parquet=None, peptides=None,
             reference_substring=None,
             ion_types=None, mz_tolerance=None,
@@ -360,3 +362,89 @@ class TestLoadConfig:
         })
         cfg = load_config(yaml_path, self._make_cli_args())
         assert cfg.idxml_files == []
+
+
+# ---------------------------------------------------------------------------
+# _expand_directories
+# ---------------------------------------------------------------------------
+
+class TestExpandDirectories:
+    def test_file_entry_passed_through(self, tmp_path):
+        f = tmp_path / "sample.idXML"
+        f.touch()
+        result = _expand_directories([str(f)], ['.idXML', '.idxml'], recursive=False)
+        assert result == [str(f.resolve())]
+
+    def test_directory_flat_expansion(self, tmp_path):
+        (tmp_path / "a.idXML").touch()
+        (tmp_path / "b.idXML").touch()
+        result = _expand_directories([str(tmp_path)], ['.idXML', '.idxml'], recursive=False)
+        assert len(result) == 2
+        assert all(r.endswith(".idXML") for r in result)
+
+    def test_directory_recursive_expansion(self, tmp_path):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (tmp_path / "top.idXML").touch()
+        (sub / "deep.idXML").touch()
+        result = _expand_directories([str(tmp_path)], ['.idXML', '.idxml'], recursive=True)
+        assert len(result) == 2
+
+    def test_directory_flat_does_not_descend(self, tmp_path):
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (tmp_path / "top.idXML").touch()
+        (sub / "deep.idXML").touch()
+        result = _expand_directories([str(tmp_path)], ['.idXML', '.idxml'], recursive=False)
+        assert len(result) == 1
+        assert "top.idXML" in result[0]
+
+    def test_case_insensitive_extension_matching(self, tmp_path):
+        (tmp_path / "a.idxml").touch()  # lowercase extension
+        result = _expand_directories([str(tmp_path)], ['.idXML', '.idxml'], recursive=False)
+        assert len(result) == 1
+
+    def test_no_duplicates_from_mixed_input(self, tmp_path):
+        f = tmp_path / "a.idXML"
+        f.touch()
+        # Pass both the file directly and the parent directory
+        result = _expand_directories([str(f), str(tmp_path)], ['.idXML', '.idxml'], recursive=False)
+        assert len(result) == 1
+
+    def test_non_matching_files_ignored(self, tmp_path):
+        (tmp_path / "a.mzML").touch()
+        (tmp_path / "b.idXML").touch()
+        result = _expand_directories([str(tmp_path)], ['.idXML', '.idxml'], recursive=False)
+        assert len(result) == 1
+        assert result[0].endswith(".idXML")
+
+    def test_empty_input(self, tmp_path):
+        assert _expand_directories([], ['.idXML', '.idxml'], recursive=False) == []
+
+    def test_recursive_flag_via_yaml(self, tmp_path):
+        """load_config respects input.recursive: true."""
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        (tmp_path / "top.idXML").touch()
+        (sub / "deep.idXML").touch()
+        (tmp_path / "a.mzML").touch()
+        peptides_file = tmp_path / "peptides.txt"
+        peptides_file.write_text("LGGNEQVTR\n")
+        yaml_content = {
+            "input": {
+                "idxml_files": [str(tmp_path)],
+                "mzml_files": [str(tmp_path / "a.mzML")],
+                "recursive": True,
+            },
+            "peptides": str(peptides_file),
+            "reference": {"substring": ""},
+        }
+        import yaml as _yaml
+        yaml_path = tmp_path / "cfg.yaml"
+        yaml_path.write_text(_yaml.dump(yaml_content))
+        parser = create_parser()
+        cli_args = parser.parse_args(["--config", str(yaml_path)])
+        from cli import load_config as _load_config
+        cfg = _load_config(str(yaml_path), cli_args)
+        assert cfg.recursive is True
+        assert len(cfg.idxml_files) == 2
