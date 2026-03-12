@@ -1067,7 +1067,7 @@ def run_streaming_processing():
         total_psms = 0  # Will be determined from Parquet
 
     # Build run settings dict (everything that affects output)
-    from src.export import find_or_create_export_directory, commit_export_directory, get_workspace_plot_dirs
+    from src.export import find_or_create_export_directory, commit_export_directory
 
     dpi = get_settings_value(_get_settings(), "export", "dpi", default=300)
     figsize = list(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8]))
@@ -1093,17 +1093,20 @@ def run_streaming_processing():
         "plot_unpaired": plot_unpaired,
     }
 
-    # Save plots to workspace when running in Streamlit with workspaces enabled
-    _workspace = st.session_state.get("workspace")
-    _use_workspace = bool(_workspace and st.session_state.settings.get("enable_workspaces", False))
-
-    if _use_workspace:
-        root_dir, png_dir, svg_dir, pdf_dir = get_workspace_plot_dirs(_workspace)
-    else:
-        # Numbered folder: MSpecViz_analysis_001/, _002/, etc. Reuses matching folder.
-        root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
-            export_dir, project_name, run_settings
-        )
+    # Always use the user-configured export directory with numbered folders.
+    # Each unique combination of settings gets its own versioned subfolder
+    # (fingerprinted), so plots from different runs never mix.  Workspace mode
+    # controls session management only — it must not redirect plot output to a
+    # shared workspace directory where stale plots from prior runs would
+    # accumulate and be shown instead of the freshly generated ones.
+    root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
+        export_dir, project_name, run_settings
+    )
+    # Use absolute paths so the displayed export location is unambiguous
+    root_dir = root_dir.resolve()
+    png_dir = root_dir / "png"
+    svg_dir = root_dir / "svg"
+    pdf_dir = root_dir / "pdf"
 
     # Count expected reference vs query PSMs
     if use_parquet:
