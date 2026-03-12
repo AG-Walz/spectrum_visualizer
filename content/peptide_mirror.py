@@ -1044,7 +1044,7 @@ def run_streaming_processing():
         total_psms = 0  # Will be determined from Parquet
 
     # Build run settings dict (everything that affects output)
-    from src.export import find_or_create_export_directory
+    from src.export import find_or_create_export_directory, commit_export_directory, get_workspace_plot_dirs
 
     dpi = get_settings_value(_get_settings(), "export", "dpi", default=300)
     figsize = list(get_settings_value(_get_settings(), "export", "figsize", default=[12, 8]))
@@ -1070,10 +1070,17 @@ def run_streaming_processing():
         "plot_unpaired": plot_unpaired,
     }
 
-    # Numbered folder: MSpecViz_analysis_001/, _002/, etc. Reuses matching folder.
-    root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
-        export_dir, project_name, run_settings
-    )
+    # Save plots to workspace when running in Streamlit with workspaces enabled
+    _workspace = st.session_state.get("workspace")
+    _use_workspace = bool(_workspace and st.session_state.settings.get("enable_workspaces", False))
+
+    if _use_workspace:
+        root_dir, png_dir, svg_dir, pdf_dir = get_workspace_plot_dirs(_workspace)
+    else:
+        # Numbered folder: MSpecViz_analysis_001/, _002/, etc. Reuses matching folder.
+        root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
+            export_dir, project_name, run_settings
+        )
 
     # Count expected reference vs query PSMs
     if use_parquet:
@@ -1377,6 +1384,9 @@ def run_streaming_processing():
         # Parallel plot generation (with optional tmpfs staging)
         # =================================================================
         if comparison_tasks:
+            # Create export directory only now that plots will be written
+            commit_export_directory(root_dir, run_settings)
+
             from src.tmpfs_staging import TmpfsStaging, StagingConfig
 
             # Check for existing plot files (resumable runs)
@@ -1571,6 +1581,66 @@ def display_search_results(results: dict):
         )
 
 
+def _render_plot_gallery(root_dir: Path) -> None:
+    """Display plots saved in root_dir organized by peptide variant."""
+    import base64
+
+    # Check which format directories exist
+    format_dirs = [(root_dir / "svg", "svg"), (root_dir / "png", "png")]
+    existing_format_dirs = [(d, fmt) for d, fmt in format_dirs if d.exists()]
+
+    if not existing_format_dirs:
+        return
+
+    # Use SVG if available, PNG as fallback
+    browse_dir, browse_fmt = existing_format_dirs[0]
+
+    peptide_dirs = sorted([d for d in browse_dir.iterdir() if d.is_dir()])
+    if not peptide_dirs:
+        return
+
+    st.markdown("---")
+    st.subheader("Browse Plots")
+
+    total_plots = sum(len(list(d.glob(f"*.{browse_fmt}"))) for d in peptide_dirs)
+    st.caption(f"{len(peptide_dirs)} peptide variants, {total_plots} plots")
+
+    for peptide_dir in peptide_dirs:
+        plot_files = sorted(peptide_dir.glob(f"*.{browse_fmt}"))
+        if not plot_files:
+            continue
+
+        with st.expander(f"{peptide_dir.name} ({len(plot_files)} plots)", expanded=False):
+            for plot_file in plot_files[:20]:  # cap at 20 per variant
+                col_plot, col_dl = st.columns([5, 1])
+
+                if browse_fmt == "png":
+                    col_plot.image(str(plot_file))
+                else:  # svg
+                    file_size = plot_file.stat().st_size
+                    if file_size < 3 * 1024 * 1024:  # < 3MB
+                        svg_b64 = base64.b64encode(plot_file.read_bytes()).decode()
+                        col_plot.markdown(
+                            f'<img src="data:image/svg+xml;base64,{svg_b64}" '
+                            f'style="max-width:100%; height:auto;"/>',
+                            unsafe_allow_html=True,
+                        )
+                    else:
+                        col_plot.caption(f"{plot_file.name} (too large to preview inline)")
+
+                mime = "image/png" if browse_fmt == "png" else "image/svg+xml"
+                col_dl.download_button(
+                    label="⬇",
+                    data=plot_file.read_bytes(),
+                    file_name=plot_file.name,
+                    mime=mime,
+                    key=f"dl_{peptide_dir.name}_{plot_file.name}",
+                )
+
+            if len(plot_files) > 20:
+                st.caption(f"... and {len(plot_files) - 20} more")
+
+
 def render_results_gallery():
     """Render results summary."""
     st.header("Step 7: Results")
@@ -1584,6 +1654,14 @@ def render_results_gallery():
     st.success("✅ Processing Complete")
 
     display_streaming_results(streaming_results)
+
+    # Share link for workspace runs
+    _workspace = st.session_state.get("workspace")
+    if _workspace and st.session_state.settings.get("enable_workspaces", False):
+        workspace_name = Path(_workspace).name
+        from src.common.common import get_workspace_url
+        share_url = get_workspace_url(workspace_name)
+        st.info(f"Share this workspace: copy the URL and add `{share_url}` to it, or share the full URL from your browser's address bar.")
 
     export_root = streaming_results.get("export_root", "")
     if export_root:
@@ -1609,6 +1687,9 @@ def render_results_gallery():
                     st.caption(f"📄 {Path(f).name}")
                 if len(svg_files) > 20:
                     st.caption(f"... and {len(svg_files) - 20} more")
+
+        # Plot gallery: browse and download individual plots
+        _render_plot_gallery(Path(export_root))
 
 
 def render():

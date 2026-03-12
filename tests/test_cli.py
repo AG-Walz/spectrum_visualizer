@@ -100,11 +100,11 @@ class TestFilterFilesBySubstring:
         assert _filter_files_by_substring(files, "standard") == ["/data/Standard_001.mzML"]
         assert _filter_files_by_substring(files, "STANDARD") == ["/data/Standard_001.mzML"]
 
-    def test_matches_filename_only_not_directory(self):
+    def test_matches_full_path_including_directory(self):
         files = ["/run1/data.mzML", "/data/run2.mzML"]
-        # "run1" is in the directory of the first but NOT in its filename
+        # "run1" appears in the directory component of the first file — should match
         result = _filter_files_by_substring(files, "run1")
-        assert result == []
+        assert result == ["/run1/data.mzML"]
 
     def test_no_match_returns_empty(self):
         files = ["/data/run1.mzML", "/data/run2.mzML"]

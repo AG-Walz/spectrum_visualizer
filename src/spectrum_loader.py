@@ -522,7 +522,7 @@ def load_spectra_streaming(
     query_files = {}
 
     for path_key, path in mzml_path_map.items():
-        is_ref = reference_substring and reference_substring.lower() in path.name.lower()
+        is_ref = reference_substring and reference_substring.lower() in str(path).lower()
         if is_ref:
             reference_files[path_key] = path
         else:

@@ -48,13 +48,13 @@ input:
   # parquet_file: /path/to/cache.parquet  # skip search + mzML loading
 
   # Optional substring filters (same logic as the app UI filter box):
-  # keep only files whose *filename* contains the substring (case-insensitive).
+  # keep only files whose full path contains the substring (case-insensitive).
   # idxml_filter: "run1"
   # mzml_filter: "Standard"
 ```
 
 - **Glob patterns** are expanded before processing (`*`, `**`, `?` all work).
-- **`idxml_filter` / `mzml_filter`** (optional): After glob expansion, discard any file whose filename does not contain the given substring (case-insensitive). Useful for narrowing a large glob to a subset without changing the glob itself.
+- **`idxml_filter` / `mzml_filter`** (optional): After glob expansion, discard any file whose full path does not contain the given substring (case-insensitive). Matches against the entire path, so directory names (e.g. `filtered/`) are included. Useful for narrowing a large glob to a subset without changing the glob itself.
 - **`parquet_file`** (optional): If set, the pipeline skips peptide search and mzML loading. Use this for instant re-runs after the first analysis.
 
 ### `peptides` — Target sequences
@@ -134,9 +134,9 @@ Every config setting can be overridden from the command line.
 |------|-------------|
 | `--config PATH` | **(required)** Path to YAML configuration file |
 | `--idxml FILE [FILE ...]` | idXML file paths (overrides config) |
-| `--idxml-filter SUBSTR` | Keep only idXML files whose filename contains `SUBSTR` (case-insensitive; mirrors the app UI filter) |
+| `--idxml-filter SUBSTR` | Keep only idXML files whose full path contains `SUBSTR` (case-insensitive; matches filenames and directory names) |
 | `--mzml FILE [FILE ...]` | mzML file paths (overrides config) |
-| `--mzml-filter SUBSTR` | Keep only mzML files whose filename contains `SUBSTR` (case-insensitive) |
+| `--mzml-filter SUBSTR` | Keep only mzML files whose full path contains `SUBSTR` (case-insensitive) |
 | `--parquet PATH` | Parquet file (skips search + mzML loading) |
 | `--peptides PATH` | Peptides .txt file (one per line) |
 | `--reference-substring STR` | Reference file identifier substring |
@@ -285,7 +285,7 @@ python cli.py --config examples/config_cli.yaml --quiet
 
 ### Debugging: narrow a large file set
 
-When a config glob matches many files, use `--idxml-filter` / `--mzml-filter` to test with a subset without editing the YAML. The filter is a case-insensitive substring match on the **filename only** — the same logic as the app's "Filter files" input box.
+When a config glob matches many files, use `--idxml-filter` / `--mzml-filter` to test with a subset without editing the YAML. The filter is a case-insensitive substring match on the **full file path** — directory names like `filtered/` are included in the match.
 
 ```bash
 # Only process idXML/mzML files whose name contains "run1"

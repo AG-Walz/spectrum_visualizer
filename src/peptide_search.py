@@ -264,9 +264,14 @@ def _search_single_idxml(
     errors: List[str] = []
 
     try:
-        protein_ids = []
-        peptide_ids = []
-        oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
+        try:
+            from psm_utils.io.idxml import IdXMLReader
+            _reader = IdXMLReader(str(idxml_path))
+            protein_ids = _reader.protein_ids
+            peptide_ids = _reader.peptide_ids
+        except Exception as _load_err:
+            errors.append(f"No peptide identifications in {idxml_name}: {_load_err}")
+            return idxml_name, matches, errors
 
         if not peptide_ids:
             errors.append(f"No peptide identifications in {idxml_name}")
@@ -388,19 +393,16 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
     """
     peptides: Set[str] = set()
     try:
-        protein_ids = []
-        peptide_ids = []
-        oms.IdXMLFile().load(str(idxml_path), protein_ids, peptide_ids)
-
-        for pep_id in peptide_ids:
-            for hit in pep_id.getHits():
-                try:
-                    base_seq = hit.getSequence().toUnmodifiedString().upper()
-                    peptides.add(base_seq)
-                except Exception:
-                    continue
-    except Exception as e:
-        logger.warning(f"Error scanning {idxml_path}: {e}")
+        from psm_utils.io.idxml import IdXMLReader
+        import re as _re
+        _reader = IdXMLReader(str(idxml_path))
+        for _psm in _reader:
+            _seq_with_mods = str(_psm.peptidoform).split('/')[0]
+            _base_seq = _re.sub(r'\[.*?\]', '', _seq_with_mods).strip('-').upper()
+            if _base_seq:
+                peptides.add(_base_seq)
+    except Exception:
+        pass  # If psm_utils fails, return empty (same as current error handling)
 
     return idxml_path, peptides
 

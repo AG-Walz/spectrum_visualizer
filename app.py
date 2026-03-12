@@ -3,7 +3,8 @@ import json
 from pathlib import Path
 
 if "settings" not in st.session_state:
-    with open("settings.json", "r") as f:
+    settings_path = Path(__file__).parent / "settings.json"
+    with open(settings_path, "r") as f:
         st.session_state.settings = json.load(f)
 
 if __name__ == '__main__':

@@ -24,12 +24,18 @@ def compute_cache_fingerprint(
     mzml_paths: List[str],
     target_peptides: List[str],
     reference_substring: str = "",
+    idxml_filter: str = "",
+    mzml_filter: str = "",
 ) -> str:
     """
     Compute a deterministic fingerprint for the current inputs.
 
     Uses SHA-256 of: sorted file paths + mtime + size, sorted uppercase peptides,
-    lowercase reference_substring.
+    lowercase reference_substring, and the filter strings themselves.
+
+    Including the filter strings ensures that changing an idxml_filter or
+    mzml_filter value always produces a new fingerprint, preventing a cache
+    built with different filter settings from being loaded accidentally.
 
     Returns 12-char hex string.
     """
@@ -54,6 +60,10 @@ def compute_cache_fingerprint(
 
     # Reference substring
     h.update(reference_substring.strip().lower().encode("utf-8"))
+
+    # Filter strings — changes here must invalidate the cache
+    h.update(f"idxml_filter:{idxml_filter.strip().lower()}".encode("utf-8"))
+    h.update(f"mzml_filter:{mzml_filter.strip().lower()}".encode("utf-8"))
 
     return h.hexdigest()[:12]
 

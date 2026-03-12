@@ -434,12 +434,15 @@ def detect_parquet_cache(
     export_dir: str,
     cache_subdir: str,
     log_fn: Optional[Callable[[str], None]] = None,
+    idxml_filter: str = "",
+    mzml_filter: str = "",
 ) -> CacheDetectionResult:
     """
     Detect an existing Parquet cache for this exact set of inputs.
 
     Computes a fingerprint from (idxml_files, mzml_files, peptides,
-    reference_substring) and scans *cache_dir* for a matching file.
+    reference_substring, idxml_filter, mzml_filter) and scans *cache_dir*
+    for a matching file.
 
     Returns a CacheDetectionResult with:
       - ``parquet_path``       set if a complete cache was found → skip mzML loading
@@ -454,6 +457,8 @@ def detect_parquet_cache(
         export_dir:         Root export directory
         cache_subdir:       Sub-directory name for cache files (e.g. ".mspecviz_cache")
         log_fn:             Optional callable(str) for progress/status messages
+        idxml_filter:       idXML filter string (included in fingerprint)
+        mzml_filter:        mzML filter string (included in fingerprint)
     """
     from src.parquet_cache import (
         compute_cache_fingerprint,
@@ -463,7 +468,8 @@ def detect_parquet_cache(
 
     cache_dir = str(Path(export_dir) / cache_subdir)
     cache_fingerprint = compute_cache_fingerprint(
-        idxml_files, mzml_files, peptides, reference_substring
+        idxml_files, mzml_files, peptides, reference_substring,
+        idxml_filter=idxml_filter, mzml_filter=mzml_filter,
     )
 
     # Complete cache?

@@ -113,6 +113,27 @@ class TestFingerprint:
         fp2 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "")
         assert fp1 == fp2
 
+    def test_changes_on_idxml_filter(self, sample_files):
+        """Different idxml_filter produces different fingerprint."""
+        idxml, mzml = sample_files
+        fp1 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", idxml_filter="")
+        fp2 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", idxml_filter="filtered")
+        assert fp1 != fp2
+
+    def test_changes_on_mzml_filter(self, sample_files):
+        """Different mzml_filter produces different fingerprint."""
+        idxml, mzml = sample_files
+        fp1 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", mzml_filter="")
+        fp2 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", mzml_filter="standard")
+        assert fp1 != fp2
+
+    def test_filter_case_insensitive(self, sample_files):
+        """Filter string is case-normalised in the fingerprint."""
+        idxml, mzml = sample_files
+        fp1 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", idxml_filter="Filtered")
+        fp2 = compute_cache_fingerprint([idxml], [mzml], ["PEPTIDE"], "", idxml_filter="filtered")
+        assert fp1 == fp2
+
     def test_order_independent_files(self, tmp_path):
         """Shuffled file order produces same fingerprint (sorted internally)."""
         f1 = tmp_path / "a.mzML"

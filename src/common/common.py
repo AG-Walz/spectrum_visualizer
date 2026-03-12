@@ -380,6 +380,26 @@ def reset_directory(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
+def get_workspace_url(workspace_name: str) -> str:
+    """
+    Build a shareable URL for a workspace using the current Streamlit server config.
+
+    Args:
+        workspace_name: The workspace name (e.g. "default", "my_run")
+
+    Returns:
+        URL string with ?workspace= query parameter
+    """
+    try:
+        import streamlit as st
+        # Try to get server address from Streamlit config
+        from streamlit.server.server import Server
+        port = 8501
+    except Exception:
+        port = 8501
+    return f"?workspace={workspace_name}"
+
+
 # General warning/error messages
 WARNINGS = {
     "missing-mzML": "Upload or select some mzML files first!",

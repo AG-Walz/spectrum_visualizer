@@ -99,7 +99,7 @@ def find_or_create_export_directory(
     run_settings: dict,
 ) -> Tuple[Path, Path, Path, Path]:
     """
-    Find an existing export directory matching run_settings, or create a new one.
+    Find an existing export directory matching run_settings, or plan a new one.
 
     Naming: {project_name}_{NNN}_{YYYYMMDD}/
       e.g.  my_project_001_20260226/
@@ -108,7 +108,13 @@ def find_or_create_export_directory(
 
     On re-run with identical settings the existing folder is renamed to today's
     date and reused (enables skipping plots already on disk).  If any setting
-    differs a new numbered folder is created.
+    differs a new numbered folder is planned.
+
+    **No directories are created by this function.**  Call
+    ``commit_export_directory(root_dir, run_settings)`` when you are ready to
+    write files (i.e. after confirming there are plots to generate).
+    Format subdirectories (png/, svg/, pdf/) are created lazily on first write
+    by the plot-saving code.
 
     Args:
         base_dir: Parent directory (e.g. ./exports)
@@ -116,10 +122,10 @@ def find_or_create_export_directory(
         run_settings: Dict of all settings that affect output
 
     Returns:
-        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
+        Tuple of (root_dir, png_dir, svg_dir, pdf_dir) — Path objects only,
+        no directories are created.
     """
     base = Path(base_dir)
-    base.mkdir(parents=True, exist_ok=True)
     prefix = sanitize_filename(project_name)
     fingerprint = _settings_fingerprint(run_settings)
     today = datetime.now().strftime("%Y%m%d")
@@ -127,32 +133,33 @@ def find_or_create_export_directory(
     # Pattern: {prefix}_{NNN}_{YYYYMMDD}
     pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{3}})_(\d{{8}})$")
 
-    # Scan existing folders
+    # Scan existing folders (base may not exist yet on first run)
     max_num = 0
     match_entry = None
     match_num = None
 
-    for entry in sorted(base.iterdir()):
-        if not entry.is_dir():
-            continue
-        m = pattern.match(entry.name)
-        if not m:
-            continue
-        num = int(m.group(1))
-        max_num = max(max_num, num)
+    if base.exists():
+        for entry in sorted(base.iterdir()):
+            if not entry.is_dir():
+                continue
+            m = pattern.match(entry.name)
+            if not m:
+                continue
+            num = int(m.group(1))
+            max_num = max(max_num, num)
 
-        # Check settings match
-        if match_entry is None:
-            settings_file = entry / "run_settings.json"
-            if settings_file.exists():
-                try:
-                    with open(settings_file) as f:
-                        saved = json.load(f)
-                    if saved.get("_fingerprint") == fingerprint:
-                        match_entry = entry
-                        match_num = num
-                except Exception:
-                    pass
+            # Check settings match
+            if match_entry is None:
+                settings_file = entry / "run_settings.json"
+                if settings_file.exists():
+                    try:
+                        with open(settings_file) as f:
+                            saved = json.load(f)
+                        if saved.get("_fingerprint") == fingerprint:
+                            match_entry = entry
+                            match_num = num
+                    except Exception:
+                        pass
 
     if match_entry is not None:
         # Rename to today's date and reuse
@@ -168,15 +175,32 @@ def find_or_create_export_directory(
         else:
             logger.info(f"Reusing export directory: {new_path.name}")
 
-        png_dir = new_path / "png"
-        svg_dir = new_path / "svg"
-        pdf_dir = new_path / "pdf"
-        png_dir.mkdir(exist_ok=True)
-        svg_dir.mkdir(exist_ok=True)
-        pdf_dir.mkdir(exist_ok=True)
+        return new_path, new_path / "png", new_path / "svg", new_path / "pdf"
 
-        # Update timestamp in run_settings.json
-        settings_file = new_path / "run_settings.json"
+    # No match — plan next numbered folder (no mkdir yet)
+    next_num = max_num + 1
+    folder_name = f"{prefix}_{next_num:03d}_{today}"
+    root_dir = base / folder_name
+    return root_dir, root_dir / "png", root_dir / "svg", root_dir / "pdf"
+
+
+def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
+    """
+    Create the export root directory and write run_settings.json.
+
+    Call this only when you are certain plots will be written.  Format
+    subdirectories (png/, svg/, pdf/) are created lazily on first write
+    and do not need to be pre-created here.
+
+    Args:
+        root_dir: The root export directory path (from find_or_create_export_directory)
+        run_settings: Dict of all settings that affect output
+    """
+    root_dir.mkdir(parents=True, exist_ok=True)
+
+    settings_file = root_dir / "run_settings.json"
+    if settings_file.exists():
+        # Existing dir — update timestamp only
         try:
             with open(settings_file) as f:
                 saved = json.load(f)
@@ -185,34 +209,37 @@ def find_or_create_export_directory(
                 json.dump(saved, f, indent=2, default=str)
         except Exception:
             pass
+    else:
+        # New dir — write full settings
+        fingerprint = _settings_fingerprint(run_settings)
+        settings_to_save = {
+            "_fingerprint": fingerprint,
+            "_created_at": datetime.now().isoformat(),
+            **run_settings,
+        }
+        try:
+            with open(settings_file, "w") as f:
+                json.dump(settings_to_save, f, indent=2, default=str)
+        except Exception as e:
+            logger.warning(f"Could not write run_settings.json: {e}")
 
-        return new_path, png_dir, svg_dir, pdf_dir
 
-    # No match — create next numbered folder
-    next_num = max_num + 1
-    folder_name = f"{prefix}_{next_num:03d}_{today}"
-    root_dir = base / folder_name
-    png_dir = root_dir / "png"
-    svg_dir = root_dir / "svg"
-    pdf_dir = root_dir / "pdf"
+def get_workspace_plot_dirs(workspace_path) -> Tuple[Path, Path, Path, Path]:
+    """
+    Return plot directory paths within a workspace for Streamlit runs.
 
-    root_dir.mkdir(parents=True, exist_ok=True)
-    png_dir.mkdir(exist_ok=True)
-    svg_dir.mkdir(exist_ok=True)
-    pdf_dir.mkdir(exist_ok=True)
+    Layout: workspace/plots/{png,svg,pdf}/PEPTIDE_NAME/filename.ext
 
-    # Write run_settings.json
-    settings_to_save = {
-        "_fingerprint": fingerprint,
-        "_created_at": datetime.now().isoformat(),
-        **run_settings,
-    }
-    try:
-        with open(root_dir / "run_settings.json", "w") as f:
-            json.dump(settings_to_save, f, indent=2, default=str)
-    except Exception as e:
-        logger.warning(f"Could not write run_settings.json: {e}")
+    No directories are created. Call commit_export_directory(root_dir, run_settings)
+    before writing files (only when plots will actually be generated).
 
-    return root_dir, png_dir, svg_dir, pdf_dir
+    Args:
+        workspace_path: Path to the workspace directory (st.session_state.workspace)
+
+    Returns:
+        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
+    """
+    root_dir = Path(workspace_path) / "plots"
+    return root_dir, root_dir / "png", root_dir / "svg", root_dir / "pdf"
 
 

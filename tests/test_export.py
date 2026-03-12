@@ -11,8 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.export import (
     find_or_create_export_directory,
+    commit_export_directory,
     sanitize_filename,
     shorten_stem,
+    get_workspace_plot_dirs,
 )
 
 
@@ -103,6 +105,9 @@ class TestFindOrCreateExportDirectory:
         root, png, svg, pdf = find_or_create_export_directory(
             str(tmp_path), "myproject", settings
         )
+        # No directories created yet — only after commit
+        assert not root.exists()
+        commit_export_directory(root, settings)
         assert root.exists()
         assert (root / "run_settings.json").exists()
         # Folder name should contain _001_
@@ -113,6 +118,7 @@ class TestFindOrCreateExportDirectory:
         root1, _, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", settings
         )
+        commit_export_directory(root1, settings)
         root2, _, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", settings
         )
@@ -127,6 +133,7 @@ class TestFindOrCreateExportDirectory:
         root1, _, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", settings_a
         )
+        commit_export_directory(root1, settings_a)
         root2, _, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", settings_b
         )
@@ -139,6 +146,7 @@ class TestFindOrCreateExportDirectory:
             root, _, _, _ = find_or_create_export_directory(
                 str(tmp_path), "proj", settings
             )
+            commit_export_directory(root, settings)
             # Extract the 3-digit number from folder name
             parts = root.name.split("_")
             nums.append(int(parts[1]))
@@ -152,9 +160,29 @@ class TestFindOrCreateExportDirectory:
         for p in result:
             assert isinstance(p, Path)
 
-    def test_png_dir_created(self, tmp_path):
-        _, png_dir, _, _ = find_or_create_export_directory(
+    def test_png_dir_not_precreated(self, tmp_path):
+        # Format subdirectories are created lazily on first write, not upfront
+        root, png_dir, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", {"x": 1}
         )
-        assert png_dir.exists()
+        commit_export_directory(root, {"x": 1})
+        assert not png_dir.exists()
         assert png_dir.name == "png"
+
+
+# ---------------------------------------------------------------------------
+# TestGetWorkspacePlotDirs
+# ---------------------------------------------------------------------------
+
+class TestGetWorkspacePlotDirs:
+    def test_returns_correct_paths(self, tmp_path):
+        root, png, svg, pdf = get_workspace_plot_dirs(tmp_path)
+        assert root == tmp_path / "plots"
+        assert png == tmp_path / "plots" / "png"
+        assert svg == tmp_path / "plots" / "svg"
+        assert pdf == tmp_path / "plots" / "pdf"
+
+    def test_no_dirs_created(self, tmp_path):
+        root, png, svg, pdf = get_workspace_plot_dirs(tmp_path)
+        assert not root.exists()
+        assert not png.exists()

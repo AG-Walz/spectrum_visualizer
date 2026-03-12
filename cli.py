@@ -122,15 +122,16 @@ def _expand_file_globs(patterns: List[str]) -> List[str]:
 
 
 def _filter_files_by_substring(files: List[str], substring: str) -> List[str]:
-    """Filter a list of file paths by a case-insensitive substring on the filename.
+    """Filter a list of file paths by a case-insensitive substring on the full path.
 
-    Mirrors the app UI filter: ``filter_lower in f.name.lower()``.
-    Returns the original list unchanged when substring is empty.
+    Matches against the entire path so directory names (e.g. "filtered/") are
+    included in the search. Returns the original list unchanged when substring
+    is empty.
     """
     if not substring:
         return files
     sub_lower = substring.lower()
-    return [f for f in files if sub_lower in Path(f).name.lower()]
+    return [f for f in files if sub_lower in f.lower()]
 
 
 def _strip_modifications(seq: str) -> str:
@@ -494,6 +495,16 @@ def run_pipeline(cfg: CLIConfig) -> int:
     # =========================================================================
     # Phase 1: Auto-cache detection
     # =========================================================================
+    from src.pipeline import (
+        detect_parquet_cache,
+        save_parquet_cache,
+        annotate_spectrum as pipeline_annotate,
+        ensure_references_annotated,
+        build_comparison_tasks,
+        write_comparison_summary,
+        stream_spectra,
+        accumulate_plot_result,
+    )
     loaded_from_cache = False
     cache_dir = None
     cache_fingerprint = None
@@ -508,6 +519,8 @@ def run_pipeline(cfg: CLIConfig) -> int:
             export_dir=cfg.export_dir,
             cache_subdir=cfg.cache_subdirectory,
             log_fn=lambda msg: log_info(msg, cfg.quiet),
+            idxml_filter=cfg.idxml_filter,
+            mzml_filter=cfg.mzml_filter,
         )
         cache_fingerprint = _cache.cache_fingerprint
         cache_dir = _cache.cache_dir
@@ -593,7 +606,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
         total_psms = 0
 
     # Build run settings dict (everything that affects output)
-    from src.export import find_or_create_export_directory
+    from src.export import find_or_create_export_directory, commit_export_directory
 
     run_settings = {
         "idxml_files": sorted(cfg.idxml_files),
@@ -623,14 +636,12 @@ def run_pipeline(cfg: CLIConfig) -> int:
         from src.parquet_cache import get_parquet_row_counts
         expected_refs, expected_queries = get_parquet_row_counts(cfg.parquet_file)
     else:
-        ref_names_lower = {Path(m).name.lower() for m in cfg.mzml_files
-                           if cfg.reference_substring and cfg.reference_substring.lower() in Path(m).name.lower()}
+        ref_sub_lower = cfg.reference_substring.lower() if cfg.reference_substring else ""
         ref_paths = {str(Path(m).resolve()).lower() for m in cfg.mzml_files
-                     if cfg.reference_substring and cfg.reference_substring.lower() in Path(m).name.lower()}
+                     if ref_sub_lower and ref_sub_lower in m.lower()}
         expected_refs = sum(
             1 for vg in variant_groups.values() for m in vg.matches
-            if (m.mzml_resolved_path and str(Path(m.mzml_resolved_path).resolve()).lower() in ref_paths)
-            or (not m.mzml_resolved_path and m.mzml_filename and m.mzml_filename.lower() in ref_names_lower)
+            if m.mzml_resolved_path and str(Path(m.mzml_resolved_path).resolve()).lower() in ref_paths
         )
         expected_queries = total_psms - expected_refs
 
@@ -672,16 +683,6 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
     # Task collection for parallel processing
     from src.parallel_processor import ComparisonTask
-    from src.pipeline import (
-        annotate_spectrum as pipeline_annotate,
-        ensure_references_annotated,
-        build_comparison_tasks,
-        write_comparison_summary,
-        detect_parquet_cache,
-        save_parquet_cache,
-        stream_spectra,
-        accumulate_plot_result,
-    )
     comparison_tasks: List[ComparisonTask] = []
     task_counter = [0]
 
@@ -854,6 +855,9 @@ def run_pipeline(cfg: CLIConfig) -> int:
 
     # --- Phase 4b: Generate plots in parallel ---
     if comparison_tasks:
+        # Only create the export directory now that we know there are plots to write
+        commit_export_directory(root_dir, run_settings)
+
         from src.parallel_processor import run_parallel_comparisons
         from src.tmpfs_staging import TmpfsStaging, StagingConfig
 
