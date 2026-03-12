@@ -39,15 +39,12 @@ def init_session_state():
     export_dir_default = get_settings_value(_settings, "export", "default_directory", default="./exports")
     export_formats_default = get_settings_value(_settings, "export", "formats", default=["png"])
     project_name_default = get_settings_value(_settings, "export", "project_name", default="MSpecViz_analysis")
-    data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
     add_losses_default = get_settings_value(_settings, "annotation", "add_losses", default=False)
     add_first_prefix_default = get_settings_value(_settings, "annotation", "add_first_prefix_ion", default=True)
     remove_precursor_default = get_settings_value(_settings, "annotation", "remove_precursor_peaks", default=False)
     workers_default = get_settings_value(_settings, "performance", "workers", default=4)
 
     defaults = {
-        'idxml_dir': data_dir_default,
-        'mzml_dir': data_dir_default,
         'selected_idxmls': [],
         'selected_mzmls': [],
         'target_peptides': '',
@@ -77,6 +74,9 @@ def render_file_selection():
     """Render file selection step."""
     st.header("Step 1: File Selection")
 
+    _settings = _get_settings()
+    data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -84,7 +84,8 @@ def render_file_selection():
         render_directory_browser(
             key_prefix=f"{STATE_PREFIX}_idxml",
             extensions=['.idXML', '.idxml'],
-            state_key='selected_idxmls'
+            state_key='selected_idxmls',
+            default_dir=data_dir_default,
         )
 
     with col2:
@@ -92,7 +93,8 @@ def render_file_selection():
         render_directory_browser(
             key_prefix=f"{STATE_PREFIX}_mzml",
             extensions=['.mzML', '.mzml'],
-            state_key='selected_mzmls'
+            state_key='selected_mzmls',
+            default_dir=data_dir_default,
         )
 
     # Parquet shortcut
@@ -165,16 +167,16 @@ def _list_files(path: str, extensions: tuple, recursive: bool = False) -> list:
         return []
 
 
-def render_directory_browser(key_prefix: str, extensions: list, state_key: str):
+def render_directory_browser(key_prefix: str, extensions: list, state_key: str, default_dir: str = "/"):
     """Render a directory browser with file selection."""
     # State keys
     dir_key = f"{key_prefix}_dir"
     nav_key = f"{key_prefix}_nav_to"  # Pending navigation target
     select_all_key = f"{key_prefix}_select_all"
 
-    # Initialize directory state
+    # Initialize directory state from the caller-supplied default (reads settings.json)
     if dir_key not in st.session_state:
-        st.session_state[dir_key] = "/"
+        st.session_state[dir_key] = default_dir
 
     # Handle pending navigation (set by button callbacks)
     if nav_key in st.session_state and st.session_state[nav_key]:

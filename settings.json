@@ -8,7 +8,8 @@
   "test": false,
   "image-format": "png",
   "data_directories": {
-    "default": "/"
+    "default": "/mnt/volume",
+    "_comment": "Starting directory for the file browser. Set this to the root of your local data storage on the server where the app is running."
   },
   "models": {
     "default": "ms2pip_timsTOF2024",
