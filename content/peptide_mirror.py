@@ -1036,6 +1036,10 @@ def run_streaming_processing():
     export_formats = st.session_state.get(get_state_key('export_formats'), ['png'])
     project_name = st.session_state.get(get_state_key('project_name'), 'MSpecViz_analysis')
     plot_unpaired = st.session_state.get(get_state_key('plot_unpaired'), False)
+    # When no reference is configured every query is unpaired by definition;
+    # generate single annotated spectrum plots so the gallery is never empty.
+    if not ref_substring:
+        plot_unpaired = True
 
     # =========================================================================
     # Auto-cache detection: check for existing Parquet cache before loading
