@@ -73,6 +73,7 @@ class CLIConfig:
     # Export
     export_dir: str = "./exports"
     project_name: str = "MSpecViz_analysis"
+    save_plots: bool = True
     export_formats: List[str] = field(default_factory=lambda: ["png"])
     dpi: int = 300
     figsize: Tuple[int, int] = (12, 8)
@@ -349,6 +350,9 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.project_name = cli_args.project_name
     if cli_args.formats:
         cfg.export_formats = cli_args.formats
+    if getattr(cli_args, 'no_plots', False):
+        cfg.save_plots = False
+        cfg.export_formats = []
     if cli_args.dpi is not None:
         cfg.dpi = cli_args.dpi
     if cli_args.plot_unpaired:
@@ -1060,6 +1064,8 @@ examples:
     parser.add_argument("--export-dir", help="Export directory path")
     parser.add_argument("--project-name", help="Project name for export folder")
     parser.add_argument("--formats", nargs="+", choices=["png", "svg", "pdf"], help="Export formats")
+    parser.add_argument("--no-plots", action="store_true",
+                        help="Skip plot rendering; only export the summary CSV (faster for large datasets)")
     parser.add_argument("--dpi", type=int, help="DPI for image export")
     parser.add_argument("--plot-unpaired", action="store_true", help="Plot spectra without matching reference")
 

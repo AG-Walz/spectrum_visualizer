@@ -60,6 +60,7 @@ def init_session_state():
         'add_first_prefix_ion': add_first_prefix_default,
         'remove_precursor_peaks': remove_precursor_default,
         'export_dir': export_dir_default,
+        'save_plots': True,
         'export_formats': export_formats_default,
         'project_name': project_name_default,
         'workers': workers_default,
@@ -835,13 +836,23 @@ def render_analysis():
             st.session_state[get_state_key('export_dir')] = export_dir
 
         with export_col2:
+            save_plots = st.checkbox(
+                "Save plots to disk",
+                value=st.session_state.get(get_state_key('save_plots'), True),
+                key=f"{STATE_PREFIX}_save_plots_input",
+                help="Generate and save individual plot files (PNG/SVG/PDF). "
+                     "Disable to skip plot rendering and only export the summary CSV — much faster for large datasets."
+            )
+            st.session_state[get_state_key('save_plots')] = save_plots
+
             export_formats = st.multiselect(
                 "Export Formats",
                 options=['png', 'svg', 'pdf'],
                 default=st.session_state.get(get_state_key('export_formats'), ['png']),
-                key=f"{STATE_PREFIX}_export_formats_input"
+                key=f"{STATE_PREFIX}_export_formats_input",
+                disabled=not save_plots,
             )
-            st.session_state[get_state_key('export_formats')] = export_formats
+            st.session_state[get_state_key('export_formats')] = export_formats if save_plots else []
 
             plot_unpaired = st.checkbox(
                 "Plot unpaired spectra",
