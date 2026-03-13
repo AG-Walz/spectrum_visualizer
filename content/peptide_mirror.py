@@ -36,7 +36,12 @@ def init_session_state():
     _settings = _get_settings()
     ion_types_default = get_settings_value(_settings, "ion_types", "default", default=["b", "y"])
     mz_tolerance_default = get_settings_value(_settings, "mz_tolerance", "default", default=0.02)
-    export_dir_default = get_settings_value(_settings, "export", "default_directory", default="./exports")
+    workspace = st.session_state.get('workspace', None)
+    export_dir_default = (
+        str(Path(workspace) / "exports")
+        if workspace
+        else get_settings_value(_settings, "export", "default_directory", default="./exports")
+    )
     export_formats_default = get_settings_value(_settings, "export", "formats", default=["png"])
     project_name_default = get_settings_value(_settings, "export", "project_name", default="MSpecViz_analysis")
     add_losses_default = get_settings_value(_settings, "annotation", "add_losses", default=False)
@@ -820,9 +825,11 @@ def render_analysis():
             )
             st.session_state[get_state_key('project_name')] = project_name
 
+            _ws = st.session_state.get('workspace', None)
+            _export_fallback = str(Path(_ws) / "exports") if _ws else "./exports"
             export_dir = st.text_input(
                 "Export Directory",
-                value=st.session_state.get(get_state_key('export_dir'), './exports'),
+                value=st.session_state.get(get_state_key('export_dir'), _export_fallback),
                 key=f"{STATE_PREFIX}_export_dir_input"
             )
             st.session_state[get_state_key('export_dir')] = export_dir
@@ -874,7 +881,9 @@ def run_peptide_search(idxmls: list, peptides: list):
     cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
     if cache_enabled and mzmls:
         cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
-        export_dir_ck = st.session_state.get(get_state_key('export_dir'), './exports')
+        _ws_ck = st.session_state.get('workspace', None)
+        _export_ck_fallback = str(Path(_ws_ck) / "exports") if _ws_ck else "./exports"
+        export_dir_ck = st.session_state.get(get_state_key('export_dir'), _export_ck_fallback)
         ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
         peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
         peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
@@ -938,7 +947,9 @@ def run_peptide_search(idxmls: list, peptides: list):
                 cache_enabled = get_settings_value(settings, "cache", "enabled", default=True)
                 if cache_enabled:
                     cache_subdir = get_settings_value(settings, "cache", "subdirectory", default=".mspecviz_cache")
-                    export_dir_ck = st.session_state.get(get_state_key('export_dir'), './exports')
+                    _ws_ck2 = st.session_state.get('workspace', None)
+                    _export_ck2_fallback = str(Path(_ws_ck2) / "exports") if _ws_ck2 else "./exports"
+                    export_dir_ck = st.session_state.get(get_state_key('export_dir'), _export_ck2_fallback)
                     ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
                     peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
                     peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
@@ -1093,12 +1104,9 @@ def run_streaming_processing():
         "plot_unpaired": plot_unpaired,
     }
 
-    # Always use the user-configured export directory with numbered folders.
     # Each unique combination of settings gets its own versioned subfolder
-    # (fingerprinted), so plots from different runs never mix.  Workspace mode
-    # controls session management only — it must not redirect plot output to a
-    # shared workspace directory where stale plots from prior runs would
-    # accumulate and be shown instead of the freshly generated ones.
+    # (fingerprinted by run_settings SHA-256) inside export_dir, so plots from
+    # different runs never mix even when stored in the workspace directory.
     root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
         export_dir, project_name, run_settings
     )
