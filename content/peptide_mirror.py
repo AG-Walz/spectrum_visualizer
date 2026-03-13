@@ -845,10 +845,16 @@ def render_analysis():
             )
             st.session_state[get_state_key('save_plots')] = save_plots
 
+            _stored_formats = st.session_state.get(get_state_key('export_formats'), ['png'])
+            # If save_plots was just re-enabled but formats list is empty (left over
+            # from a previous no-plots run), reset to the default so the user doesn't
+            # have to manually re-select formats before running.
+            if save_plots and not _stored_formats:
+                _stored_formats = ['png']
             export_formats = st.multiselect(
                 "Export Formats",
                 options=['png', 'svg', 'pdf'],
-                default=st.session_state.get(get_state_key('export_formats'), ['png']),
+                default=_stored_formats,
                 key=f"{STATE_PREFIX}_export_formats_input",
                 disabled=not save_plots,
             )
