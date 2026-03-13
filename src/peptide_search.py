@@ -394,11 +394,9 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
     peptides: Set[str] = set()
     try:
         from psm_utils.io.idxml import IdXMLReader
-        import re as _re
         _reader = IdXMLReader(str(idxml_path))
         for _psm in _reader:
-            _seq_with_mods = str(_psm.peptidoform).split('/')[0]
-            _base_seq = _re.sub(r'\[.*?\]', '', _seq_with_mods).strip('-').upper()
+            _base_seq = _psm.peptidoform.sequence.upper()
             if _base_seq:
                 peptides.add(_base_seq)
     except Exception:
