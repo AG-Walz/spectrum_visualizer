@@ -155,8 +155,9 @@ If omitted, every spectrum is plotted individually with annotations (no mirror c
 | Setting | Default | Description |
 |---------|---------|-------------|
 | **Project name** | `MSpecViz_analysis` | Base name for the export folder |
-| **Export directory** | `./exports` | Where output is saved |
-| **Formats** | PNG | Image formats: PNG (raster, 300 DPI) and/or SVG (vector) |
+| **Export directory** | `<workspace>/exports` | Where output is saved (defaults to the active workspace; see [Workspaces](docs/workspaces.md)) |
+| **Save plots to disk** | On | Generate and save individual plot files; disable for summary-CSV-only runs (`--no-plots` in CLI) |
+| **Formats** | PNG | Image formats: PNG (raster, 300 DPI) and/or SVG (vector); only visible when Save plots is on |
 | **Plot unpaired** | Off | Whether to plot spectra that have no matching reference |
 
 See [Export & Output](docs/export.md) for the full output directory structure.
@@ -371,6 +372,7 @@ conda run -n mspecviz python -m pytest test_gui.py -v
 |-------|-------------|
 | [Quick Start](docs/QUICKSTART.md) | 5-minute walkthrough of the full workflow |
 | [Full User Guide](docs/DOCUMENTATION.md) | Comprehensive reference for every feature, setting, and workflow step |
+| [Workspaces](docs/workspaces.md) | What workspaces are, how to create/switch/delete them, sharing, and CLI integration |
 
 ### Workflow Steps (Streamlit)
 
