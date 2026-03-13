@@ -115,10 +115,9 @@ def _r2_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
     """R² from pre-computed matched intensity arrays (no DataFrame lookup)."""
     if len(q_ints) < 2:
         return float("nan")
-    from sklearn.linear_model import LinearRegression
-    model = LinearRegression()
-    model.fit(q_ints.reshape(-1, 1), r_ints)
-    return float(model.score(q_ints.reshape(-1, 1), r_ints))
+    from scipy.stats import linregress
+    _, _, r_value, _, _ = linregress(q_ints, r_ints)
+    return float(r_value ** 2)
 
 
 def _cosine_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
@@ -173,34 +172,24 @@ def compute_r2_binned(
 
     bin_edges = np.linspace(mz_min, mz_max, n_bins + 1)
 
-    # Use np.digitize (matching specviz approach) and sum per bin
-    from collections import defaultdict
+    # Bin intensities with np.digitize + np.bincount (vectorized, no Python loop)
+    n_total = len(bin_edges) + 1
+    q_idx = np.digitize(query_df["mz"].values, bin_edges)
+    r_idx = np.digitize(ref_df["mz"].values, bin_edges)
+    q_sums = np.bincount(q_idx, weights=query_df["intensity"].values, minlength=n_total)
+    r_sums = np.bincount(r_idx, weights=ref_df["intensity"].values, minlength=n_total)
 
-    def _bin_intensities(mz_arr, int_arr):
-        bin_dict = defaultdict(float)
-        indices = np.digitize(mz_arr, bin_edges)
-        for b, intensity in zip(indices, int_arr):
-            bin_dict[b] += intensity
-        return bin_dict
-
-    q_bins = _bin_intensities(query_df["mz"].values, query_df["intensity"].values)
-    r_bins = _bin_intensities(ref_df["mz"].values, ref_df["intensity"].values)
-
-    # Intersection of bins (where both spectra have signal) — specviz convention
-    shared_bins = sorted(set(q_bins.keys()) & set(r_bins.keys()))
-    if len(shared_bins) < 2:
+    # Intersection: bins where both spectra have signal — specviz convention
+    shared_mask = (q_sums > 0) & (r_sums > 0)
+    if shared_mask.sum() < 2:
         return float("nan")
 
-    q_arr = np.array([q_bins[b] for b in shared_bins])
-    r_arr = np.array([r_bins[b] for b in shared_bins])
+    q_arr = q_sums[shared_mask]
+    r_arr = r_sums[shared_mask]
 
-    if np.all(q_arr == 0) or np.all(r_arr == 0):
-        return float("nan")
-
-    from sklearn.linear_model import LinearRegression
-    model = LinearRegression()
-    model.fit(q_arr.reshape(-1, 1), r_arr)
-    return float(model.score(q_arr.reshape(-1, 1), r_arr))
+    from scipy.stats import linregress
+    _, _, r_value, _, _ = linregress(q_arr, r_arr)
+    return float(r_value ** 2)
 
 
 def compute_cosine_similarity(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
