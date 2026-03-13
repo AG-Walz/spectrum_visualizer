@@ -445,7 +445,7 @@ def _load_spectra_from_mzml(
                     base_sequence=match.base_sequence,
                     source_file=display_name,
                     is_reference=is_reference,
-                    rt=spectrum.getRT() if spectrum.getRT() else 0.0,
+                    rt=spectrum.getRT(),
                     match=match
                 )
 
