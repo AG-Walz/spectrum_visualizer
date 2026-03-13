@@ -65,6 +65,35 @@ def get_ion_color(annotation: str, color_map: Dict[str, str] = None) -> str:
     return color_map.get("unannotated", "#AAAAAA")
 
 
+def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
+    """Return df with an 'annotation' column, adding 'unannotated' if absent."""
+    if "annotation" not in df.columns:
+        df = df.copy()
+        df["annotation"] = "unannotated"
+    return df
+
+
+def _normalize_intensities(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize df['intensity'] to [0, 1] in-place and return df."""
+    max_int = df["intensity"].max()
+    if max_int > 0:
+        df["intensity"] = df["intensity"] / max_int
+    return df
+
+
+def _apply_common_style(ax, fig, title: str, normalize: bool) -> None:
+    """Apply shared spectrum-plot axis styling."""
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
+                  fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.grid(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    ax.tick_params(axis="y", which="both", length=4)
+    fig.tight_layout()
+
+
 def _plot_peaks_vectorized(
     ax,
     df: pd.DataFrame,
@@ -174,16 +203,9 @@ def create_mirror_plot(
 
     # Process upper spectrum (positive intensities)
     if not upper_spectrum.empty and len(upper_spectrum) > 0:
-        upper_df = upper_spectrum.copy()
-
-        if "annotation" not in upper_df.columns:
-            upper_df["annotation"] = "unannotated"
-
+        upper_df = _ensure_annotation_col(upper_spectrum.copy())
         if normalize:
-            max_int = upper_df["intensity"].max()
-            if max_int > 0:
-                upper_df["intensity"] = upper_df["intensity"] / max_int
-
+            upper_df = _normalize_intensities(upper_df)
         _plot_peaks_vectorized(
             ax, upper_df, sign=1, ann_offset=ann_offset,
             color_map=color_map, show_annotations=show_annotations,
@@ -192,17 +214,10 @@ def create_mirror_plot(
 
     # Process lower spectrum (negative/mirrored intensities)
     if not lower_spectrum.empty and len(lower_spectrum) > 0:
-        lower_df = lower_spectrum.copy()
-
-        if "annotation" not in lower_df.columns:
-            lower_df["annotation"] = "unannotated"
-
+        lower_df = _ensure_annotation_col(lower_spectrum.copy())
         if normalize:
-            max_int = lower_df["intensity"].max()
-            if max_int > 0:
-                lower_df["intensity"] = (lower_df["intensity"] / max_int) * -1
-        else:
-            lower_df["intensity"] = lower_df["intensity"] * -1
+            lower_df = _normalize_intensities(lower_df)
+        lower_df["intensity"] = lower_df["intensity"] * -1
 
         _plot_peaks_vectorized(
             ax, lower_df, sign=-1, ann_offset=ann_offset,
@@ -252,14 +267,7 @@ def create_mirror_plot(
                           edgecolor="#CCCCCC", alpha=0.85))
 
     # Styling
-    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
-    ylabel = "Relative Intensity" if normalize else "Intensity"
-    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
+    _apply_common_style(ax, fig, title, normalize)
     if normalize:
         ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
         ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
@@ -267,9 +275,6 @@ def create_mirror_plot(
         ax.yaxis.set_major_formatter(
             matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
         )
-    ax.tick_params(axis="y", which="both", length=4)
-
-    fig.tight_layout()
 
     return fig
 
@@ -309,19 +314,12 @@ def create_single_spectrum_plot(
 
     # Plot peaks (positive intensities only)
     if not spectrum.empty and len(spectrum) > 0:
-        df = spectrum.copy()
-
-        if "annotation" not in df.columns:
-            df["annotation"] = "unannotated"
-
+        df = _ensure_annotation_col(spectrum.copy())
         if normalize:
-            max_int = df["intensity"].max()
-            if max_int > 0:
-                df["intensity"] = df["intensity"] / max_int
+            df = _normalize_intensities(df)
             ann_offset = 0.03
         else:
             ann_offset = df["intensity"].max() * 0.03 if len(df) > 0 else 1
-
         _plot_peaks_vectorized(
             ax, df, sign=1, ann_offset=ann_offset,
             color_map=color_map, show_annotations=show_annotations,
@@ -349,19 +347,9 @@ def create_single_spectrum_plot(
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
 
     # Styling
-    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
-    ylabel = "Relative Intensity" if normalize else "Intensity"
-    ax.set_ylabel(ylabel, fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-
+    _apply_common_style(ax, fig, title, normalize)
     if normalize:
         ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    ax.tick_params(axis="y", which="both", length=4)
-
-    fig.tight_layout()
 
     return fig
 
