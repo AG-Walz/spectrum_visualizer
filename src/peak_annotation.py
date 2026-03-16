@@ -21,24 +21,35 @@ ALL_ION_TYPES = ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
 
 def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
     """
-    Convert a peptidoform string to PyOpenMS AASequence.
+    Convert a ProForma peptidoform string to PyOpenMS AASequence.
 
-    Handles bracket notation conversion: [] -> ()
+    Parses via psm_utils Peptidoform and reconstructs in OpenMS notation,
+    correctly handling terminal modifications (e.g. [Acetyl]-PEPTIDE becomes
+    .(Acetyl)PEPTIDE rather than the invalid (Acetyl)-PEPTIDE).
     """
-    # Remove charge if present (after /)
     pf_clean = peptidoform_str.split('/')[0]
+    pf = Peptidoform(pf_clean)
 
-    # Convert bracket notation for modifications
-    # psm_utils uses [] for mods, PyOpenMS uses ()
-    pf_openms = pf_clean.replace('[', '(').replace(']', ')')
+    # Rebuild in OpenMS parenthesis notation from the parsed representation
+    parts = []
+    if pf.properties.get("n_term"):
+        for m in pf.properties["n_term"]:
+            parts.append(f".({m.name})")
+    for aa, residue_mods in pf.parsed_sequence:
+        parts.append(aa)
+        if residue_mods:
+            for m in residue_mods:
+                parts.append(f"({m.name})")
+    if pf.properties.get("c_term"):
+        for m in pf.properties["c_term"]:
+            parts.append(f".({m.name})")
+    oms_str = "".join(parts)
 
     try:
-        return oms.AASequence.fromString(pf_openms)
+        return oms.AASequence.fromString(oms_str)
     except Exception as e:
         logger.warning(f"Could not parse peptidoform '{peptidoform_str}': {e}")
-        # Try with just the sequence
         try:
-            pf = Peptidoform(peptidoform_str)
             return oms.AASequence.fromString(pf.sequence)
         except Exception:
             raise ValueError(f"Cannot convert peptidoform: {peptidoform_str}")

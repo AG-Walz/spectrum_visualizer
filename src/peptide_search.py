@@ -1,8 +1,10 @@
 """
-Peptide search functionality for idXML files.
+Peptide search functionality for identification files.
 
-Searches for target peptides and extracts all metadata needed for mzML resolution.
-Uses PyOpenMS directly for accurate id_merge_index and spectra_data extraction.
+Searches for target peptides using psm_utils PSM iteration; psm_utils resolves
+id_merge_index and spectra_data internally so the per-PSM loop is format-agnostic.
+PyOpenMS is used only in extract_spectra_data_map() for mzML path disambiguation
+from protein-level spectra_data metadata in merged idXML files.
 """
 import logging
 from dataclasses import dataclass, field
