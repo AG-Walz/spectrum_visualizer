@@ -272,7 +272,7 @@ def plot_classic_dual_axis(
 
     if title:
         fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-        fig.subplots_adjust(left=0.22, top=0.96)
+        fig.subplots_adjust(left=0.22, top=0.92)
     else:
         fig.subplots_adjust(left=0.22, top=0.96)
     return fig
@@ -372,13 +372,14 @@ def plot_ridgeline(
     # Colorbar — manually positioned well below the x-axis labels
     sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     sm.set_array([])
-    fig.subplots_adjust(left=0.20, top=0.97, bottom=0.14, wspace=0.05)
+    if title:
+        fig.subplots_adjust(left=0.20, top=0.92, bottom=0.14, wspace=0.05)
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+    else:
+        fig.subplots_adjust(left=0.20, top=0.97, bottom=0.14, wspace=0.05)
     cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])  # [left, bottom, width, height]
     cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
     cbar.set_label(f"Median {_metric_label(metric)}", fontsize=9)
-
-    if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
     return fig
 
 
@@ -454,13 +455,14 @@ def plot_heatmap(
     _style_ax(ax_bar)
 
     # Colorbar — manually positioned well below the x-axis labels
-    fig.subplots_adjust(left=0.22, bottom=0.18, top=0.96, wspace=0.08)
+    if title:
+        fig.subplots_adjust(left=0.22, bottom=0.18, top=0.92, wspace=0.08)
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+    else:
+        fig.subplots_adjust(left=0.22, bottom=0.18, top=0.96, wspace=0.08)
     cbar_ax = fig.add_axes([0.25, 0.04, 0.35, 0.015])  # [left, bottom, width, height]
     cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
     cbar.set_label("Median metric value", fontsize=9)
-
-    if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
     return fig
 
 
