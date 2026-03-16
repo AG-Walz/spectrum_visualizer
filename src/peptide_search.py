@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import numpy as np
-import pyopenms as oms
 
 logger = logging.getLogger(__name__)
 
@@ -203,45 +202,28 @@ def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], D
     return run_map, run_map_full
 
 
-def get_modification_string(peptide_hit) -> str:
+def _mod_key_from_peptidoform(pf) -> str:
     """
-    Extract compact modification string from a PeptideHit.
+    Build compact modification key from a psm_utils Peptidoform object.
 
-    Returns format like "M5[Ox]" or "M5[Ox]|S3[Ph]" for multiple mods.
-    Terminal mods: "NTerm[Ac]", "CTerm[...]".
+    Returns format like "M5[Ox]" or "NTerm[Ac]|M5[Ox]|S3[Ph]" for multiple mods.
+    Replaces the former pyopenms-based get_modification_string().
     """
-    try:
-        aa_seq = peptide_hit.getSequence()
-        if not aa_seq.isModified():
-            return ""
-
-        mods = []
-        # Check N-term modification
-        if aa_seq.hasNTerminalModification():
-            mod = aa_seq.getNTerminalModification()
-            if mod:
-                mod_name = mod.getFullId().split(" ")[0]  # Strip trailing details
-                mods.append(f"NTerm[{abbreviate_mod(mod_name)}]")
-
-        # Check each residue
-        for i in range(aa_seq.size()):
-            residue = aa_seq.getResidue(i)
-            if residue.isModified():
-                mod_name = residue.getModificationName()
-                abbrev = abbreviate_mod(mod_name)
-                mods.append(f"{residue.getOneLetterCode()}{i+1}[{abbrev}]")
-
-        # Check C-term modification
-        if aa_seq.hasCTerminalModification():
-            mod = aa_seq.getCTerminalModification()
-            if mod:
-                mod_name = mod.getFullId().split(" ")[0]
-                mods.append(f"CTerm[{abbreviate_mod(mod_name)}]")
-
-        return "|".join(mods) if mods else ""
-    except Exception as e:
-        logger.debug(f"Could not extract modifications: {e}")
-        return ""
+    mods = []
+    # N-terminal modification
+    if pf.properties.get("n_term"):
+        for m in pf.properties["n_term"]:
+            mods.append(f"NTerm[{abbreviate_mod(m.name)}]")
+    # Per-residue modifications
+    for i, (aa, residue_mods) in enumerate(pf.parsed_sequence):
+        if residue_mods:
+            for m in residue_mods:
+                mods.append(f"{aa}{i + 1}[{abbreviate_mod(m.name)}]")
+    # C-terminal modification
+    if pf.properties.get("c_term"):
+        for m in pf.properties["c_term"]:
+            mods.append(f"CTerm[{abbreviate_mod(m.name)}]")
+    return "|".join(mods) if mods else ""
 
 
 def _search_single_idxml(
@@ -251,7 +233,10 @@ def _search_single_idxml(
     mzml_path_strs: List[str],
 ) -> Tuple[str, List[Tuple[str, PeptideMatch]], List[str]]:
     """
-    Worker: search one idXML file for target peptides.
+    Worker: search one idXML file for target peptides using psm_utils PSM iteration.
+
+    psm_utils resolves id_merge_index → run name internally, so each psm.run
+    already contains the correct mzML basename (without extension).
 
     Must be a module-level function for ProcessPoolExecutor pickling.
 
@@ -267,114 +252,59 @@ def _search_single_idxml(
         try:
             from psm_utils.io.idxml import IdXMLReader
             _reader = IdXMLReader(str(idxml_path))
-            protein_ids = _reader.protein_ids
-            peptide_ids = _reader.peptide_ids
         except Exception as _load_err:
             errors.append(f"No peptide identifications in {idxml_name}: {_load_err}")
             return idxml_name, matches, errors
 
-        if not peptide_ids:
-            errors.append(f"No peptide identifications in {idxml_name}")
-            return idxml_name, matches, errors
+        # Build run-stem → metadata full path for mzML disambiguation.
+        # extract_spectra_data_map still uses the raw protein_ids exposed by
+        # the reader; psm_utils handles id_merge_index resolution internally.
+        _, run_map_full = extract_spectra_data_map(_reader.protein_ids)
+        run_to_metadata: Dict[str, str] = {}
+        for full_paths in run_map_full.values():
+            for full_path in full_paths:
+                stem = Path(full_path).stem
+                if stem not in run_to_metadata:
+                    run_to_metadata[stem] = full_path
 
-        run_map, run_map_full = extract_spectra_data_map(protein_ids)
-
-        for pep_id in peptide_ids:
-            spectrum_id = ""
-            if pep_id.metaValueExists("spectrum_reference"):
-                spectrum_id = decode_metadata_value(pep_id.getMetaValue("spectrum_reference"))
-
-            id_merge_index = -1
-            if pep_id.metaValueExists("id_merge_index"):
-                try:
-                    id_merge_index = int(pep_id.getMetaValue("id_merge_index"))
-                except (ValueError, TypeError):
-                    pass
-
-            pep_identifier = pep_id.getIdentifier()
-            matched_run_id = None
-
-            if pep_identifier in run_map:
-                matched_run_id = pep_identifier
-            else:
-                for run_id in run_map.keys():
-                    if pep_identifier.startswith(run_id) or run_id.startswith(pep_identifier):
-                        matched_run_id = run_id
-                        break
-
-            mzml_filename = ""
-            mzml_metadata_path = ""
-            if matched_run_id and matched_run_id in run_map:
-                mzml_list = run_map[matched_run_id]
-                full_list = run_map_full.get(matched_run_id, [])
-                if id_merge_index >= 0 and id_merge_index < len(mzml_list):
-                    mzml_filename = mzml_list[id_merge_index]
-                    if id_merge_index < len(full_list):
-                        mzml_metadata_path = full_list[id_merge_index]
-                elif len(mzml_list) == 1:
-                    mzml_filename = mzml_list[0]
-                    if full_list:
-                        mzml_metadata_path = full_list[0]
-
-            hits = pep_id.getHits()
-            for hit in hits:
-                try:
-                    aa_seq = hit.getSequence()
-                    base_seq = aa_seq.toUnmodifiedString().upper()
-
-                    if base_seq not in target_set:
-                        continue
-
-                    peptidoform_str = aa_seq.toString()
-                    charge = hit.getCharge() if hit.getCharge() > 0 else 0
-                    score = hit.getScore() if hit.getScore() else 0.0
-
-                    hit_merge_index = id_merge_index
-                    if hit.metaValueExists("id_merge_index"):
-                        try:
-                            hit_merge_index = int(hit.getMetaValue("id_merge_index"))
-                        except (ValueError, TypeError):
-                            pass
-
-                    hit_mzml_filename = mzml_filename
-                    hit_metadata_path = mzml_metadata_path
-                    if hit_merge_index != id_merge_index and matched_run_id and matched_run_id in run_map:
-                        mzml_list = run_map[matched_run_id]
-                        full_list = run_map_full.get(matched_run_id, [])
-                        if hit_merge_index >= 0 and hit_merge_index < len(mzml_list):
-                            hit_mzml_filename = mzml_list[hit_merge_index]
-                            if hit_merge_index < len(full_list):
-                                hit_metadata_path = full_list[hit_merge_index]
-
-                    resolved_path = ""
-                    if mzml_path_strs and hit_mzml_filename:
-                        resolved = resolve_mzml_path(
-                            hit_mzml_filename, hit_metadata_path,
-                            mzml_path_strs, idxml_path
-                        )
-                        if resolved:
-                            resolved_path = resolved
-
-                    match = PeptideMatch(
-                        peptidoform=peptidoform_str,
-                        base_sequence=base_seq,
-                        spectrum_id=spectrum_id,
-                        charge=charge,
-                        score=score,
-                        idxml_file=idxml_name,
-                        mzml_filename=hit_mzml_filename,
-                        id_merge_index=hit_merge_index,
-                        mzml_resolved_path=resolved_path,
-                        idxml_resolved_path=idxml_path
-                    )
-
-                    mod_key = get_modification_string(hit)
-                    variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
-                    matches.append((variant_key, match))
-
-                except Exception as e:
-                    logger.debug(f"Error processing peptide hit: {e}")
+        for psm in _reader:
+            try:
+                base_seq = psm.peptidoform.sequence.upper()
+                if base_seq not in target_set:
                     continue
+
+                # psm_utils resolves spectra_data + id_merge_index → run name
+                mzml_filename = (psm.run + ".mzML") if psm.run else ""
+                metadata_path = run_to_metadata.get(psm.run, "") if psm.run else ""
+
+                resolved_path = ""
+                if mzml_path_strs and mzml_filename:
+                    resolved = resolve_mzml_path(
+                        mzml_filename, metadata_path, mzml_path_strs, idxml_path
+                    )
+                    if resolved:
+                        resolved_path = resolved
+
+                mod_key = _mod_key_from_peptidoform(psm.peptidoform)
+                variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
+
+                match = PeptideMatch(
+                    peptidoform=psm.peptidoform.proforma.split("/")[0],
+                    base_sequence=base_seq,
+                    spectrum_id=psm.spectrum_id or "",
+                    charge=psm.get_precursor_charge() or 0,
+                    score=psm.score or 0.0,
+                    idxml_file=idxml_name,
+                    mzml_filename=mzml_filename,
+                    id_merge_index=-1,
+                    mzml_resolved_path=resolved_path,
+                    idxml_resolved_path=idxml_path,
+                )
+                matches.append((variant_key, match))
+
+            except Exception as e:
+                logger.debug(f"Error processing PSM: {e}")
+                continue
 
     except Exception as e:
         errors.append(f"Error loading {Path(idxml_path).name}: {e}")
