@@ -1636,10 +1636,37 @@ def display_search_results(results: dict):
         )
 
 
-def _render_plot_gallery(root_dir: Path) -> None:
-    """Display plots saved in root_dir organized by peptide variant."""
+def _render_plot_file(plot_file: Path, browse_fmt: str, peptide_dir_name: str) -> None:
+    """Render a single plot file with a download button."""
     import base64
 
+    col_plot, col_dl = st.columns([5, 1])
+    if browse_fmt == "png":
+        col_plot.image(str(plot_file))
+    else:  # svg
+        file_size = plot_file.stat().st_size
+        if file_size < 3 * 1024 * 1024:  # < 3MB
+            svg_b64 = base64.b64encode(plot_file.read_bytes()).decode()
+            col_plot.markdown(
+                f'<img src="data:image/svg+xml;base64,{svg_b64}" '
+                f'style="max-width:100%; height:auto;"/>',
+                unsafe_allow_html=True,
+            )
+        else:
+            col_plot.caption(f"{plot_file.name} (too large to preview inline)")
+
+    mime = "image/png" if browse_fmt == "png" else "image/svg+xml"
+    col_dl.download_button(
+        label="⬇",
+        data=plot_file.read_bytes(),
+        file_name=plot_file.name,
+        mime=mime,
+        key=f"dl_{peptide_dir_name}_{plot_file.name}",
+    )
+
+
+def _render_plot_gallery(root_dir: Path) -> None:
+    """Display plots saved in root_dir organized by peptidoform then reference."""
     # Check which format directories exist
     format_dirs = [(root_dir / "svg", "svg"), (root_dir / "png", "png")]
     existing_format_dirs = [(d, fmt) for d, fmt in format_dirs if d.exists()]
@@ -1666,34 +1693,22 @@ def _render_plot_gallery(root_dir: Path) -> None:
             continue
 
         with st.expander(f"{peptide_dir.name} ({len(plot_files)} plots)", expanded=False):
-            for plot_file in plot_files[:20]:  # cap at 20 per variant
-                col_plot, col_dl = st.columns([5, 1])
+            # Group by reference stem (parsed from "{query}_vs_{ref}" filename convention)
+            ref_groups: dict = {}
+            for pf in plot_files:
+                ref_stem = pf.stem.rsplit("_vs_", 1)[1] if "_vs_" in pf.stem else "(no reference)"
+                ref_groups.setdefault(ref_stem, []).append(pf)
 
-                if browse_fmt == "png":
-                    col_plot.image(str(plot_file))
-                else:  # svg
-                    file_size = plot_file.stat().st_size
-                    if file_size < 3 * 1024 * 1024:  # < 3MB
-                        svg_b64 = base64.b64encode(plot_file.read_bytes()).decode()
-                        col_plot.markdown(
-                            f'<img src="data:image/svg+xml;base64,{svg_b64}" '
-                            f'style="max-width:100%; height:auto;"/>',
-                            unsafe_allow_html=True,
-                        )
-                    else:
-                        col_plot.caption(f"{plot_file.name} (too large to preview inline)")
-
-                mime = "image/png" if browse_fmt == "png" else "image/svg+xml"
-                col_dl.download_button(
-                    label="⬇",
-                    data=plot_file.read_bytes(),
-                    file_name=plot_file.name,
-                    mime=mime,
-                    key=f"dl_{peptide_dir.name}_{plot_file.name}",
+            for ref_stem, ref_files in sorted(ref_groups.items()):
+                sub_label = (
+                    f"Reference: {ref_stem}" if ref_stem != "(no reference)"
+                    else "Single spectra"
                 )
-
-            if len(plot_files) > 20:
-                st.caption(f"... and {len(plot_files) - 20} more")
+                with st.expander(f"{sub_label} ({len(ref_files)})", expanded=False):
+                    for plot_file in ref_files[:20]:  # cap at 20 per group
+                        _render_plot_file(plot_file, browse_fmt, peptide_dir.name)
+                    if len(ref_files) > 20:
+                        st.caption(f"... and {len(ref_files) - 20} more")
 
 
 def render_results_gallery():
