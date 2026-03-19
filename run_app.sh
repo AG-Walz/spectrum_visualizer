@@ -18,4 +18,4 @@ echo "Open your browser to: http://localhost:$PORT"
 
 # Run the application
 conda run --no-capture-output -n mspecviz \
-    streamlit run app.py --server.port=$PORT --server.address=0.0.0.0
+    streamlit run app.py --server.port=$PORT
