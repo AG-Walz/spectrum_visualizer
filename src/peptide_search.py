@@ -294,7 +294,7 @@ def _search_single_idxml(
                     peptidoform=psm.peptidoform.proforma.split("/")[0],
                     base_sequence=base_seq,
                     spectrum_id=psm.spectrum_id or "",
-                    charge=psm.precursor_charge or 0,
+                    charge=psm.get_precursor_charge() or 0,
                     score=psm.score or 0.0,
                     idxml_file=idxml_name,
                     mzml_filename=mzml_filename,
