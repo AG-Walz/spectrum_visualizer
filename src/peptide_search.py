@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import numpy as np
+from psm_utils.io.idxml import IdXMLReader
 
 logger = logging.getLogger(__name__)
 
@@ -252,7 +253,6 @@ def _search_single_idxml(
 
     try:
         try:
-            from psm_utils.io.idxml import IdXMLReader
             _reader = IdXMLReader(str(idxml_path))
         except Exception as _load_err:
             errors.append(f"No peptide identifications in {idxml_name}: {_load_err}")
