@@ -269,7 +269,27 @@ def _search_single_idxml(
                 if stem not in run_to_metadata:
                     run_to_metadata[stem] = full_path
 
-        for psm in _reader:
+        # Use manual iteration so that a parse error inside psm_utils __iter__
+        # (e.g. float(None) on a missing rescoring feature) skips only that PSM
+        # instead of aborting the entire file.
+        # Use manual iteration so that a parse error inside psm_utils __iter__
+        # (e.g. float(None) on a missing rescoring feature) is reported clearly.
+        # Note: psm_utils uses a generator — once it raises, iteration stops.
+        # Affected files are typically unfiltered Percolator output (_pout.idXML).
+        psm_iter = iter(_reader)
+        psms_read = 0
+        parse_error: Optional[str] = None
+        while True:
+            try:
+                psm = next(psm_iter)
+                psms_read += 1
+            except StopIteration:
+                break
+            except Exception as e:
+                parse_error = str(e)
+                logger.debug(f"PSM parse error in {idxml_name} after {psms_read} PSMs: {e}")
+                break  # generator is dead — no point continuing
+
             try:
                 base_seq = psm.peptidoform.sequence.upper()
                 if base_seq not in target_set:
@@ -307,6 +327,14 @@ def _search_single_idxml(
             except Exception as e:
                 logger.debug(f"Error processing PSM: {e}")
                 continue
+
+        if parse_error is not None:
+            errors.append(
+                f"{idxml_name}: stopped after {psms_read} PSMs — a PSM could not be "
+                f"parsed (null rescoring feature value). This happens with unfiltered "
+                f"Percolator output (_pout.idXML) that contains PSMs missing metadata. "
+                f"Switch to _pout_filtered.idXML for complete, reliable results."
+            )
 
     except Exception as e:
         errors.append(f"Error loading {Path(idxml_path).name}: {e}")
