@@ -19,6 +19,7 @@ Built on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/
   - [CLI Pipeline](#cli-pipeline) -- Terminal-based batch processing
   - [Docker](#docker) -- Containerized deployment
 - **Workflow & Configuration**
+  - [Workspaces](#workspaces) -- Isolated project directories, switching, sharing
   - [Input Files](#input-files) -- What you need and in what format
   - [Analysis Decisions](#analysis-decisions) -- Choices you need to make before running
   - [Fast Loading with Parquet](#fast-loading-with-parquet) -- Speed up repeated analyses 100x
@@ -105,6 +106,33 @@ Then open http://localhost:8501 in your local browser.
 > `ssh -L 9501:localhost:8501 -J jumphost server_name` then open http://localhost:9501
 
 A convenience script is provided at `scripts/connect_mspecviz.sh`.
+
+---
+
+## Workspaces
+
+A **workspace** is a named project directory that keeps every output from one analysis completely isolated — plots, summary spreadsheets, Parquet cache, and saved settings all live inside it. This makes it easy to run multiple experiments in parallel, reproduce a previous run, or hand off results to a colleague.
+
+```
+workspaces-MSpecViz/
+├── default/             ← always present
+├── my_experiment/
+│   ├── exports/         ← versioned export folders (fingerprinted)
+│   └── .mspecviz_cache/ ← Parquet cache for instant re-runs
+└── validation_run/
+```
+
+**Quick usage:**
+
+| Action | How |
+|--------|-----|
+| Create a workspace | Sidebar → *Workspaces* panel → type a name → **Create Workspace** |
+| Switch workspaces | Sidebar → *Workspaces* panel → choose from dropdown |
+| Bookmark a workspace | Copy the URL — it encodes the active workspace as `?workspace=name` |
+| Share results | `tar -czf ws.tar.gz workspaces-MSpecViz/my_experiment/` and send the archive |
+| Point CLI to a workspace | `--export-dir /path/to/workspaces-MSpecViz/my_experiment/exports` |
+
+See the full **[Workspaces Guide](docs/workspaces.md)** for directory structure details, sharing tips, fingerprinted export versioning, and CLI integration.
 
 ---
 
