@@ -194,6 +194,14 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
                     for key in params:
                         if key in st.session_state:
                             del st.session_state[key]
+                    # Clear all page-namespaced keys so stale analysis state from
+                    # the previous workspace is not shown in the new one.
+                    stale_keys = [
+                        k for k in st.session_state
+                        if k.startswith("peptide_mirror")
+                    ]
+                    for key in stale_keys:
+                        del st.session_state[key]
                     st.query_params.workspace = st.session_state["chosen-workspace"]
 
                 # Get all available workspaces
