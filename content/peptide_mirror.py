@@ -234,6 +234,8 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
             st.session_state[dir_key] = new_path
             st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
+            if select_all_key in st.session_state:
+                del st.session_state[select_all_key]
             st.rerun()
 
     with col2:
@@ -380,6 +382,8 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
                 # Clear all button
                 if st.button("🗑️ Clear all selections", key=f"{key_prefix}_clear_all"):
                     st.session_state[get_state_key(state_key)] = []
+                    if select_all_key in st.session_state:
+                        del st.session_state[select_all_key]
                     st.rerun()
 
                 # Show grouped files with remove buttons
