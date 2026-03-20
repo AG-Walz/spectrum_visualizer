@@ -1767,6 +1767,110 @@ def render_results_gallery():
         _render_plot_gallery(Path(export_root))
 
 
+def _apply_run_settings(run_cfg: dict):
+    """Load a run_settings.json dict back into session state."""
+    mapping = {
+        'selected_idxmls':        run_cfg.get('idxml_files', []),
+        'selected_mzmls':         run_cfg.get('mzml_files', []),
+        'target_peptides':        '\n'.join(run_cfg.get('peptides', [])),
+        'reference_substring':    run_cfg.get('reference_substring', ''),
+        'ion_types':              run_cfg.get('ion_types', ['b', 'y']),
+        'mz_tolerance':           run_cfg.get('mz_tolerance', 0.02),
+        'add_losses':             run_cfg.get('add_losses', False),
+        'add_first_prefix_ion':   run_cfg.get('add_first_prefix_ion', True),
+        'remove_precursor_peaks': run_cfg.get('remove_precursor_peaks', False),
+        'intensity_mode':         run_cfg.get('intensity_mode', 'Relative'),
+        'export_formats':         run_cfg.get('export_formats', ['png']),
+    }
+    for key, value in mapping.items():
+        st.session_state[get_state_key(key)] = value
+
+
+def render_export_history():
+    """Browse previous export runs, reload their settings, or delete them."""
+    st.header("Export History")
+
+    export_dir = st.session_state.get(get_state_key('export_dir'), './exports')
+    export_path = Path(export_dir)
+
+    if not export_path.exists():
+        st.info(f"No exports directory found at `{export_dir}`.")
+        return
+
+    # Scan for run_settings.json files, newest first (by folder name which embeds date)
+    runs = []
+    for settings_file in sorted(export_path.glob("*/run_settings.json"), reverse=True):
+        try:
+            with open(settings_file) as f:
+                run_cfg = json.load(f)
+            runs.append((settings_file.parent, run_cfg))
+        except Exception:
+            continue
+
+    if not runs:
+        st.info(f"No completed export runs found in `{export_dir}`.")
+        return
+
+    st.caption(f"{len(runs)} run(s) in `{export_dir}`")
+
+    for run_dir, run_cfg in runs:
+        peptides     = run_cfg.get('peptides', [])
+        idxml_count  = len(run_cfg.get('idxml_files', []))
+        mzml_count   = len(run_cfg.get('mzml_files', []))
+        created      = (run_cfg.get('_created_at') or '')[:10]
+        last_run     = (run_cfg.get('_last_run')    or created)[:10]
+
+        pep_preview = ', '.join(peptides[:3])
+        if len(peptides) > 3:
+            pep_preview += f' … +{len(peptides) - 3}'
+
+        label = (
+            f"**{run_dir.name}**"
+            f" — {created}"
+            f" — {len(peptides)} peptide(s)"
+            f" — {idxml_count} idXML / {mzml_count} mzML"
+        )
+
+        with st.expander(label, expanded=False):
+            col_meta, col_actions = st.columns([3, 1])
+
+            with col_meta:
+                st.markdown(f"**Peptides:** {pep_preview or '—'}")
+                st.markdown(f"**Files:** {idxml_count} idXML, {mzml_count} mzML")
+                ref_sub = run_cfg.get('reference_substring') or '—'
+                st.markdown(f"**Reference substring:** `{ref_sub}`")
+                st.markdown(f"**Ion types:** {', '.join(run_cfg.get('ion_types', []))}")
+                st.markdown(f"**m/z tolerance:** {run_cfg.get('mz_tolerance', '—')} Da")
+                created_full  = (run_cfg.get('_created_at') or '—')[:19]
+                last_run_full = (run_cfg.get('_last_run')   or '—')[:19]
+                st.caption(f"Created: {created_full}  |  Last run: {last_run_full}")
+
+            with col_actions:
+                if st.button("Reload settings", key=f"reload_{run_dir.name}"):
+                    _apply_run_settings(run_cfg)
+                    st.success("Settings loaded — switch to tab **1. Files** to review.")
+                    st.rerun()
+
+                confirm_key = f"confirm_delete_{run_dir.name}"
+                if st.session_state.get(confirm_key):
+                    st.warning("Delete all files in this run?")
+                    c1, c2 = st.columns(2)
+                    with c1:
+                        if st.button("Yes, delete", key=f"yes_del_{run_dir.name}", type="primary"):
+                            import shutil
+                            shutil.rmtree(run_dir)
+                            del st.session_state[confirm_key]
+                            st.rerun()
+                    with c2:
+                        if st.button("Cancel", key=f"cancel_del_{run_dir.name}"):
+                            del st.session_state[confirm_key]
+                            st.rerun()
+                else:
+                    if st.button("Delete run", key=f"delete_{run_dir.name}"):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+
+
 def render():
     """Main render function for the page."""
     init_session_state()
@@ -1783,6 +1887,7 @@ def render():
         ("5. Search", render_search),
         ("6. Process", render_analysis),
         ("7. Results", render_results_gallery),
+        ("8. History", render_export_history),
     ]
 
     # Create tabs for steps
