@@ -199,6 +199,8 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     dir_key = f"{key_prefix}_dir"
     nav_key = f"{key_prefix}_nav_to"  # Pending navigation target
     select_all_key = f"{key_prefix}_select_all"
+    recursive_key = f"{key_prefix}_recursive"
+    recursive_pref_key = f"{key_prefix}_recursive_pref"  # Non-widget backup survives mid-run reruns
 
     # Initialize directory state from the caller-supplied default (reads settings.json)
     if dir_key not in st.session_state:
@@ -211,6 +213,10 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         # Reset select all when changing directory
         if select_all_key in st.session_state:
             del st.session_state[select_all_key]
+        # Restore recursive preference saved before the mid-run rerun (Streamlit clears widget
+        # keys for widgets that haven't rendered yet when st.rerun() is called mid-render)
+        if recursive_pref_key in st.session_state:
+            st.session_state[recursive_key] = st.session_state.pop(recursive_pref_key)
 
     current_dir = st.session_state[dir_key]
 
@@ -227,12 +233,14 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         # Handle manual path entry
         if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
             st.session_state[dir_key] = new_path
+            st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
             st.rerun()
 
     with col2:
         parent = str(Path(current_dir).parent)
         if st.button("⬆️", key=f"{key_prefix}_up_btn", help="Parent directory", disabled=(parent == current_dir)):
             st.session_state[nav_key] = parent
+            st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
             st.rerun()
 
     # Show clickable subdirectories
@@ -258,6 +266,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
                                 width="stretch"
                             ):
                                 st.session_state[nav_key] = folder_path
+                                st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
                                 st.rerun()
             if len(subdirs) > max_folders:
                 st.caption(f"... and {len(subdirs) - max_folders} more folders")
