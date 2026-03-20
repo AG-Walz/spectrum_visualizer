@@ -69,6 +69,11 @@ def save_params(params: dict[str, Any]) -> None:
     """
     Save the given dictionary of parameters to a JSON file in the workspace.
 
+    Captures two layers of state:
+    - Top-level settings.json keys already present in params (template pattern).
+    - All serializable ``peptide_mirror.*`` session-state keys, stored under a
+      ``"peptide_mirror"`` namespace so they can be restored on workspace load.
+
     Args:
         params (dict[str, Any]): A dictionary containing the parameters to be saved.
 
@@ -78,10 +83,23 @@ def save_params(params: dict[str, Any]) -> None:
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
-    # Update with any modified session state values
+    # Update with any modified session state values (template-level keys)
     for key, value in st.session_state.items():
         if key in params:
             params[key] = value
+
+    # Capture serializable peptide_mirror.* analysis state
+    page_state = {}
+    for key, value in st.session_state.items():
+        if not key.startswith("peptide_mirror."):
+            continue
+        try:
+            json.dumps(value)   # probe serializability; skips VariantGroup dicts, etc.
+            page_state[key] = value
+        except (TypeError, ValueError):
+            pass
+    if page_state:
+        params["peptide_mirror"] = page_state
 
     path = Path(st.session_state.workspace, "params.json")
     with open(path, "w", encoding="utf-8") as outfile:

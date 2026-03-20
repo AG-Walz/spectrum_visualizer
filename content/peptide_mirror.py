@@ -31,8 +31,21 @@ def get_state_key(key: str) -> str:
     return f"{STATE_PREFIX}.{key}"
 
 
-def init_session_state():
-    """Initialize session state with defaults from settings.json."""
+def init_session_state(params: dict = None):
+    """Initialize session state with defaults from settings.json.
+
+    If *params* contains a ``"peptide_mirror"`` section (written by save_params),
+    those values are restored into session state before defaults are applied, so
+    previously used file paths, peptides, and annotation settings survive a
+    workspace reload.
+    """
+    # Restore saved page state for this workspace before applying defaults.
+    # Keys not present in the saved state fall through to the defaults below.
+    if params:
+        for key, value in params.get("peptide_mirror", {}).items():
+            if key.startswith("peptide_mirror."):
+                st.session_state[key] = value
+
     _settings = _get_settings()
     ion_types_default = get_settings_value(_settings, "ion_types", "default", default=["b", "y"])
     mz_tolerance_default = get_settings_value(_settings, "mz_tolerance", "default", default=0.02)
@@ -989,6 +1002,8 @@ def run_peptide_search(idxmls: list, peptides: list):
                 unresolved = total_matches - resolved
 
                 status.update(label=f"Found {total_matches} PSMs across {len(results)} variants", state="complete")
+                from src.common.common import save_params
+                save_params(params)
 
                 if unresolved > 0:
                     st.warning(f"{unresolved} PSMs could not be mapped to mzML files (missing id_merge_index)")
@@ -1557,6 +1572,10 @@ def run_streaming_processing():
         # Save point 3: after summary export
         _try_save_cache("after summary")
 
+        # Persist analysis settings to workspace params.json
+        from src.common.common import save_params as _save_params
+        _save_params(params)
+
     except Exception as e:
         st.error(f"Processing failed: {e}")
         logger.exception("Streaming processing error")
@@ -1873,7 +1892,7 @@ def render_export_history():
 
 def render():
     """Main render function for the page."""
-    init_session_state()
+    init_session_state(params)
 
     st.title("Peptide Mirror Analysis")
     st.caption("Compare experimental spectra against reference spectra for target peptides")
