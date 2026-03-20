@@ -1666,7 +1666,10 @@ def _render_plot_file(plot_file: Path, browse_fmt: str, peptide_dir_name: str) -
 
     col_plot, col_dl = st.columns([5, 1])
     if browse_fmt == "png":
-        col_plot.image(str(plot_file))
+        try:
+            col_plot.image(str(plot_file))
+        except OSError:
+            col_plot.warning(f"Could not display {plot_file.name} (file may be corrupted or incomplete)")
     else:  # svg
         file_size = plot_file.stat().st_size
         if file_size < 3 * 1024 * 1024:  # < 3MB
@@ -1735,6 +1738,37 @@ def _render_plot_gallery(root_dir: Path) -> None:
                         st.caption(f"... and {len(ref_files) - 20} more")
 
 
+@st.fragment
+def _render_zip_download(export_root: Path) -> None:
+    """Deferred zip download of the export directory."""
+    import io
+    import zipfile
+
+    exclude_cache = st.checkbox(
+        "Exclude `.mspecviz_cache/`",
+        value=True,
+        key=get_state_key("zip_exclude_cache"),
+    )
+
+    def _make_zip() -> bytes:
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+            for file in export_root.rglob("*"):
+                if not file.is_file():
+                    continue
+                if exclude_cache and ".mspecviz_cache" in file.parts:
+                    continue
+                zf.write(file, file.relative_to(export_root.parent))
+        return buf.getvalue()
+
+    st.download_button(
+        label="⬇ Download Export as ZIP",
+        data=_make_zip,
+        file_name=f"{export_root.name}.zip",
+        mime="application/zip",
+    )
+
+
 def render_results_gallery():
     """Render results summary."""
     st.header("Step 7: Results")
@@ -1781,6 +1815,9 @@ def render_results_gallery():
                     st.caption(f"📄 {Path(f).name}")
                 if len(svg_files) > 20:
                     st.caption(f"... and {len(svg_files) - 20} more")
+
+        # Zip download
+        _render_zip_download(Path(export_root))
 
         # Plot gallery: browse and download individual plots
         _render_plot_gallery(Path(export_root))
