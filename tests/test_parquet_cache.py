@@ -318,3 +318,47 @@ class TestGetRowCounts:
         refs, queries = get_parquet_row_counts("/nonexistent/path.parquet")
         assert refs == 0
         assert queries == 0
+
+
+# ============================================================================
+# Cache invalidation tests
+# ============================================================================
+
+class TestCacheInvalidation:
+    def test_fingerprint_changes_on_file_replacement(self, tmp_path):
+        """Fingerprint changes when a source file is replaced (mtime changes)."""
+        import time
+
+        mzml = tmp_path / "sample.mzML"
+        mzml.write_text("<mzML>original</mzML>")
+        fp_before = compute_cache_fingerprint([], [str(mzml)], ["PEPTIDE"], "")
+
+        # Ensure at least 1 ns difference in mtime
+        time.sleep(0.01)
+        mzml.write_text("<mzML>replaced</mzML>")
+
+        fp_after = compute_cache_fingerprint([], [str(mzml)], ["PEPTIDE"], "")
+        assert fp_before != fp_after
+
+    def test_fingerprint_stable_without_change(self, tmp_path):
+        """Fingerprint is identical when the file has not changed."""
+        mzml = tmp_path / "sample.mzML"
+        mzml.write_text("<mzML>stable</mzML>")
+
+        fp1 = compute_cache_fingerprint([], [str(mzml)], ["PEPTIDE"], "")
+        fp2 = compute_cache_fingerprint([], [str(mzml)], ["PEPTIDE"], "")
+        assert fp1 == fp2
+
+    def test_fingerprint_changes_on_idxml_replacement(self, tmp_path):
+        """Fingerprint changes when an idXML file is replaced."""
+        import time
+
+        idxml = tmp_path / "ids.idXML"
+        idxml.write_text("<idXML>v1</idXML>")
+        fp_before = compute_cache_fingerprint([str(idxml)], [], ["PEPTIDE"], "")
+
+        time.sleep(0.01)
+        idxml.write_text("<idXML>v2</idXML>")
+
+        fp_after = compute_cache_fingerprint([str(idxml)], [], ["PEPTIDE"], "")
+        assert fp_before != fp_after

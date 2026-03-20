@@ -149,6 +149,13 @@ def render_file_selection():
         return False
 
 
+@st.cache_data(hash_funcs={Path: lambda p: f"{p}:{p.stat().st_mtime_ns if p.exists() else 0}"})
+def _cached_parquet_row_counts(path: Path):
+    """Return (refs, queries) from a Parquet file, keyed by path + mtime."""
+    from src.parquet_cache import get_parquet_row_counts
+    return get_parquet_row_counts(str(path))
+
+
 @st.cache_data(ttl=10)
 def _list_subdirectories(path: str) -> list:
     """Return sorted list of subdirectory paths. Cached for 10 s to avoid per-rerun I/O."""
@@ -768,8 +775,7 @@ def _show_cache_status(export_dir: str, parquet_file: str):
         # Check for partial cache
         partial = find_existing_cache(cache_dir, fingerprint, allow_partial=True)
         if partial:
-            from src.parquet_cache import get_parquet_row_counts
-            refs, queries = get_parquet_row_counts(partial)
+            refs, queries = _cached_parquet_row_counts(Path(partial))
             st.info(f"Partial cache found ({refs} refs, {queries} queries). "
                     f"Resume will load remaining spectra from mzML.")
         else:
@@ -1140,8 +1146,7 @@ def run_streaming_processing():
     # Count expected reference vs query PSMs
     if use_parquet:
         # Read row counts from Parquet for accurate progress bars
-        from src.parquet_cache import get_parquet_row_counts
-        expected_refs, expected_queries = get_parquet_row_counts(parquet_file)
+        expected_refs, expected_queries = _cached_parquet_row_counts(Path(parquet_file))
     else:
         # Count refs using resolved paths when available, bare name as fallback
         ref_paths = {str(Path(m).resolve()).lower() for m in mzmls
