@@ -349,6 +349,147 @@ def prepare_spectrum_for_plot(
     return annotated
 
 
+def msms_spectrum_from_loaded_spectrum(
+    mz: np.ndarray,
+    intensity: np.ndarray,
+    peptidoform_str: str,
+    precursor_mz: float,
+    precursor_charge: int,
+) -> "spectrum_utils.spectrum.MsmsSpectrum":
+    """
+    Build a spectrum_utils MsmsSpectrum from raw arrays.
+
+    Entry point for spectrum_utils-based annotation (e.g. edge-case ProForma mods
+    using UNIMOD:N notation that PyOpenMS cannot parse).
+
+    Args:
+        mz: m/z array
+        intensity: intensity array
+        peptidoform_str: ProForma peptidoform string (charge suffix stripped)
+        precursor_mz: Precursor m/z
+        precursor_charge: Precursor charge state
+
+    Returns:
+        spectrum_utils MsmsSpectrum ready for annotate_proforma()
+    """
+    from spectrum_utils.spectrum import MsmsSpectrum
+
+    proforma_str = peptidoform_str.split("/")[0]
+    return MsmsSpectrum(
+        identifier=proforma_str,
+        precursor_mz=float(precursor_mz),
+        precursor_charge=int(precursor_charge),
+        mz=np.array(mz, dtype=np.float64),
+        intensity=np.array(intensity, dtype=np.float32),
+    )
+
+
+def _su_annotation_to_str(ann) -> str:
+    """Convert a spectrum_utils FragmentAnnotation to an MSpecViz annotation string."""
+    try:
+        ion_type = str(ann.ion_type)
+        ion_index = getattr(ann, "ion_index", getattr(ann, "fragment_index", "?"))
+        charge = int(getattr(ann, "charge", 1))
+        nl = getattr(ann, "neutral_loss", None)
+        charge_str = "+" * max(1, charge)
+        base = f"{ion_type}{ion_index}"
+        if nl:
+            base += f"-{str(nl).lstrip('-')}"
+        return base + charge_str
+    except Exception:
+        return "matched"
+
+
+def annotate_with_spectrum_utils(
+    mz: np.ndarray,
+    intensity: np.ndarray,
+    peptidoform_str: str,
+    precursor_mz: float,
+    precursor_charge: int,
+    fragment_tol_mass: float = 0.02,
+    fragment_tol_mode: str = "Da",
+    ion_types: List[str] = None,
+    normalize: bool = True,
+) -> pd.DataFrame:
+    """
+    Annotate a spectrum using spectrum_utils annotate_proforma().
+
+    Secondary annotation path for ProForma 2.0 / UNIMOD:N edge cases that
+    PyOpenMS cannot handle.  Falls back to an unannotated DataFrame on error.
+
+    Returns a DataFrame in the same format as the primary annotation pipeline:
+    columns: mz, intensity, annotation, charge, is_annotated, ion_type
+    """
+    if ion_types is None:
+        ion_types = DEFAULT_ION_TYPES
+
+    su_ion_types = "".join(t for t in ion_types if t in ("a", "b", "c", "x", "y", "z"))
+    if not su_ion_types:
+        su_ion_types = "by"
+
+    proforma_str = peptidoform_str.split("/")[0]
+
+    def _unannotated_df():
+        int_arr = np.array(intensity, dtype=float)
+        if normalize and int_arr.max() > 0:
+            int_arr = int_arr / int_arr.max()
+        return pd.DataFrame({
+            "mz": np.array(mz, dtype=float),
+            "intensity": int_arr,
+            "annotation": ["unannotated"] * len(mz),
+            "charge": [0] * len(mz),
+            "is_annotated": [False] * len(mz),
+            "ion_type": ["unannotated"] * len(mz),
+        })
+
+    try:
+        spec = msms_spectrum_from_loaded_spectrum(
+            mz, intensity, proforma_str, precursor_mz, precursor_charge
+        )
+        spec.annotate_proforma(
+            proforma_str,
+            fragment_tol_mass,
+            fragment_tol_mode,
+            ion_types=su_ion_types,
+        )
+    except Exception as e:
+        logger.warning(f"spectrum_utils annotation failed for '{peptidoform_str}': {e}")
+        return _unannotated_df()
+
+    annotations_out = []
+    charges_out = []
+    is_annotated_out = []
+    ion_types_out = []
+
+    for ann in spec.annotation:
+        if ann is None:
+            annotations_out.append("unannotated")
+            charges_out.append(0)
+            is_annotated_out.append(False)
+            ion_types_out.append("unannotated")
+        else:
+            ann_str = _su_annotation_to_str(ann)
+            charge = int(getattr(ann, "charge", 1))
+            ion_t = str(getattr(ann, "ion_type", ""))[0:1] or "unannotated"
+            annotations_out.append(ann_str)
+            charges_out.append(charge)
+            is_annotated_out.append(True)
+            ion_types_out.append(ion_t)
+
+    int_arr = np.array(spec.intensity, dtype=float)
+    if normalize and int_arr.max() > 0:
+        int_arr = int_arr / int_arr.max()
+
+    return pd.DataFrame({
+        "mz": np.array(spec.mz, dtype=float),
+        "intensity": int_arr,
+        "annotation": annotations_out,
+        "charge": charges_out,
+        "is_annotated": is_annotated_out,
+        "ion_type": ion_types_out,
+    })
+
+
 def calculate_annotation_stats(annotated_df: pd.DataFrame) -> Dict:
     """
     Calculate annotation statistics for a spectrum.
