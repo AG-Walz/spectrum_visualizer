@@ -1,4 +1,14 @@
 """Shared utility functions used by both CLI and Streamlit UI."""
+from typing import List
+
+
+def parse_peptide_list(text: str) -> List[str]:
+    """Parse newline-separated peptide sequences into a normalized list.
+
+    Strips whitespace, removes blank lines, and converts to uppercase.
+    Use ``sorted(parse_peptide_list(text))`` when stable ordering is needed.
+    """
+    return [p.strip().upper() for p in text.split('\n') if p.strip()]
 
 
 def format_time(seconds: float) -> str:

@@ -11,7 +11,7 @@ import json
 import logging
 
 from src.common.common import page_setup
-from utils.helpers import format_time, get_nested as get_settings_value
+from utils.helpers import format_time, get_nested as get_settings_value, parse_peptide_list
 
 params = page_setup()
 
@@ -429,7 +429,7 @@ def render_peptide_input():
         """)
 
         # Count entered peptides
-        peptides = [p.strip() for p in peptide_text.split('\n') if p.strip()]
+        peptides = parse_peptide_list(peptide_text)
         if peptides:
             st.success(f"{len(peptides)} peptide(s) entered")
 
@@ -647,7 +647,7 @@ def render_search():
     if not peptide_text:
         # Fallback: read directly from text_area widget key
         peptide_text = st.session_state.get(f"{STATE_PREFIX}_peptide_input", '')
-    peptides = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
+    peptides = parse_peptide_list(peptide_text)
 
     if not idxmls:
         st.warning("Please select idXML files first (Files tab)")
@@ -784,7 +784,7 @@ def _show_cache_status(export_dir: str, parquet_file: str):
     idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
     mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
     peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
-    peptides = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
+    peptides = parse_peptide_list(peptide_text)
     ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
 
     if not idxmls or not mzmls or not peptides:
@@ -937,7 +937,7 @@ def run_peptide_search(idxmls: list, peptides: list):
         export_dir_ck = st.session_state.get(get_state_key('export_dir'), _export_ck_fallback)
         ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
         peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
-        peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
+        peptides_ck = parse_peptide_list(peptide_text_ck)
 
         from src.parquet_cache import compute_cache_fingerprint, load_search_checkpoint
         ck_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_ck, ref_sub)
@@ -1003,7 +1003,7 @@ def run_peptide_search(idxmls: list, peptides: list):
                     export_dir_ck = st.session_state.get(get_state_key('export_dir'), _export_ck2_fallback)
                     ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
                     peptide_text_ck = st.session_state.get(get_state_key('target_peptides'), '')
-                    peptides_ck = [p.strip().upper() for p in peptide_text_ck.split('\n') if p.strip()]
+                    peptides_ck = parse_peptide_list(peptide_text_ck)
 
                     from src.parquet_cache import compute_cache_fingerprint, save_search_checkpoint
                     ck_fingerprint = compute_cache_fingerprint(idxmls, mzmls, peptides_ck, ref_sub)
@@ -1098,7 +1098,7 @@ def run_streaming_processing():
     if not parquet_file and cache_enabled:
         idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
         peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
-        peptides_list = [p.strip().upper() for p in peptide_text.split('\n') if p.strip()]
+        peptides_list = parse_peptide_list(peptide_text)
 
         if idxmls and mzmls and peptides_list:
             _cache = detect_parquet_cache(
@@ -1142,7 +1142,7 @@ def run_streaming_processing():
 
     idxmls_for_settings = st.session_state.get(get_state_key('selected_idxmls'), [])
     peptide_text_s = st.session_state.get(get_state_key('target_peptides'), '')
-    peptides_for_settings = sorted(p.strip().upper() for p in peptide_text_s.split('\n') if p.strip())
+    peptides_for_settings = sorted(parse_peptide_list(peptide_text_s))
 
     run_settings = {
         "idxml_files": sorted(idxmls_for_settings),
@@ -1270,7 +1270,7 @@ def run_streaming_processing():
 
         idxmls_for_meta = st.session_state.get(get_state_key('selected_idxmls'), [])
         peptide_text_for_meta = st.session_state.get(get_state_key('target_peptides'), '')
-        peptides_for_meta = [p.strip().upper() for p in peptide_text_for_meta.split('\n') if p.strip()]
+        peptides_for_meta = parse_peptide_list(peptide_text_for_meta)
         cache_metadata = {
             "fingerprint": cache_fingerprint,
             "export_root": str(root_dir),
