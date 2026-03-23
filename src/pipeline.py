@@ -155,6 +155,7 @@ def build_comparison_tasks(
     normalize: bool,
     plot_unpaired: bool,
     task_counter: List[int],
+    html_dir: str = "",
 ) -> list:
     """
     Build ComparisonTask objects for one query spectrum.
@@ -206,6 +207,12 @@ def build_comparison_tasks(
         query_stem = shorten_stem(Path(query.source_file).stem)
         safe_filename = sanitize_filename(f"{base_sequence}_{query_stem}")
 
+        html_plot_path = ""
+        if html_dir and "html" in export_formats:
+            html_plot_path = str(
+                Path(html_dir) / folder_name / f"{safe_filename}.html"
+            )
+
         tasks.append(ComparisonTask(
             task_id=task_counter[0],
             task_type="single",
@@ -217,6 +224,7 @@ def build_comparison_tasks(
             png_dir=png_dir,
             svg_dir=svg_dir,
             pdf_dir=pdf_dir,
+            html_plot_path=html_plot_path,
             export_formats=export_formats,
             figsize=figsize,
             dpi=dpi,
@@ -248,6 +256,12 @@ def build_comparison_tasks(
             f"{base_sequence}_{query_stem}_vs_{ref_stem}"
         )
 
+        html_plot_path = ""
+        if html_dir and "html" in export_formats:
+            html_plot_path = str(
+                Path(html_dir) / folder_name / f"{safe_filename}.html"
+            )
+
         tasks.append(ComparisonTask(
             task_id=task_counter[0],
             task_type="mirror",
@@ -261,6 +275,7 @@ def build_comparison_tasks(
             png_dir=png_dir,
             svg_dir=svg_dir,
             pdf_dir=pdf_dir,
+            html_plot_path=html_plot_path,
             export_formats=export_formats,
             figsize=figsize,
             dpi=dpi,
@@ -345,10 +360,15 @@ def write_comparison_summary(
         if "ref_file" in summary_df.columns:
             summary_df.insert(1, "ref_short", summary_df["ref_file"].map(short_map))
 
+        # Core columns + any ims_ supplementary stats
+        from src.parallel_processor import _IMS_STAT_KEYS
+        ims_cols = [f"ims_{k}" for k in _IMS_STAT_KEYS]
+
         col_order = [
             "query_short", "ref_short", "peptide", "modification", "charge",
             "R2m", "R2b", "Cos", "Ent", "Dice", "Jacc", "ShR",
             "total_q", "total_r", "ann_q", "ann_r", "shared",
+            *ims_cols,
             "query_file", "ref_file",
         ]
         summary_df = summary_df[[c for c in col_order if c in summary_df.columns]]
