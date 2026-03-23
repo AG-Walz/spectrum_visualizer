@@ -6,7 +6,7 @@ Interactive page for comparing query spectra against reference spectra.
 import streamlit as st
 from pathlib import Path
 from collections import defaultdict
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 import json
 import logging
 
@@ -885,10 +885,12 @@ def render_analysis():
                 _stored_formats = ['png']
             export_formats = st.multiselect(
                 "Export Formats",
-                options=['png', 'svg', 'pdf'],
+                options=['png', 'svg', 'pdf', 'html'],
                 default=_stored_formats,
                 key=f"{STATE_PREFIX}_export_formats_input",
                 disabled=not save_plots,
+                help="HTML produces interactive Plotly plots (zoom/pan/hover). "
+                     "Requires internet to view (uses Plotly CDN).",
             )
             st.session_state[get_state_key('export_formats')] = export_formats if save_plots else []
 
@@ -1170,6 +1172,7 @@ def run_streaming_processing():
     png_dir = root_dir / "png"
     svg_dir = root_dir / "svg"
     pdf_dir = root_dir / "pdf"
+    html_dir = root_dir / "html"
 
     # Count expected reference vs query PSMs
     if use_parquet:
@@ -1407,6 +1410,7 @@ def run_streaming_processing():
             png_dir=str(png_dir),
             svg_dir=str(svg_dir),
             pdf_dir=str(pdf_dir),
+            html_dir=str(html_dir) if "html" in export_formats else "",
             export_formats=export_formats,
             figsize=_figsize,
             dpi=_dpi,
@@ -1673,8 +1677,13 @@ def display_search_results(results: dict):
         )
 
 
-def _render_plot_file(plot_file: Path, browse_fmt: str, peptide_dir_name: str) -> None:
-    """Render a single plot file with a download button."""
+def _render_plot_file(
+    plot_file: Path,
+    browse_fmt: str,
+    peptide_dir_name: str,
+    html_file: Optional[Path] = None,
+) -> None:
+    """Render a single plot file with a download button and optional HTML expander."""
     import base64
 
     col_plot, col_dl = st.columns([5, 1])
@@ -1704,6 +1713,13 @@ def _render_plot_file(plot_file: Path, browse_fmt: str, peptide_dir_name: str) -
         key=f"dl_{peptide_dir_name}_{plot_file.name}",
     )
 
+    # Interactive HTML plot (optional — only shown when HTML export was selected)
+    if html_file is not None and html_file.exists():
+        with st.expander("Interactive Plot", expanded=False):
+            import streamlit.components.v1 as components
+            html_content = html_file.read_text(encoding="utf-8")
+            components.html(html_content, height=520, scrolling=False)
+
 
 def _render_plot_gallery(root_dir: Path) -> None:
     """Display plots saved in root_dir organized by peptidoform then reference."""
@@ -1716,6 +1732,9 @@ def _render_plot_gallery(root_dir: Path) -> None:
 
     # Use SVG if available, PNG as fallback
     browse_dir, browse_fmt = existing_format_dirs[0]
+
+    # HTML dir for interactive plots (optional — only present when HTML format was selected)
+    html_base_dir = root_dir / "html"
 
     peptide_dirs = sorted([d for d in browse_dir.iterdir() if d.is_dir()])
     if not peptide_dirs:
@@ -1746,7 +1765,11 @@ def _render_plot_gallery(root_dir: Path) -> None:
                 )
                 with st.expander(f"{sub_label} ({len(ref_files)})", expanded=False):
                     for plot_file in ref_files[:20]:  # cap at 20 per group
-                        _render_plot_file(plot_file, browse_fmt, peptide_dir.name)
+                        html_file = None
+                        if html_base_dir.exists():
+                            html_candidate = html_base_dir / peptide_dir.name / f"{plot_file.stem}.html"
+                            html_file = html_candidate if html_candidate.exists() else None
+                        _render_plot_file(plot_file, browse_fmt, peptide_dir.name, html_file=html_file)
                     if len(ref_files) > 20:
                         st.caption(f"... and {len(ref_files) - 20} more")
 
