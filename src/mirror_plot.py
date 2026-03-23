@@ -398,6 +398,100 @@ def create_legend_figure(
     return fig
 
 
+def add_color_column(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Add a 'color' column to an annotated spectrum DataFrame.
+
+    Used to pre-compute per-peak colors before passing to pyopenms-viz for
+    single-spectrum interactive plots (annotation_color parameter).
+
+    Note: Do NOT pass annotation_color to pyopenms-viz mirror plots — a known
+    bug causes KeyError when mirror_spectrum=True and annotation_color is set.
+    """
+    df = df.copy()
+    df["color"] = df["annotation"].apply(get_ion_color)
+    return df
+
+
+def create_interactive_mirror_plot(
+    upper_spectrum: pd.DataFrame,
+    lower_spectrum: pd.DataFrame,
+    title: str = "Mirror Plot",
+    relative_intensity: bool = True,
+) -> "plotly.graph_objs.Figure":
+    """
+    Create an interactive Plotly mirror plot via pyopenms-viz ms_plotly backend.
+
+    Replaces the static Matplotlib mirror plot for interactive display in
+    Streamlit and HTML export.  The Matplotlib path (create_mirror_plot) is
+    kept for batch PNG/SVG/PDF export.
+
+    Args:
+        upper_spectrum: Query spectrum DataFrame (mz, intensity, annotation)
+        lower_spectrum: Reference spectrum DataFrame (mz, intensity, annotation)
+        title: Plot title
+        relative_intensity: Normalize intensities to [0, 1]
+
+    Returns:
+        Plotly Figure object (call fig.write_html() or st.plotly_chart())
+
+    IMPORTANT: Do NOT pass annotation_color with mirror_spectrum=True —
+    there is a known KeyError bug in pyopenms-viz 1.0.1 _get_annotations().
+    """
+    import pyopenms_viz as viz
+
+    upper_df = _ensure_annotation_col(upper_spectrum.copy())
+    lower_df = _ensure_annotation_col(lower_spectrum.copy())
+
+    return viz.plot_spectrum(
+        data=upper_df,
+        x="mz",
+        y="intensity",
+        backend="ms_plotly",
+        mirror_spectrum=True,
+        reference_spectrum=lower_df,
+        ion_annotation="annotation",
+        annotate_top_n_peaks="all",
+        relative_intensity=relative_intensity,
+        title=title,
+        show_plot=False,
+    )
+
+
+def create_interactive_single_plot(
+    spectrum: pd.DataFrame,
+    title: str = "Annotated Spectrum",
+    relative_intensity: bool = True,
+) -> "plotly.graph_objs.Figure":
+    """
+    Create an interactive Plotly single-spectrum plot via pyopenms-viz ms_plotly backend.
+
+    Args:
+        spectrum: Annotated spectrum DataFrame (mz, intensity, annotation)
+        title: Plot title
+        relative_intensity: Normalize intensities to [0, 1]
+
+    Returns:
+        Plotly Figure object
+    """
+    import pyopenms_viz as viz
+
+    df_viz = add_color_column(_ensure_annotation_col(spectrum.copy()))
+
+    return viz.plot_spectrum(
+        data=df_viz,
+        x="mz",
+        y="intensity",
+        backend="ms_plotly",
+        ion_annotation="annotation",
+        annotation_color="color",
+        annotate_top_n_peaks="all",
+        relative_intensity=relative_intensity,
+        title=title,
+        show_plot=False,
+    )
+
+
 def figure_to_bytes(fig, format: str = "png") -> bytes:
     """
     Convert a matplotlib figure to bytes.
