@@ -631,6 +631,91 @@ def render_settings():
     )
     st.session_state[get_state_key('workers')] = workers
 
+    # Koina AI prediction settings
+    st.markdown("---")
+    st.subheader("Koina AI Prediction")
+    st.caption(
+        "When enabled, spectra without an experimental reference are compared "
+        "against AI-predicted fragmentation patterns (intensity + m/z). "
+        "This provides additional validation beyond the theoretical spectrum."
+    )
+
+    from src.koina_prediction import (
+        KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
+        DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
+        get_koina_settings,
+    )
+
+    # Read defaults from settings.json
+    _k_defaults = get_koina_settings(_get_settings())
+
+    koina_enabled = st.checkbox(
+        "Enable Koina fallback reference",
+        value=st.session_state.get(get_state_key("koina_enabled"), _k_defaults["enabled"]),
+        key=f"{STATE_PREFIX}_koina_enabled_cb",
+        help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
+        disabled=not KOINA_AVAILABLE,
+    )
+    st.session_state[get_state_key("koina_enabled")] = koina_enabled
+
+    if not KOINA_AVAILABLE:
+        st.warning("koinapy is not installed. Install it to enable Koina predictions.")
+
+    if koina_enabled and KOINA_AVAILABLE:
+        k_col1, k_col2, k_col3 = st.columns(3)
+
+        with k_col1:
+            # Model selector
+            model_names = list(KOINA_MODELS.keys())
+            model_ids = list(KOINA_MODELS.values())
+            current_model_id = st.session_state.get(
+                get_state_key("koina_model"), _k_defaults["model"],
+            )
+            try:
+                default_idx = model_ids.index(current_model_id)
+            except ValueError:
+                default_idx = 0
+
+            selected_model_name = st.selectbox(
+                "Prediction Model",
+                options=model_names,
+                index=default_idx,
+                key=f"{STATE_PREFIX}_koina_model_select",
+                help="Deep-learning model for fragment ion prediction",
+            )
+            st.session_state[get_state_key("koina_model")] = KOINA_MODELS[selected_model_name]
+
+        with k_col2:
+            ce = st.number_input(
+                "Collision Energy (eV)",
+                min_value=1,
+                max_value=100,
+                value=st.session_state.get(
+                    get_state_key("koina_ce"), _k_defaults["collision_energy"],
+                ),
+                key=f"{STATE_PREFIX}_koina_ce_input",
+                help="Collision energy for fragmentation prediction",
+            )
+            st.session_state[get_state_key("koina_ce")] = ce
+
+        with k_col3:
+            current_inst = st.session_state.get(
+                get_state_key("koina_instrument"), _k_defaults["instrument_type"],
+            )
+            try:
+                inst_idx = INSTRUMENT_TYPES.index(current_inst)
+            except ValueError:
+                inst_idx = 0
+
+            instrument = st.selectbox(
+                "Instrument Type",
+                options=INSTRUMENT_TYPES,
+                index=inst_idx,
+                key=f"{STATE_PREFIX}_koina_inst_select",
+                help="Mass spectrometer type for prediction",
+            )
+            st.session_state[get_state_key("koina_instrument")] = instrument
+
     return True
 
 
@@ -1083,6 +1168,23 @@ def run_streaming_processing():
     if not ref_substring:
         plot_unpaired = True
 
+    # Koina AI prediction settings (fallback reference for unpaired spectra)
+    from src.koina_prediction import get_koina_settings
+    _koina_settings = get_koina_settings(_get_settings())
+    # UI overrides from session state (set in render_settings_tab)
+    _koina_settings["enabled"] = st.session_state.get(
+        get_state_key("koina_enabled"), _koina_settings["enabled"],
+    )
+    _koina_settings["model"] = st.session_state.get(
+        get_state_key("koina_model"), _koina_settings["model"],
+    )
+    _koina_settings["collision_energy"] = st.session_state.get(
+        get_state_key("koina_ce"), _koina_settings["collision_energy"],
+    )
+    _koina_settings["instrument_type"] = st.session_state.get(
+        get_state_key("koina_instrument"), _koina_settings["instrument_type"],
+    )
+
     # =========================================================================
     # Auto-cache detection: check for existing Parquet cache before loading
     # =========================================================================
@@ -1417,6 +1519,7 @@ def run_streaming_processing():
             normalize=normalize,
             plot_unpaired=plot_unpaired,
             task_counter=task_counter,
+            koina_settings=_koina_settings,
         )
         if not new_tasks and not ref_data and not plot_unpaired:
             add_log(f"  Skipped (no reference): {Path(query.source_file).stem}")

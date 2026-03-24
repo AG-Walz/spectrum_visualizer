@@ -137,6 +137,40 @@ def ensure_references_annotated(
 
 
 # ---------------------------------------------------------------------------
+# Koina fallback reference
+# ---------------------------------------------------------------------------
+
+def _predict_koina_reference(
+    query,
+    base_sequence: str,
+    modification_key: str,
+    koina_settings: dict,
+) -> Optional["pd.DataFrame"]:
+    """
+    Generate a Koina-predicted spectrum to use as a mirror-plot reference.
+
+    Returns an annotated DataFrame [mz, intensity, annotation] or None on failure.
+    Called from build_comparison_tasks() when no experimental reference exists.
+    """
+    from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
+
+    if not KOINA_AVAILABLE:
+        return None
+
+    # Reconstruct full peptidoform string for Koina
+    peptidoform = getattr(query, "peptidoform", base_sequence)
+    charge = query.precursor_charge
+
+    return predict_koina_spectrum(
+        peptidoform=str(peptidoform),
+        charge=charge,
+        model=koina_settings.get("model", "ms2pip_timsTOF2024"),
+        collision_energy=koina_settings.get("collision_energy", 35),
+        instrument_type=koina_settings.get("instrument_type", "TIMSTOF"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # Task building
 # ---------------------------------------------------------------------------
 
@@ -156,13 +190,18 @@ def build_comparison_tasks(
     plot_unpaired: bool,
     task_counter: List[int],
     html_dir: str = "",
+    koina_settings: Optional[dict] = None,
 ) -> list:
     """
     Build ComparisonTask objects for one query spectrum.
 
     Returns a list of ComparisonTask instances:
-      - Empty list if the query has no references and plot_unpaired is False
-      - One "single" task if no references exist and plot_unpaired is True
+      - Empty list if the query has no references, Koina is disabled, and
+        plot_unpaired is False
+      - One "mirror" task with Koina-predicted reference if no experimental
+        reference exists and Koina is enabled
+      - One "single" task if no references exist, Koina is disabled, and
+        plot_unpaired is True
       - One "mirror" task per reference spectrum otherwise
 
     Args:
@@ -180,6 +219,10 @@ def build_comparison_tasks(
         normalize:       Normalize intensities
         plot_unpaired:   Generate single-spectrum plots when no reference
         task_counter:    Single-element list [int] used as a mutable counter
+        html_dir:        Directory for interactive HTML exports
+        koina_settings:  Optional dict with keys: enabled, model, collision_energy,
+                         instrument_type. When enabled and no experimental reference
+                         exists, a Koina-predicted spectrum is used as reference.
     """
     from src.parallel_processor import ComparisonTask
     from src.export import sanitize_filename, shorten_stem
@@ -195,6 +238,65 @@ def build_comparison_tasks(
         plot_title = base_sequence
 
     if not ref_data:
+        # --- Koina fallback: predict a reference spectrum ---
+        koina_ref_df = None
+        if koina_settings and koina_settings.get("enabled"):
+            koina_ref_df = _predict_koina_reference(
+                query, base_sequence, modification_key, koina_settings,
+            )
+
+        if koina_ref_df is not None:
+            # Mirror task with Koina-predicted reference
+            query_rt = f"{query.rt:.1f}" if query.rt else "N/A"
+            query_label = (
+                f"Query: {Path(query.source_file).stem}"
+                f"  (RT: {query_rt}, ID: {query.spectrum_id})"
+            )
+            model_name = koina_settings.get("model", "Koina")
+            ref_label = (
+                f"Koina: {model_name}"
+                f"  (CE={koina_settings.get('collision_energy', 35)}, "
+                f"{koina_settings.get('instrument_type', 'TIMSTOF')})"
+            )
+            query_stem = shorten_stem(Path(query.source_file).stem)
+            safe_filename = sanitize_filename(
+                f"{base_sequence}_{query_stem}_vs_koina"
+            )
+
+            html_plot_path = ""
+            if html_dir and "html" in export_formats:
+                html_plot_path = str(
+                    Path(html_dir) / folder_name / f"{safe_filename}.html"
+                )
+
+            tasks.append(ComparisonTask(
+                task_id=task_counter[0],
+                task_type="mirror",
+                query_df=query_df,
+                ref_df=koina_ref_df,
+                query_label=query_label,
+                ref_label=ref_label,
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=png_dir,
+                svg_dir=svg_dir,
+                pdf_dir=pdf_dir,
+                html_plot_path=html_plot_path,
+                export_formats=export_formats,
+                figsize=figsize,
+                dpi=dpi,
+                normalize=normalize,
+                query_file=Path(query.source_file).name,
+                ref_file=f"koina:{model_name}",
+                peptide=base_sequence,
+                modification=modification_key or "",
+                charge=query.precursor_charge,
+            ))
+            task_counter[0] += 1
+            return tasks
+
+        # No Koina reference available — fall back to single-spectrum plot
         if not plot_unpaired:
             return tasks
 

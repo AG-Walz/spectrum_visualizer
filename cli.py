@@ -91,6 +91,14 @@ class CLIConfig:
     tmpfs_path: str = "/dev/shm"
     tmpfs_ram_fraction: float = 0.40
 
+    # Koina AI prediction fallback
+    koina_settings: Dict = field(default_factory=lambda: {
+        "enabled": True,
+        "model": "ms2pip_timsTOF2024",
+        "collision_energy": 35,
+        "instrument_type": "TIMSTOF",
+    })
+
     # Verbosity
     verbose: bool = False
     quiet: bool = False
@@ -257,6 +265,12 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         tmpfs_staging=_get_nested(settings, "performance", "tmpfs_staging", default=True),
         tmpfs_path=_get_nested(settings, "performance", "tmpfs_path", default="/dev/shm"),
         tmpfs_ram_fraction=_get_nested(settings, "performance", "tmpfs_ram_fraction", default=0.40),
+        koina_settings={
+            "enabled": _get_nested(settings, "koina", "enabled", default=True),
+            "model": _get_nested(settings, "koina", "model", default="ms2pip_timsTOF2024"),
+            "collision_energy": _get_nested(settings, "koina", "collision_energy", default=35),
+            "instrument_type": _get_nested(settings, "koina", "instrument_type", default="TIMSTOF"),
+        },
     )
 
     # Layer 2: YAML config file
@@ -367,6 +381,25 @@ def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
         cfg.verbose = True
     if cli_args.quiet:
         cfg.quiet = True
+
+    # Koina overrides — YAML layer
+    koina_yaml = yaml_cfg.get("koina", {})
+    for yaml_key, cfg_key in [
+        ("enabled", "enabled"), ("model", "model"),
+        ("collision_energy", "collision_energy"), ("instrument_type", "instrument_type"),
+    ]:
+        if yaml_key in koina_yaml:
+            cfg.koina_settings[cfg_key] = koina_yaml[yaml_key]
+
+    # Koina overrides — CLI layer
+    if getattr(cli_args, "no_koina", False):
+        cfg.koina_settings["enabled"] = False
+    if getattr(cli_args, "koina_model", None):
+        cfg.koina_settings["model"] = cli_args.koina_model
+    if getattr(cli_args, "koina_ce", None) is not None:
+        cfg.koina_settings["collision_energy"] = cli_args.koina_ce
+    if getattr(cli_args, "koina_instrument", None):
+        cfg.koina_settings["instrument_type"] = cli_args.koina_instrument
 
     # Expand directory entries (after all three layers are merged so the
     # recursive flag is already at its final value).
@@ -851,6 +884,7 @@ def run_pipeline(cfg: CLIConfig) -> int:
             normalize=cfg.normalize,
             plot_unpaired=cfg.plot_unpaired,
             task_counter=task_counter,
+            koina_settings=cfg.koina_settings,
         )
         if not new_tasks and not ref_data and not cfg.plot_unpaired:
             log_debug(f"  Skipped (no reference): {Path(query.source_file).stem}", cfg.verbose)
@@ -1077,6 +1111,16 @@ examples:
                         help="Number of parallel worker processes for plot generation (default: 4)")
     parser.add_argument("--no-tmpfs", action="store_true",
                         help="Disable RAM-backed tmpfs staging for plot writes")
+
+    # Koina AI prediction
+    parser.add_argument("--no-koina", action="store_true",
+                        help="Disable Koina AI fallback reference when no experimental reference exists")
+    parser.add_argument("--koina-model", type=str, metavar="MODEL",
+                        help="Koina model ID (e.g. ms2pip_timsTOF2024, Prosit_2019_intensity)")
+    parser.add_argument("--koina-ce", type=int, metavar="CE",
+                        help="Collision energy for Koina prediction (default: 35)")
+    parser.add_argument("--koina-instrument", type=str, metavar="INST",
+                        help="Instrument type for Koina prediction (QE, LUMOS, TIMSTOF, SCIEXTOF)")
 
     # Verbosity
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug output")

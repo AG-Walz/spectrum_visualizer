@@ -13,7 +13,20 @@
   },
   "models": {
     "default": "ms2pip_timsTOF2024",
-    "available": ["ms2pip_timsTOF2024", "Prosit_2019_intensity"]
+    "available": [
+      "ms2pip_timsTOF2024", "ms2pip_HCD2021", "ms2pip_Immuno_HCD", "ms2pip_TTOF5600",
+      "ms2pip_CID_TMT", "ms2pip_iTRAQphospho",
+      "Prosit_2019_intensity", "Prosit_2020_intensity_HCD", "Prosit_2020_intensity_CID",
+      "Prosit_2020_intensity_TMT", "Prosit_2023_intensity_timsTOF",
+      "AlphaPept_ms2_generic",
+      "UniSpec", "PredFull"
+    ]
+  },
+  "koina": {
+    "enabled": true,
+    "model": "ms2pip_timsTOF2024",
+    "collision_energy": 35,
+    "instrument_type": "TIMSTOF"
   },
   "ion_types": {
     "default": ["b", "y"],
