@@ -179,15 +179,21 @@ def _list_subdirectories(path: str) -> list:
 
 
 @st.cache_data(ttl=10)
-def _list_files(path: str, extensions: tuple, recursive: bool = False) -> list:
-    """Return sorted list of matching file paths. Cached for 10 s to avoid per-rerun I/O."""
+def _list_files(path: str, extensions: tuple, recursive: bool = False, _max_files: int = 5000) -> list:
+    """Return sorted list of matching file paths. Cached for 10 s to avoid per-rerun I/O.
+
+    In recursive mode, stops after *_max_files* to avoid freezing on huge trees.
+    """
     try:
         files = []
         for ext in extensions:
-            if recursive:
-                files.extend(Path(path).rglob(f"*{ext}"))
-            else:
-                files.extend(Path(path).glob(f"*{ext}"))
+            gen = Path(path).rglob(f"*{ext}") if recursive else Path(path).glob(f"*{ext}")
+            for f in gen:
+                files.append(f)
+                if len(files) >= _max_files:
+                    break
+            if len(files) >= _max_files:
+                break
         return sorted(str(f) for f in files)
     except (PermissionError, OSError):
         return []
@@ -200,7 +206,6 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     nav_key = f"{key_prefix}_nav_to"  # Pending navigation target
     select_all_key = f"{key_prefix}_select_all"
     recursive_key = f"{key_prefix}_recursive"
-    recursive_pref_key = f"{key_prefix}_recursive_pref"  # Non-widget backup survives mid-run reruns
 
     # Initialize directory state from the caller-supplied default (reads settings.json)
     if dir_key not in st.session_state:
@@ -210,13 +215,13 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     if nav_key in st.session_state and st.session_state[nav_key]:
         st.session_state[dir_key] = st.session_state[nav_key]
         st.session_state[nav_key] = None
-        # Reset select all when changing directory
+        # Reset select all and recursive when changing directory
         if select_all_key in st.session_state:
             del st.session_state[select_all_key]
-        # Restore recursive preference saved before the mid-run rerun (Streamlit clears widget
-        # keys for widgets that haven't rendered yet when st.rerun() is called mid-render)
-        if recursive_pref_key in st.session_state:
-            st.session_state[recursive_key] = st.session_state.pop(recursive_pref_key)
+        # Always reset recursive to off — prevents rglob() from scanning a
+        # potentially huge new directory tree and freezing the app.
+        if recursive_key in st.session_state:
+            del st.session_state[recursive_key]
 
     current_dir = st.session_state[dir_key]
 
@@ -233,16 +238,16 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         # Handle manual path entry
         if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
             st.session_state[dir_key] = new_path
-            st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
             if select_all_key in st.session_state:
                 del st.session_state[select_all_key]
+            if recursive_key in st.session_state:
+                del st.session_state[recursive_key]
             st.rerun()
 
     with col2:
         parent = str(Path(current_dir).parent)
         if st.button("⬆️", key=f"{key_prefix}_up_btn", help="Parent directory", disabled=(parent == current_dir)):
             st.session_state[nav_key] = parent
-            st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
             st.rerun()
 
     # Show clickable subdirectories
@@ -268,7 +273,6 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
                                 width="stretch"
                             ):
                                 st.session_state[nav_key] = folder_path
-                                st.session_state[recursive_pref_key] = st.session_state.get(recursive_key, False)
                                 st.rerun()
             if len(subdirs) > max_folders:
                 st.caption(f"... and {len(subdirs) - max_folders} more folders")
@@ -369,12 +373,12 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     # Display accumulated selections from all folders
     all_selected = st.session_state.get(get_state_key(state_key), [])
     if all_selected:
-        # Group by directory
+        # Group by directory (skip existence check — files were valid when selected
+        # and checking on every rerun is slow on network mounts)
         grouped = defaultdict(list)
         for path in all_selected:
             p = Path(path)
-            if p.exists():
-                grouped[str(p.parent)].append(p.name)
+            grouped[str(p.parent)].append(p.name)
 
         if grouped:
             st.markdown("---")

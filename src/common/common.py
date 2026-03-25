@@ -8,7 +8,6 @@ Provides page_setup(), render_sidebar(), workspace management, and UI helpers.
 import os
 import sys
 import json
-import time
 import shutil
 
 import pandas as pd
@@ -250,7 +249,6 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
                         path.mkdir(parents=True, exist_ok=True)
                         st.session_state.workspace = path
                         st.query_params.workspace = create_remove
-                        time.sleep(1)
                         st.rerun()
                     else:
                         st.warning("Please enter a valid workspace name.")
