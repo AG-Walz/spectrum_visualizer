@@ -382,18 +382,36 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
 
         if grouped:
             st.markdown("---")
-            with st.expander(f"📂 All selected files ({len(all_selected)} total)", expanded=False):
-                # Clear all button
-                if st.button("🗑️ Clear all selections", key=f"{key_prefix}_clear_all"):
+            # Always-visible summary with clear button
+            summary_col1, summary_col2 = st.columns([5, 1])
+            with summary_col1:
+                folder_summary = ", ".join(
+                    f"{Path(f).name}/ ({len(fls)})" for f, fls in sorted(grouped.items())
+                )
+                st.caption(f"**{len(all_selected)} file(s)** from: {folder_summary}")
+            with summary_col2:
+                if st.button("Clear all", key=f"{key_prefix}_clear_all"):
                     st.session_state[get_state_key(state_key)] = []
                     if select_all_key in st.session_state:
                         del st.session_state[select_all_key]
                     st.rerun()
 
-                # Show grouped files with remove buttons
+            with st.expander("Manage selections", expanded=False):
+                # Show grouped files with per-folder and per-file remove buttons
                 remove_idx = 0
                 for folder, files in sorted(grouped.items()):
-                    st.caption(f"**{folder}/** ({len(files)} files)")
+                    hdr_col1, hdr_col2 = st.columns([5, 1])
+                    with hdr_col1:
+                        st.caption(f"**{folder}/** ({len(files)} files)")
+                    with hdr_col2:
+                        if st.button("Remove folder", key=f"{key_prefix}_rmdir_{remove_idx}",
+                                     help=f"Remove all {len(files)} files from {Path(folder).name}/"):
+                            folder_paths = {str(Path(folder) / fn) for fn in files}
+                            updated = [p for p in all_selected if p not in folder_paths]
+                            st.session_state[get_state_key(state_key)] = updated
+                            if select_all_key in st.session_state:
+                                del st.session_state[select_all_key]
+                            st.rerun()
                     for fname in sorted(files):
                         col1, col2 = st.columns([6, 1])
                         with col1:

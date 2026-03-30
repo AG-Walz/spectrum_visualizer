@@ -223,9 +223,9 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
 
                 # Get all available workspaces
                 workspaces_dir.mkdir(parents=True, exist_ok=True)
-                options = [
+                options = sorted(
                     f.name for f in workspaces_dir.iterdir() if f.is_dir()
-                ]
+                )
                 if not options:
                     options = ["default"]
 
@@ -240,25 +240,41 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
                     key="chosen-workspace",
                 )
 
-                # Create or remove workspaces
-                create_remove = st.text_input("create/remove workspace", "").strip()
-                path = Path(workspaces_dir, create_remove)
-
+                # --- Create workspace ---
+                new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
                 if st.button("**Create Workspace**"):
-                    if create_remove and is_safe_workspace_name(create_remove):
-                        path.mkdir(parents=True, exist_ok=True)
-                        st.session_state.workspace = path
-                        st.query_params.workspace = create_remove
+                    if new_ws_name and is_safe_workspace_name(new_ws_name):
+                        new_path = Path(workspaces_dir, new_ws_name)
+                        new_path.mkdir(parents=True, exist_ok=True)
+                        st.session_state.workspace = new_path
+                        st.query_params.workspace = new_ws_name
                         st.rerun()
                     else:
                         st.warning("Please enter a valid workspace name.")
 
-                if st.button("Delete Workspace"):
-                    if path.exists() and create_remove != "default":
-                        shutil.rmtree(path)
-                        st.session_state.workspace = Path(workspaces_dir, "default")
-                        st.query_params.workspace = "default"
-                        st.rerun()
+                # --- Delete current workspace ---
+                if current_workspace != "default":
+                    confirm_key = "_confirm_delete_workspace"
+                    if st.session_state.get(confirm_key):
+                        st.warning(f"Delete workspace **{current_workspace}** and all its data?")
+                        yes_col, no_col = st.columns(2)
+                        with yes_col:
+                            if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
+                                ws_path = Path(workspaces_dir, current_workspace)
+                                if ws_path.exists():
+                                    shutil.rmtree(ws_path)
+                                st.session_state.workspace = Path(workspaces_dir, "default")
+                                st.query_params.workspace = "default"
+                                del st.session_state[confirm_key]
+                                st.rerun()
+                        with no_col:
+                            if st.button("Cancel", key="ws-confirm-no"):
+                                del st.session_state[confirm_key]
+                                st.rerun()
+                    else:
+                        if st.button("Delete this workspace"):
+                            st.session_state[confirm_key] = True
+                            st.rerun()
 
         # Settings expander
         with st.expander("**Settings**"):

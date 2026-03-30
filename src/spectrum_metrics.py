@@ -91,6 +91,8 @@ def _get_matching_intensities(
         (query_intensities, ref_intensities, shared_labels)
         Arrays may be empty if no overlap.
     """
+    if "is_annotated" not in query_df.columns or "is_annotated" not in ref_df.columns:
+        return np.array([]), np.array([]), []
     q_ann = query_df[query_df["is_annotated"]].copy()
     r_ann = ref_df[ref_df["is_annotated"]].copy()
 

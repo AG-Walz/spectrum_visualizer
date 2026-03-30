@@ -131,6 +131,11 @@ def predict_koina_spectrum(
             "mz": predictions["mz"].astype(float),
             "intensity": predictions["intensities"].astype(float),
             "annotation": annotations,
+            "charge": [int(a.split("+")[-1]) if "+" in a else 1
+                       for a in annotations],
+            "is_annotated": [True] * len(annotations),
+            "ion_type": [a[0:1] if a and a[0:1] in ("b", "y", "a", "c", "x", "z") else "other"
+                         for a in annotations],
         })
 
         # Drop zero-intensity predictions (noise)

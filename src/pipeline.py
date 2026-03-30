@@ -510,11 +510,15 @@ def write_comparison_summary(
         # Summary plots (optional)
         try:
             from src.summary_plots import generate_all_summary_plots
+            # Always include PNG for in-app display even if user only selected SVG
+            plot_formats = list(export_formats)
+            if "png" not in plot_formats:
+                plot_formats.append("png")
             summary_plot_paths = generate_all_summary_plots(
                 source=summary_df,
                 output_dir=str(root_dir),
                 metric="R² binned",
-                formats=export_formats,
+                formats=plot_formats,
                 dpi=dpi,
                 title_prefix=project_name,
             )
