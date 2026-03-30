@@ -127,12 +127,26 @@ def predict_koina_spectrum(
             .str.replace(r"^b'|'$", "", regex=True)
         )
 
+        # Parse charge from Koina format (e.g. "y3+1" → charge 1)
+        charges = [int(a.split("+")[-1]) if "+" in a else 1
+                   for a in annotations]
+
+        # Convert Koina annotations to PyOpenMS TSG format:
+        #   y3+1 → y3   (singly charged: no suffix)
+        #   b3+2 → b3++ (doubly charged: ++)
+        #   y5+3 → y5+++ etc.
+        annotations = [
+            a.rsplit("+", 1)[0] + "+" * (c - 1) if "+" in a and c > 1
+            else a.rsplit("+", 1)[0] if "+" in a
+            else a
+            for a, c in zip(annotations, charges)
+        ]
+
         result = pd.DataFrame({
             "mz": predictions["mz"].astype(float),
             "intensity": predictions["intensities"].astype(float),
             "annotation": annotations,
-            "charge": [int(a.split("+")[-1]) if "+" in a else 1
-                       for a in annotations],
+            "charge": charges,
             "is_annotated": [True] * len(annotations),
             "ion_type": [a[0:1] if a and a[0:1] in ("b", "y", "a", "c", "x", "z") else "other"
                          for a in annotations],
