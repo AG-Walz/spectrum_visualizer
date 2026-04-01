@@ -24,6 +24,16 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks tests requiring real test data files")
 
 
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip @pytest.mark.integration tests when test data is unavailable."""
+    if IDXML_PATH.exists():
+        return
+    skip_marker = pytest.mark.skip(reason=f"Test data not found: {SMALL_DATASET}")
+    for item in items:
+        if "integration" in item.keywords:
+            item.add_marker(skip_marker)
+
+
 @pytest.fixture
 def idxml_path():
     return str(IDXML_PATH)
@@ -31,7 +41,7 @@ def idxml_path():
 
 @pytest.fixture
 def mzml_dir():
-    return Path("/mnt/volume/nacho/data/ProCa_runs/small_dataset/")
+    return MZML_DIR
 
 
 @pytest.fixture

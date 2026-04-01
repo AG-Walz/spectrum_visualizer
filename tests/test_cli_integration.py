@@ -5,19 +5,18 @@ import sys
 from pathlib import Path
 
 CLI_PATH = Path(__file__).parent.parent / "cli.py"
-PYTHON = "/mnt/volume/bin/miniconda/envs/msinsight/bin/python"
 
 
 @pytest.mark.integration
 class TestCLI:
     def test_help_exits_zero(self):
-        result = subprocess.run([PYTHON, str(CLI_PATH), "--help"],
+        result = subprocess.run([sys.executable, str(CLI_PATH), "--help"],
                                 capture_output=True, text=True, timeout=30)
         assert result.returncode == 0
         assert "MSInsight CLI" in result.stdout
 
     def test_missing_config_exits_two(self):
-        result = subprocess.run([PYTHON, str(CLI_PATH), "-c", "/nonexistent.yaml"],
+        result = subprocess.run([sys.executable, str(CLI_PATH), "-c", "/nonexistent.yaml"],
                                 capture_output=True, text=True, timeout=30)
         assert result.returncode == 2
 
@@ -27,7 +26,7 @@ class TestCLI:
             pytest.skip("config_example.yaml not found")
 
         result = subprocess.run(
-            [PYTHON, str(CLI_PATH), "-c", str(config),
+            [sys.executable, str(CLI_PATH), "-c", str(config),
              "--export-dir", str(tmp_path), "-q"],
             capture_output=True, text=True, timeout=120,
         )
