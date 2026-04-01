@@ -16,20 +16,14 @@ from src.path_utils import deduplicate_paths, disambiguate_paths, resolve_mzml_p
 # ---------------------------------------------------------------------------
 
 class TestDeduplicatePaths:
-    def test_removes_exact_duplicates(self):
-        result = deduplicate_paths(["/a", "/a", "/b"])
-        assert result == ["/a", "/b"]
-
-    def test_preserves_order(self):
-        result = deduplicate_paths(["/b", "/a", "/b", "/c", "/a"])
-        assert result == ["/b", "/a", "/c"]
-
-    def test_empty_list(self):
-        assert deduplicate_paths([]) == []
-
-    def test_no_duplicates_unchanged(self):
-        paths = ["/x/a.mzML", "/y/b.mzML", "/z/c.mzML"]
-        assert deduplicate_paths(paths) == paths
+    @pytest.mark.parametrize("input_paths, expected", [
+        (["/a", "/a", "/b"], ["/a", "/b"]),
+        (["/b", "/a", "/b", "/c", "/a"], ["/b", "/a", "/c"]),
+        ([], []),
+        (["/x/a.mzML", "/y/b.mzML", "/z/c.mzML"], ["/x/a.mzML", "/y/b.mzML", "/z/c.mzML"]),
+    ])
+    def test_deduplication(self, input_paths, expected):
+        assert deduplicate_paths(input_paths) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -60,7 +54,7 @@ class TestDisambiguatePaths:
         assert result == {"/some/dir/file.mzML": "file.mzML"}
 
     def test_three_levels_deep(self):
-        # All three have the same filename and same parent — need grandparent to disambiguate
+        # All three have the same filename and same parent -- need grandparent to disambiguate
         paths = ["/A/shared/data.mzML", "/B/shared/data.mzML", "/C/shared/data.mzML"]
         result = disambiguate_paths(paths)
         # All display names must be unique

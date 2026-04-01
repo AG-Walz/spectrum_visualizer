@@ -1,156 +1,273 @@
 """
 Mirror plot generation for MS/MS spectrum comparison.
 
-Creates publication-ready mirror plots using Matplotlib.
+Provides both static Matplotlib mirror plots (for PNG/SVG/PDF export)
+and interactive Plotly mirror plots (for Streamlit display and HTML export).
 """
 import logging
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
-import matplotlib
-matplotlib.use('Agg')
-from matplotlib.figure import Figure
-
 import numpy as np
 import pandas as pd
 
+from src.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
+from src.common.spectrum_utils import (  # noqa: F401
+    ensure_annotation_col as _ensure_annotation_col,
+    normalize_intensities as _normalize_intensities,
+)
+
 logger = logging.getLogger(__name__)
 
-# Default ion colors
-ION_COLORS = {
-    "a": "#FFCC00",
-    "b": "#0066CC",
-    "c": "#00CC66",
-    "x": "#CC6600",
-    "y": "#CC0000",
-    "z": "#6600CC",
-    "precursor": "#8B008B",
-    "immonium": "#00CED1",
-    "unannotated": "#AAAAAA"
-}
 
+# ---------------------------------------------------------------------------
+# Shared helpers (used by both Plotly and Matplotlib plot functions)
+# ---------------------------------------------------------------------------
 
-def get_ion_color(annotation: str, color_map: Dict[str, str] = None) -> str:
-    """
-    Get color for an ion annotation.
-
-    Args:
-        annotation: Ion annotation string
-        color_map: Optional custom color mapping
-
-    Returns:
-        Hex color string
-    """
+def _prepare_spectrum_data(df: pd.DataFrame, normalize: bool = True,
+                           color_map: Dict[str, str] = None) -> pd.DataFrame:
+    """Prepare spectrum DataFrame for plotting (shared by Plotly and Matplotlib)."""
+    df = _ensure_annotation_col(df.copy())
+    if normalize:
+        df = _normalize_intensities(df)
     if color_map is None:
         color_map = ION_COLORS
-
-    if not annotation or annotation == "unannotated":
-        return color_map.get("unannotated", "#AAAAAA")
-
-    annotation_lower = annotation.lower()
-
-    # Check for precursor
-    if annotation_lower.startswith("[m") or "precursor" in annotation_lower:
-        return color_map.get("precursor", "#8B008B")
-
-    # Check for standard ions
-    for ion in ["a", "b", "c", "x", "y", "z"]:
-        if annotation_lower.startswith(ion):
-            return color_map.get(ion, "#666666")
-
-    # Check for immonium
-    if "immonium" in annotation_lower:
-        return color_map.get("immonium", "#00CED1")
-
-    return color_map.get("unannotated", "#AAAAAA")
-
-
-def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
-    """Return df with an 'annotation' column, adding 'unannotated' if absent."""
-    if "annotation" not in df.columns:
-        df = df.copy()
-        df["annotation"] = "unannotated"
+    df["_color"] = df["annotation"].map(lambda a: get_ion_color(a, color_map))
     return df
 
 
-def _normalize_intensities(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize df['intensity'] to [0, 1] in-place and return df."""
-    max_int = df["intensity"].max()
-    if max_int > 0:
-        df["intensity"] = df["intensity"] / max_int
-    return df
+def _get_annotated_mask(group: pd.DataFrame) -> pd.Series:
+    """Return boolean mask for peaks that have a real annotation (not '' or 'unannotated')."""
+    return group["annotation"].ne("unannotated") & group["annotation"].ne("")
 
 
-def _apply_common_style(ax, fig, title: str, normalize: bool) -> None:
-    """Apply shared spectrum-plot axis styling."""
-    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
-                  fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
-    ax.tick_params(axis="y", which="both", length=4)
-    fig.tight_layout()
-
-
-def _plot_peaks_vectorized(
-    ax,
-    df: pd.DataFrame,
-    sign: float,
-    ann_offset: float,
-    color_map: Dict[str, str],
-    show_annotations: bool,
-    annotation_fontsize: int,
-    va_label: str,
-):
-    """
-    Plot all peaks in df with a single vlines() call per color group.
+def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float,
+                                label: str, show_annotations: bool = True):
+    """Add Plotly scatter traces and annotation labels for one spectrum.
 
     Args:
-        ax: matplotlib Axes
-        df: DataFrame with mz, intensity, annotation columns (intensities already signed/normalized)
-        sign: +1 for upper (query), -1 for lower (reference)
-        ann_offset: vertical offset for annotation text
-        color_map: ion color mapping
-        show_annotations: whether to render text labels
-        annotation_fontsize: font size for labels
-        va_label: 'bottom' (upper) or 'top' (lower)
+        fig: plotly Figure to add traces to.
+        df: prepared DataFrame (must already have '_color' column).
+        y_multiplier: +1 for upper/single spectrum, -1 for lower (mirror).
+        label: hover label prefix (e.g. "Query", "Reference", or "").
+        show_annotations: whether to add text annotations on peaks.
+    """
+    import plotly.graph_objects as go
+
+    hover_prefix = f"{label}<br>" if label else ""
+
+    for color, group in df.groupby("_color", sort=False):
+        ann_mask = _get_annotated_mask(group)
+
+        for _, peak in group.iterrows():
+            fig.add_trace(go.Scatter(
+                x=[peak["mz"], peak["mz"]],
+                y=[0, y_multiplier * peak["intensity"]],
+                mode="lines",
+                line=dict(color=color, width=1.5),
+                hovertext=f"{hover_prefix}m/z: {peak['mz']:.4f}<br>"
+                          f"Int: {peak['intensity']:.4f}<br>{peak['annotation']}",
+                hoverinfo="text",
+                showlegend=False,
+            ))
+
+        if show_annotations:
+            yshift = 10 if y_multiplier > 0 else -10
+            for _, peak in group[ann_mask].iterrows():
+                fig.add_annotation(
+                    x=peak["mz"],
+                    y=y_multiplier * peak["intensity"],
+                    text=peak["annotation"],
+                    showarrow=False,
+                    font=dict(size=8, color=color),
+                    yshift=yshift,
+                )
+
+
+def _add_matplotlib_spectrum(ax, df: pd.DataFrame, y_multiplier: float,
+                             show_annotations: bool = True,
+                             annotation_fontsize: int = 7,
+                             ann_offset: float = 0.03):
+    """Add matplotlib vlines and annotation text for one spectrum.
+
+    Args:
+        ax: matplotlib Axes to draw on.
+        df: prepared DataFrame (must already have '_color' column).
+        y_multiplier: +1 for upper/single, -1 for lower (mirror).
+        show_annotations: whether to add text annotations on peaks.
+        annotation_fontsize: font size for annotations.
+        ann_offset: vertical offset for annotation text.
     """
     if df.empty:
         return
 
-    # Compute color per peak (vectorized via map)
-    df = df.copy()
-    df["_color"] = df["annotation"].map(lambda a: get_ion_color(a, color_map))
-
-    # Single vlines() call per unique color — much faster than one call per peak
     for color, group in df.groupby("_color", sort=False):
         ax.vlines(
-            group["mz"].values,
-            0,
-            group["intensity"].values,
-            colors=color,
-            linewidth=1.5,
-            alpha=0.8,
+            group["mz"].values, 0, group["intensity"].values,
+            colors=color, linewidth=1.5, alpha=0.8,
         )
 
-    # Annotation text — only annotated peaks (typically few)
     if show_annotations:
-        ann_mask = df["annotation"].ne("unannotated") & df["annotation"].ne("")
+        sign = 1 if y_multiplier > 0 else -1
+        va_label = "bottom" if y_multiplier > 0 else "top"
+        ann_mask = _get_annotated_mask(df)
         for _, peak in df[ann_mask].iterrows():
             y_pos = peak["intensity"] + sign * ann_offset
-            ax.text(
-                peak["mz"],
-                y_pos,
-                peak["annotation"],
-                fontsize=annotation_fontsize,
-                color=peak["_color"],
-                ha="center",
-                va=va_label,
-                rotation=0,
-            )
+            ax.text(peak["mz"], y_pos, peak["annotation"],
+                    fontsize=annotation_fontsize, color=peak["_color"],
+                    ha="center", va=va_label, rotation=0)
 
+
+# ---------------------------------------------------------------------------
+# Plotly interactive plots
+# ---------------------------------------------------------------------------
+
+def create_plotly_mirror_plot(
+    upper_spectrum: pd.DataFrame,
+    lower_spectrum: pd.DataFrame,
+    title: str = "Mirror Plot",
+    upper_label: str = "Query",
+    lower_label: str = "Reference",
+    color_map: Dict[str, str] = None,
+    metrics_text: Optional[str] = None,
+    normalize: bool = True,
+    height: int = 600,
+):
+    """
+    Create an interactive Plotly mirror plot.
+
+    Args:
+        upper_spectrum: DataFrame with columns [mz, intensity, annotation]
+        lower_spectrum: DataFrame with columns [mz, intensity, annotation]
+        title: Plot title
+        upper_label: Label for upper spectrum
+        lower_label: Label for lower spectrum
+        color_map: Custom ion color mapping
+        metrics_text: Metrics string for annotation overlay
+        normalize: Normalize intensities to [0, 1]
+        height: Plot height in pixels
+
+    Returns:
+        plotly.graph_objs.Figure
+    """
+    import plotly.graph_objects as go
+
+    if color_map is None:
+        color_map = ION_COLORS
+
+    fig = go.Figure()
+
+    # --- Upper spectrum (query, positive) ---
+    if not upper_spectrum.empty:
+        upper_df = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        _add_plotly_spectrum_traces(fig, upper_df, y_multiplier=1.0,
+                                   label=upper_label, show_annotations=True)
+
+    # --- Lower spectrum (reference, negative) ---
+    if not lower_spectrum.empty:
+        lower_df = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
+        _add_plotly_spectrum_traces(fig, lower_df, y_multiplier=-1.0,
+                                   label=lower_label, show_annotations=True)
+
+    # Center line
+    all_mz = []
+    if not upper_spectrum.empty:
+        all_mz.extend(upper_spectrum["mz"].tolist())
+    if not lower_spectrum.empty:
+        all_mz.extend(lower_spectrum["mz"].tolist())
+
+    if all_mz:
+        mz_min = min(all_mz) - 50
+        mz_max = max(all_mz) + 50
+        fig.add_shape(type="line", x0=mz_min, x1=mz_max, y0=0, y1=0,
+                      line=dict(color="black", width=1, dash="solid"))
+
+    # Layout
+    y_range = [-1.25, 1.25] if normalize else None
+    fig.update_layout(
+        title=title,
+        xaxis_title="m/z",
+        yaxis_title="Relative Intensity" if normalize else "Intensity",
+        height=height,
+        hovermode="closest",
+        template="plotly_white",
+        showlegend=False,
+    )
+    if y_range:
+        fig.update_yaxes(range=y_range,
+                         tickvals=[-1.0, -0.5, 0, 0.5, 1.0],
+                         ticktext=["1.0", "0.5", "0", "0.5", "1.0"])
+
+    # Labels
+    fig.add_annotation(x=0.02, y=0.98, xref="paper", yref="paper",
+                       text=f"<b>{upper_label}</b>", showarrow=False,
+                       font=dict(size=11, color="#333"),
+                       bgcolor="rgba(255,255,255,0.8)", xanchor="left", yanchor="top")
+    fig.add_annotation(x=0.02, y=0.02, xref="paper", yref="paper",
+                       text=f"<b>{lower_label}</b>", showarrow=False,
+                       font=dict(size=11, color="#333"),
+                       bgcolor="rgba(255,255,255,0.8)", xanchor="left", yanchor="bottom")
+
+    # Metrics overlay
+    if metrics_text:
+        fig.add_annotation(x=0.98, y=0.98, xref="paper", yref="paper",
+                           text=metrics_text.replace("\n", "<br>"),
+                           showarrow=False,
+                           font=dict(size=10, family="monospace", color="#333"),
+                           bgcolor="rgba(255,255,255,0.85)",
+                           bordercolor="#CCC", borderwidth=1,
+                           xanchor="right", yanchor="top",
+                           align="left")
+
+    return fig
+
+
+def create_plotly_single_plot(
+    spectrum: pd.DataFrame,
+    title: str = "Annotated Spectrum",
+    label: str = "",
+    color_map: Dict[str, str] = None,
+    normalize: bool = True,
+    height: int = 500,
+):
+    """Create an interactive Plotly single-spectrum plot."""
+    import plotly.graph_objects as go
+
+    if color_map is None:
+        color_map = ION_COLORS
+
+    fig = go.Figure()
+
+    if not spectrum.empty:
+        df = _prepare_spectrum_data(spectrum, normalize=normalize, color_map=color_map)
+        _add_plotly_spectrum_traces(fig, df, y_multiplier=1.0,
+                                   label=label, show_annotations=True)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="m/z",
+        yaxis_title="Relative Intensity" if normalize else "Intensity",
+        height=height,
+        hovermode="closest",
+        template="plotly_white",
+        showlegend=False,
+    )
+    if normalize:
+        fig.update_yaxes(range=[0, 1.15])
+
+    if label:
+        fig.add_annotation(x=0.02, y=0.98, xref="paper", yref="paper",
+                           text=f"<b>{label}</b>", showarrow=False,
+                           font=dict(size=11, color="#333"),
+                           bgcolor="rgba(255,255,255,0.8)",
+                           xanchor="left", yanchor="top")
+
+    return fig
+
+
+# ---------------------------------------------------------------------------
+# Matplotlib static plots (for PNG/SVG/PDF export)
+# ---------------------------------------------------------------------------
 
 def create_mirror_plot(
     upper_spectrum: pd.DataFrame,
@@ -166,34 +283,17 @@ def create_mirror_plot(
     metrics_text: Optional[str] = None,
     normalize: bool = True,
 ):
-    """
-    Create a publication-ready mirror plot.
+    """Create a publication-ready static matplotlib mirror plot."""
+    import matplotlib
+    matplotlib.use('Agg')
+    from matplotlib.figure import Figure as MplFigure
 
-    Args:
-        upper_spectrum: DataFrame with columns [mz, intensity, annotation]
-        lower_spectrum: DataFrame with columns [mz, intensity, annotation]
-        title: Plot title
-        upper_label: Label for upper spectrum (query)
-        lower_label: Label for lower spectrum (reference)
-        color_map: Custom ion color mapping
-        figsize: Figure size (width, height)
-        dpi: Resolution for export
-        show_annotations: Whether to show ion labels
-        annotation_fontsize: Font size for annotations
-        metrics_text: Optional multi-line string of comparison metrics to
-            render in the top-right corner of the plot
-
-    Returns:
-        matplotlib.figure.Figure object
-    """
     if color_map is None:
         color_map = ION_COLORS
 
-    # Create figure
-    fig = Figure(figsize=figsize, dpi=dpi)
+    fig = MplFigure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
 
-    # Compute annotation text offset (3% of y-range)
     if normalize:
         ann_offset = 0.03
     else:
@@ -201,31 +301,21 @@ def create_mirror_plot(
         lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
         ann_offset = max(upper_max, lower_max) * 0.03
 
-    # Process upper spectrum (positive intensities)
-    if not upper_spectrum.empty and len(upper_spectrum) > 0:
-        upper_df = _ensure_annotation_col(upper_spectrum.copy())
-        if normalize:
-            upper_df = _normalize_intensities(upper_df)
-        _plot_peaks_vectorized(
-            ax, upper_df, sign=1, ann_offset=ann_offset,
-            color_map=color_map, show_annotations=show_annotations,
-            annotation_fontsize=annotation_fontsize, va_label="bottom",
-        )
+    if not upper_spectrum.empty:
+        upper_df = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        _add_matplotlib_spectrum(ax, upper_df, y_multiplier=1.0,
+                                show_annotations=show_annotations,
+                                annotation_fontsize=annotation_fontsize,
+                                ann_offset=ann_offset)
 
-    # Process lower spectrum (negative/mirrored intensities)
-    if not lower_spectrum.empty and len(lower_spectrum) > 0:
-        lower_df = _ensure_annotation_col(lower_spectrum.copy())
-        if normalize:
-            lower_df = _normalize_intensities(lower_df)
+    if not lower_spectrum.empty:
+        lower_df = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
         lower_df["intensity"] = lower_df["intensity"] * -1
+        _add_matplotlib_spectrum(ax, lower_df, y_multiplier=-1.0,
+                                show_annotations=show_annotations,
+                                annotation_fontsize=annotation_fontsize,
+                                ann_offset=ann_offset)
 
-        _plot_peaks_vectorized(
-            ax, lower_df, sign=-1, ann_offset=ann_offset,
-            color_map=color_map, show_annotations=show_annotations,
-            annotation_fontsize=annotation_fontsize, va_label="top",
-        )
-
-    # Set axis limits
     all_mz = []
     if not upper_spectrum.empty:
         all_mz.extend(upper_spectrum["mz"].tolist())
@@ -233,48 +323,44 @@ def create_mirror_plot(
         all_mz.extend(lower_spectrum["mz"].tolist())
 
     if all_mz:
-        mz_min = min(all_mz) - 50
-        mz_max = max(all_mz) + 50
-        ax.set_xlim(mz_min, mz_max)
+        ax.set_xlim(min(all_mz) - 50, max(all_mz) + 50)
 
     if normalize:
         ax.set_ylim(-1.2, 1.2)
+        ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
+        ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
     else:
         upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
         lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
         y_max = max(upper_max, lower_max) * 1.2
         ax.set_ylim(-y_max, y_max)
-
-    # Add center line
-    ax.axhline(y=0, color="black", linewidth=1, alpha=0.5)
-
-    # Labels at the sides
-    ax.text(0.02, 0.99, upper_label, transform=ax.transAxes,
-            fontsize=9, fontweight="bold", va="top", ha="left",
-            color="#333333",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
-    ax.text(0.02, 0.01, lower_label, transform=ax.transAxes,
-            fontsize=9, fontweight="bold", va="bottom", ha="left",
-            color="#333333",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
-
-    # Metrics overlay in upper-right
-    if metrics_text:
-        ax.text(0.98, 0.82, metrics_text, transform=ax.transAxes,
-                fontsize=10, fontfamily="monospace", va="top", ha="right",
-                color="#333333",
-                bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
-                          edgecolor="#CCCCCC", alpha=0.85))
-
-    # Styling
-    _apply_common_style(ax, fig, title, normalize)
-    if normalize:
-        ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
-        ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
-    else:
         ax.yaxis.set_major_formatter(
             matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
         )
+
+    ax.axhline(y=0, color="black", linewidth=1, alpha=0.5)
+
+    ax.text(0.02, 0.99, upper_label, transform=ax.transAxes,
+            fontsize=9, fontweight="bold", va="top", ha="left", color="#333",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
+    ax.text(0.02, 0.01, lower_label, transform=ax.transAxes,
+            fontsize=9, fontweight="bold", va="bottom", ha="left", color="#333",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
+
+    if metrics_text:
+        ax.text(0.98, 0.82, metrics_text, transform=ax.transAxes,
+                fontsize=10, fontfamily="monospace", va="top", ha="right", color="#333",
+                bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                          edgecolor="#CCC", alpha=0.85))
+
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
+                  fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.grid(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+    fig.tight_layout()
 
     return fig
 
@@ -290,231 +376,59 @@ def create_single_spectrum_plot(
     annotation_fontsize: int = 7,
     normalize: bool = True,
 ):
-    """
-    Create a single annotated spectrum plot (no mirror/reference).
+    """Create a static matplotlib single annotated spectrum plot."""
+    import matplotlib
+    matplotlib.use('Agg')
+    from matplotlib.figure import Figure as MplFigure
 
-    Args:
-        spectrum: DataFrame with columns [mz, intensity, annotation]
-        title: Plot title
-        label: Label shown in top-left corner
-        color_map: Custom ion color mapping
-        figsize: Figure size (width, height)
-        dpi: Resolution for export
-        show_annotations: Whether to show ion labels
-        annotation_fontsize: Font size for annotations
-
-    Returns:
-        matplotlib.figure.Figure object
-    """
     if color_map is None:
         color_map = ION_COLORS
 
-    fig = Figure(figsize=figsize, dpi=dpi)
+    fig = MplFigure(figsize=figsize, dpi=dpi)
     ax = fig.add_subplot(111)
 
-    # Plot peaks (positive intensities only)
-    if not spectrum.empty and len(spectrum) > 0:
-        df = _ensure_annotation_col(spectrum.copy())
+    if not spectrum.empty:
+        df = _prepare_spectrum_data(spectrum, normalize=normalize, color_map=color_map)
         if normalize:
-            df = _normalize_intensities(df)
             ann_offset = 0.03
         else:
             ann_offset = df["intensity"].max() * 0.03 if len(df) > 0 else 1
-        _plot_peaks_vectorized(
-            ax, df, sign=1, ann_offset=ann_offset,
-            color_map=color_map, show_annotations=show_annotations,
-            annotation_fontsize=annotation_fontsize, va_label="bottom",
-        )
+        _add_matplotlib_spectrum(ax, df, y_multiplier=1.0,
+                                show_annotations=show_annotations,
+                                annotation_fontsize=annotation_fontsize,
+                                ann_offset=ann_offset)
 
-    # Axis limits
     if not spectrum.empty:
         all_mz = spectrum["mz"].tolist()
-        mz_min = min(all_mz) - 50
-        mz_max = max(all_mz) + 50
-        ax.set_xlim(mz_min, mz_max)
+        ax.set_xlim(min(all_mz) - 50, max(all_mz) + 50)
 
     if normalize:
         ax.set_ylim(0, 1.15)
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
     else:
         y_max = spectrum["intensity"].max() * 1.15 if not spectrum.empty else 1
         ax.set_ylim(0, y_max)
 
-    # Label in top-left
     if label:
         ax.text(0.02, 0.99, label, transform=ax.transAxes,
-                fontsize=9, fontweight="bold", va="top", ha="left",
-                color="#333333",
+                fontsize=9, fontweight="bold", va="top", ha="left", color="#333",
                 bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
 
-    # Styling
-    _apply_common_style(ax, fig, title, normalize)
-    if normalize:
-        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-
-    return fig
-
-
-def create_legend_figure(
-    color_map: Dict[str, str] = None,
-    ion_types: List[str] = None,
-    figsize: Tuple[float, float] = (4, 2),
-    dpi: int = 150
-):
-    """
-    Create a standalone legend figure for ion colors.
-
-    Args:
-        color_map: Ion color mapping
-        ion_types: Ion types to include (default: all)
-        figsize: Figure size
-        dpi: Resolution
-
-    Returns:
-        matplotlib Figure with legend
-    """
-    from matplotlib.patches import Patch
-
-    if color_map is None:
-        color_map = ION_COLORS
-
-    if ion_types is None:
-        ion_types = list(color_map.keys())
-
-    fig = Figure(figsize=figsize, dpi=dpi)
-    ax = fig.add_subplot(111)
-    ax.axis("off")
-
-    # Create legend patches
-    patches = []
-    for ion_type in ion_types:
-        if ion_type in color_map:
-            label = ion_type if ion_type != "unannotated" else "unassigned"
-            patches.append(Patch(facecolor=color_map[ion_type], label=label))
-
-    ax.legend(handles=patches, loc="center", ncol=min(4, len(patches)),
-              frameon=False, fontsize=10)
-
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
+                  fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.grid(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
     fig.tight_layout()
+
     return fig
-
-
-def add_color_column(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Add a 'color' column to an annotated spectrum DataFrame.
-
-    Used to pre-compute per-peak colors before passing to pyopenms-viz for
-    single-spectrum interactive plots (annotation_color parameter).
-
-    Note: Do NOT pass annotation_color to pyopenms-viz mirror plots — a known
-    bug causes KeyError when mirror_spectrum=True and annotation_color is set.
-    """
-    df = df.copy()
-    df["color"] = df["annotation"].apply(get_ion_color)
-    return df
-
-
-def create_interactive_mirror_plot(
-    upper_spectrum: pd.DataFrame,
-    lower_spectrum: pd.DataFrame,
-    title: str = "Mirror Plot",
-    relative_intensity: bool = True,
-) -> "plotly.graph_objs.Figure":
-    """
-    Create an interactive Plotly mirror plot via pyopenms-viz ms_plotly backend.
-
-    Replaces the static Matplotlib mirror plot for interactive display in
-    Streamlit and HTML export.  The Matplotlib path (create_mirror_plot) is
-    kept for batch PNG/SVG/PDF export.
-
-    Args:
-        upper_spectrum: Query spectrum DataFrame (mz, intensity, annotation)
-        lower_spectrum: Reference spectrum DataFrame (mz, intensity, annotation)
-        title: Plot title
-        relative_intensity: Normalize intensities to [0, 1]
-
-    Returns:
-        Plotly Figure object (call fig.write_html() or st.plotly_chart())
-
-    IMPORTANT: Do NOT pass annotation_color with mirror_spectrum=True —
-    there is a known KeyError bug in pyopenms-viz 1.0.1 _get_annotations().
-    """
-    import pyopenms_viz as viz
-
-    upper_df = _ensure_annotation_col(upper_spectrum.copy())
-    lower_df = _ensure_annotation_col(lower_spectrum.copy())
-
-    return viz.plot_spectrum(
-        data=upper_df,
-        x="mz",
-        y="intensity",
-        backend="ms_plotly",
-        mirror_spectrum=True,
-        reference_spectrum=lower_df,
-        ion_annotation="annotation",
-        annotate_top_n_peaks="all",
-        relative_intensity=relative_intensity,
-        title=title,
-        show_plot=False,
-    )
-
-
-def create_interactive_single_plot(
-    spectrum: pd.DataFrame,
-    title: str = "Annotated Spectrum",
-    relative_intensity: bool = True,
-) -> "plotly.graph_objs.Figure":
-    """
-    Create an interactive Plotly single-spectrum plot via pyopenms-viz ms_plotly backend.
-
-    Args:
-        spectrum: Annotated spectrum DataFrame (mz, intensity, annotation)
-        title: Plot title
-        relative_intensity: Normalize intensities to [0, 1]
-
-    Returns:
-        Plotly Figure object
-    """
-    import pyopenms_viz as viz
-
-    df_viz = add_color_column(_ensure_annotation_col(spectrum.copy()))
-
-    return viz.plot_spectrum(
-        data=df_viz,
-        x="mz",
-        y="intensity",
-        backend="ms_plotly",
-        ion_annotation="annotation",
-        annotation_color="color",
-        annotate_top_n_peaks="all",
-        relative_intensity=relative_intensity,
-        title=title,
-        show_plot=False,
-    )
 
 
 def figure_to_bytes(fig, format: str = "png") -> bytes:
-    """
-    Convert a matplotlib figure to bytes.
-
-    Args:
-        fig: matplotlib Figure
-        format: Output format ('png' or 'svg')
-
-    Returns:
-        Bytes of the image
-    """
+    """Convert a matplotlib figure to bytes."""
     buf = BytesIO()
     fig.savefig(buf, format=format, bbox_inches="tight", facecolor="white")
     buf.seek(0)
     return buf.read()
-
-
-def figure_to_base64(fig, format: str = "png") -> str:
-    """
-    Convert a matplotlib figure to base64 encoded string.
-
-    Useful for embedding in HTML.
-    """
-    import base64
-    img_bytes = figure_to_bytes(fig, format)
-    return base64.b64encode(img_bytes).decode("utf-8")

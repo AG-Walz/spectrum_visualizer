@@ -95,7 +95,7 @@ class TestShortenFilenames:
             "Experiment_batch1_sample_B.mzML",
         ]
         result = shorten_filenames(filenames)
-        # Common prefix: Experiment, batch1, sample → removed
+        # Common prefix: Experiment, batch1, sample -> removed
         # Result: just A and B (or sample_A, sample_B depending on algo)
         assert len(result) == 2
         assert result[0] != result[1]  # Must be distinct
@@ -113,7 +113,7 @@ class TestShortenFilenames:
 
 
 # ---------------------------------------------------------------------------
-# R² matching
+# R squared matching
 # ---------------------------------------------------------------------------
 
 class TestR2Matching:
@@ -130,7 +130,7 @@ class TestR2Matching:
     def test_partial_overlap(self):
         q, r = _partial_overlap_pair()
         val = compute_r2_matching(q, r)
-        # Only "b1" is shared — need >=2 points for regression
+        # Only "b1" is shared -- need >=2 points for regression
         assert math.isnan(val)
 
     def test_good_correlation(self):
@@ -141,7 +141,7 @@ class TestR2Matching:
 
 
 # ---------------------------------------------------------------------------
-# R² binned
+# R squared binned
 # ---------------------------------------------------------------------------
 
 class TestR2Binned:
@@ -284,8 +284,9 @@ class TestFormatMetricsText:
         metrics = {"R2m": 0.85, "R2b": 0.72, "Cos": 0.91, "Ent": 0.88,
                    "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
         text = format_metrics_text(metrics)
-        assert "R² Matching" in text
-        assert "R² Binned" in text
+        # MSInsight uses "R\u00b2 Match" and "R\u00b2 Binned"
+        assert "Match" in text
+        assert "Binned" in text
         assert "0.850" in text
         assert "0.720" in text
 
@@ -300,4 +301,37 @@ class TestFormatMetricsText:
                    "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
         text = format_metrics_text(metrics)
         lines = text.strip().split("\n")
-        assert len(lines) == 3
+        # MSInsight format_metrics_text produces 7 lines (one per metric)
+        assert len(lines) == 7
+
+
+# ---------------------------------------------------------------------------
+# Integration tests with annotated spectra
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+class TestMetricsWithRealAnnotation:
+    """Compute metrics using annotated spectra from real data."""
+
+    def test_self_comparison_perfect(self):
+        """A spectrum compared against itself should have high similarity."""
+        from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
+
+        # Use actual theoretical fragment m/z values so peaks get annotated
+        frags = generate_theoretical_fragments("ASDDFDQASY", charge=1, ion_types=["b", "y"])
+        mz = frags["mz"].values[:5].astype(np.float64)
+        intensity = np.array([100, 200, 150, 300, 250], dtype=np.float64)[:len(mz)]
+
+        df = prepare_spectrum_for_plot(
+            mz, intensity, "ASDDFDQASY", charge=1,
+            ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
+        )
+
+        # Verify we got annotated peaks
+        annotated_count = df["is_annotated"].sum()
+        assert annotated_count > 0, "No peaks were annotated -- test data invalid"
+
+        metrics = compute_all_metrics(df, df)
+        # Self-comparison should yield perfect or near-perfect scores
+        assert metrics["Cos"] == 1.0 or abs(metrics["Cos"] - 1.0) < 0.001
+        assert metrics["Dice"] == 1.0 or abs(metrics["Dice"] - 1.0) < 0.001

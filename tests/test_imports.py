@@ -1,4 +1,4 @@
-"""Import smoke tests — verify all critical modules load without error.
+"""Import smoke tests -- verify all critical modules load without error.
 
 Each test is independent so a broken import in one module doesn't mask others.
 """
@@ -13,18 +13,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 @pytest.mark.parametrize("module_name", [
-    "src.spectrum_metrics",
-    "src.spectrum_loader",
-    "src.parquet_cache",
     "src.peak_annotation",
-    "src.mirror_plot",
-    "src.export",
     "src.peptide_search",
-    "src.path_utils",
+    "src.spectrum_loader",
+    "src.spectrum_metrics",
+    "src.mirror_plot",
+    "src.koina_prediction",
     "src.parallel_processor",
+    "src.export",
     "src.summary_plots",
+    "src.path_utils",
+    "src.parquet_builder",
     "src.common.common",
-    "cli",
+    "utils.helpers",
 ])
 def test_import(module_name):
     """Module should import without raising."""

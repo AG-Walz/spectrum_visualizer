@@ -1,15 +1,20 @@
 #!/usr/bin/env python3
 """
-MSpecViz CLI — Terminal-based analysis pipeline.
+MSInsight CLI -- Terminal-based analysis pipeline.
 
-Runs the full MSpecViz analysis from the terminal without opening a browser.
+Runs the full MSInsight analysis from the terminal without opening a browser.
 All inputs are provided via a YAML config file (with optional CLI argument
 overrides). Reuses the exact same backend functions as the Streamlit app.
 
 Usage:
     python cli.py --config config.yaml
     python cli.py --config config.yaml --peptides peptides.txt --verbose
-    python cli.py --config config.yaml --mz-tolerance 0.05 --add-losses --quiet
+    python cli.py --config config.yaml --mz-tolerance 0.05 --no-plots --quiet
+
+Exit codes:
+    0 = success
+    1 = pipeline failure
+    2 = configuration / input error
 """
 import argparse
 import copy
@@ -18,6 +23,7 @@ import json
 import logging
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -25,39 +31,77 @@ from typing import Dict, List, Optional, Tuple
 import yaml
 
 # ---------------------------------------------------------------------------
-# Path setup — ensure project root is importable
+# Path setup -- ensure project root is importable
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.helpers import format_time, get_nested as _get_nested
+from utils.helpers import format_time, get_nested
 
-logger = logging.getLogger("mspecviz.cli")
+logger = logging.getLogger("msinsight.cli")
 
 
 # ============================================================================
-# CLIConfig — dataclass holding all pipeline parameters
+# Terminal progress display
+# ============================================================================
+
+class TerminalProgress:
+    """Simple terminal progress indicator with elapsed / ETA."""
+
+    def __init__(self, label: str, total: int, quiet: bool = False):
+        self.label = label
+        self.total = max(total, 1)
+        self.current = 0
+        self.start = time.time()
+        self.quiet = quiet
+
+    def update(self, current: int, message: str = ""):
+        self.current = current
+        if self.quiet:
+            return
+        elapsed = time.time() - self.start
+        pct = min(self.current / self.total * 100, 100)
+        elapsed_str = _fmt_duration(elapsed)
+        eta_str = ""
+        if self.current > 0 and self.current < self.total:
+            remaining = elapsed / self.current * (self.total - self.current)
+            eta_str = f", ~{_fmt_duration(remaining)} remaining"
+        extra = f"  {message}" if message else ""
+        print(f"\r  {self.label} [{self.current}/{self.total}] "
+              f"{pct:5.1f}%  ({elapsed_str} elapsed{eta_str}){extra}",
+              end="", flush=True)
+
+    def finish(self, message: str = ""):
+        self.current = self.total
+        if not self.quiet:
+            elapsed = time.time() - self.start
+            extra = f"  {message}" if message else ""
+            print(f"\r  {self.label} [{self.total}/{self.total}] "
+                  f"100.0%  ({_fmt_duration(elapsed)} elapsed){extra}")
+
+
+def _fmt_duration(seconds: float) -> str:
+    """Format seconds as MM:SS."""
+    m, s = divmod(int(seconds), 60)
+    return f"{m:02d}:{s:02d}"
+
+
+# ============================================================================
+# CLIConfig dataclass
 # ============================================================================
 
 @dataclass
 class CLIConfig:
     """All pipeline parameters merged from settings.json, YAML, and CLI args."""
 
-    # Input files (resolved, absolute paths)
+    # Input files (resolved absolute paths after glob expansion)
     idxml_files: List[str] = field(default_factory=list)
     mzml_files: List[str] = field(default_factory=list)
-    parquet_file: Optional[str] = None
-
-    # Input filters (case-insensitive substring on filename, same as app UI)
-    idxml_filter: str = ""
-    mzml_filter: str = ""
-
-    # Recursive directory scanning
-    recursive: bool = False
 
     # Peptides
     peptides: List[str] = field(default_factory=list)
+    peptides_mode: str = ""  # "all", "file", or "inline"
 
     # Reference
     reference_substring: str = ""
@@ -68,170 +112,33 @@ class CLIConfig:
     add_losses: bool = False
     add_first_prefix_ion: bool = True
     remove_precursor_peaks: bool = False
-    intensity_mode: str = "Relative"  # "Relative" or "Raw"
+    intensity_mode: str = "Relative"
 
     # Export
     export_dir: str = "./exports"
-    project_name: str = "MSpecViz_analysis"
-    save_plots: bool = True
+    project_name: str = "MSInsight_analysis"
     export_formats: List[str] = field(default_factory=lambda: ["png"])
     dpi: int = 300
     figsize: Tuple[int, int] = (12, 8)
     plot_unpaired: bool = False
+    no_plots: bool = False
 
-    # Cache
-    cache_enabled: bool = True
-    cache_subdirectory: str = ".mspecviz_cache"
-
-    # Parallelism
+    # Performance
     workers: int = 4
 
-    # tmpfs staging
-    tmpfs_staging: bool = True
-    tmpfs_path: str = "/dev/shm"
-    tmpfs_ram_fraction: float = 0.40
-
-    # Koina AI prediction fallback
-    koina_settings: Dict = field(default_factory=lambda: {
-        "enabled": True,
-        "model": "ms2pip_timsTOF2024",
-        "collision_energy": 35,
-        "instrument_type": "TIMSTOF",
-    })
-
-    # Verbosity
-    verbose: bool = False
-    quiet: bool = False
-
-    @property
-    def normalize(self) -> bool:
-        return self.intensity_mode == "Relative"
+    # Koina
+    koina_enabled: bool = True
+    koina_model: str = "ms2pip_timsTOF2024"
+    koina_ce: int = 35
+    koina_instrument: str = "TIMSTOF"
 
 
-def _expand_file_globs(patterns: List[str]) -> List[str]:
-    """Expand glob patterns into absolute file paths, preserving order.
+# ============================================================================
+# Config loading and merging
+# ============================================================================
 
-    Supports recursive patterns with ** (e.g. /path/**/*.idXML).
-    """
-    result = []
-    seen = set()
-    for pattern in patterns:
-        recursive = "**" in pattern
-        expanded = sorted(globmod.glob(pattern, recursive=recursive))
-        if not expanded:
-            # Not a glob, treat as literal path
-            p = str(Path(pattern).resolve())
-            if p not in seen:
-                result.append(p)
-                seen.add(p)
-        else:
-            for f in expanded:
-                p = str(Path(f).resolve())
-                if p not in seen:
-                    result.append(p)
-                    seen.add(p)
-    return result
-
-
-def _expand_directories(files: List[str], extensions: List[str], recursive: bool) -> List[str]:
-    """Replace any directory entries in *files* with matching files from that directory.
-
-    File entries are kept as-is.  Directory entries are scanned for files whose
-    suffix (case-insensitive) matches any of *extensions*.  When *recursive* is
-    True the scan descends into all subdirectories; otherwise only the immediate
-    directory is scanned.
-
-    Returns a deduplicated, sorted-within-each-expanded-dir list.
-    """
-    result: List[str] = []
-    seen: set = set()
-    ext_lower = [e.lower() for e in extensions]
-
-    for f in files:
-        p = Path(f)
-        if p.is_dir():
-            candidates = sorted(p.rglob("*") if recursive else p.glob("*"))
-            for fp in candidates:
-                if fp.is_file() and fp.suffix.lower() in ext_lower:
-                    s = str(fp.resolve())
-                    if s not in seen:
-                        result.append(s)
-                        seen.add(s)
-        else:
-            s = str(p.resolve()) if p.exists() else str(p)
-            if s not in seen:
-                result.append(s)
-                seen.add(s)
-    return result
-
-
-def _filter_files_by_substring(files: List[str], substring: str) -> List[str]:
-    """Filter a list of file paths by a case-insensitive substring on the full path.
-
-    Matches against the entire path so directory names (e.g. "filtered/") are
-    included in the search. Returns the original list unchanged when substring
-    is empty.
-    """
-    if not substring:
-        return files
-    sub_lower = substring.lower()
-    return [f for f in files if sub_lower in f.lower()]
-
-
-def _strip_modifications(seq: str) -> str:
-    """Strip parenthetical modification annotations to get base sequence.
-
-    E.g. 'ATYSVGM(Oxidation)QK' -> 'ATYSVGMQK'
-    """
-    import re
-    return re.sub(r'\([^)]*\)', '', seq)
-
-
-def _load_peptides(source) -> List[str]:
-    """
-    Load peptides from a .txt file path, inline list, or the keyword "all".
-
-    Accepts:
-      - "all" — special keyword, returns empty list (resolved later from idXMLs)
-      - A string path to a .txt file (one peptide per line, no quotes)
-      - A list of strings (from YAML inline list, for backwards compatibility)
-
-    Modifications like (Oxidation) are stripped to get base sequences.
-    Duplicate base sequences are removed.
-
-    Returns list of uppercase, stripped base sequences.
-    An empty list signals "all peptides" mode.
-    """
-    raw = []
-    if isinstance(source, str):
-        if source.strip().lower() == "all":
-            return []  # sentinel: resolved later from idXMLs
-        # Treat as file path
-        p = Path(source)
-        if not p.exists():
-            raise FileNotFoundError(f"Peptide file not found: {source}")
-        raw = p.read_text().strip().splitlines()
-    elif isinstance(source, list):
-        # Could be list of strings or list containing a file path
-        if len(source) == 1 and Path(source[0]).suffix in ('.txt', '.csv', '.tsv'):
-            return _load_peptides(source[0])
-        raw = [str(p) for p in source]
-    else:
-        raise ValueError(f"Invalid peptides source: {type(source)}")
-
-    # Strip modifications, uppercase, deduplicate while preserving order
-    seen = set()
-    result = []
-    for line in raw:
-        seq = _strip_modifications(line.strip()).upper()
-        if seq and seq not in seen:
-            result.append(seq)
-            seen.add(seq)
-    return result
-
-
-def load_settings_json() -> dict:
-    """Load settings.json from the project root."""
+def load_settings_defaults() -> dict:
+    """Load defaults from settings.json."""
     settings_path = PROJECT_ROOT / "settings.json"
     if settings_path.exists():
         with open(settings_path) as f:
@@ -239,922 +146,749 @@ def load_settings_json() -> dict:
     return {}
 
 
-def load_config(yaml_path: str, cli_args: argparse.Namespace) -> CLIConfig:
+def load_yaml_config(path: str) -> dict:
+    """Load YAML config file."""
+    config_path = Path(path)
+    if not config_path.exists():
+        print(f"Error: config file not found: {path}", file=sys.stderr)
+        sys.exit(2)
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    if not isinstance(cfg, dict):
+        print(f"Error: config file is not a valid YAML mapping: {path}", file=sys.stderr)
+        sys.exit(2)
+    return cfg
+
+
+def expand_globs(patterns: List[str]) -> List[str]:
+    """Expand glob patterns to sorted list of unique absolute paths."""
+    result = []
+    seen = set()
+    for pattern in patterns:
+        matches = sorted(globmod.glob(pattern, recursive=True))
+        if not matches:
+            logger.warning(f"No files matched pattern: {pattern}")
+        for m in matches:
+            abspath = str(Path(m).resolve())
+            if abspath not in seen:
+                seen.add(abspath)
+                result.append(abspath)
+    return result
+
+
+def load_peptides(peptide_spec: str, idxml_files: List[str], workers: int,
+                  quiet: bool) -> Tuple[List[str], str]:
     """
-    Build CLIConfig by merging three layers (lowest to highest priority):
-      1. settings.json defaults
-      2. YAML config file values
-      3. CLI argument overrides
+    Load peptides from spec (path, "all", or inline list in YAML).
+
+    Returns (peptide_list, mode_string).
     """
-    # Layer 1: settings.json
-    settings = load_settings_json()
-    cfg = CLIConfig(
-        ion_types=_get_nested(settings, "ion_types", "default", default=["b", "y"]),
-        mz_tolerance=_get_nested(settings, "mz_tolerance", "default", default=0.02),
-        add_losses=_get_nested(settings, "annotation", "add_losses", default=False),
-        add_first_prefix_ion=_get_nested(settings, "annotation", "add_first_prefix_ion", default=True),
-        remove_precursor_peaks=_get_nested(settings, "annotation", "remove_precursor_peaks", default=False),
-        export_dir=_get_nested(settings, "export", "default_directory", default="./exports"),
-        project_name=_get_nested(settings, "export", "project_name", default="MSpecViz_analysis"),
-        export_formats=_get_nested(settings, "export", "formats", default=["png"]),
-        dpi=_get_nested(settings, "export", "dpi", default=300),
-        figsize=tuple(_get_nested(settings, "export", "figsize", default=[12, 8])),
-        cache_enabled=_get_nested(settings, "cache", "enabled", default=True),
-        cache_subdirectory=_get_nested(settings, "cache", "subdirectory", default=".mspecviz_cache"),
-        workers=_get_nested(settings, "performance", "workers", default=4),
-        tmpfs_staging=_get_nested(settings, "performance", "tmpfs_staging", default=True),
-        tmpfs_path=_get_nested(settings, "performance", "tmpfs_path", default="/dev/shm"),
-        tmpfs_ram_fraction=_get_nested(settings, "performance", "tmpfs_ram_fraction", default=0.40),
-        koina_settings={
-            "enabled": _get_nested(settings, "koina", "enabled", default=True),
-            "model": _get_nested(settings, "koina", "model", default="ms2pip_timsTOF2024"),
-            "collision_energy": _get_nested(settings, "koina", "collision_energy", default=35),
-            "instrument_type": _get_nested(settings, "koina", "instrument_type", default="TIMSTOF"),
-        },
-    )
+    if isinstance(peptide_spec, list):
+        # Inline list from YAML
+        peps = [str(p).strip().upper() for p in peptide_spec if str(p).strip()]
+        return peps, "inline"
 
-    # Layer 2: YAML config file
-    with open(yaml_path) as f:
-        yaml_cfg = yaml.safe_load(f) or {}
+    peptide_spec = str(peptide_spec).strip()
 
-    inp = yaml_cfg.get("input", {})
-    if inp.get("idxml_filter"):
-        cfg.idxml_filter = inp["idxml_filter"]
-    if inp.get("mzml_filter"):
-        cfg.mzml_filter = inp["mzml_filter"]
-    if inp.get("recursive") is not None:
-        cfg.recursive = bool(inp["recursive"])
-    if inp.get("idxml_files"):
-        cfg.idxml_files = _expand_file_globs(inp["idxml_files"])
-    if inp.get("mzml_files"):
-        cfg.mzml_files = _expand_file_globs(inp["mzml_files"])
-    if inp.get("parquet_file"):
-        p = Path(inp["parquet_file"]).resolve()
-        cfg.parquet_file = str(p) if p.exists() else None
+    if peptide_spec.lower() == "all":
+        from src.peptide_search import get_unique_peptides_from_idxmls
+        if not quiet:
+            print("  Extracting all peptides from idXML files...")
+        progress = TerminalProgress("Scanning", len(idxml_files), quiet)
 
-    if yaml_cfg.get("peptides"):
-        cfg.peptides = _load_peptides(yaml_cfg["peptides"])
+        def on_progress(current, total, msg):
+            progress.update(current, msg)
 
-    ref = yaml_cfg.get("reference", {})
-    if "substring" in ref:
-        cfg.reference_substring = ref["substring"] or ""
+        peps = get_unique_peptides_from_idxmls(
+            idxml_files, limit=10000,
+            progress_callback=on_progress, workers=workers,
+        )
+        progress.finish(f"{len(peps)} unique peptides")
+        return peps, "all"
 
-    # Declarative mapping: ((yaml_section, yaml_key), (cfg_attr, cast_fn))
-    # Processed in one loop instead of ~30 repetitive if/set blocks.
-    _YAML_TO_CFG = [
-        (("annotation", "ion_types"),              ("ion_types",              list)),
-        (("annotation", "mz_tolerance"),           ("mz_tolerance",           float)),
-        (("annotation", "add_losses"),             ("add_losses",             bool)),
-        (("annotation", "add_first_prefix_ion"),   ("add_first_prefix_ion",   bool)),
-        (("annotation", "remove_precursor_peaks"), ("remove_precursor_peaks", bool)),
-        (("annotation", "intensity_mode"),         ("intensity_mode",         str)),
-        (("export", "directory"),                  ("export_dir",             str)),
-        (("export", "project_name"),               ("project_name",           str)),
-        (("export", "formats"),                    ("export_formats",         list)),
-        (("export", "dpi"),                        ("dpi",                    int)),
-        (("export", "figsize"),                    ("figsize",                tuple)),
-        (("export", "plot_unpaired"),              ("plot_unpaired",          bool)),
-        (("cache", "enabled"),                     ("cache_enabled",          bool)),
-        (("cache", "subdirectory"),                ("cache_subdirectory",     str)),
-        (("performance", "workers"),               ("workers",                int)),
-        (("performance", "tmpfs_staging"),         ("tmpfs_staging",          bool)),
-        (("performance", "tmpfs_path"),            ("tmpfs_path",             str)),
-        (("performance", "tmpfs_ram_fraction"),    ("tmpfs_ram_fraction",     float)),
-    ]
-    for (section, key), (attr, cast) in _YAML_TO_CFG:
-        val = yaml_cfg.get(section, {}).get(key)
-        if val is not None:
-            setattr(cfg, attr, cast(val))
+    # Check if it is a file path
+    pep_path = Path(peptide_spec)
+    if pep_path.exists() and pep_path.is_file():
+        text = pep_path.read_text()
+        from utils.helpers import parse_peptide_list
+        peps = parse_peptide_list(text)
+        return peps, "file"
 
-    # Layer 3: CLI argument overrides
-    if cli_args.idxml_filter is not None:
-        cfg.idxml_filter = cli_args.idxml_filter
-    if cli_args.mzml_filter is not None:
-        cfg.mzml_filter = cli_args.mzml_filter
-    if cli_args.recursive:
-        cfg.recursive = True
-    if cli_args.no_recursive:
-        cfg.recursive = False
-    if cli_args.idxml:
-        cfg.idxml_files = _expand_file_globs(cli_args.idxml)
-    if cli_args.mzml:
-        cfg.mzml_files = _expand_file_globs(cli_args.mzml)
-    if cli_args.parquet:
-        p = Path(cli_args.parquet).resolve()
-        cfg.parquet_file = str(p)
-    if cli_args.peptides:
-        cfg.peptides = _load_peptides(cli_args.peptides)
-    if cli_args.reference_substring is not None:
-        cfg.reference_substring = cli_args.reference_substring
-    if cli_args.ion_types:
-        cfg.ion_types = cli_args.ion_types
-    if cli_args.mz_tolerance is not None:
-        cfg.mz_tolerance = cli_args.mz_tolerance
-    if cli_args.add_losses:
-        cfg.add_losses = True
-    if cli_args.no_first_prefix_ion:
-        cfg.add_first_prefix_ion = False
-    if cli_args.remove_precursor_peaks:
-        cfg.remove_precursor_peaks = True
-    if cli_args.raw_intensity:
-        cfg.intensity_mode = "Raw"
-    if cli_args.export_dir:
-        cfg.export_dir = cli_args.export_dir
-    if cli_args.project_name:
-        cfg.project_name = cli_args.project_name
-    if cli_args.formats:
-        cfg.export_formats = cli_args.formats
-    if getattr(cli_args, 'no_plots', False):
-        cfg.save_plots = False
-        cfg.export_formats = []
-    if cli_args.dpi is not None:
-        cfg.dpi = cli_args.dpi
-    if cli_args.plot_unpaired:
-        cfg.plot_unpaired = True
-    if cli_args.no_cache:
-        cfg.cache_enabled = False
-    if cli_args.workers is not None:
-        cfg.workers = cli_args.workers
-    if cli_args.no_tmpfs:
-        cfg.tmpfs_staging = False
-    if cli_args.verbose:
-        cfg.verbose = True
-    if cli_args.quiet:
-        cfg.quiet = True
+    # Last resort: treat as comma-separated list
+    peps = [p.strip().upper() for p in peptide_spec.replace(",", "\n").split("\n") if p.strip()]
+    return peps, "inline"
 
-    # Koina overrides — YAML layer
-    koina_yaml = yaml_cfg.get("koina", {})
-    for yaml_key, cfg_key in [
-        ("enabled", "enabled"), ("model", "model"),
-        ("collision_energy", "collision_energy"), ("instrument_type", "instrument_type"),
-    ]:
-        if yaml_key in koina_yaml:
-            cfg.koina_settings[cfg_key] = koina_yaml[yaml_key]
 
-    # Koina overrides — CLI layer
-    if getattr(cli_args, "no_koina", False):
-        cfg.koina_settings["enabled"] = False
-    if getattr(cli_args, "koina_model", None):
-        cfg.koina_settings["model"] = cli_args.koina_model
-    if getattr(cli_args, "koina_ce", None) is not None:
-        cfg.koina_settings["collision_energy"] = cli_args.koina_ce
-    if getattr(cli_args, "koina_instrument", None):
-        cfg.koina_settings["instrument_type"] = cli_args.koina_instrument
+def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
+    """Merge settings.json defaults, YAML config, and CLI overrides."""
+    defaults = load_settings_defaults()
+    cfg = CLIConfig()
 
-    # Expand directory entries (after all three layers are merged so the
-    # recursive flag is already at its final value).
-    cfg.idxml_files = _expand_directories(cfg.idxml_files, ['.idXML', '.idxml'], cfg.recursive)
-    cfg.mzml_files = _expand_directories(cfg.mzml_files, ['.mzML', '.mzml'], cfg.recursive)
+    # --- Defaults from settings.json ---
+    cfg.ion_types = get_nested(defaults, "ion_types", "default", default=["b", "y"])
+    cfg.mz_tolerance = get_nested(defaults, "mz_tolerance", "default", default=0.02)
+    cfg.add_losses = get_nested(defaults, "annotation", "add_losses", default=False)
+    cfg.add_first_prefix_ion = get_nested(defaults, "annotation", "add_first_prefix_ion", default=True)
+    cfg.remove_precursor_peaks = get_nested(defaults, "annotation", "remove_precursor_peaks", default=False)
+    cfg.export_dir = get_nested(defaults, "export", "default_directory", default="./exports")
+    cfg.project_name = get_nested(defaults, "export", "project_name", default="MSInsight_analysis")
+    cfg.export_formats = get_nested(defaults, "export", "formats", default=["png"])
+    cfg.dpi = get_nested(defaults, "export", "dpi", default=300)
+    figsize = get_nested(defaults, "export", "figsize", default=[12, 8])
+    cfg.figsize = tuple(figsize) if isinstance(figsize, list) else (12, 8)
+    cfg.workers = get_nested(defaults, "performance", "workers", default=4)
+    cfg.koina_enabled = get_nested(defaults, "koina", "enabled", default=True)
+    cfg.koina_model = get_nested(defaults, "koina", "model", default="ms2pip_timsTOF2024")
+    cfg.koina_ce = get_nested(defaults, "koina", "collision_energy", default=35)
+    cfg.koina_instrument = get_nested(defaults, "koina", "instrument_type", default="TIMSTOF")
 
-    # Apply file filters exactly once, after all three layers are fully merged.
-    # This eliminates double-filtering and ensures a CLI --idxml-filter always
-    # applies to the final file list regardless of which layer provided the files.
-    if cfg.idxml_filter:
-        cfg.idxml_files = _filter_files_by_substring(cfg.idxml_files, cfg.idxml_filter)
-    if cfg.mzml_filter:
-        cfg.mzml_files = _filter_files_by_substring(cfg.mzml_files, cfg.mzml_filter)
+    # --- YAML overrides ---
+    cfg.idxml_files = expand_globs(get_nested(yaml_cfg, "input", "idxml_files", default=[]))
+    cfg.mzml_files = expand_globs(get_nested(yaml_cfg, "input", "mzml_files", default=[]))
+    cfg.reference_substring = get_nested(yaml_cfg, "reference", "substring", default="")
+
+    def _apply_section(section_name, mapping):
+        """Apply YAML section values to cfg using {yaml_key: (attr, cast)}."""
+        section = yaml_cfg.get(section_name)
+        if not section:
+            return
+        for yaml_key, (attr, cast) in mapping.items():
+            if yaml_key in section:
+                setattr(cfg, attr, cast(section[yaml_key]))
+
+    _apply_section("annotation", {
+        "ion_types":             ("ion_types",             lambda v: v),
+        "mz_tolerance":          ("mz_tolerance",          float),
+        "add_losses":            ("add_losses",            bool),
+        "add_first_prefix_ion":  ("add_first_prefix_ion",  bool),
+        "remove_precursor_peaks":("remove_precursor_peaks", bool),
+        "intensity_mode":        ("intensity_mode",        lambda v: v),
+    })
+    _apply_section("export", {
+        "directory":    ("export_dir",      lambda v: v),
+        "project_name": ("project_name",    lambda v: v),
+        "formats":      ("export_formats",  lambda v: v),
+        "dpi":          ("dpi",             int),
+        "figsize":      ("figsize",         tuple),
+        "plot_unpaired":("plot_unpaired",   bool),
+    })
+    _apply_section("performance", {
+        "workers": ("workers", int),
+    })
+    _apply_section("koina", {
+        "enabled":          ("koina_enabled",    bool),
+        "model":            ("koina_model",      lambda v: v),
+        "collision_energy": ("koina_ce",         int),
+        "instrument_type":  ("koina_instrument", lambda v: v),
+    })
+
+    # --- CLI overrides (highest priority) ---
+    if args.idxml:
+        cfg.idxml_files = expand_globs(args.idxml)
+    if args.mzml:
+        cfg.mzml_files = expand_globs(args.mzml)
+    if args.reference_substring is not None:
+        cfg.reference_substring = args.reference_substring
+    if args.ion_types:
+        cfg.ion_types = args.ion_types
+    if args.mz_tolerance is not None:
+        cfg.mz_tolerance = args.mz_tolerance
+    if args.export_dir:
+        cfg.export_dir = args.export_dir
+    if args.project_name:
+        cfg.project_name = args.project_name
+    if args.formats:
+        cfg.export_formats = args.formats
+    if args.workers is not None:
+        cfg.workers = args.workers
+    if args.no_plots:
+        cfg.no_plots = True
+    if args.no_koina:
+        cfg.koina_enabled = False
+    if args.koina_model:
+        cfg.koina_model = args.koina_model
+    if args.koina_ce is not None:
+        cfg.koina_ce = args.koina_ce
+    if args.koina_instrument:
+        cfg.koina_instrument = args.koina_instrument
 
     return cfg
 
 
 # ============================================================================
-# TerminalProgress — replaces Streamlit progress bars
+# Pipeline
 # ============================================================================
 
-class TerminalProgress:
-    """Simple terminal progress indicator."""
+def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
+    """
+    Execute the full MSInsight analysis pipeline.
 
-    def __init__(self, total: int, label: str = "", quiet: bool = False):
-        self.total = total
-        self.label = label
-        self.current = 0
-        self.start_time = time.time()
-        self.quiet = quiet
+    Returns exit code: 0 = success, 1 = failure.
+    """
+    pipeline_start = time.time()
 
-    def update(self, current: int = None):
-        if self.quiet:
-            return
-        if current is not None:
-            self.current = current
-        else:
-            self.current += 1
+    # ------------------------------------------------------------------
+    # 1. Validate inputs
+    # ------------------------------------------------------------------
+    if not cfg.idxml_files:
+        print("Error: No idXML files found. Check your config or --idxml argument.", file=sys.stderr)
+        return 2
+    if not cfg.mzml_files:
+        print("Error: No mzML files found. Check your config or --mzml argument.", file=sys.stderr)
+        return 2
 
-        elapsed = time.time() - self.start_time
-        if self.total > 0:
-            frac = min(self.current / self.total, 1.0)
-            pct = frac * 100
-            if frac > 0:
-                remaining = (elapsed / frac) - elapsed
-                remaining_str = format_time(remaining)
-            else:
-                remaining_str = "?"
-            sys.stdout.write(
-                f"\r  {self.label} [{self.current}/{self.total}] "
-                f"{pct:5.1f}%  ({format_time(elapsed)} elapsed, ~{remaining_str} remaining)"
-            )
-        else:
-            sys.stdout.write(f"\r  {self.label} {self.current} ({format_time(elapsed)} elapsed)")
-        sys.stdout.flush()
+    for f in cfg.idxml_files:
+        if not Path(f).exists():
+            print(f"Error: idXML file not found: {f}", file=sys.stderr)
+            return 2
+    for f in cfg.mzml_files:
+        if not Path(f).exists():
+            print(f"Error: mzML file not found: {f}", file=sys.stderr)
+            return 2
 
-    def finish(self, message: str = ""):
-        if self.quiet:
-            return
-        elapsed = time.time() - self.start_time
-        if message:
-            sys.stdout.write(f"\r  {message} ({format_time(elapsed)})\n")
-        else:
-            sys.stdout.write(
-                f"\r  {self.label} [{self.current}/{self.total}] Done ({format_time(elapsed)})\n"
-            )
-        sys.stdout.flush()
-
-
-def log_info(msg: str, quiet: bool = False):
-    """Print info message unless quiet."""
+    # ------------------------------------------------------------------
+    # 2. Print configuration summary
+    # ------------------------------------------------------------------
     if not quiet:
-        print(msg)
+        print("\n" + "=" * 60)
+        print("  MSInsight CLI Pipeline")
+        print("=" * 60)
+        print(f"  idXML files:    {len(cfg.idxml_files)}")
+        for f in cfg.idxml_files:
+            print(f"                  {Path(f).name}")
+        print(f"  mzML files:     {len(cfg.mzml_files)}")
+        for f in cfg.mzml_files:
+            print(f"                  {Path(f).name}")
+        print(f"  Peptides:       {len(cfg.peptides)} ({cfg.peptides_mode})")
+        if len(cfg.peptides) <= 10:
+            for p in cfg.peptides:
+                print(f"                  {p}")
+        else:
+            for p in cfg.peptides[:5]:
+                print(f"                  {p}")
+            print(f"                  ... and {len(cfg.peptides) - 5} more")
+        print(f"  Reference:      {cfg.reference_substring or '(none)'}")
+        print(f"  Ion types:      {', '.join(cfg.ion_types)}")
+        print(f"  m/z tolerance:  {cfg.mz_tolerance} Da")
+        if cfg.koina_enabled:
+            print(f"  Koina:          enabled ({cfg.koina_model})")
+        else:
+            print(f"  Koina:          disabled")
+        print(f"  Workers:        {cfg.workers}")
+        print(f"  Export dir:     {cfg.export_dir}")
+        print(f"  Formats:        {', '.join(cfg.export_formats)}")
+        print(f"  Plots:          {'skip' if cfg.no_plots else 'generate'}")
+        print("=" * 60)
+        print()
 
-
-def log_error(msg: str):
-    """Print error message to stderr."""
-    print(f"ERROR: {msg}", file=sys.stderr)
-
-
-def log_debug(msg: str, verbose: bool = False):
-    """Print debug message if verbose."""
-    if verbose:
-        print(f"  DEBUG: {msg}")
-
-
-# ============================================================================
-# run_pipeline — core processing (translation of run_streaming_processing)
-# ============================================================================
-
-def run_pipeline(cfg: CLIConfig) -> int:
-    """
-    Run the full MSpecViz analysis pipeline.
-
-    Returns exit code: 0 = success, 1 = processing failure.
-    """
-    from src.spectrum_loader import StreamingResult
-
-    # =========================================================================
-    # Phase 0: Validate inputs
-    # =========================================================================
-    use_parquet = bool(cfg.parquet_file)
-
-    if not use_parquet:
-        if not cfg.idxml_files:
-            if cfg.idxml_filter:
-                log_error(
-                    f"No idXML files remain after applying filter '{cfg.idxml_filter}'. "
-                    "Check your paths and filter string, or re-provide --idxml with the new filter."
-                )
-            else:
-                log_error("No idXML files specified")
-            return 1
-        if not cfg.mzml_files:
-            if cfg.mzml_filter:
-                log_error(
-                    f"No mzML files remain after applying filter '{cfg.mzml_filter}'. "
-                    "Check your paths and filter string, or re-provide --mzml with the new filter."
-                )
-            else:
-                log_error("No mzML files specified")
-            return 1
-
-        # Validate files exist
-        missing = [f for f in cfg.idxml_files if not Path(f).exists()]
-        if missing:
-            log_error(f"idXML files not found: {missing[:3]}{'...' if len(missing) > 3 else ''}")
-            return 1
-        missing = [f for f in cfg.mzml_files if not Path(f).exists()]
-        if missing:
-            log_error(f"mzML files not found: {missing[:3]}{'...' if len(missing) > 3 else ''}")
-            return 1
-
-        # "all" peptides mode: extract every unique peptide from idXMLs
-        if not cfg.peptides:
-            from src.peptide_search import get_unique_peptides_from_idxmls
-            log_info("Extracting all peptides from idXML files...", cfg.quiet)
-            cfg.peptides = get_unique_peptides_from_idxmls(cfg.idxml_files, limit=999999, workers=cfg.workers)
-            if not cfg.peptides:
-                log_error("No peptides found in idXML files")
-                return 1
-            log_info(f"Found {len(cfg.peptides)} unique peptides", cfg.quiet)
-    else:
-        if not Path(cfg.parquet_file).exists():
-            log_error(f"Parquet file not found: {cfg.parquet_file}")
-            return 1
-
-    # =========================================================================
-    # Print configuration summary
-    # =========================================================================
-    log_info("=" * 60, cfg.quiet)
-    log_info("MSpecViz CLI Analysis", cfg.quiet)
-    log_info("=" * 60, cfg.quiet)
-
-    if use_parquet:
-        log_info(f"Input:      Parquet ({Path(cfg.parquet_file).name})", cfg.quiet)
-    else:
-        log_info(f"Input:      {len(cfg.idxml_files)} idXML, {len(cfg.mzml_files)} mzML files", cfg.quiet)
-        if cfg.recursive:
-            log_info("  recursive:    yes", cfg.quiet)
-        if cfg.idxml_filter:
-            log_info(f"  idXML filter: '{cfg.idxml_filter}'", cfg.quiet)
-        if cfg.mzml_filter:
-            log_info(f"  mzML filter:  '{cfg.mzml_filter}'", cfg.quiet)
-        log_info(f"Peptides:   {', '.join(cfg.peptides[:5])}{'...' if len(cfg.peptides) > 5 else ''}", cfg.quiet)
-
-    if cfg.reference_substring:
-        log_info(f"Reference:  substring='{cfg.reference_substring}'", cfg.quiet)
-    else:
-        log_info("Reference:  (none — single spectrum mode)", cfg.quiet)
-
-    log_info(f"Ions:       {cfg.ion_types}, tolerance={cfg.mz_tolerance} Da", cfg.quiet)
-    log_info(f"Export:     {cfg.export_dir} [{', '.join(cfg.export_formats)}]", cfg.quiet)
-    log_info(f"Project:    {cfg.project_name}", cfg.quiet)
-    log_info(f"Workers:    {cfg.workers}", cfg.quiet)
-    log_info("-" * 60, cfg.quiet)
-
-    # =========================================================================
-    # Phase 1: Auto-cache detection
-    # =========================================================================
-    from src.pipeline import (
-        detect_parquet_cache,
-        save_parquet_cache,
-        annotate_spectrum as pipeline_annotate,
-        ensure_references_annotated,
-        build_comparison_tasks,
-        write_comparison_summary,
-        stream_spectra,
-        accumulate_plot_result,
+    # ------------------------------------------------------------------
+    # 3. Search peptides in idXML files
+    # ------------------------------------------------------------------
+    from src.peptide_search import search_peptides_in_idxmls
+    from src.parquet_builder import (
+        build_psm_table, build_peaks_dataframe,
+        build_sequence_dataframe, build_heatmap_dataframe,
     )
-    loaded_from_cache = False
-    cache_dir = None
-    cache_fingerprint = None
-    partial_cache_path = None
 
-    if not use_parquet and cfg.cache_enabled:
-        _cache = detect_parquet_cache(
-            idxml_files=cfg.idxml_files,
-            mzml_files=cfg.mzml_files,
-            peptides=cfg.peptides,
-            reference_substring=cfg.reference_substring,
-            export_dir=cfg.export_dir,
-            cache_subdir=cfg.cache_subdirectory,
-            log_fn=lambda msg: log_info(msg, cfg.quiet),
-            idxml_filter=cfg.idxml_filter,
-            mzml_filter=cfg.mzml_filter,
+    if not quiet:
+        print("Step 1: Searching peptides in idXML files...")
+
+    search_progress = TerminalProgress("Searching", len(cfg.idxml_files), quiet)
+    search_errors = []
+
+    def search_progress_cb(current, total, msg):
+        search_progress.update(current, msg)
+
+    def search_error_cb(msg):
+        search_errors.append(msg)
+        logger.warning(msg)
+
+    variant_groups = search_peptides_in_idxmls(
+        idxml_paths=cfg.idxml_files,
+        target_peptides=cfg.peptides,
+        mzml_paths=cfg.mzml_files,
+        progress_callback=search_progress_cb,
+        error_callback=search_error_cb,
+        workers=min(cfg.workers, len(cfg.idxml_files)),
+    )
+    search_progress.finish()
+
+    if search_errors and not quiet:
+        for err in search_errors:
+            print(f"  Warning: {err}")
+
+    total_psms = sum(len(vg.matches) for vg in variant_groups.values())
+    if not quiet:
+        print(f"  Found {total_psms} PSMs across {len(variant_groups)} variant(s)\n")
+
+    if total_psms == 0:
+        print("Error: No PSMs found. Check your peptide list and idXML files.", file=sys.stderr)
+        return 1
+
+    # Build PSM table and lookup
+    vg_copy = copy.deepcopy(variant_groups)
+    psm_lf, psm_lookup = build_psm_table(vg_copy)
+
+    # ------------------------------------------------------------------
+    # 4. Stream spectra from mzML files
+    # ------------------------------------------------------------------
+    from src.spectrum_loader import load_spectra_streaming
+    from src.pipeline import process_query_result
+
+    if not quiet:
+        print("Step 2: Loading and annotating spectra...")
+
+    normalize = cfg.intensity_mode == "Relative"
+    annotation_kwargs = dict(
+        ion_types=cfg.ion_types,
+        mz_tolerance=cfg.mz_tolerance,
+        normalize=normalize,
+        add_losses=cfg.add_losses,
+        add_first_prefix_ion=cfg.add_first_prefix_ion,
+        remove_precursor_peaks=cfg.remove_precursor_peaks,
+    )
+
+    annotated_queries = []        # (psm_id, LoadedSpectrum, annotated_df)
+    reference_store = {}          # variant_key -> [(LoadedSpectrum, annotated_df)]
+    comparison_rows = []          # dicts for comparison summary
+
+    load_progress = TerminalProgress("Loading", total_psms, quiet)
+    loaded_count = [0]
+
+    def on_reference_loaded(variant_key, count):
+        pass
+
+    def on_query_ready(result):
+        """Process each query: annotate, pair with references, compute metrics."""
+        processed = process_query_result(
+            result, psm_lookup, annotation_kwargs, reference_store,
+            koina_enabled=cfg.koina_enabled,
+            koina_model=cfg.koina_model,
+            koina_ce=cfg.koina_ce,
+            koina_instrument=cfg.koina_instrument,
         )
-        cache_fingerprint = _cache.cache_fingerprint
-        cache_dir = _cache.cache_dir
-        partial_cache_path = _cache.partial_cache_path
-        if _cache.parquet_path:
-            cfg.parquet_file = _cache.parquet_path
-            use_parquet = True
-            loaded_from_cache = True
+        if processed is None:
+            return
 
-    # =========================================================================
-    # Phase 2: Peptide search (if not Parquet)
-    # =========================================================================
-    search_results = None
+        psm_id, query_spec, query_df, comp_rows = processed
+        annotated_queries.append((psm_id, query_spec, query_df))
+        comparison_rows.extend(comp_rows)
 
-    if not use_parquet:
-        # Check for search checkpoint first
-        search_checkpoint_loaded = False
-        if cfg.cache_enabled and cache_fingerprint:
-            from src.parquet_cache import load_search_checkpoint
-            checkpoint_results = load_search_checkpoint(cache_dir, cache_fingerprint)
-            if checkpoint_results:
-                search_results = checkpoint_results
-                search_checkpoint_loaded = True
-                total_psms = sum(len(vg.matches) for vg in search_results.values())
-                log_info(f"Search checkpoint loaded: {total_psms} PSMs across "
-                         f"{len(search_results)} variants (skipping idXML search)", cfg.quiet)
+        loaded_count[0] += 1
+        load_progress.update(loaded_count[0])
 
-        if not search_checkpoint_loaded:
-            from src.peptide_search import search_peptides_in_idxmls
+    def on_file_start(path, is_reference):
+        kind = "reference" if is_reference else "query"
+        logger.info(f"Processing {kind}: {Path(path).name}")
 
-            log_info("Searching peptides in idXML files...", cfg.quiet)
-            search_errors = []
-            search_progress_bar = TerminalProgress(
-                len(cfg.idxml_files), "Search", quiet=cfg.quiet
-            )
+    def on_file_complete(path, loaded, total):
+        logger.info(f"Completed {Path(path).name}: {loaded}/{total} spectra")
 
-            def search_progress(current, total, message):
-                search_progress_bar.update(current)
+    def error_callback(error):
+        logger.error(f"Streaming error: {error}")
 
-            def search_error(msg):
-                search_errors.append(msg)
+    load_spectra_streaming(
+        variant_groups=vg_copy,
+        mzml_paths=[Path(m) for m in cfg.mzml_files],
+        reference_substring=cfg.reference_substring,
+        on_reference_loaded=on_reference_loaded,
+        on_query_ready=on_query_ready,
+        on_file_start=on_file_start,
+        on_file_complete=on_file_complete,
+        error_callback=error_callback,
+        workers=cfg.workers,
+    )
+    load_progress.finish()
 
-            search_results = search_peptides_in_idxmls(
-                cfg.idxml_files,
-                cfg.peptides,
-                mzml_paths=cfg.mzml_files,
-                progress_callback=search_progress,
-                error_callback=search_error,
-                workers=cfg.workers,
-            )
-            search_progress_bar.finish("Search complete")
+    if not annotated_queries:
+        print("Error: No spectra could be loaded or annotated.", file=sys.stderr)
+        return 1
 
-            if not search_results:
-                log_error("No peptide matches found in idXML files")
-                return 1
+    if not quiet:
+        print(f"  Annotated {len(annotated_queries)} spectra, "
+              f"{len(comparison_rows)} comparison(s)\n")
 
-            total_psms = sum(len(vg.matches) for vg in search_results.values())
-            log_info(f"Found {total_psms} PSMs across {len(search_results)} peptide variants", cfg.quiet)
+    # ------------------------------------------------------------------
+    # 5. Build Polars DataFrames
+    # ------------------------------------------------------------------
+    if not quiet:
+        print("Step 3: Building DataFrames...")
 
-            if search_errors and cfg.verbose:
-                for err in search_errors[:5]:
-                    log_debug(err, True)
-                if len(search_errors) > 5:
-                    log_debug(f"... and {len(search_errors) - 5} more warnings", True)
+    peaks_lf = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_queries])
+    seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
+    heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
 
-            # Save search checkpoint immediately
-            if cfg.cache_enabled and cache_fingerprint:
-                from src.parquet_cache import save_search_checkpoint
-                saved = save_search_checkpoint(cache_dir, cache_fingerprint, search_results)
-                if saved:
-                    log_info(f"Search checkpoint saved: {Path(saved).name}", cfg.quiet)
+    import pandas as pd
+    comparison_df = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
 
-    # =========================================================================
-    # Phase 3: Prepare for processing
-    # =========================================================================
-    if not use_parquet:
-        variant_groups = copy.deepcopy(search_results)
-        mzml_paths = [Path(m) for m in cfg.mzml_files]
-        total_psms = sum(len(vg.matches) for vg in variant_groups.values())
-    else:
-        variant_groups = None
-        mzml_paths = None
-        total_psms = 0
+    if not quiet:
+        peaks_count = peaks_lf.select("x").collect().height
+        print(f"  PSMs: {psm_lf.select('id').collect().height}, "
+              f"Peaks: {peaks_count}, "
+              f"Comparisons: {len(comparison_df)}\n")
 
-    # Build run settings dict (everything that affects output)
+    # ------------------------------------------------------------------
+    # 6. Create export directory and save run settings
+    # ------------------------------------------------------------------
+    if not quiet:
+        print("Step 4: Exporting results...")
+
     from src.export import find_or_create_export_directory, commit_export_directory
 
     run_settings = {
-        "idxml_files": sorted(cfg.idxml_files),
-        "mzml_files": sorted(cfg.mzml_files),
-        "peptides": sorted(p.upper() for p in cfg.peptides),
+        "idxml_files": cfg.idxml_files,
+        "mzml_files": cfg.mzml_files,
+        "peptides": cfg.peptides,
         "reference_substring": cfg.reference_substring,
-        "ion_types": sorted(cfg.ion_types),
+        "ion_types": cfg.ion_types,
         "mz_tolerance": cfg.mz_tolerance,
         "add_losses": cfg.add_losses,
         "add_first_prefix_ion": cfg.add_first_prefix_ion,
         "remove_precursor_peaks": cfg.remove_precursor_peaks,
         "intensity_mode": cfg.intensity_mode,
-        "export_formats": sorted(cfg.export_formats),
+        "koina_enabled": cfg.koina_enabled,
+        "koina_model": cfg.koina_model,
+        "koina_ce": cfg.koina_ce,
+        "koina_instrument": cfg.koina_instrument,
+        "export_formats": cfg.export_formats,
         "dpi": cfg.dpi,
         "figsize": list(cfg.figsize),
-        "plot_unpaired": cfg.plot_unpaired,
     }
 
-    # Numbered folder: my_project_001/, _002/, etc. Reuses matching folder.
     root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
-        cfg.export_dir, cfg.project_name, run_settings
+        cfg.export_dir, cfg.project_name, run_settings,
     )
-    log_info(f"Export directory: {root_dir}", cfg.quiet)
+    commit_export_directory(root_dir, run_settings)
 
-    # Count expected refs/queries for progress
-    if use_parquet:
-        from src.parquet_cache import get_parquet_row_counts
-        expected_refs, expected_queries = get_parquet_row_counts(cfg.parquet_file)
-    else:
-        ref_sub_lower = cfg.reference_substring.lower() if cfg.reference_substring else ""
-        ref_paths = {str(Path(m).resolve()).lower() for m in cfg.mzml_files
-                     if ref_sub_lower and ref_sub_lower in m.lower()}
-        expected_refs = sum(
-            1 for vg in variant_groups.values() for m in vg.matches
-            if m.mzml_resolved_path and str(Path(m.mzml_resolved_path).resolve()).lower() in ref_paths
+    # Create format subdirectories as needed
+    for fmt in cfg.export_formats:
+        fmt_dir = {"png": png_dir, "svg": svg_dir, "pdf": pdf_dir}.get(fmt)
+        if fmt_dir:
+            fmt_dir.mkdir(parents=True, exist_ok=True)
+
+    saved_files = []
+
+    # ------------------------------------------------------------------
+    # 7. Export Parquet DataFrames
+    # ------------------------------------------------------------------
+    for name, lf in [("psm", psm_lf), ("peaks", peaks_lf),
+                     ("seq", seq_lf), ("heatmap", heatmap_lf)]:
+        out = root_dir / f"{name}.parquet"
+        lf.collect().write_parquet(out)
+        saved_files.append(str(out))
+
+    if not quiet:
+        print(f"  Saved 4 Parquet files")
+
+    # ------------------------------------------------------------------
+    # 8. Export comparison summary CSV/XLSX
+    # ------------------------------------------------------------------
+    if not comparison_df.empty:
+        csv_path = root_dir / "comparison_summary.csv"
+        comparison_df.to_csv(csv_path, index=False)
+        saved_files.append(str(csv_path))
+
+        try:
+            xlsx_path = root_dir / "comparison_summary.xlsx"
+            comparison_df.to_excel(xlsx_path, index=False, engine="openpyxl")
+            saved_files.append(str(xlsx_path))
+        except ImportError:
+            logger.warning("openpyxl not installed -- skipping XLSX export")
+        except Exception as e:
+            logger.warning(f"XLSX export failed: {e}")
+
+        if not quiet:
+            print(f"  Saved comparison summary (CSV"
+                  f"{'/XLSX' if (root_dir / 'comparison_summary.xlsx').exists() else ''})")
+
+    # ------------------------------------------------------------------
+    # 9. Generate mirror plots (parallel)
+    # ------------------------------------------------------------------
+    if not cfg.no_plots:
+        n_plots = _export_mirror_plots(
+            annotated_queries, reference_store, vg_copy,
+            cfg, root_dir, png_dir, svg_dir, pdf_dir,
+            normalize, quiet,
         )
-        expected_queries = total_psms - expected_refs
+        saved_files.extend(["(plots)"] if n_plots > 0 else [])
 
-    if expected_refs > 0:
-        log_info(f"Expected: {expected_refs} reference + {expected_queries} query spectra", cfg.quiet)
-    else:
-        log_info(f"Expected: {expected_queries} spectra (no reference)", cfg.quiet)
+        if not quiet:
+            print(f"  Generated {n_plots} plot file(s)")
 
-    # =========================================================================
-    # Phase 4: Process spectra (streaming)
-    # =========================================================================
-    start_time = time.time()
-    ref_start_time = start_time
-    query_start_time = [None]  # mutable for closure
-
-    # Progress trackers
-    ref_progress = TerminalProgress(expected_refs, "References", quiet=cfg.quiet) if expected_refs > 0 else None
-    query_progress = TerminalProgress(
-        expected_queries,
-        "Queries" if expected_refs > 0 else "Spectra",
-        quiet=cfg.quiet,
-    )
-
-    # Results tracking
-    results_summary = {
-        "reference_spectra": 0,
-        "query_spectra": 0,
-        "plots_generated": 0,
-        "files_exported": {"png": [], "svg": []},
-        "errors": [],
-        "export_root": str(root_dir),
-    }
-
-    annotated_references: Dict[str, list] = {}
-    refs_done = [expected_refs == 0]  # mutable for closure
-    summary_rows: List[dict] = []
-    _cached_queries: List[Tuple[str, object]] = []
-    _cached_references: Dict[str, list] = {}  # accumulated during streaming for cache saves
-
-    # Task collection for parallel processing
-    from src.parallel_processor import ComparisonTask
-    comparison_tasks: List[ComparisonTask] = []
-    task_counter = [0]
-
-    # Annotation kwargs shared by all pipeline calls
-    _annotation_kwargs = dict(
-        ion_types=cfg.ion_types,
-        mz_tolerance=cfg.mz_tolerance,
-        add_losses=cfg.add_losses,
-        add_first_prefix_ion=cfg.add_first_prefix_ion,
-        remove_precursor_peaks=cfg.remove_precursor_peaks,
-        normalize=cfg.normalize,
-    )
-
-    # --- Cache save helper (supports partial + complete saves) ---
-    _cache_complete = [False]  # True once a complete (non-partial) save succeeds
-
-    def _try_save_cache(stage: str, partial: bool = False):
-        """Save Parquet cache. Overwrites previous saves with updated data."""
-        if _cache_complete[0]:
-            return  # Complete cache already saved, no need to overwrite
-        if (loaded_from_cache
-                or use_parquet
-                or not cfg.cache_enabled
-                or not cache_fingerprint):
-            return
-        has_refs = _cached_references and any(_cached_references.values())
-        if not has_refs and not _cached_queries:
-            return
-        cache_metadata = {
-            "fingerprint": cache_fingerprint,
-            "export_root": str(root_dir),
-            "idxml_files": cfg.idxml_files,
-            "mzml_files": cfg.mzml_files,
-            "target_peptides": cfg.peptides,
-            "reference_substring": cfg.reference_substring,
-        }
-        save_parquet_cache(
-            cached_references=_cached_references,
-            cached_queries=_cached_queries,
-            cache_path=str(Path(cache_dir) / f"{cache_fingerprint}.parquet"),
-            cache_metadata=cache_metadata,
-            cache_complete=_cache_complete,
-            partial=partial,
-            log_fn=lambda msg: log_info(f"[{stage}] {msg}", cfg.quiet),
-        )
-
-    # --- Callbacks ---
-    # Incremental cache save interval
-    _INCREMENTAL_SAVE_INTERVAL = 500
-    _last_incremental_save = [0]  # query count at last incremental save
-
-    def on_reference_loaded(variant_key: str, count: int):
-        results_summary["reference_spectra"] += count
-        if ref_progress:
-            ref_progress.update(results_summary["reference_spectra"])
-
-        if results_summary["reference_spectra"] >= expected_refs and not refs_done[0]:
-            refs_done[0] = True
-            if ref_progress:
-                ref_progress.finish(f"References: {results_summary['reference_spectra']} loaded")
-            query_start_time[0] = time.time()
-
-    def on_query_ready(result: StreamingResult):
-        """Annotate query + build ComparisonTasks (no figure creation here)."""
-        query = result.query_spectrum
-        refs = result.reference_spectra
-
-        # Accumulate references into cache (once per variant)
-        if not use_parquet and result.variant_key not in _cached_references:
-            _cached_references[result.variant_key] = list(refs)
-
-        # Accumulate queries for cache + incremental save every N queries
-        if not use_parquet:
-            _cached_queries.append((result.variant_key, query))
-            n_queries = len(_cached_queries)
-            if (n_queries - _last_incremental_save[0]) >= _INCREMENTAL_SAVE_INTERVAL:
-                _last_incremental_save[0] = n_queries
-                _try_save_cache(f"incremental {n_queries}", partial=True)
-
-        # Mark refs done on first query
-        if not refs_done[0]:
-            refs_done[0] = True
-            if ref_progress:
-                ref_progress.finish(f"References: {results_summary['reference_spectra']} loaded")
-            query_start_time[0] = time.time()
-
-        results_summary["query_spectra"] += 1
-        query_progress.update()
-
-        # Annotate query
-        query_df = pipeline_annotate(query, errors=results_summary["errors"], **_annotation_kwargs)
-        if query_df is None:
-            return
-
-        # Ensure references are annotated (cached per variant)
-        ref_data = ensure_references_annotated(
-            result.variant_key, refs, annotated_references,
-            _annotation_kwargs, results_summary["errors"],
-        )
-
-        # Build comparison tasks
-        new_tasks = build_comparison_tasks(
-            query=query,
-            ref_data=ref_data,
-            query_df=query_df,
-            base_sequence=result.base_sequence,
-            modification_key=result.modification_key,
-            png_dir=str(png_dir),
-            svg_dir=str(svg_dir),
-            pdf_dir=str(pdf_dir),
-            export_formats=cfg.export_formats,
-            figsize=cfg.figsize,
-            dpi=cfg.dpi,
-            normalize=cfg.normalize,
-            plot_unpaired=cfg.plot_unpaired,
-            task_counter=task_counter,
-            koina_settings=cfg.koina_settings,
-        )
-        if not new_tasks and not ref_data and not cfg.plot_unpaired:
-            log_debug(f"  Skipped (no reference): {Path(query.source_file).stem}", cfg.verbose)
-        comparison_tasks.extend(new_tasks)
-
-    def on_file_start(filename: str, is_reference: bool):
-        file_type = "reference" if is_reference else "query"
-        log_debug(f"Opening {file_type} file: {filename}", cfg.verbose)
-
-    def on_file_complete(filename: str, loaded: int, not_found: int):
-        log_debug(f"Completed {filename}: {loaded} loaded, {not_found} not found", cfg.verbose)
-
-    def on_error(error_msg: str):
-        results_summary["errors"].append(error_msg)
-        log_debug(f"Error: {error_msg}", cfg.verbose)
-
-    # --- Phase 4a: Stream spectra and annotate (collect tasks) ---
-    log_info("", cfg.quiet)  # blank line before progress
-
-    try:
-        stream_spectra(
-            use_parquet=use_parquet,
-            parquet_file=cfg.parquet_file,
-            partial_cache_path=partial_cache_path,
-            variant_groups=variant_groups,
-            mzml_paths=mzml_paths,
-            reference_substring=cfg.reference_substring,
-            workers=cfg.workers,
-            on_reference_loaded=on_reference_loaded,
-            on_query_ready=on_query_ready,
-            on_file_start=on_file_start,
-            on_file_complete=on_file_complete,
-            on_error=on_error,
-            cached_references=_cached_references,
-            log_fn=lambda msg: log_info(msg, cfg.quiet),
-        )
-
-        # Finish progress bars
-        if ref_progress and not refs_done[0]:
-            ref_progress.finish(f"References: {results_summary['reference_spectra']} loaded")
-        query_progress.finish(
-            f"{'Queries' if expected_refs > 0 else 'Spectra'}: "
-            f"{results_summary['query_spectra']} annotated, "
-            f"{len(comparison_tasks)} plots queued"
-        )
-
-    except Exception as e:
-        log_error(f"Processing failed: {e}")
-        logger.exception("Processing error")
-        return 1
-
-    # Save point: after streaming complete — final complete cache
-    _try_save_cache("after loading", partial=False)
-
-    # --- Phase 4b: Generate plots in parallel ---
-    if comparison_tasks:
-        # Only create the export directory now that we know there are plots to write
-        commit_export_directory(root_dir, run_settings)
-
-        from src.parallel_processor import run_parallel_comparisons
-        from src.tmpfs_staging import TmpfsStaging, StagingConfig
-
-        # Check for existing plot files (resumable runs)
-        # Uses final disk paths — before any tmpfs rewriting
-        from src.pipeline import mark_skipped_tasks
-        skipped = mark_skipped_tasks(comparison_tasks)
-
-        if skipped > 0:
-            log_info(f"Skipping {skipped}/{len(comparison_tasks)} plots (already on disk)", cfg.quiet)
-
-        pending = len(comparison_tasks) - skipped
-        log_info("", cfg.quiet)
-        log_info(f"Generating {pending} plots, {skipped} cached ({cfg.workers} workers)...", cfg.quiet)
-
-        plot_progress = TerminalProgress(len(comparison_tasks), "Plots", quiet=cfg.quiet)
-
-        # Global counter for progress across chunks
-        _global_completed = [0]
-
-        def on_plot_complete_chunked(result, completed, total):
-            _global_completed[0] += 1
-            plot_progress.update(_global_completed[0])
-            accumulate_plot_result(result, results_summary, summary_rows)
-
-        staging_config = StagingConfig(
-            enabled=cfg.tmpfs_staging,
-            tmpfs_base=cfg.tmpfs_path,
-            ram_fraction=cfg.tmpfs_ram_fraction,
-        )
-
-        with TmpfsStaging(str(png_dir), str(svg_dir), str(pdf_dir), cfg.export_formats,
-                          staging_config,
-                          log_fn=lambda msg: log_info(msg, cfg.quiet)) as staging:
-            for chunk in staging.iter_chunks(comparison_tasks):
-                run_parallel_comparisons(
-                    tasks=chunk,
-                    workers=cfg.workers,
-                    on_task_complete=on_plot_complete_chunked,
+        # Summary plots
+        if not comparison_df.empty:
+            try:
+                from src.summary_plots import generate_all_summary_plots
+                summary_formats = [f for f in cfg.export_formats if f in ("png", "svg", "pdf")]
+                if not summary_formats:
+                    summary_formats = ["png"]
+                results = generate_all_summary_plots(
+                    source=comparison_df,
+                    output_dir=str(root_dir),
+                    formats=summary_formats,
                 )
-                staging.flush()
+                n_summary = sum(len(v) for v in results.values())
+                if not quiet:
+                    print(f"  Generated {n_summary} summary plot(s)")
+            except Exception as e:
+                logger.error(f"Summary plot generation failed: {e}")
+                if not quiet:
+                    print(f"  Warning: Summary plots failed: {e}")
 
-        plot_progress.finish(
-            f"Plots: {results_summary['plots_generated']} generated"
-        )
-
-    # Save point 2: after plots
-    _try_save_cache("after plots")
-
-    total_time = time.time() - start_time
-
-    # =========================================================================
-    # Phase 5: Write comparison summary CSV + XLSX
-    # =========================================================================
-    summary_result = write_comparison_summary(
-        summary_rows=summary_rows,
-        root_dir=root_dir,
-        export_formats=cfg.export_formats,
-        dpi=cfg.dpi,
-        project_name=cfg.project_name,
-        log_fn=lambda msg: log_info(msg, cfg.quiet),
-    )
-    if summary_result.get("csv"):
-        results_summary["summary_csv"] = summary_result["csv"]
-    if summary_result.get("xlsx"):
-        results_summary["summary_xlsx"] = summary_result["xlsx"]
-    if summary_result.get("summary_plots"):
-        results_summary["summary_plots"] = summary_result["summary_plots"]
-        n_summary = sum(len(v) for v in summary_result["summary_plots"].values())
-        log_info(f"Summary plots: {n_summary} files in {root_dir / 'summary'}", cfg.quiet)
-
-    # Save point 3: after summary export
-    _try_save_cache("after summary")
-
-    # =========================================================================
-    # Final summary
-    # =========================================================================
-    log_info("", cfg.quiet)
-    log_info("=" * 60, cfg.quiet)
-    log_info("COMPLETE", cfg.quiet)
-    log_info("=" * 60, cfg.quiet)
-    log_info(f"References:  {results_summary['reference_spectra']}", cfg.quiet)
-    log_info(f"Queries:     {results_summary['query_spectra']}", cfg.quiet)
-    log_info(f"Plots:       {results_summary['plots_generated']}", cfg.quiet)
-    log_info(f"PNG files:   {len(results_summary['files_exported']['png'])}", cfg.quiet)
-    log_info(f"SVG files:   {len(results_summary['files_exported']['svg'])}", cfg.quiet)
-    log_info(f"Total time:  {format_time(total_time)}", cfg.quiet)
-    log_info(f"Output:      {root_dir}", cfg.quiet)
-
-    if results_summary["errors"]:
-        n_err = len(results_summary["errors"])
-        log_info(f"Warnings:    {n_err}", cfg.quiet)
-        if cfg.verbose:
-            for err in results_summary["errors"][:10]:
-                log_debug(err, True)
-            if n_err > 10:
-                log_debug(f"... and {n_err - 10} more", True)
-
-    if results_summary["plots_generated"] == 0:
-        log_error("No plots were generated. Check your inputs and reference substring.")
-        return 1
+    # ------------------------------------------------------------------
+    # 10. Completion summary
+    # ------------------------------------------------------------------
+    elapsed = time.time() - pipeline_start
+    if not quiet:
+        print()
+        print("=" * 60)
+        print("  Pipeline Complete")
+        print("=" * 60)
+        print(f"  Variants:     {len(variant_groups)}")
+        print(f"  PSMs:         {total_psms}")
+        print(f"  Spectra:      {len(annotated_queries)}")
+        print(f"  Comparisons:  {len(comparison_rows)}")
+        print(f"  Export dir:   {root_dir}")
+        print(f"  Elapsed:      {format_time(elapsed)}")
+        print("=" * 60)
+        print()
 
     return 0
 
 
 # ============================================================================
-# Argument parser + main
+# Mirror plot export (parallel)
 # ============================================================================
 
-def create_parser() -> argparse.ArgumentParser:
+def _generate_single_plot(task: dict) -> int:
+    """Worker function for parallel plot generation. Returns file count."""
+    import matplotlib
+    matplotlib.use("Agg")
+    count = 0
+
+    if task["type"] == "mirror":
+        from src.mirror_plot import create_mirror_plot, figure_to_bytes, create_plotly_mirror_plot
+        fig = create_mirror_plot(
+            upper_spectrum=task["query_df"],
+            lower_spectrum=task["ref_df"],
+            title=task["title"],
+            upper_label=task["query_label"],
+            lower_label=task["ref_label"],
+            metrics_text=task["metrics_text"],
+            normalize=task["normalize"],
+            figsize=task.get("figsize", (12, 8)),
+            dpi=task.get("dpi", 300),
+        )
+    else:
+        from src.mirror_plot import create_single_spectrum_plot, figure_to_bytes
+        fig = create_single_spectrum_plot(
+            spectrum=task["query_df"],
+            title=task["title"],
+            label=task.get("query_label", ""),
+            normalize=task["normalize"],
+            figsize=task.get("figsize", (12, 8)),
+            dpi=task.get("dpi", 300),
+        )
+
+    from src.mirror_plot import figure_to_bytes
+
+    for fmt_dir_key, fmt in [("png_dir", "png"), ("svg_dir", "svg"), ("pdf_dir", "pdf")]:
+        fmt_dir = task.get(fmt_dir_key, "")
+        if not fmt_dir:
+            continue
+        out_dir = Path(fmt_dir) / task["folder_name"]
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"{task['safe_name']}.{fmt}"
+        data = figure_to_bytes(fig, format=fmt)
+        out_file.write_bytes(data)
+        count += 1
+
+    import matplotlib.pyplot as plt
+    plt.close(fig)
+
+    # HTML interactive plot
+    if task.get("html_dir") and task["type"] == "mirror":
+        from src.mirror_plot import create_plotly_mirror_plot
+        plotly_fig = create_plotly_mirror_plot(
+            upper_spectrum=task["query_df"],
+            lower_spectrum=task["ref_df"],
+            title=task["title"],
+            upper_label=task["query_label"],
+            lower_label=task["ref_label"],
+            metrics_text=task["metrics_text"],
+            normalize=task["normalize"],
+        )
+        html_out_dir = Path(task["html_dir"]) / task["folder_name"]
+        html_out_dir.mkdir(parents=True, exist_ok=True)
+        html_path = html_out_dir / f"{task['safe_name']}.html"
+        plotly_fig.write_html(str(html_path), include_plotlyjs="cdn")
+        count += 1
+
+    return count
+
+
+def _export_mirror_plots(annotated_queries, reference_store, variant_groups,
+                         cfg, root_dir, png_dir, svg_dir, pdf_dir,
+                         normalize, quiet):
+    """Generate mirror / single-spectrum plots using parallel workers."""
+    from src.export import sanitize_filename
+    from src.pipeline import build_plot_tasks
+
+    # Determine which format directories are active
+    fmt_dirs = {}
+    for fmt, d in [("png", png_dir), ("svg", svg_dir), ("pdf", pdf_dir)]:
+        if fmt in cfg.export_formats:
+            fmt_dirs[fmt] = str(d)
+
+    html_dir = str(root_dir / "html") if "html" in cfg.export_formats else ""
+
+    tasks = build_plot_tasks(
+        annotated_queries, reference_store, variant_groups,
+        normalize=normalize,
+        sanitize_fn=sanitize_filename,
+        fmt_dirs=fmt_dirs,
+        figsize=cfg.figsize,
+        dpi=cfg.dpi,
+        html_dir=html_dir,
+        plot_unpaired=cfg.plot_unpaired,
+    )
+
+    if not tasks:
+        return 0
+
+    plot_progress = TerminalProgress("Generating plots", len(tasks), quiet)
+    total_files = 0
+    effective_workers = min(cfg.workers, len(tasks))
+
+    if effective_workers <= 1:
+        for i, task in enumerate(tasks):
+            total_files += _generate_single_plot(task)
+            plot_progress.update(i + 1)
+    else:
+        completed = 0
+        with ProcessPoolExecutor(max_workers=effective_workers) as executor:
+            futures = {executor.submit(_generate_single_plot, t): t for t in tasks}
+            for future in as_completed(futures):
+                completed += 1
+                try:
+                    total_files += future.result()
+                except Exception as e:
+                    logger.error(f"Plot generation failed: {e}")
+                plot_progress.update(completed)
+
+    plot_progress.finish()
+    return total_files
+
+
+# ============================================================================
+# Argument parser
+# ============================================================================
+
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="mspecviz-cli",
-        description="MSpecViz CLI — Terminal-based MS/MS spectrum analysis pipeline",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""\
-examples:
-  python cli.py --config config.yaml
-  python cli.py --config config.yaml --peptides peptides.txt --verbose
-  python cli.py --config config.yaml --mz-tolerance 0.05 --add-losses --quiet
-""",
+        prog="msinsight-cli",
+        description="MSInsight CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
+        epilog="Example: python cli.py --config config.yaml --verbose",
     )
 
     # Required
-    parser.add_argument("--config", required=True, help="Path to YAML configuration file")
+    parser.add_argument("-c", "--config", required=True,
+                        help="Path to YAML config file")
 
     # Input overrides
-    parser.add_argument("--idxml", nargs="+", help="idXML file paths (overrides config)")
-    parser.add_argument("--idxml-filter", default=None,
-                        help="Case-insensitive substring filter on idXML filenames "
-                             "(e.g. 'run1' keeps only files whose name contains 'run1')")
-    parser.add_argument("--mzml", nargs="+", help="mzML file paths (overrides config)")
-    parser.add_argument("--mzml-filter", default=None,
-                        help="Case-insensitive substring filter on mzML filenames "
-                             "(e.g. 'Standard' keeps only files whose name contains 'Standard')")
-    parser.add_argument("--recursive", action="store_true", default=False,
-                        help="Recursively scan input directories for idXML/mzML files")
-    parser.add_argument("--no-recursive", action="store_true", default=False,
-                        help="Disable recursive directory scanning (overrides config recursive: true)")
-    parser.add_argument("--parquet", help="Parquet file path (skips search + mzML loading)")
-    parser.add_argument("--peptides", help="Path to peptides .txt file (one per line, overrides config)")
-    parser.add_argument("--reference-substring", help="Reference file identifier substring")
+    parser.add_argument("--idxml", nargs="+", metavar="PATTERN",
+                        help="idXML file paths or glob patterns (overrides config)")
+    parser.add_argument("--mzml", nargs="+", metavar="PATTERN",
+                        help="mzML file paths or glob patterns (overrides config)")
+    parser.add_argument("--peptides", metavar="PATH_OR_ALL",
+                        help='Path to peptides.txt or "all" (overrides config)')
+    parser.add_argument("--reference-substring", metavar="STR",
+                        help="Reference file substring (overrides config)")
 
     # Annotation overrides
-    parser.add_argument("--ion-types", nargs="+", help="Ion types to annotate (e.g., b y)")
-    parser.add_argument("--mz-tolerance", type=float, help="m/z tolerance in Da")
-    parser.add_argument("--add-losses", action="store_true", help="Add neutral losses (H2O, NH3)")
-    parser.add_argument("--no-first-prefix-ion", action="store_true", help="Disable first prefix ion")
-    parser.add_argument("--remove-precursor-peaks", action="store_true", help="Remove precursor peaks")
-    parser.add_argument("--raw-intensity", action="store_true", help="Use raw intensities (not normalized)")
+    parser.add_argument("--ion-types", nargs="+", metavar="ION",
+                        help="Ion types, e.g. b y (overrides config)")
+    parser.add_argument("--mz-tolerance", type=float, metavar="DA",
+                        help="m/z tolerance in Da (overrides config)")
 
     # Export overrides
-    parser.add_argument("--export-dir", help="Export directory path")
-    parser.add_argument("--project-name", help="Project name for export folder")
-    parser.add_argument("--formats", nargs="+", choices=["png", "svg", "pdf"], help="Export formats")
+    parser.add_argument("--export-dir", metavar="DIR",
+                        help="Export directory (overrides config)")
+    parser.add_argument("--project-name", metavar="NAME",
+                        help="Project name (overrides config)")
+    parser.add_argument("--formats", nargs="+", metavar="FMT",
+                        choices=["png", "svg", "pdf", "html"],
+                        help="Export formats: png svg pdf html (overrides config)")
+    parser.add_argument("--workers", type=int, metavar="N",
+                        help="Parallel workers (overrides config)")
+
+    # Flags
     parser.add_argument("--no-plots", action="store_true",
-                        help="Skip plot rendering; only export the summary CSV (faster for large datasets)")
-    parser.add_argument("--dpi", type=int, help="DPI for image export")
-    parser.add_argument("--plot-unpaired", action="store_true", help="Plot spectra without matching reference")
-
-    # Cache
-    parser.add_argument("--no-cache", action="store_true", help="Disable Parquet auto-caching")
-
-    # Performance
-    parser.add_argument("--workers", type=int, default=None,
-                        help="Number of parallel worker processes for plot generation (default: 4)")
-    parser.add_argument("--no-tmpfs", action="store_true",
-                        help="Disable RAM-backed tmpfs staging for plot writes")
-
-    # Koina AI prediction
+                        help="Skip plot generation, export CSV/Parquet only")
     parser.add_argument("--no-koina", action="store_true",
-                        help="Disable Koina AI fallback reference when no experimental reference exists")
-    parser.add_argument("--koina-model", type=str, metavar="MODEL",
-                        help="Koina model ID (e.g. ms2pip_timsTOF2024, Prosit_2019_intensity)")
-    parser.add_argument("--koina-ce", type=int, metavar="CE",
-                        help="Collision energy for Koina prediction (default: 35)")
-    parser.add_argument("--koina-instrument", type=str, metavar="INST",
-                        help="Instrument type for Koina prediction (QE, LUMOS, TIMSTOF, SCIEXTOF)")
+                        help="Disable Koina AI fallback predictions")
+
+    # Koina overrides
+    parser.add_argument("--koina-model", metavar="ID",
+                        help="Koina model ID (overrides config)")
+    parser.add_argument("--koina-ce", type=int, metavar="EV",
+                        help="Koina collision energy (overrides config)")
+    parser.add_argument("--koina-instrument", metavar="TYPE",
+                        help="Koina instrument type (overrides config)")
 
     # Verbosity
-    parser.add_argument("-v", "--verbose", action="store_true", help="Enable verbose/debug output")
-    parser.add_argument("-q", "--quiet", action="store_true", help="Suppress all output except errors")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="Verbose output (DEBUG logging)")
+    parser.add_argument("-q", "--quiet", action="store_true",
+                        help="Suppress non-error output")
 
     return parser
 
 
+# ============================================================================
+# Main
+# ============================================================================
+
 def main():
-    parser = create_parser()
+    parser = build_parser()
     args = parser.parse_args()
 
-    # Validate config file exists
-    if not Path(args.config).exists():
-        log_error(f"Config file not found: {args.config}")
+    # Configure logging
+    if args.quiet:
+        log_level = logging.ERROR
+    elif args.verbose:
+        log_level = logging.DEBUG
+    else:
+        log_level = logging.WARNING
+
+    logging.basicConfig(
+        level=log_level,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
+
+    # Load YAML config
+    yaml_cfg = load_yaml_config(args.config)
+
+    # Build merged config
+    cfg = build_config(yaml_cfg, args)
+
+    # Load peptides (needs to happen after config is built, before pipeline)
+    peptide_spec = args.peptides if args.peptides else yaml_cfg.get("peptides", [])
+    if peptide_spec:
+        cfg.peptides, cfg.peptides_mode = load_peptides(
+            peptide_spec, cfg.idxml_files, cfg.workers, args.quiet,
+        )
+    else:
+        print("Error: No peptides specified. Use 'peptides' in config or --peptides.", file=sys.stderr)
         sys.exit(2)
 
-    # Setup logging
-    if args.verbose:
-        logging.basicConfig(level=logging.DEBUG, format="%(levelname)s %(name)s: %(message)s")
-    elif args.quiet:
-        logging.basicConfig(level=logging.ERROR, format="%(levelname)s: %(message)s")
-    else:
-        logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
-
-    # Load and merge configuration
-    try:
-        cfg = load_config(args.config, args)
-    except Exception as e:
-        log_error(f"Configuration error: {e}")
+    if not cfg.peptides:
+        print("Error: Peptide list is empty.", file=sys.stderr)
         sys.exit(2)
 
     # Run pipeline
-    exit_code = run_pipeline(cfg)
+    exit_code = run_pipeline(cfg, quiet=args.quiet)
     sys.exit(exit_code)
 
 

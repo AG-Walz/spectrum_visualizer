@@ -1,5 +1,7 @@
 """
 Unit tests for src/export.py
+
+Note: get_workspace_plot_dirs() was removed in MSInsight.
 """
 import json
 import sys
@@ -14,7 +16,6 @@ from src.export import (
     commit_export_directory,
     sanitize_filename,
     shorten_stem,
-    get_workspace_plot_dirs,
 )
 
 
@@ -24,7 +25,7 @@ from src.export import (
 
 class TestSanitizeFilename:
     def test_removes_illegal_chars(self):
-        # Characters < > : " / \ | ? * should be replaced with _
+        # Characters < > : " / \ | ? * [ ] should be replaced with _
         result = sanitize_filename('a<b>c:d"e/f\\g|h?i*j')
         assert "<" not in result
         assert ">" not in result
@@ -52,7 +53,6 @@ class TestSanitizeFilename:
         assert len(result) <= 100
 
     def test_empty_string_returns_fallback(self):
-        # sanitize_filename returns empty string for empty input (no fallback)
         result = sanitize_filename("")
         assert isinstance(result, str)
 
@@ -105,7 +105,7 @@ class TestFindOrCreateExportDirectory:
         root, png, svg, pdf = find_or_create_export_directory(
             str(tmp_path), "myproject", settings
         )
-        # No directories created yet — only after commit
+        # No directories created yet -- only after commit
         assert not root.exists()
         commit_export_directory(root, settings)
         assert root.exists()
@@ -122,7 +122,7 @@ class TestFindOrCreateExportDirectory:
         root2, _, _, _ = find_or_create_export_directory(
             str(tmp_path), "proj", settings
         )
-        # Same run_settings → same folder number
+        # Same run_settings -> same folder number
         num1 = root1.name.split("_")[1]
         num2 = root2.name.split("_")[1]
         assert num1 == num2
@@ -168,21 +168,3 @@ class TestFindOrCreateExportDirectory:
         commit_export_directory(root, {"x": 1})
         assert not png_dir.exists()
         assert png_dir.name == "png"
-
-
-# ---------------------------------------------------------------------------
-# TestGetWorkspacePlotDirs
-# ---------------------------------------------------------------------------
-
-class TestGetWorkspacePlotDirs:
-    def test_returns_correct_paths(self, tmp_path):
-        root, png, svg, pdf = get_workspace_plot_dirs(tmp_path)
-        assert root == tmp_path / "plots"
-        assert png == tmp_path / "plots" / "png"
-        assert svg == tmp_path / "plots" / "svg"
-        assert pdf == tmp_path / "plots" / "pdf"
-
-    def test_no_dirs_created(self, tmp_path):
-        root, png, svg, pdf = get_workspace_plot_dirs(tmp_path)
-        assert not root.exists()
-        assert not png.exists()

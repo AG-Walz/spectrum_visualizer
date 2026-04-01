@@ -108,19 +108,18 @@ class TestAnnotatePeaks:
         assert result.iloc[0]["annotation"] == "unannotated"
         assert bool(result.iloc[0]["is_annotated"]) is False
 
-    def test_tolerance_boundary_within(self):
-        # A peak just within tolerance (tol - 0.001) should be annotated
-        mz = np.array([self.b2_mz + 0.019])
+    @pytest.mark.parametrize("offset, expected_annotated", [
+        (0.019, True),    # just within tolerance (tol - 0.001)
+        (-0.019, True),   # just within tolerance on the other side
+        (0.021, False),   # just outside tolerance (tol + 0.001)
+        (-0.021, False),  # just outside tolerance on the other side
+        (0.0, True),      # exact match
+    ])
+    def test_tolerance_boundary(self, offset, expected_annotated):
+        mz = np.array([self.b2_mz + offset])
         intensity = np.array([1000.0])
         result = annotate_spectrum(mz, intensity, self.theo_frags, mz_tolerance=0.02)
-        assert bool(result.iloc[0]["is_annotated"]) is True
-
-    def test_tolerance_boundary_outside(self):
-        # A peak just outside tolerance (tol + 0.001) should not be annotated
-        mz = np.array([self.b2_mz + 0.021])
-        intensity = np.array([1000.0])
-        result = annotate_spectrum(mz, intensity, self.theo_frags, mz_tolerance=0.02)
-        assert bool(result.iloc[0]["is_annotated"]) is False
+        assert bool(result.iloc[0]["is_annotated"]) is expected_annotated
 
     def test_returns_required_columns(self):
         mz = np.array([self.b2_mz])
@@ -183,13 +182,48 @@ class TestPrepareSpectrumForPlot:
         assert isinstance(df, pd.DataFrame)
         assert len(df) == 0
 
-    def test_result_sorted_by_mz(self):
+    def test_result_has_ion_type_column(self):
+        """MSInsight adds an ion_type column to prepare_spectrum_for_plot output."""
+        df = prepare_spectrum_for_plot(
+            self.mz, self.intensity, "PEPTIDEK", charge=2
+        )
+        assert "ion_type" in df.columns
+
+    def test_result_length_matches_input(self):
         # Provide unsorted m/z input
         mz = np.array([600.0, 200.0, 400.0])
         intensity = np.array([100.0, 200.0, 150.0])
         df = prepare_spectrum_for_plot(mz, intensity, "PEPTIDEK", charge=2)
-        # Result mz should be sorted ascending (annotate_spectrum re-sorts via PyOpenMS)
-        # Note: the output may not be sorted if PyOpenMS returns in input order
-        # The key invariant is the DataFrame has the right columns and lengths
         assert len(df) == 3
         assert "mz" in df.columns
+
+
+# ---------------------------------------------------------------------------
+# Integration tests with annotation on real-like spectra
+# ---------------------------------------------------------------------------
+
+@pytest.mark.integration
+class TestAnnotateRealSpectrum:
+    """Annotate spectra from real-like data."""
+
+    def test_annotate_asddfdqasy(self):
+        """Annotate ASDDFDQASY spectrum with b/y ions."""
+        mz = np.array([175.12, 290.14, 405.17, 520.20, 667.27, 782.30], dtype=np.float64)
+        intensity = np.array([100, 200, 150, 300, 250, 180], dtype=np.float64)
+        result = prepare_spectrum_for_plot(
+            mz, intensity, "ASDDFDQASY", charge=1,
+            ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
+        )
+        assert len(result) == len(mz)
+        assert "annotation" in result.columns
+        assert result["mz"].max() <= max(mz) + 0.01
+
+    def test_annotate_with_losses(self):
+        mz = np.array([175.12, 290.14, 405.17], dtype=np.float64)
+        intensity = np.array([100, 200, 150], dtype=np.float64)
+        result = prepare_spectrum_for_plot(
+            mz, intensity, "RTEFNLNQY", charge=2,
+            ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
+            add_losses=True,
+        )
+        assert len(result) == len(mz)

@@ -12,7 +12,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.parallel_processor import ComparisonTask, ComparisonResult, process_single_task
 from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
-from src.spectrum_loader import LoadedSpectrum
 
 
 # ---------------------------------------------------------------------------

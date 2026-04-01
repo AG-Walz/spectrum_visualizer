@@ -1,5 +1,10 @@
 """
 Unit tests for src/summary_plots.py
+
+MSInsight changes from MSpecViz:
+- Removed: plot_dumbbell, generate_peptide_detail_plots, _shorten_labels,
+           prepare_peptide_detail_data
+- Added: sanitize_filename, shorten_stem (tested in test_export.py)
 """
 import sys
 from pathlib import Path
@@ -33,8 +38,8 @@ def _make_summary_df(n_peptides=3, n_reps=4):
                 "Charge": 2,
                 "Query": f"query_{i}.mzML",
                 "Reference": "ref.mzML",
-                "R² binned": float(rng.uniform(0.5, 1.0)),
-                "R² match": float(rng.uniform(0.5, 1.0)),
+                "R\u00b2 binned": float(rng.uniform(0.5, 1.0)),
+                "R\u00b2 match": float(rng.uniform(0.5, 1.0)),
                 "Cosine": float(rng.uniform(0.6, 1.0)),
                 "Entropy": float(rng.uniform(0.6, 1.0)),
                 "Dice": float(rng.uniform(0.4, 1.0)),
@@ -53,6 +58,9 @@ def summary_csv(tmp_path):
     return csv_path
 
 
+# NOTE: TestSanitizeFilename and TestShortenStem are in test_export.py
+# (sanitize_filename and shorten_stem are shared utilities tested there)
+
 # ---------------------------------------------------------------------------
 # TestPrepareSummaryData
 # ---------------------------------------------------------------------------
@@ -60,19 +68,19 @@ def summary_csv(tmp_path):
 class TestPrepareSummaryData:
     def test_returns_two_dataframes(self):
         df = _make_summary_df()
-        raw_df, agg_df = prepare_summary_data(df, metric="R² binned")
+        raw_df, agg_df = prepare_summary_data(df, metric="R\u00b2 binned")
         assert isinstance(raw_df, pd.DataFrame)
         assert isinstance(agg_df, pd.DataFrame)
 
     def test_agg_df_has_expected_columns(self):
         df = _make_summary_df()
-        _, agg_df = prepare_summary_data(df, metric="R² binned")
+        _, agg_df = prepare_summary_data(df, metric="R\u00b2 binned")
         for col in ["peptidoform", "count", "median", "mean", "std"]:
             assert col in agg_df.columns
 
     def test_peptidoform_column_built(self):
         df = _make_summary_df(n_peptides=2, n_reps=2)
-        raw_df, _ = prepare_summary_data(df, metric="R² binned")
+        raw_df, _ = prepare_summary_data(df, metric="R\u00b2 binned")
         assert "peptidoform" in raw_df.columns
         assert all("/" in pf for pf in raw_df["peptidoform"])
 
@@ -100,7 +108,7 @@ class TestSummaryPlotsFromCsv:
                 assert Path(path).exists()
 
     def test_single_peptide_does_not_crash(self, tmp_path):
-        # Only one peptide/peptidoform — some plots may not have enough data
+        # Only one peptide/peptidoform -- some plots may not have enough data
         df = _make_summary_df(n_peptides=1, n_reps=3)
         results = generate_all_summary_plots(
             source=df,
@@ -108,7 +116,7 @@ class TestSummaryPlotsFromCsv:
             formats=["png"],
             plot_types=["dual_axis"],
         )
-        # Should not raise — results may be empty or have one entry
+        # Should not raise -- results may be empty or have one entry
         assert isinstance(results, dict)
 
     def test_all_plot_types_from_df(self, tmp_path):
@@ -126,7 +134,7 @@ class TestSummaryPlotsFromCsv:
     def test_empty_csv_raises_or_returns_empty(self, tmp_path):
         # CSV with required column headers but no data rows
         empty_df = pd.DataFrame(columns=["Peptide", "Modification", "Charge",
-                                          "R² binned", "R² match", "Cosine",
+                                          "R\u00b2 binned", "R\u00b2 match", "Cosine",
                                           "Entropy", "Dice", "Jaccard", "SharedRatio"])
         csv_path = tmp_path / "empty.csv"
         empty_df.to_csv(csv_path, index=False)

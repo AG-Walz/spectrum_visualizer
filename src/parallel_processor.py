@@ -1,5 +1,5 @@
 """
-Parallel plot generation for MSpecViz.
+Parallel plot generation for MSInsight.
 
 Moves the heavy per-plot work (metrics computation, matplotlib figure creation,
 savefig) into worker processes via ProcessPoolExecutor.  The annotation step
@@ -7,8 +7,8 @@ stays in the main process (fast, ~10 ms) while the expensive steps (~400 ms
 each) run in parallel.
 
 Architecture:
-    main process:  stream queries → annotate → build ComparisonTask list
-    worker pool:   process_single_task(task) → ComparisonResult
+    main process:  stream queries -> annotate -> build ComparisonTask list
+    worker pool:   process_single_task(task) -> ComparisonResult
     main process:  collect results, update progress, write summary
 """
 import logging
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# Data containers — must be picklable for multiprocessing
+# Data containers -- must be picklable for multiprocessing
 # ============================================================================
 
 @dataclass
@@ -41,7 +41,7 @@ class ComparisonTask:
     ref_label: str = ""
     plot_title: str = ""
 
-    # Export paths (strings — workers create subdirs as needed)
+    # Export paths (strings -- workers create subdirs as needed)
     folder_name: str = ""
     safe_filename: str = ""
     png_dir: str = ""
@@ -57,7 +57,7 @@ class ComparisonTask:
     # Output path for interactive Plotly HTML (empty string = skip HTML output)
     html_plot_path: str = ""
 
-    # Skip plot generation (metrics only — plot already exists on disk)
+    # Skip plot generation (metrics only -- plot already exists on disk)
     skip_plot: bool = False
 
     # Summary metadata (for CSV row)
@@ -121,11 +121,6 @@ def compute_ion_match_statistics(
 
     Wraps oms.SpectrumAnnotator.addIonMatchStatistics().  Results are returned
     with an ``ims_`` prefix to avoid collision with existing metric columns.
-
-    This is called AFTER the primary annotation pipeline (annotate_spectrum /
-    prepare_spectrum_for_plot) and does NOT replace it.  The primary pipeline
-    uses SpectrumAlignment + manual pairs loop which correctly handles charge ≥3;
-    this function only produces supplementary statistics.
 
     Args:
         annotated_df: Annotated spectrum DataFrame (mz, intensity columns required)
@@ -194,7 +189,7 @@ def compute_ion_match_statistics(
 
 
 # ============================================================================
-# Worker function — runs in a child process
+# Worker function -- runs in a child process
 # ============================================================================
 
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
@@ -202,7 +197,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
     Top-level worker: compute metrics, create figure, save to disk.
 
     If task.skip_plot is True, only computes metrics (for summary CSV)
-    without creating or saving a figure — used when the plot file already
+    without creating or saving a figure -- used when the plot file already
     exists on disk from a previous run.
 
     Imports are done inside the function so each worker process initialises
@@ -260,7 +255,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 plt.close(fig)
                 del fig
 
-            # --- Interactive HTML (pyopenms-viz Plotly, optional) ---
+            # --- Interactive HTML (Plotly, optional) ---
             if task.html_plot_path:
                 html_path = _save_task_html(task)
 
@@ -307,7 +302,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         )
 
 
-# Format → savefig keyword and extension mapping
+# Format -> savefig keyword and extension mapping
 _FORMAT_SAVE_KWARGS: Dict[str, dict] = {
     "png": {"format": "png"},
     "svg": {"format": "svg"},
@@ -337,10 +332,10 @@ def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
 
 def _save_task_html(task: ComparisonTask) -> str:
     """
-    Save an interactive Plotly HTML plot alongside PNG/SVG outputs.
+    Save an interactive Plotly HTML plot.
 
-    Uses pyopenms-viz ms_plotly backend.  The HTML uses include_plotlyjs='cdn'
-    (~10 KB file size) so an internet connection is required to view it.
+    Uses the Plotly mirror/single plot functions from src.mirror_plot.
+    The HTML uses include_plotlyjs='cdn' (~10 KB file size).
 
     Returns the saved path as a string, or "" on failure.
     """
@@ -352,19 +347,19 @@ def _save_task_html(task: ComparisonTask) -> str:
         out.parent.mkdir(parents=True, exist_ok=True)
 
         if task.task_type == "mirror" and task.ref_df is not None:
-            from src.mirror_plot import create_interactive_mirror_plot
-            fig = create_interactive_mirror_plot(
+            from src.mirror_plot import create_plotly_mirror_plot
+            fig = create_plotly_mirror_plot(
                 upper_spectrum=task.query_df,
                 lower_spectrum=task.ref_df,
                 title=task.plot_title,
-                relative_intensity=task.normalize,
+                normalize=task.normalize,
             )
         else:
-            from src.mirror_plot import create_interactive_single_plot
-            fig = create_interactive_single_plot(
+            from src.mirror_plot import create_plotly_single_plot
+            fig = create_plotly_single_plot(
                 spectrum=task.query_df,
                 title=task.plot_title,
-                relative_intensity=task.normalize,
+                normalize=task.normalize,
             )
 
         fig.write_html(str(out), include_plotlyjs="cdn")
@@ -376,7 +371,7 @@ def _save_task_html(task: ComparisonTask) -> str:
 
 
 # ============================================================================
-# Orchestrator — called from the main process
+# Orchestrator -- called from the main process
 # ============================================================================
 
 def run_parallel_comparisons(
@@ -405,7 +400,7 @@ def run_parallel_comparisons(
     results: List[ComparisonResult] = []
 
     if workers == 1:
-        # Sequential fallback — no subprocess overhead, easier to debug
+        # Sequential fallback -- no subprocess overhead, easier to debug
         for i, task in enumerate(tasks):
             result = process_single_task(task)
             results.append(result)

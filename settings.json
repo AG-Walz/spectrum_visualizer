@@ -1,7 +1,7 @@
 {
-  "app-name": "MSpecViz",
+  "app-name": "MSInsight",
   "version": "0.1.0",
-  "repository-name": "MSpecViz",
+  "repository-name": "MSInsight",
   "online_deployment": false,
   "enable_workspaces": true,
   "workspaces_dir": "..",

@@ -11,7 +11,6 @@ if __name__ == '__main__':
     pages = {
         str(st.session_state.settings["app-name"]): [
             st.Page(Path("content", "peptide_mirror.py"), title="Peptide Mirror Analysis", icon="🔬"),
-            st.Page(Path("content", "about.py"), title="About", icon="📖"),
         ],
     }
 

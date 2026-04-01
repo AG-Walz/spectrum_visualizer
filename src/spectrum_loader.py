@@ -873,3 +873,71 @@ def load_spectra_from_parquet(
                 on_query_ready(result)
 
     return reference_spectra
+
+
+# =============================================================================
+# Polars conversion helpers
+# =============================================================================
+
+def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
+    """
+    Return a stable key for a LoadedSpectrum used to match it to a PSM table row.
+
+    The key is (spectrum_id, peptidoform) which is unique per PSM: the same
+    physical spectrum may appear with different peptidoforms in different PSMs,
+    and spectrum IDs alone can collide across mzML files.
+
+    Use this key together with build_psm_table()'s psm_lookup dict to resolve
+    psm_id when building the peaks and sequence DataFrames in parquet_builder.
+    """
+    return f"{spec.spectrum_id}|{spec.peptidoform}"
+
+
+def spectra_metadata_to_polars(
+    spectra_with_ids: List[Tuple[int, "LoadedSpectrum"]],
+) -> "pl.DataFrame":
+    """
+    Convert a list of (psm_id, LoadedSpectrum) tuples to a Polars metadata DataFrame.
+
+    Contains spectrum-level information (no peak arrays).  Useful for debugging
+    or for building the sequence DataFrame independently of parquet_builder.
+
+    Args:
+        spectra_with_ids: List of (psm_id, LoadedSpectrum) tuples.
+
+    Returns:
+        Polars DataFrame with columns:
+        psm_id, spectrum_id, peptidoform, base_sequence,
+        source_file, precursor_mz, precursor_charge, rt, is_reference
+    """
+    import polars as pl
+
+    if not spectra_with_ids:
+        return pl.DataFrame(schema={
+            "psm_id": pl.Int32, "spectrum_id": pl.String, "peptidoform": pl.String,
+            "base_sequence": pl.String, "source_file": pl.String,
+            "precursor_mz": pl.Float32, "precursor_charge": pl.Int32,
+            "rt": pl.Float32, "is_reference": pl.Boolean,
+        })
+
+    rows = [
+        {
+            "psm_id": psm_id,
+            "spectrum_id": spec.spectrum_id,
+            "peptidoform": spec.peptidoform,
+            "base_sequence": spec.base_sequence,
+            "source_file": spec.source_file,
+            "precursor_mz": float(spec.precursor_mz),
+            "precursor_charge": int(spec.precursor_charge),
+            "rt": float(spec.rt),
+            "is_reference": bool(spec.is_reference),
+        }
+        for psm_id, spec in spectra_with_ids
+    ]
+
+    return pl.DataFrame(rows).with_columns([
+        pl.col("psm_id").cast(pl.Int32),
+        pl.col("precursor_mz").cast(pl.Float32),
+        pl.col("precursor_charge").cast(pl.Int32),
+        pl.col("rt").cast(pl.Float32),
+    ])

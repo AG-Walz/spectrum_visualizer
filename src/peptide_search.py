@@ -13,6 +13,7 @@ from typing import Dict, List, Optional, Set, Tuple
 
 import pandas as pd
 import numpy as np
+import polars as pl
 from psm_utils.io.idxml import IdXMLReader
 
 logger = logging.getLogger(__name__)
@@ -558,31 +559,53 @@ def get_unique_peptides_from_idxmls(
     return sorted(list(unique_peptides))[:limit]
 
 
-def summarize_search_results(variant_groups: Dict[str, VariantGroup]) -> pd.DataFrame:
+def summarize_search_results(variant_groups: Dict[str, VariantGroup]) -> pl.LazyFrame:
     """
-    Create a summary DataFrame of search results.
+    Create a variant-level summary LazyFrame for the openms_insight Table component.
+
+    One row per unique peptide variant (base_sequence + modification combination).
 
     Args:
         variant_groups: Dict of variant_key -> VariantGroup
 
     Returns:
-        DataFrame with columns: base_sequence, modification, display_label, psm_count, files, mzml_resolved
+        Polars LazyFrame with columns:
+        - id (Int32): Row identifier required by openms_insight Table
+        - base_sequence (String): Unmodified amino acid sequence
+        - modification (String): Modification key or "(unmodified)"
+        - display_label (String): Inline-annotated sequence (e.g. "PEPTM[Ox]DEK")
+        - psm_count (Int32): Number of PSMs found for this variant
+        - idxml_files (Int32): Number of distinct idXML files with hits
+        - mzml_resolved (Int32): PSMs with a resolved mzML path
+        - unresolved (Int32): PSMs where mzML could not be resolved
     """
     rows = []
-    for variant_key, vg in variant_groups.items():
-        # Get unique files
+    for row_id, (variant_key, vg) in enumerate(variant_groups.items()):
         idxml_files = set(m.idxml_file for m in vg.matches)
-        mzml_files = set(m.mzml_filename for m in vg.matches if m.mzml_filename)
         unresolved = sum(1 for m in vg.matches if not m.mzml_filename)
-
         rows.append({
-            'base_sequence': vg.base_sequence,
-            'modification': vg.modification_key or "(none)",
-            'display_label': vg.display_label,
-            'psm_count': len(vg.matches),
-            'idxml_files': len(idxml_files),
-            'mzml_resolved': len(vg.matches) - unresolved,
-            'unresolved': unresolved
+            "id": row_id,
+            "base_sequence": vg.base_sequence,
+            "modification": vg.modification_key or "(unmodified)",
+            "display_label": vg.display_label,
+            "psm_count": len(vg.matches),
+            "idxml_files": len(idxml_files),
+            "mzml_resolved": len(vg.matches) - unresolved,
+            "unresolved": unresolved,
         })
 
-    return pd.DataFrame(rows)
+    if not rows:
+        schema = {
+            "id": pl.Int32, "base_sequence": pl.String, "modification": pl.String,
+            "display_label": pl.String, "psm_count": pl.Int32,
+            "idxml_files": pl.Int32, "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
+        }
+        return pl.DataFrame(schema=schema).lazy()
+
+    return pl.DataFrame(rows).with_columns([
+        pl.col("id").cast(pl.Int32),
+        pl.col("psm_count").cast(pl.Int32),
+        pl.col("idxml_files").cast(pl.Int32),
+        pl.col("mzml_resolved").cast(pl.Int32),
+        pl.col("unresolved").cast(pl.Int32),
+    ]).lazy()

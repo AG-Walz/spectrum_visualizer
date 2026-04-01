@@ -1,4 +1,4 @@
-name: mspecviz
+name: msinsight
 channels:
   - bioconda
   - conda-forge
@@ -16,9 +16,12 @@ dependencies:
   - pyyaml
   - streamlit>=1.48.0
   - openpyxl
+  - pytest
   - pip:
     - psm-utils
     - koinapy
     - ms-entropy
     - spectrum-utils>=0.4.2
     - altair
+    - polars
+    - openms-insight>=0.1.11

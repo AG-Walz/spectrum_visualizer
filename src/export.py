@@ -9,39 +9,9 @@ from pathlib import Path
 from typing import Tuple
 from datetime import datetime
 
+from src.common.string_utils import sanitize_filename, shorten_stem  # noqa: F401
+
 logger = logging.getLogger(__name__)
-
-
-def sanitize_filename(name: str) -> str:
-    """
-    Sanitize a string for use as a filename.
-
-    Removes or replaces invalid characters.
-    """
-    # Replace problematic characters
-    sanitized = re.sub(r'[<>:"/\\|?*\[\]]', '_', name)
-    # Replace multiple underscores with single
-    sanitized = re.sub(r'_+', '_', sanitized)
-    # Remove leading/trailing underscores and spaces
-    sanitized = sanitized.strip('_ ')
-    # Truncate if too long
-    if len(sanitized) > 100:
-        sanitized = sanitized[:100]
-    return sanitized
-
-
-def shorten_stem(stem: str, max_len: int = 30) -> str:
-    """Shorten a file stem to *max_len* chars, appending a hash if truncated.
-
-    If the stem already fits, it is returned unchanged.  Otherwise the
-    result is ``stem[:max_len-9] + '_' + hash8`` where *hash8* is the
-    first 8 hex chars of the SHA-256 of the full stem.  This keeps
-    filenames short while guaranteeing uniqueness.
-    """
-    if len(stem) <= max_len:
-        return stem
-    digest = hashlib.sha256(stem.encode("utf-8")).hexdigest()[:8]
-    return f"{stem[:max_len - 9]}_{digest}"
 
 
 def create_export_directory(
@@ -113,8 +83,6 @@ def find_or_create_export_directory(
     **No directories are created by this function.**  Call
     ``commit_export_directory(root_dir, run_settings)`` when you are ready to
     write files (i.e. after confirming there are plots to generate).
-    Format subdirectories (png/, svg/, pdf/) are created lazily on first write
-    by the plot-saving code.
 
     Args:
         base_dir: Parent directory (e.g. ./exports)
@@ -122,7 +90,7 @@ def find_or_create_export_directory(
         run_settings: Dict of all settings that affect output
 
     Returns:
-        Tuple of (root_dir, png_dir, svg_dir, pdf_dir) — Path objects only,
+        Tuple of (root_dir, png_dir, svg_dir, pdf_dir) -- Path objects only,
         no directories are created.
     """
     base = Path(base_dir)
@@ -168,7 +136,7 @@ def find_or_create_export_directory(
         if match_entry != new_path:
             try:
                 match_entry.rename(new_path)
-                logger.info(f"Renamed {match_entry.name} → {new_name}")
+                logger.info(f"Renamed {match_entry.name} -> {new_name}")
             except OSError as e:
                 logger.warning(f"Could not rename folder: {e}")
                 new_path = match_entry  # fall back to old path
@@ -177,7 +145,7 @@ def find_or_create_export_directory(
 
         return new_path, new_path / "png", new_path / "svg", new_path / "pdf"
 
-    # No match — plan next numbered folder (no mkdir yet)
+    # No match -- plan next numbered folder (no mkdir yet)
     next_num = max_num + 1
     folder_name = f"{prefix}_{next_num:03d}_{today}"
     root_dir = base / folder_name
@@ -200,7 +168,7 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
 
     settings_file = root_dir / "run_settings.json"
     if settings_file.exists():
-        # Existing dir — update timestamp only
+        # Existing dir -- update timestamp only
         try:
             with open(settings_file) as f:
                 saved = json.load(f)
@@ -210,7 +178,7 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
         except Exception:
             pass
     else:
-        # New dir — write full settings
+        # New dir -- write full settings
         fingerprint = _settings_fingerprint(run_settings)
         settings_to_save = {
             "_fingerprint": fingerprint,
@@ -222,24 +190,3 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
                 json.dump(settings_to_save, f, indent=2, default=str)
         except Exception as e:
             logger.warning(f"Could not write run_settings.json: {e}")
-
-
-def get_workspace_plot_dirs(workspace_path) -> Tuple[Path, Path, Path, Path]:
-    """
-    Return plot directory paths within a workspace for Streamlit runs.
-
-    Layout: workspace/plots/{png,svg,pdf}/PEPTIDE_NAME/filename.ext
-
-    No directories are created. Call commit_export_directory(root_dir, run_settings)
-    before writing files (only when plots will actually be generated).
-
-    Args:
-        workspace_path: Path to the workspace directory (st.session_state.workspace)
-
-    Returns:
-        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
-    """
-    root_dir = Path(workspace_path) / "plots"
-    return root_dir, root_dir / "png", root_dir / "svg", root_dir / "pdf"
-
-

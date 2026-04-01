@@ -1,5 +1,5 @@
 """
-Koina AI spectrum prediction for MSpecViz.
+Koina AI spectrum prediction for MSInsight.
 
 Generates predicted MS/MS fragment spectra using Koina deep-learning models
 (via koinapy). Unlike the PyOpenMS TheoreticalSpectrumGenerator which only
@@ -22,7 +22,7 @@ try:
 except ImportError:
     KOINA_AVAILABLE = False
 
-# Display name → model ID mapping for UI
+# Display name -> model ID mapping for UI
 # Comprehensive list of Koina intensity prediction models
 KOINA_MODELS: Dict[str, str] = {
     # MS2PIP family
@@ -76,9 +76,9 @@ def convert_peptide_to_unimod(peptidoform_str: str) -> str:
 
 
 def predict_koina_spectrum(
-    peptidoform: str,
+    peptidoform_str: str,
     charge: int,
-    model: str = DEFAULT_MODEL,
+    model_id: str = DEFAULT_MODEL,
     collision_energy: int = DEFAULT_COLLISION_ENERGY,
     instrument_type: str = DEFAULT_INSTRUMENT_TYPE,
 ) -> Optional[pd.DataFrame]:
@@ -86,9 +86,9 @@ def predict_koina_spectrum(
     Predict an MS/MS fragment spectrum using a Koina deep-learning model.
 
     Args:
-        peptidoform: ProForma peptidoform string (e.g. 'PEPTIDE/2')
+        peptidoform_str: ProForma peptidoform string (e.g. 'PEPTIDE/2')
         charge: Precursor charge state
-        model: Koina model ID (e.g. 'ms2pip_timsTOF2024')
+        model_id: Koina model ID (e.g. 'ms2pip_timsTOF2024')
         collision_energy: Collision energy in eV
         instrument_type: Mass spectrometer type (e.g. 'TIMSTOF')
 
@@ -97,17 +97,17 @@ def predict_koina_spectrum(
         Intensities are raw predicted values (not normalized).
     """
     if not KOINA_AVAILABLE:
-        logger.warning("koinapy not installed — cannot generate Koina predictions")
+        logger.warning("koinapy not installed -- cannot generate Koina predictions")
         return None
 
     try:
-        unimod_seq = convert_peptide_to_unimod(peptidoform)
+        unimod_seq = convert_peptide_to_unimod(peptidoform_str)
     except Exception as e:
-        logger.warning(f"Koina: failed to convert '{peptidoform}' to UniMod: {e}")
+        logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {e}")
         return None
 
     try:
-        koina = Koina(model)
+        koina = Koina(model_id)
 
         # Build input DataFrame with all possible columns;
         # koinapy automatically filters to only those the model requires
@@ -120,53 +120,34 @@ def predict_koina_spectrum(
 
         predictions = koina.predict(inputs)
 
-        # Clean byte-string artifacts from annotation column (b'y3+1' → y3+1)
+        # Clean byte-string artifacts from annotation column (b'y3+1' -> y3+1)
         annotations = (
             predictions["annotation"]
             .astype(str)
             .str.replace(r"^b'|'$", "", regex=True)
         )
 
-        # Parse charge from Koina format (e.g. "y3+1" → charge 1)
-        charges = [int(a.split("+")[-1]) if "+" in a else 1
-                   for a in annotations]
-
-        # Convert Koina annotations to PyOpenMS TSG format:
-        #   y3+1 → y3   (singly charged: no suffix)
-        #   b3+2 → b3++ (doubly charged: ++)
-        #   y5+3 → y5+++ etc.
-        annotations = [
-            a.rsplit("+", 1)[0] + "+" * (c - 1) if "+" in a and c > 1
-            else a.rsplit("+", 1)[0] if "+" in a
-            else a
-            for a, c in zip(annotations, charges)
-        ]
-
         result = pd.DataFrame({
             "mz": predictions["mz"].astype(float),
             "intensity": predictions["intensities"].astype(float),
             "annotation": annotations,
-            "charge": charges,
-            "is_annotated": [True] * len(annotations),
-            "ion_type": [a[0:1] if a and a[0:1] in ("b", "y", "a", "c", "x", "z") else "other"
-                         for a in annotations],
         })
 
         # Drop zero-intensity predictions (noise)
         result = result[result["intensity"] > 0].reset_index(drop=True)
 
         if result.empty:
-            logger.warning(f"Koina: no non-zero predictions for '{peptidoform}' (model={model})")
+            logger.warning(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
             return None
 
         logger.info(
-            f"Koina: predicted {len(result)} fragments for '{peptidoform}' "
-            f"(model={model}, CE={collision_energy}, inst={instrument_type})"
+            f"Koina: predicted {len(result)} fragments for '{peptidoform_str}' "
+            f"(model={model_id}, CE={collision_energy}, inst={instrument_type})"
         )
         return result
 
     except Exception as e:
-        logger.warning(f"Koina prediction failed for '{peptidoform}': {e}")
+        logger.warning(f"Koina prediction failed for '{peptidoform_str}': {e}")
         return None
 
 

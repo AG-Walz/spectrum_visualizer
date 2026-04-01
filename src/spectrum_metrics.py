@@ -26,24 +26,18 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
     Examples:
         ["Experiment_sample_A.mzML", "Experiment_sample_B.mzML"]
         -> ["sample_A", "sample_B"]
-
-        Single file -> stem (no shortening needed)
-        Empty list  -> empty list
     """
     if not filenames:
         return []
 
-    # Strip extensions to get stems
     stems = [Path(f).stem for f in filenames]
 
     if len(stems) <= 1:
         return stems
 
-    # Split each stem into tokens on '_'
     token_lists = [s.split("_") for s in stems]
-
-    # Find common prefix tokens
     min_len = min(len(t) for t in token_lists)
+
     prefix_count = 0
     for i in range(min_len):
         if all(t[i] == token_lists[0][i] for t in token_lists):
@@ -51,7 +45,6 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
         else:
             break
 
-    # Find common suffix tokens
     suffix_count = 0
     for i in range(1, min_len - prefix_count + 1):
         if all(t[-i] == token_lists[0][-i] for t in token_lists):
@@ -59,7 +52,6 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
         else:
             break
 
-    # Strip common prefix and suffix
     result = []
     for tokens in token_lists:
         end = len(tokens) - suffix_count if suffix_count > 0 else len(tokens)
@@ -67,7 +59,6 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
         if remaining:
             result.append("_".join(remaining))
         else:
-            # All tokens were common — fall back to original stem
             result.append("_".join(tokens))
 
     return result
@@ -84,22 +75,15 @@ def _get_matching_intensities(
     """
     Find overlapping annotated ions and return their intensity arrays.
 
-    Filters both DataFrames to is_annotated == True, finds common annotation
-    labels, returns ordered intensity arrays for shared annotations.
-
     Returns:
         (query_intensities, ref_intensities, shared_labels)
-        Arrays may be empty if no overlap.
     """
-    if "is_annotated" not in query_df.columns or "is_annotated" not in ref_df.columns:
-        return np.array([]), np.array([]), []
     q_ann = query_df[query_df["is_annotated"]].copy()
     r_ann = ref_df[ref_df["is_annotated"]].copy()
 
     if q_ann.empty or r_ann.empty:
         return np.array([]), np.array([]), []
 
-    # Build label -> intensity maps (take max intensity if duplicate annotations)
     q_map = q_ann.groupby("annotation")["intensity"].max().to_dict()
     r_map = r_ann.groupby("annotation")["intensity"].max().to_dict()
 
@@ -114,7 +98,7 @@ def _get_matching_intensities(
 
 
 def _r2_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
-    """R² from pre-computed matched intensity arrays (no DataFrame lookup)."""
+    """R^2 from pre-computed matched intensity arrays."""
     if len(q_ints) < 2:
         return float("nan")
     from scipy.stats import linregress
@@ -135,15 +119,11 @@ def _cosine_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Metric functions — all take (query_df, ref_df) annotated DataFrames
+# Metric functions
 # ---------------------------------------------------------------------------
 
 def compute_r2_matching(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
-    """
-    R^2 (matching) — LinearRegression R^2 on matching annotated ion intensities.
-
-    Reference: specviz spectrum_correlation()
-    """
+    """R^2 (matching) -- LinearRegression R^2 on matching annotated ion intensities."""
     q_ints, r_ints, _ = _get_matching_intensities(query_df, ref_df)
     return _r2_from_arrays(q_ints, r_ints)
 
@@ -153,15 +133,7 @@ def compute_r2_binned(
     ref_df: pd.DataFrame,
     n_bins: int = 1000,
 ) -> float:
-    """
-    R^2 (binned) — LinearRegression R^2 on binned intensity profiles.
-
-    Bins the full m/z range into `n_bins` bins and sums intensities per bin
-    for both spectra, then fits a linear regression on the *intersection*
-    of bins (where both spectra have signal).
-
-    Reference: specviz new_spectrum_correlation()
-    """
+    """R^2 (binned) -- LinearRegression R^2 on binned intensity profiles."""
     if query_df.empty or ref_df.empty:
         return float("nan")
 
@@ -173,35 +145,23 @@ def compute_r2_binned(
         return float("nan")
 
     bin_edges = np.linspace(mz_min, mz_max, n_bins + 1)
-
-    # Bin intensities with np.digitize + np.bincount (vectorized, no Python loop)
     n_total = len(bin_edges) + 1
     q_idx = np.digitize(query_df["mz"].values, bin_edges)
     r_idx = np.digitize(ref_df["mz"].values, bin_edges)
     q_sums = np.bincount(q_idx, weights=query_df["intensity"].values, minlength=n_total)
     r_sums = np.bincount(r_idx, weights=ref_df["intensity"].values, minlength=n_total)
 
-    # Intersection: bins where both spectra have signal — specviz convention
     shared_mask = (q_sums > 0) & (r_sums > 0)
     if shared_mask.sum() < 2:
         return float("nan")
 
-    q_arr = q_sums[shared_mask]
-    r_arr = r_sums[shared_mask]
-
     from scipy.stats import linregress
-    _, _, r_value, _, _ = linregress(q_arr, r_arr)
+    _, _, r_value, _, _ = linregress(q_sums[shared_mask], r_sums[shared_mask])
     return float(r_value ** 2)
 
 
 def compute_cosine_similarity(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
-    """
-    Cosine similarity on matching annotated ion intensities.
-
-    cos = dot(q, r) / (||q|| * ||r||)
-
-    Reference: Stein & Scott 1994
-    """
+    """Cosine similarity on matching annotated ion intensities."""
     q_ints, r_ints, _ = _get_matching_intensities(query_df, ref_df)
     return _cosine_from_arrays(q_ints, r_ints)
 
@@ -210,23 +170,16 @@ def compute_spectral_entropy_similarity(
     query_df: pd.DataFrame,
     ref_df: pd.DataFrame,
 ) -> float:
-    """
-    Spectral entropy similarity using the ms_entropy library.
-
-    S = 1 - (2*H(merged) - H(q) - H(r)) / ln(4)
-
-    Reference: Li et al., Nature Methods 2021
-    """
+    """Spectral entropy similarity (Li et al., Nature Methods 2021)."""
     if query_df.empty or ref_df.empty:
         return float("nan")
 
     try:
         import ms_entropy
     except ImportError:
-        logger.warning("ms_entropy not installed — entropy similarity unavailable")
+        logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
-    # ms_entropy expects 2D arrays of shape (n_peaks, 2) with [mz, intensity]
     q_spec = np.column_stack([query_df["mz"].values, query_df["intensity"].values])
     r_spec = np.column_stack([ref_df["mz"].values, ref_df["intensity"].values])
 
@@ -241,53 +194,35 @@ def compute_spectral_entropy_similarity(
 
 
 def compute_shared_peak_dice(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
-    """
-    Dice coefficient on shared annotated peaks.
-
-    Dice = 2 * shared / (ann_q + ann_r)
-    """
+    """Dice coefficient on shared annotated peaks."""
     _, _, shared = _get_matching_intensities(query_df, ref_df)
-    ann_q = query_df["is_annotated"].sum() if "is_annotated" in query_df.columns else 0
-    ann_r = ref_df["is_annotated"].sum() if "is_annotated" in ref_df.columns else 0
-
+    ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
+    ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
     denominator = ann_q + ann_r
     if denominator == 0:
         return float("nan")
-
     return float(2 * len(shared) / denominator)
 
 
 def compute_shared_peak_jaccard(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
-    """
-    Jaccard index on shared annotated peaks.
-
-    Jaccard = shared / (ann_q + ann_r - shared)
-    """
+    """Jaccard index on shared annotated peaks."""
     _, _, shared = _get_matching_intensities(query_df, ref_df)
     ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
     ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
-
     denominator = ann_q + ann_r - len(shared)
     if denominator == 0:
         return float("nan")
-
     return float(len(shared) / denominator)
 
 
 def compute_shared_peak_ratio(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
-    """
-    Shared peak ratio: shared / min(ann_q, ann_r).
-
-    Measures completeness relative to the smaller set.
-    """
+    """Shared peak ratio: shared / min(ann_q, ann_r)."""
     _, _, shared = _get_matching_intensities(query_df, ref_df)
     ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
     ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
-
     denominator = min(ann_q, ann_r)
     if denominator == 0:
         return float("nan")
-
     return float(len(shared) / denominator)
 
 
@@ -302,14 +237,10 @@ def compute_all_metrics(
     """
     Compute all 7 comparison metrics plus context counts.
 
-    Calls _get_matching_intensities exactly once and passes pre-computed
-    arrays to the pure math helpers, avoiding 5x redundant groupby operations.
-
     Returns dict with keys:
         Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
         Counts:   total_q, total_r, ann_q, ann_r, shared
     """
-    # Single shared-intensity computation for all annotation-based metrics
     q_ints, r_ints, shared_labels = _get_matching_intensities(query_df, ref_df)
     n_shared = len(shared_labels)
 
@@ -337,22 +268,30 @@ def compute_all_metrics(
 
 
 def format_metrics_text(metrics: Dict[str, float]) -> str:
-    """
-    Format metrics as multi-line string for plot overlay.
-
-    Shows R² Matching and R² Binned in long form under a title.
-    NaN values shown as "N/A".
-    """
-    def _fmt_val(val) -> str:
+    """Format metrics as multi-line string for plot overlay."""
+    def _fmt(val) -> str:
         if val is None or (isinstance(val, float) and math.isnan(val)):
             return "N/A"
         return f"{val:.3f}"
 
-    r2m = _fmt_val(metrics.get("R2m", float("nan")))
-    r2b = _fmt_val(metrics.get("R2b", float("nan")))
-
     return (
-        f"Similarity Scores\n"
-        f"R² Matching: {r2m}\n"
-        f"R² Binned:   {r2b}"
+        f"R\u00b2 Match: {_fmt(metrics.get('R2m'))}\n"
+        f"R\u00b2 Binned: {_fmt(metrics.get('R2b'))}\n"
+        f"Cosine: {_fmt(metrics.get('Cos'))}\n"
+        f"Entropy: {_fmt(metrics.get('Ent'))}\n"
+        f"Dice: {_fmt(metrics.get('Dice'))}\n"
+        f"Jaccard: {_fmt(metrics.get('Jacc'))}\n"
+        f"Shared: {_fmt(metrics.get('ShR'))}"
     )
+
+
+# Mapping from short keys to display column names (used by summary export)
+METRIC_SHORT_TO_DISPLAY = {
+    "R2m": "R\u00b2 match",
+    "R2b": "R\u00b2 binned",
+    "Cos": "Cosine",
+    "Ent": "Entropy",
+    "Dice": "Dice",
+    "Jacc": "Jaccard",
+    "ShR": "SharedRatio",
+}

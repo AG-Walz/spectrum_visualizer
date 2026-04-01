@@ -12,6 +12,8 @@ import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
 
+from src.common.ion_utils import get_ion_type  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
 # Default ion types for fragmentation
@@ -236,39 +238,6 @@ def annotate_spectrum(
             result_data["is_annotated"][exp_idx] = True
 
     return pd.DataFrame(result_data)
-
-
-def get_ion_type(annotation: str) -> str:
-    """
-    Extract ion type from annotation string.
-
-    Examples:
-        "b3++" -> "b"
-        "y7" -> "y"
-        "[M+2H]2+" -> "precursor"
-        "unannotated" -> "unannotated"
-    """
-    if not annotation or annotation == "unannotated":
-        return "unannotated"
-
-    annotation_lower = annotation.lower()
-
-    # Check for precursor
-    if annotation_lower.startswith("[m") or "precursor" in annotation_lower:
-        return "precursor"
-
-    # Check for standard ions
-    for ion in ["a", "b", "c", "x", "y", "z"]:
-        if annotation_lower.startswith(ion) and len(annotation) > 1:
-            next_char = annotation[1]
-            if next_char.isdigit():
-                return ion
-
-    # Check for immonium
-    if "immonium" in annotation_lower or annotation.startswith("I"):
-        return "immonium"
-
-    return "unannotated"
 
 
 def prepare_spectrum_for_plot(
