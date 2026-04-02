@@ -18,6 +18,7 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from datetime import datetime
 from typing import Dict, List, Optional, Tuple
 import logging
+import polars as pl
 
 from src.common.common import page_setup
 from utils.helpers import format_time, get_nested as get_settings_value, parse_peptide_list
@@ -985,8 +986,22 @@ def _render_openms_insight_explorer():
     seq_lf = st.session_state.get(get_state_key('seq_lf'))
     heatmap_lf = st.session_state.get(get_state_key('heatmap_lf'))
 
+    # Show currently selected PSM info
+    current_state = sm.get_state_for_vue()
+    selected_id = current_state.get("selected_psm")
+    if selected_id is not None and psm_lf is not None:
+        try:
+            row = psm_lf.filter(pl.col("id") == selected_id).collect()
+            if row.height > 0:
+                label = row["display_label"][0]
+                source = row["source_file"][0]
+                st.info(f"Viewing: **{label}** (PSM {selected_id}) from {source}")
+        except Exception:
+            pass
+
     # PSM Table
-    st.subheader("PSM Table -- click a row to load its spectrum")
+    st.subheader("PSM Table")
+    st.caption("Click a row to update the spectrum and sequence views below.")
     psm_columns = [
         {"field": "display_label", "title": "Peptide"},
         {"field": "charge", "title": "Z"},
@@ -1016,7 +1031,6 @@ def _render_openms_insight_explorer():
             sequence_data=seq_lf,
             peaks_data=peaks_for_sv,
             filters={"selected_psm": "psm_id"},
-            filter_defaults={"selected_psm": 0},
             annotation_config={
                 "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
                 "tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
