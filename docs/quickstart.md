@@ -35,7 +35,7 @@ Expected results: 2 PSMs (ASDDFDQASY and RTEFNLNQY), 373 total peaks.
 ## Starting the App
 
 ```bash
-conda activate msinsight
+conda activate mspecviz
 streamlit run app.py
 ```
 

@@ -120,7 +120,7 @@ class TestGetKoinaSettings:
 
 class TestKoinaConstants:
     def test_koina_available_is_true(self):
-        assert KOINA_AVAILABLE is True, "koinapy should be installed in msinsight env"
+        assert KOINA_AVAILABLE is True, "koinapy should be installed in mspecviz env"
 
     def test_koina_models_not_empty(self):
         assert len(KOINA_MODELS) > 0

@@ -36,7 +36,7 @@ Koina AI spectrum prediction, and parallel export.
 
 - Python 3.11
 - Conda (Miniconda or Anaconda)
-- The `msinsight` conda environment
+- The `mspecviz` conda environment
 
 ---
 
@@ -45,10 +45,10 @@ Koina AI spectrum prediction, and parallel export.
 Clone or copy the project, then activate the conda environment:
 
 ```bash
-conda activate msinsight
+conda activate mspecviz
 ```
 
-The environment is located at `/mnt/volume/bin/miniconda/envs/msinsight/`.
+The environment is located at `/mnt/volume/bin/miniconda/envs/mspecviz/`.
 
 Key dependencies (installed in the environment):
 
@@ -76,7 +76,7 @@ streamlit run app.py
 Or with the full path to the environment's Streamlit:
 
 ```bash
-/mnt/volume/bin/miniconda/envs/msinsight/bin/streamlit run app.py
+/mnt/volume/bin/miniconda/envs/mspecviz/bin/streamlit run app.py
 ```
 
 Open http://localhost:8501 in your browser. If connecting to a remote server,
@@ -94,14 +94,7 @@ workflow with test data.
 ## Running Tests
 
 ```bash
-# End-to-end pipeline test
-python test_pipeline.py
-
-# GUI smoke test
-python test_gui.py
-
-# Unit tests (if pytest is available)
-pytest tests/
+pytest tests/ -v
 ```
 
 ---
@@ -126,8 +119,7 @@ pytest tests/
 | `src/common/` | Shared Streamlit utilities |
 | `utils/helpers.py` | Peptide list parsing, time formatting, nested dict access |
 | `settings.json` | Application configuration (ion types, tolerances, Koina, export) |
-| `test_pipeline.py` | End-to-end pipeline test |
-| `test_gui.py` | GUI smoke test |
+| `tests/` | Unit, integration, and GUI tests |
 
 ---
 
