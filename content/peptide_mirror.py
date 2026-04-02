@@ -902,21 +902,17 @@ def render_search_tab():
         st.warning("Please enter target peptides first (Setup tab)")
         return
 
-    st.info(f"Ready to search {len(peptides)} peptide(s) in {len(idxmls)} idXML file(s)")
-
     if st.button("Search Peptides", key=f"{STATE_PREFIX}_search_btn", type="primary"):
         run_peptide_search(idxmls, peptides)
 
     variant_groups = st.session_state.get(get_state_key('variant_groups'))
     if variant_groups:
-        st.markdown("---")
         st.subheader("Search Results")
         display_search_results(variant_groups)
 
         total_matches = sum(len(vg.matches) for vg in variant_groups.values())
-        st.success(f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants.")
-
-        st.markdown("---")
+        st.success(f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
+                   f"Click **Search & Load Spectra** below to load and annotate them.")
         mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
         if mzmls:
             st.subheader("Load Spectra & Compute Metrics")
