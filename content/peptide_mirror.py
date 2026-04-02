@@ -248,7 +248,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     all_selected = st.session_state.get(get_state_key(state_key), [])
     if all_selected:
         if st.button(f"Clear all selections ({len(all_selected)} files)",
-                     key=f"{key_prefix}_clear_all", use_container_width=True):
+                     key=f"{key_prefix}_clear_all", width="stretch"):
             st.session_state[get_state_key(state_key)] = []
             if select_all_key in st.session_state:
                 del st.session_state[select_all_key]
@@ -885,7 +885,7 @@ def display_search_results(results: dict):
             'mzml_resolved': 'mzML Resolved', 'unresolved': 'Unresolved'
         })
         display_df = display_df.drop(columns=['display_label'], errors='ignore')
-        st.dataframe(display_df, use_container_width=True, hide_index=True)
+        st.dataframe(display_df, width="stretch", hide_index=True)
 
 
 def render_search_tab():
@@ -991,65 +991,73 @@ def _render_openms_insight_explorer():
 
     # PSM Table
     st.subheader("PSM Table -- click a row to load its spectrum")
-    table = Table(
-        cache_id="psm_table",
-        data=psm_lf if needs_regen else None,
-        interactivity={"selected_psm": "id"},
-        cache_path=CACHE_PATH,
-        regenerate_cache=needs_regen,
-        index_field="id",
-    )
+    if needs_regen:
+        table = Table(
+            cache_id="psm_table",
+            data=psm_lf,
+            interactivity={"selected_psm": "id"},
+            cache_path=CACHE_PATH,
+            regenerate_cache=True,
+            index_field="id",
+        )
+    else:
+        table = Table(cache_id="psm_table", cache_path=CACHE_PATH)
     table(key="psm_table", state_manager=sm)
 
     # SequenceView
     st.subheader("Sequence Coverage")
-    if peaks_lf is not None:
+    if needs_regen:
         peaks_for_sv = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
+        sv = SequenceView(
+            cache_id="seq_view",
+            sequence_data=seq_lf,
+            peaks_data=peaks_for_sv,
+            filters={"selected_psm": "psm_id"},
+            annotation_config={
+                "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
+                "tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
+                "tolerance_ppm": False,
+            },
+            cache_path=CACHE_PATH,
+            height=350,
+        )
     else:
-        peaks_for_sv = None
-
-    sv = SequenceView(
-        cache_id="seq_view",
-        sequence_data=seq_lf if needs_regen else None,
-        peaks_data=peaks_for_sv if needs_regen else None,
-        filters={"selected_psm": "psm_id"},
-        annotation_config={
-            "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
-            "tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
-            "tolerance_ppm": False,
-        },
-        cache_path=CACHE_PATH,
-        height=350,
-    )
+        sv = SequenceView(cache_id="seq_view", cache_path=CACHE_PATH)
     sv(key="seq_view", state_manager=sm)
 
     # LinePlot linked to SequenceView for per-ion-type coloring
     st.subheader("Fragment Spectrum")
-    lineplot = LinePlot(
-        cache_id="spectrum_plot",
-        data=peaks_lf if needs_regen else None,
-        filters={"selected_psm": "psm_id"},
-        filter_defaults={"selected_psm": 0},
-        cache_path=CACHE_PATH,
-        regenerate_cache=needs_regen,
-        x_column="x", y_column="y",
-        highlight_column="highlight",
-        annotation_column="annotation",
-        x_label="m/z", y_label="Intensity",
-    )
+    if needs_regen:
+        lineplot = LinePlot(
+            cache_id="spectrum_plot",
+            data=peaks_lf,
+            filters={"selected_psm": "psm_id"},
+            filter_defaults={"selected_psm": 0},
+            cache_path=CACHE_PATH,
+            regenerate_cache=True,
+            x_column="x", y_column="y",
+            highlight_column="highlight",
+            annotation_column="annotation",
+            x_label="m/z", y_label="Intensity",
+        )
+    else:
+        lineplot = LinePlot(cache_id="spectrum_plot", cache_path=CACHE_PATH)
     lineplot(key="spectrum_plot", state_manager=sm, sequence_view_key="seq_view")
 
     # Heatmap
     st.subheader("RT x m/z Heatmap")
-    heatmap_comp = Heatmap(
-        cache_id="rt_heatmap",
-        data=heatmap_lf if needs_regen else None,
-        x_column="x", y_column="y", intensity_column="intensity",
-        x_label="Retention Time (s)", y_label="m/z",
-        log_scale=True,
-        cache_path=CACHE_PATH,
-        regenerate_cache=needs_regen,
-    )
+    if needs_regen:
+        heatmap_comp = Heatmap(
+            cache_id="rt_heatmap",
+            data=heatmap_lf,
+            x_column="x", y_column="y", intensity_column="intensity",
+            x_label="Retention Time (s)", y_label="m/z",
+            log_scale=True,
+            cache_path=CACHE_PATH,
+            regenerate_cache=True,
+        )
+    else:
+        heatmap_comp = Heatmap(cache_id="rt_heatmap", cache_path=CACHE_PATH)
     heatmap_comp(key="rt_heatmap", state_manager=sm)
 
     if needs_regen:
@@ -1127,7 +1135,7 @@ def _render_mirror_plots():
                 metrics_text=metrics_text,
                 normalize=normalize,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width="stretch")
 
             with st.expander("Comparison Metrics", expanded=False):
                 import pandas as pd
@@ -1137,14 +1145,14 @@ def _render_mirror_plots():
                 metric_data["Shared Ions"] = str(metrics.get("shared", 0))
                 metric_data["Annotated (Query)"] = str(metrics.get("ann_q", 0))
                 metric_data["Annotated (Ref)"] = str(metrics.get("ann_r", 0))
-                st.dataframe(pd.DataFrame([metric_data]), use_container_width=True, hide_index=True)
+                st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
     else:
         title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
         label = f"{Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
         fig = create_plotly_single_plot(
             spectrum=query_df, title=title, label=label, normalize=normalize,
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 def _render_comparison_metrics():
@@ -1164,7 +1172,7 @@ def _render_comparison_metrics():
                     "R\u00b2 match", "R\u00b2 binned", "Cosine", "Entropy",
                     "Dice", "Jaccard", "SharedRatio", "shared", "ann_q", "ann_r"]
     available_cols = [c for c in display_cols if c in comparison_df.columns]
-    st.dataframe(comparison_df[available_cols], use_container_width=True, hide_index=True)
+    st.dataframe(comparison_df[available_cols], width="stretch", hide_index=True)
 
     # Ion match statistics (if available)
     ims_cols = [c for c in comparison_df.columns if c.startswith("ims_")]
@@ -1172,7 +1180,7 @@ def _render_comparison_metrics():
         with st.expander(f"Ion Match Statistics ({len(ims_cols)} metrics)", expanded=False):
             ims_display_cols = ["Peptide", "Query", "Reference"] + ims_cols
             ims_available = [c for c in ims_display_cols if c in comparison_df.columns]
-            st.dataframe(comparison_df[ims_available], use_container_width=True, hide_index=True)
+            st.dataframe(comparison_df[ims_available], width="stretch", hide_index=True)
 
     # Summary statistics per peptidoform
     st.markdown("---")
@@ -1184,7 +1192,7 @@ def _render_comparison_metrics():
             ["count", "median", "mean", "std"]
         )
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
-        st.dataframe(summary, use_container_width=True)
+        st.dataframe(summary, width="stretch")
 
 
 # ---------------------------------------------------------------------------
@@ -1573,7 +1581,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
                     for plot_file in ref_files[:20]:
                         # Show the image
                         if browse_fmt == "png":
-                            st.image(str(plot_file), caption=plot_file.stem, use_container_width=True)
+                            st.image(str(plot_file), caption=plot_file.stem, width="stretch")
                         elif browse_fmt == "svg":
                             try:
                                 svg_content = plot_file.read_text()
