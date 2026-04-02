@@ -44,7 +44,7 @@ def init_session_state(params: dict = None):
     """Initialize session state with defaults from settings.json."""
     if params:
         for key, value in params.get("peptide_mirror", {}).items():
-            if key.startswith("peptide_mirror."):
+            if key.startswith("peptide_mirror.") and key not in st.session_state:
                 st.session_state[key] = value
 
     _settings = _get_settings()
