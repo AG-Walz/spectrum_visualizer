@@ -991,11 +991,18 @@ def _render_openms_insight_explorer():
 
     # PSM Table
     st.subheader("PSM Table -- click a row to load its spectrum")
+    psm_columns = [
+        {"field": "display_label", "title": "Peptide"},
+        {"field": "charge", "title": "Z"},
+        {"field": "score", "title": "Score", "formatter": "money", "formatterParams": {"precision": 4}},
+        {"field": "source_file", "title": "Source File"},
+    ]
     if needs_regen:
         table = Table(
             cache_id="psm_table",
             data=psm_lf,
             interactivity={"selected_psm": "id"},
+            column_definitions=psm_columns,
             cache_path=CACHE_PATH,
             regenerate_cache=True,
             index_field="id",
@@ -1013,6 +1020,7 @@ def _render_openms_insight_explorer():
             sequence_data=seq_lf,
             peaks_data=peaks_for_sv,
             filters={"selected_psm": "psm_id"},
+            filter_defaults={"selected_psm": 0},
             annotation_config={
                 "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
                 "tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
