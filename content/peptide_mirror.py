@@ -467,6 +467,7 @@ def render_settings():
     return True
 
 
+@st.fragment
 def render_setup_tab():
     _settings = _get_settings()
     data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
@@ -500,22 +501,28 @@ def render_setup_tab():
     render_settings()
 
 
+@st.cache_data(show_spinner="Scanning idXML files...")
+def _load_idxml_peptides(idxml_paths: tuple) -> list:
+    """Load unique peptide sequences from idXML files (cached)."""
+    import pyopenms as oms
+    all_peptides = set()
+    for idxml_path in idxml_paths[:5]:
+        prot_ids = []
+        pep_ids = []
+        oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
+        for pid in pep_ids:
+            for hit in pid.getHits():
+                seq = str(hit.getSequence().toUnmodifiedString())
+                if seq:
+                    all_peptides.add(seq)
+    return sorted(all_peptides)
+
+
 def _render_idxml_peptide_preview(idxmls: list):
     """Show unique peptide sequences found in selected idXML files."""
     try:
-        import pyopenms as oms
-        all_peptides = set()
-        for idxml_path in idxmls[:5]:  # Limit to first 5 files for speed
-            prot_ids = []
-            pep_ids = []
-            oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
-            for pid in pep_ids:
-                for hit in pid.getHits():
-                    seq = str(hit.getSequence().toUnmodifiedString())
-                    if seq:
-                        all_peptides.add(seq)
-        if all_peptides:
-            sorted_peps = sorted(all_peptides)
+        sorted_peps = _load_idxml_peptides(tuple(idxmls))
+        if sorted_peps:
             st.caption(f"{len(sorted_peps)} unique peptides found in {min(len(idxmls), 5)} file(s)")
             st.text_area("Peptides found", value="\n".join(sorted_peps[:100]),
                          height=150, disabled=True, key=f"{STATE_PREFIX}_pep_preview")
@@ -947,6 +954,7 @@ def render_search_tab():
 # Tab 3: Explore -- openms_insight + Plotly mirror plots + metrics
 # ---------------------------------------------------------------------------
 
+@st.fragment
 def render_explore_tab():
     """Explore tab: interactive openms_insight components + mirror plots."""
     if not st.session_state.get(get_state_key('data_ready')):
@@ -1217,6 +1225,7 @@ def _render_comparison_metrics():
 # Tab 4: Export (with parallel generation, versioning, history, gallery)
 # ---------------------------------------------------------------------------
 
+@st.fragment
 def render_export_tab():
     """Export: Parquet, CSV/XLSX, mirror plots, summary plots, HTML, ZIP."""
     if not st.session_state.get(get_state_key('data_ready')):
