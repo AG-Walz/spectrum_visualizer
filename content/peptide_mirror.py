@@ -1560,6 +1560,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
                                 st.caption(f"Could not render: {plot_file.name}")
 
                         # Download buttons
+                        run_id = root_dir.name
                         dl_col1, dl_col2, dl_col3 = st.columns(3)
                         with dl_col1:
                             png_path = root_dir / "png" / peptide_dir.name / f"{plot_file.stem}.png"
@@ -1568,7 +1569,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
                                     "PNG", data=png_path.read_bytes(),
                                     file_name=f"{plot_file.stem}.png",
                                     mime="image/png",
-                                    key=f"dl_png_{peptide_dir.name}_{plot_file.stem}",
+                                    key=f"dl_png_{run_id}_{peptide_dir.name}_{plot_file.stem}",
                                 )
                         with dl_col2:
                             svg_path = root_dir / "svg" / peptide_dir.name / f"{plot_file.stem}.svg"
@@ -1577,7 +1578,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
                                     "SVG", data=svg_path.read_bytes(),
                                     file_name=f"{plot_file.stem}.svg",
                                     mime="image/svg+xml",
-                                    key=f"dl_svg_{peptide_dir.name}_{plot_file.stem}",
+                                    key=f"dl_svg_{run_id}_{peptide_dir.name}_{plot_file.stem}",
                                 )
                         with dl_col3:
                             html_file = html_base_dir / peptide_dir.name / f"{plot_file.stem}.html"
@@ -1586,7 +1587,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
                                     "HTML", data=html_file.read_bytes(),
                                     file_name=f"{plot_file.stem}.html",
                                     mime="text/html",
-                                    key=f"dl_html_{peptide_dir.name}_{plot_file.stem}",
+                                    key=f"dl_html_{run_id}_{peptide_dir.name}_{plot_file.stem}",
                                 )
 
                     if len(ref_files) > 20:
