@@ -164,9 +164,13 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         subdir_paths = _list_subdirectories(current_dir)
         subdirs = [Path(d) for d in subdir_paths]
         if subdirs:
-            st.caption("Click folder to navigate:")
-            cols_per_row = 3
-            max_folders = 15
+            st.markdown(
+                "<style>.folder-nav button{font-size:0.8rem !important;"
+                "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
+                unsafe_allow_html=True,
+            )
+            cols_per_row = 4
+            max_folders = 16
             for i in range(0, min(len(subdirs), max_folders), cols_per_row):
                 cols = st.columns(cols_per_row)
                 for j, col in enumerate(cols):
@@ -174,8 +178,8 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
                     if idx < len(subdirs) and idx < max_folders:
                         folder = subdirs[idx]
                         with col:
-                            if st.button(f"dir: {folder.name}", key=f"{key_prefix}_folder_{idx}",
-                                         width="stretch"):
+                            if st.button(f"{folder.name}", key=f"{key_prefix}_folder_{idx}",
+                                         help=str(folder)):
                                 st.session_state[nav_key] = str(folder)
                                 st.rerun()
             if len(subdirs) > max_folders:
@@ -269,7 +273,8 @@ def render_peptide_input():
         st.session_state[get_state_key('target_peptides')] = peptide_text
 
     with col2:
-        st.markdown("**Tips:**\n- One peptide per line, without modifications\n"
+        st.markdown("**Tips:**\n- One peptide per line\n"
+                     "- Without modifications\n"
                      "- Case insensitive")
         peptides = parse_peptide_list(peptide_text)
         if peptides:
@@ -296,15 +301,16 @@ def render_reference_selection():
         reference_files = [Path(m).name for m in mzmls if ref_substring.lower() in Path(m).name.lower()]
         query_files = [Path(m).name for m in mzmls if ref_substring.lower() not in Path(m).name.lower()]
 
-        col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(f"**Reference files ({len(reference_files)})**")
-            for f in reference_files[:5]:
-                st.caption(f"ref: {f}")
-        with col2:
-            st.markdown(f"**Query files ({len(query_files)})**")
-            for f in query_files[:5]:
-                st.caption(f"query: {f}")
+        with st.expander(f"Reference ({len(reference_files)}) / Query ({len(query_files)}) files", expanded=False):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown(f"**Reference files ({len(reference_files)})**")
+                for f in reference_files[:5]:
+                    st.caption(f)
+            with col2:
+                st.markdown(f"**Query files ({len(query_files)})**")
+                for f in query_files[:5]:
+                    st.caption(f)
 
         if reference_files and query_files:
             st.success("Reference/Query separation configured")
@@ -341,7 +347,6 @@ def render_settings():
                                     step=0.005, format="%.3f", key=f"{STATE_PREFIX}_tol_input")
         st.session_state[get_state_key('mz_tolerance')] = tolerance
 
-    st.markdown("---")
     st.markdown("**Annotation Settings**")
     ann_col1, ann_col2, ann_col3 = st.columns(3)
 
@@ -363,14 +368,14 @@ def render_settings():
                                        key=f"{STATE_PREFIX}_remove_precursor")
         st.session_state[get_state_key('remove_precursor_peaks')] = remove_precursor
 
-    st.markdown("---")
-    st.markdown("**Intensity Display**")
-    intensity_mode = st.radio("Intensity mode", options=["Relative", "Raw"],
+    intensity_mode = st.radio("**Intensity Display Mode**",
+                              options=["Relative", "Raw"],
+                              captions=["Relative to the highest intensity", "Raw intensity"],
                               index=0 if st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative' else 1,
-                              horizontal=True, key=f"{STATE_PREFIX}_intensity_mode")
+                              horizontal=True, key=f"{STATE_PREFIX}_intensity_mode",
+                              label_visibility="visible")
     st.session_state[get_state_key('intensity_mode')] = intensity_mode
 
-    st.markdown("---")
     st.markdown("**Performance**")
     workers = st.slider("Parallel workers", min_value=1, max_value=32,
                         value=st.session_state.get(get_state_key('workers'), 4),
@@ -485,12 +490,6 @@ def render_setup_tab():
                                  extensions=['.mzML', '.mzml'],
                                  state_key='selected_mzmls',
                                  default_dir=data_dir_default)
-
-    # Peptide preview from idXML files
-    idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
-    if idxmls:
-        with st.expander("Preview peptides in selected idXML files", expanded=False):
-            _render_idxml_peptide_preview(idxmls)
 
     st.markdown("---")
     render_peptide_input()
