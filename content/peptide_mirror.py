@@ -261,24 +261,87 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
 
 def render_peptide_input():
     st.subheader("Target Peptides")
-    col1, col2 = st.columns([2, 1])
 
-    with col1:
-        peptide_text = st.text_area(
-            "Enter peptide sequences (one per line)",
-            value=st.session_state.get(get_state_key('target_peptides'), ''),
-            height=150, key=f"{STATE_PREFIX}_peptide_input",
-            placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n..."
-        )
-        st.session_state[get_state_key('target_peptides')] = peptide_text
+    idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
 
-    with col2:
-        st.markdown("**Tips:**\n- One peptide per line\n"
-                     "- Without modifications\n"
-                     "- Case insensitive")
-        peptides = parse_peptide_list(peptide_text)
-        if peptides:
-            st.success(f"{len(peptides)} peptide(s) entered")
+    paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
+
+    with paste_tab:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            peptide_text = st.text_area(
+                "Enter peptide sequences (one per line)",
+                value=st.session_state.get(get_state_key('target_peptides'), ''),
+                height=150, key=f"{STATE_PREFIX}_peptide_input",
+                placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n..."
+            )
+            st.session_state[get_state_key('target_peptides')] = peptide_text
+        with col2:
+            st.markdown("**Tips:**\n- One peptide per line\n"
+                         "- Without modifications\n"
+                         "- Case insensitive")
+            peptides = parse_peptide_list(peptide_text)
+            if peptides:
+                st.success(f"{len(peptides)} peptide(s) entered")
+
+    with pick_tab:
+        if not idxmls:
+            st.info("Select idXML files above first.")
+        else:
+            try:
+                available = _load_idxml_peptides(tuple(idxmls))
+            except Exception as e:
+                st.warning(f"Could not load peptides: {e}")
+                available = []
+
+            if not available:
+                st.info("No peptide hits found in selected idXML files.")
+            else:
+                st.caption(f"{len(available)} unique peptides found")
+
+                # Filter box
+                filter_text = st.text_input(
+                    "Filter", placeholder="Type to filter...",
+                    key=f"{STATE_PREFIX}_pick_filter",
+                    label_visibility="collapsed",
+                )
+                if filter_text:
+                    shown = [p for p in available if filter_text.upper() in p]
+                else:
+                    shown = available
+
+                # Pre-select peptides already in the text area
+                current = set(parse_peptide_list(
+                    st.session_state.get(get_state_key('target_peptides'), '')
+                ))
+                defaults = [p for p in shown if p in current]
+
+                selected = st.multiselect(
+                    "Select peptides",
+                    options=shown,
+                    default=defaults,
+                    key=f"{STATE_PREFIX}_pick_multi",
+                )
+
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
+                                 type="primary"):
+                        st.session_state[get_state_key('target_peptides')] = "\n".join(selected)
+                        st.rerun()
+                with c2:
+                    if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
+                        merged = list(dict.fromkeys(
+                            parse_peptide_list(
+                                st.session_state.get(get_state_key('target_peptides'), '')
+                            ) + selected
+                        ))
+                        st.session_state[get_state_key('target_peptides')] = "\n".join(merged)
+                        st.rerun()
+
+    peptides = parse_peptide_list(
+        st.session_state.get(get_state_key('target_peptides'), '')
+    )
     return len(peptides) > 0
 
 
@@ -504,7 +567,7 @@ def _load_idxml_peptides(idxml_paths: tuple) -> list:
     """Load unique peptide sequences from idXML files (cached)."""
     import pyopenms as oms
     all_peptides = set()
-    for idxml_path in idxml_paths[:5]:
+    for idxml_path in idxml_paths:
         prot_ids = []
         pep_ids = []
         oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
@@ -514,22 +577,6 @@ def _load_idxml_peptides(idxml_paths: tuple) -> list:
                 if seq:
                     all_peptides.add(seq)
     return sorted(all_peptides)
-
-
-def _render_idxml_peptide_preview(idxmls: list):
-    """Show unique peptide sequences found in selected idXML files."""
-    try:
-        sorted_peps = _load_idxml_peptides(tuple(idxmls))
-        if sorted_peps:
-            st.caption(f"{len(sorted_peps)} unique peptides found in {min(len(idxmls), 5)} file(s)")
-            st.text_area("Peptides found", value="\n".join(sorted_peps[:100]),
-                         height=150, disabled=True, key=f"{STATE_PREFIX}_pep_preview")
-            if len(sorted_peps) > 100:
-                st.caption(f"... and {len(sorted_peps) - 100} more")
-        else:
-            st.info("No peptide hits found in selected files")
-    except Exception as e:
-        st.warning(f"Could not preview peptides: {e}")
 
 
 # ---------------------------------------------------------------------------
