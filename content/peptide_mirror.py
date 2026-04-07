@@ -289,39 +289,56 @@ def render_peptide_input():
             st.info("Select idXML files above first.")
         else:
             try:
-                available = _load_idxml_peptides(tuple(idxmls))
+                psm_counts = _load_idxml_peptides(tuple(idxmls))
             except Exception as e:
                 st.warning(f"Could not load peptides: {e}")
-                available = []
+                psm_counts = {}
 
-            if not available:
+            if not psm_counts:
                 st.info("No peptide hits found in selected idXML files.")
             else:
-                st.caption(f"{len(available)} unique peptides found")
+                st.caption(f"{len(psm_counts)} unique peptides found")
 
-                # Filter box
-                filter_text = st.text_input(
-                    "Filter", placeholder="Type to filter...",
-                    key=f"{STATE_PREFIX}_pick_filter",
-                    label_visibility="collapsed",
-                )
-                if filter_text:
-                    shown = [p for p in available if filter_text.upper() in p]
-                else:
-                    shown = available
+                # Filters
+                f_col1, f_col2 = st.columns([2, 1])
+                with f_col1:
+                    filter_text = st.text_input(
+                        "Filter", placeholder="Type to filter by substring...",
+                        key=f"{STATE_PREFIX}_pick_filter",
+                        label_visibility="collapsed",
+                    )
+                with f_col2:
+                    max_count = max(psm_counts.values())
+                    min_psm = st.number_input(
+                        "Min PSMs", min_value=1, max_value=max_count,
+                        value=1, step=1,
+                        key=f"{STATE_PREFIX}_pick_min_psm",
+                        help="Show only peptides with at least this many PSMs",
+                    )
+
+                # Apply filters
+                shown_items = [
+                    (seq, cnt) for seq, cnt in psm_counts.items()
+                    if cnt >= min_psm
+                    and (not filter_text or filter_text.upper() in seq)
+                ]
+                # Labels with PSM count
+                labels = [f"{seq} ({cnt})" for seq, cnt in shown_items]
+                label_to_seq = {f"{seq} ({cnt})": seq for seq, cnt in shown_items}
 
                 # Pre-select peptides already in the text area
                 current = set(parse_peptide_list(
                     st.session_state.get(get_state_key('target_peptides'), '')
                 ))
-                defaults = [p for p in shown if p in current]
+                defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
 
-                selected = st.multiselect(
+                selected_labels = st.multiselect(
                     "Select peptides",
-                    options=shown,
+                    options=labels,
                     default=defaults,
                     key=f"{STATE_PREFIX}_pick_multi",
                 )
+                selected = [label_to_seq[lbl] for lbl in selected_labels]
 
                 c1, c2 = st.columns(2)
                 with c1:
@@ -563,10 +580,15 @@ def render_setup_tab():
 
 
 @st.cache_data(show_spinner="Scanning idXML files...")
-def _load_idxml_peptides(idxml_paths: tuple) -> list:
-    """Load unique peptide sequences from idXML files (cached)."""
+def _load_idxml_peptides(idxml_paths: tuple) -> dict:
+    """Load unique peptide sequences from idXML files with PSM counts (cached).
+
+    Returns dict mapping unmodified sequence -> total PSM count across all files
+    (including different modifications of the same base sequence).
+    """
     import pyopenms as oms
-    all_peptides = set()
+    from collections import Counter
+    psm_counts: Counter = Counter()
     for idxml_path in idxml_paths:
         prot_ids = []
         pep_ids = []
@@ -575,8 +597,8 @@ def _load_idxml_peptides(idxml_paths: tuple) -> list:
             for hit in pid.getHits():
                 seq = str(hit.getSequence().toUnmodifiedString())
                 if seq:
-                    all_peptides.add(seq)
-    return sorted(all_peptides)
+                    psm_counts[seq] += 1
+    return dict(sorted(psm_counts.items()))
 
 
 # ---------------------------------------------------------------------------
