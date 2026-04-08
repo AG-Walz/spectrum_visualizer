@@ -10,7 +10,10 @@ if "settings" not in st.session_state:
 if __name__ == '__main__':
     pages = {
         str(st.session_state.settings["app-name"]): [
-            st.Page(Path("content", "peptide_mirror.py"), title="Peptide Mirror Analysis", icon="🔬"),
+            st.Page(Path("content", "setup.py"), title="Setup", icon="⚙️"),
+            st.Page(Path("content", "search_load.py"), title="Search & Load", icon="🔍"),
+            st.Page(Path("content", "explore.py"), title="Explore", icon="🔬"),
+            st.Page(Path("content", "export.py"), title="Export", icon="📦"),
         ],
     }
 

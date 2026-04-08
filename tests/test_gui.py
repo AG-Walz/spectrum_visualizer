@@ -17,7 +17,10 @@ def launch(request):
 @pytest.mark.parametrize(
     "launch",
     (
-        "content/peptide_mirror.py",
+        "content/setup.py",
+        "content/search_load.py",
+        "content/explore.py",
+        "content/export.py",
     ),
     indirect=True,
 )

@@ -40,6 +40,150 @@ def get_state_key(key: str) -> str:
     return f"{STATE_PREFIX}.{key}"
 
 
+ANALYSIS_CACHE_DIR = "analysis_cache"
+
+# Keys whose values are Polars LazyFrames (saved as Parquet)
+_LAZYFRAME_KEYS = ("psm_lf", "peaks_lf", "seq_lf", "heatmap_lf")
+
+# Keys whose values are pickle-safe Python objects
+_PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
+
+
+def _analysis_cache_path() -> Path:
+    """Return the analysis cache directory inside the current workspace."""
+    return Path(st.session_state.workspace) / ANALYSIS_CACHE_DIR
+
+
+def save_analysis_cache() -> None:
+    """Persist all analysis results to disk so they survive page reloads."""
+    import pickle
+    import pandas as pd
+
+    cache_dir = _analysis_cache_path()
+    cache_dir.mkdir(parents=True, exist_ok=True)
+
+    # 1. Polars LazyFrames → Parquet
+    for key in _LAZYFRAME_KEYS:
+        lf = st.session_state.get(get_state_key(key))
+        if lf is not None:
+            lf.collect().write_parquet(cache_dir / f"{key}.parquet")
+
+    # 2. comparison_df (pandas) → Parquet
+    comp_df = st.session_state.get(get_state_key("comparison_df"))
+    if comp_df is not None and not comp_df.empty:
+        comp_df.to_parquet(cache_dir / "comparison_df.parquet")
+    elif comp_df is not None:
+        # Save empty marker so we know analysis ran but had no comparisons
+        pd.DataFrame().to_parquet(cache_dir / "comparison_df.parquet")
+
+    # 3. psm_lookup (dict) → JSON
+    psm_lookup = st.session_state.get(get_state_key("psm_lookup"))
+    if psm_lookup is not None:
+        with open(cache_dir / "psm_lookup.json", "w") as f:
+            json.dump(psm_lookup, f)
+
+    # 4. Complex objects → pickle
+    for key in _PICKLE_KEYS:
+        obj = st.session_state.get(get_state_key(key))
+        if obj is not None:
+            with open(cache_dir / f"{key}.pkl", "wb") as f:
+                pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    # 5. Metadata marker
+    meta = {
+        "saved_at": datetime.now().isoformat(),
+        "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
+    }
+    with open(cache_dir / "meta.json", "w") as f:
+        json.dump(meta, f)
+
+    logger.info("Analysis cache saved to %s", cache_dir)
+
+
+@st.cache_resource(show_spinner="Restoring analysis from cache...")
+def _read_analysis_cache(cache_dir_str: str, _cache_mtime: float):
+    """Read all analysis cache files from disk (cached across sessions/users).
+
+    Parameters are used as cache keys: the directory path and the meta.json
+    modification time.  When a new analysis is saved the mtime changes,
+    invalidating this cache automatically.
+    """
+    import pickle
+    import pandas as pd
+
+    cache_dir = Path(cache_dir_str)
+    data = {}
+
+    for key in _LAZYFRAME_KEYS:
+        p = cache_dir / f"{key}.parquet"
+        if p.exists():
+            data[key] = pl.scan_parquet(p)
+
+    comp_path = cache_dir / "comparison_df.parquet"
+    if comp_path.exists():
+        data["comparison_df"] = pd.read_parquet(comp_path)
+
+    lookup_path = cache_dir / "psm_lookup.json"
+    if lookup_path.exists():
+        with open(lookup_path, "r") as f:
+            data["psm_lookup"] = json.load(f)
+
+    for key in _PICKLE_KEYS:
+        pkl_path = cache_dir / f"{key}.pkl"
+        if pkl_path.exists():
+            with open(pkl_path, "rb") as f:
+                data[key] = pickle.load(f)
+
+    with open(cache_dir / "meta.json", "r") as f:
+        data["_meta"] = json.load(f)
+
+    return data
+
+
+def load_analysis_cache() -> bool:
+    """Restore analysis results from the disk cache into session state.
+
+    The heavy disk I/O is wrapped in ``@st.cache_resource`` so it only
+    happens once — subsequent page reruns and other users on the same
+    server get the data from memory instantly.
+
+    Returns True if cache was loaded successfully, False otherwise.
+    """
+    cache_dir = _analysis_cache_path()
+    meta_path = cache_dir / "meta.json"
+
+    if not meta_path.exists():
+        return False
+
+    try:
+        mtime = meta_path.stat().st_mtime
+        data = _read_analysis_cache(str(cache_dir), mtime)
+
+        for key in list(_LAZYFRAME_KEYS) + ["comparison_df", "psm_lookup"] + list(_PICKLE_KEYS):
+            if key in data:
+                st.session_state[get_state_key(key)] = data[key]
+
+        meta = data.get("_meta", {})
+        st.session_state[get_state_key("cache_version")] = meta.get("cache_version", 1)
+        st.session_state[get_state_key("data_ready")] = True
+
+        logger.info("Analysis cache restored from %s", cache_dir)
+        return True
+
+    except Exception as e:
+        logger.warning("Failed to restore analysis cache: %s", e)
+        return False
+
+
+def clear_analysis_cache() -> None:
+    """Remove the analysis cache directory and invalidate the in-memory cache."""
+    cache_dir = _analysis_cache_path()
+    if cache_dir.exists():
+        shutil.rmtree(cache_dir)
+        _read_analysis_cache.clear()
+        logger.info("Analysis cache cleared: %s", cache_dir)
+
+
 def init_session_state(params: dict = None):
     """Initialize session state with defaults from settings.json."""
     if params:
@@ -83,6 +227,10 @@ def init_session_state(params: dict = None):
         state_key = get_state_key(key)
         if state_key not in st.session_state:
             st.session_state[state_key] = default
+
+    # Auto-restore analysis results from disk cache on reload
+    if not st.session_state.get(get_state_key('data_ready'), False):
+        load_analysis_cache()
 
 
 # ---------------------------------------------------------------------------
@@ -666,6 +814,9 @@ def run_peptide_search(idxmls: list, peptides: list):
 
 def run_search_and_load():
     """Stream spectra, capture references, annotate, compute metrics, build DataFrames."""
+    # Clear stale cache before rebuilding
+    clear_analysis_cache()
+
     from pathlib import Path as _Path
     import copy
     import time as _time
@@ -875,6 +1026,9 @@ def run_search_and_load():
         st.session_state[get_state_key('data_ready')] = True
         st.session_state[get_state_key('cache_version')] = \
             st.session_state.get(get_state_key('cache_version'), 0) + 1
+
+        # Persist analysis to disk so it survives page reloads
+        save_analysis_cache()
 
         n_comparisons = len(comparison_rows)
         status.update(
