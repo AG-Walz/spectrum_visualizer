@@ -41,7 +41,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
     Load parameters from a JSON file and return a dictionary containing them.
 
     If a 'params.json' file exists in the workspace, load the parameters from there.
-    Otherwise, load the default parameters from 'settings.json'.
+    Otherwise, load the default parameters from 'default-parameters.json'.
 
     Args:
         default (bool): Load default parameters. Defaults to False.
@@ -58,8 +58,9 @@ def load_params(default: bool = False) -> dict[str, Any]:
         with open(path, "r", encoding="utf-8") as f:
             params = json.load(f)
     else:
-        # Use settings.json as default parameters source
-        params = dict(st.session_state.settings)
+        default_path = Path(__file__).parents[2] / "default-parameters.json"
+        with open(default_path, "r", encoding="utf-8") as f:
+            params = json.load(f)
 
     return params
 
@@ -68,43 +69,22 @@ def save_params(params: dict[str, Any]) -> None:
     """
     Save the given dictionary of parameters to a JSON file in the workspace.
 
-    Captures two layers of state:
-    - Top-level settings.json keys already present in params (template pattern).
-    - All serializable ``peptide_mirror.*`` session-state keys, stored under a
-      ``"peptide_mirror"`` namespace so they can be restored on workspace load.
+    Syncs widget values from st.session_state back into the params dict
+    for keys that exist in default-parameters.json, then writes to disk.
 
     Args:
         params (dict[str, Any]): A dictionary containing the parameters to be saved.
-
-    Returns:
-        dict[str, Any]: Updated parameters.
     """
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
-    # Update with any modified session state values (template-level keys)
-    for key, value in st.session_state.items():
-        if key in params:
-            params[key] = value
-
-    # Capture serializable peptide_mirror.* analysis state
-    page_state = {}
-    for key, value in st.session_state.items():
-        if not key.startswith("peptide_mirror."):
-            continue
-        try:
-            json.dumps(value)   # probe serializability; skips VariantGroup dicts, etc.
-            page_state[key] = value
-        except (TypeError, ValueError):
-            pass
-    if page_state:
-        params["peptide_mirror"] = page_state
+    for key in params:
+        if key in st.session_state:
+            params[key] = st.session_state[key]
 
     path = Path(st.session_state.workspace, "params.json")
     with open(path, "w", encoding="utf-8") as outfile:
         json.dump(params, outfile, indent=4)
-
-    return params
 
 
 def page_setup(page: str = "") -> dict[str, Any]:

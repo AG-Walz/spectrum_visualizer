@@ -8,10 +8,10 @@ import logging
 import streamlit as st
 from pathlib import Path
 
-from src.common.common import page_setup
+from src.common.common import page_setup, save_params
 from content._shared import (
-    STATE_PREFIX, get_state_key, _get_settings,
-    init_session_state, save_analysis_cache, clear_analysis_cache,
+    STATE_PREFIX, get_state_key,
+    restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
 )
 from utils.helpers import format_time, parse_peptide_list
 
@@ -28,7 +28,7 @@ def run_peptide_search(idxmls: list, peptides: list):
     from src.peptide_search import search_peptides_in_idxmls
     import time as _time
 
-    mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+    mzmls = st.session_state.get('selected-mzmls', [])
     error_messages = []
 
     with st.status("Searching peptides...", expanded=True) as status:
@@ -52,7 +52,7 @@ def run_peptide_search(idxmls: list, peptides: list):
             error_messages.append(error_msg)
 
         try:
-            workers = st.session_state.get(get_state_key('workers'), 4)
+            workers = st.session_state.get('workers', 4)
             results = search_peptides_in_idxmls(
                 idxmls, peptides, mzml_paths=mzmls,
                 progress_callback=progress_callback, error_callback=error_callback,
@@ -98,9 +98,9 @@ def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict
         from src.spectrum_loader import LoadedSpectrum
         from src.peak_annotation import prepare_spectrum_for_plot
 
-        model_id = st.session_state.get(get_state_key("koina_model"), "ms2pip_timsTOF2024")
-        ce = st.session_state.get(get_state_key("koina_ce"), 35)
-        instrument = st.session_state.get(get_state_key("koina_instrument"), "TIMSTOF")
+        model_id = st.session_state.get("koina-model", "ms2pip_timsTOF2024")
+        ce = st.session_state.get("koina-ce", 35)
+        instrument = st.session_state.get("koina-instrument", "TIMSTOF")
 
         pred_df = predict_koina_spectrum(
             peptidoform_str=peptidoform,
@@ -165,16 +165,16 @@ def run_search_and_load():
         st.error("No search results. Run peptide search first.")
         return
 
-    mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+    mzmls = st.session_state.get('selected-mzmls', [])
     if not mzmls:
         st.error("No mzML files selected.")
         return
 
-    ref_substring = st.session_state.get(get_state_key('reference_substring'), '')
-    ion_types = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
-    mz_tolerance = st.session_state.get(get_state_key('mz_tolerance'), 0.02)
-    normalize = st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative'
-    workers = st.session_state.get(get_state_key('workers'), 4)
+    ref_substring = st.session_state.get('reference-substring', '')
+    ion_types = st.session_state.get('ion-types', ['b', 'y'])
+    mz_tolerance = st.session_state.get('mz-tolerance', 0.02)
+    normalize = st.session_state.get('intensity-mode', 'Relative') == 'Relative'
+    workers = st.session_state.get('workers', 4)
 
     vg_copy = copy.deepcopy(variant_groups)
     psm_lf, psm_lookup = build_psm_table(vg_copy)
@@ -185,9 +185,9 @@ def run_search_and_load():
 
     total_psms = sum(len(vg.matches) for vg in vg_copy.values())
 
-    add_losses = st.session_state.get(get_state_key('add_losses'), False)
-    add_first_prefix_ion = st.session_state.get(get_state_key('add_first_prefix_ion'), True)
-    remove_precursor_peaks = st.session_state.get(get_state_key('remove_precursor_peaks'), False)
+    add_losses = st.session_state.get('add-losses', False)
+    add_first_prefix_ion = st.session_state.get('add-first-prefix-ion', True)
+    remove_precursor_peaks = st.session_state.get('remove-precursor-peaks', False)
 
     annotation_kwargs = dict(
         ion_types=ion_types,
@@ -242,7 +242,7 @@ def run_search_and_load():
                 reference_store[vk] = ref_list
 
             refs = reference_store.get(vk, [])
-            if not refs and st.session_state.get(get_state_key('koina_enabled'), False):
+            if not refs and st.session_state.get('koina-enabled', False):
                 koina_ref = _get_koina_prediction(
                     result.query_spectrum.peptidoform,
                     result.query_spectrum.precursor_charge,
@@ -394,15 +394,15 @@ def search_results_fragment():
         total_matches = sum(len(vg.matches) for vg in variant_groups.values())
         st.success(f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
                    f"Click **Search & Load Spectra** below to load and annotate them.")
-        mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+        mzmls = st.session_state.get('selected-mzmls', [])
         if mzmls:
             st.subheader("Load Spectra & Compute Metrics")
-            ref_sub = st.session_state.get(get_state_key('reference_substring'), '')
+            ref_sub = st.session_state.get('reference-substring', '')
             if ref_sub:
                 st.caption(f"Will pair query spectra with references (substring: '{ref_sub}') "
                            f"and compute 7 comparison metrics per pair.")
             else:
-                koina_on = st.session_state.get(get_state_key('koina_enabled'), False)
+                koina_on = st.session_state.get('koina-enabled', False)
                 if koina_on:
                     st.caption("No reference configured -- will use Koina AI prediction as fallback.")
                 else:
@@ -428,14 +428,12 @@ def search_results_fragment():
 # ---------------------------------------------------------------------------
 
 def render():
-    init_session_state(params)
+    restore_analysis_if_needed()
     st.title("Search & Load")
     st.caption("Search for peptides in idXML files and load spectra for analysis")
 
-    idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
-    peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
-    if not peptide_text:
-        peptide_text = st.session_state.get(f"{STATE_PREFIX}_peptide_input", '')
+    idxmls = st.session_state.get('selected-idxmls', [])
+    peptide_text = st.session_state.get('target-peptides', '')
     peptides = parse_peptide_list(peptide_text)
 
     if not idxmls:
@@ -449,6 +447,8 @@ def render():
         run_peptide_search(idxmls, peptides)
 
     search_results_fragment()
+
+    save_params(params)
 
 
 render()

@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from utils.helpers import format_time, get_nested as get_settings_value, parse_peptide_list
+from utils.helpers import format_time, parse_peptide_list
 
 logger = logging.getLogger(__name__)
 
@@ -182,51 +182,8 @@ def clear_analysis_cache() -> None:
 # Session state initialization
 # ---------------------------------------------------------------------------
 
-def init_session_state(params: dict = None):
-    """Initialize session state with defaults from settings.json."""
-    if params:
-        for key, value in params.get("peptide_mirror", {}).items():
-            if key.startswith("peptide_mirror.") and key not in st.session_state:
-                st.session_state[key] = value
-
-    _settings = _get_settings()
-    ion_types_default = get_settings_value(_settings, "ion_types", "default", default=["b", "y"])
-    mz_tolerance_default = get_settings_value(_settings, "mz_tolerance", "default", default=0.02)
-    workspace = st.session_state.get('workspace', None)
-    export_dir_default = (
-        str(Path(workspace) / "exports")
-        if workspace
-        else get_settings_value(_settings, "export", "default_directory", default="./exports")
-    )
-    add_losses_default = get_settings_value(_settings, "annotation", "add_losses", default=False)
-    add_first_prefix_default = get_settings_value(_settings, "annotation", "add_first_prefix_ion", default=True)
-    remove_precursor_default = get_settings_value(_settings, "annotation", "remove_precursor_peaks", default=False)
-    workers_default = get_settings_value(_settings, "performance", "workers", default=4)
-
-    defaults = {
-        'selected_idxmls': [],
-        'selected_mzmls': [],
-        'target_peptides': '',
-        'reference_substring': '',
-        'ion_types': ion_types_default,
-        'mz_tolerance': mz_tolerance_default,
-        'add_losses': add_losses_default,
-        'add_first_prefix_ion': add_first_prefix_default,
-        'remove_precursor_peaks': remove_precursor_default,
-        'export_dir': export_dir_default,
-        'workers': workers_default,
-        'intensity_mode': 'Relative',
-        'variant_groups': None,
-        'data_ready': False,
-        'koina_enabled': False,
-    }
-
-    for key, default in defaults.items():
-        state_key = get_state_key(key)
-        if state_key not in st.session_state:
-            st.session_state[state_key] = default
-
-    # Auto-restore analysis results from disk cache on reload
+def restore_analysis_if_needed():
+    """Auto-restore analysis results from disk cache on reload."""
     if not st.session_state.get(get_state_key('data_ready'), False):
         load_analysis_cache()
 
@@ -266,20 +223,20 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
-    peptide_text = st.session_state.get(get_state_key('target_peptides'), '')
+    peptide_text = st.session_state.get('target-peptides', '')
     peptides = parse_peptide_list(peptide_text)
     return {
-        "idxml_files": st.session_state.get(get_state_key('selected_idxmls'), []),
-        "mzml_files": st.session_state.get(get_state_key('selected_mzmls'), []),
+        "idxml_files": st.session_state.get('selected-idxmls', []),
+        "mzml_files": st.session_state.get('selected-mzmls', []),
         "peptides": peptides,
-        "reference_substring": st.session_state.get(get_state_key('reference_substring'), ''),
-        "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
-        "mz_tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
-        "add_losses": st.session_state.get(get_state_key('add_losses'), False),
-        "add_first_prefix_ion": st.session_state.get(get_state_key('add_first_prefix_ion'), True),
-        "remove_precursor_peaks": st.session_state.get(get_state_key('remove_precursor_peaks'), False),
-        "intensity_mode": st.session_state.get(get_state_key('intensity_mode'), 'Relative'),
-        "koina_enabled": st.session_state.get(get_state_key('koina_enabled'), False),
+        "reference_substring": st.session_state.get('reference-substring', ''),
+        "ion_types": st.session_state.get('ion-types', ['b', 'y']),
+        "mz_tolerance": st.session_state.get('mz-tolerance', 0.02),
+        "add_losses": st.session_state.get('add-losses', False),
+        "add_first_prefix_ion": st.session_state.get('add-first-prefix-ion', True),
+        "remove_precursor_peaks": st.session_state.get('remove-precursor-peaks', False),
+        "intensity_mode": st.session_state.get('intensity-mode', 'Relative'),
+        "koina_enabled": st.session_state.get('koina-enabled', False),
         "_created_at": datetime.now().isoformat(),
         "_last_run": datetime.now().isoformat(),
     }
@@ -288,17 +245,17 @@ def build_run_settings() -> dict:
 def apply_run_settings(run_cfg: dict):
     """Load a run_settings.json dict back into session state."""
     mapping = {
-        'selected_idxmls':        run_cfg.get('idxml_files', []),
-        'selected_mzmls':         run_cfg.get('mzml_files', []),
-        'target_peptides':        '\n'.join(run_cfg.get('peptides', [])),
-        'reference_substring':    run_cfg.get('reference_substring', ''),
-        'ion_types':              run_cfg.get('ion_types', ['b', 'y']),
-        'mz_tolerance':           run_cfg.get('mz_tolerance', 0.02),
-        'add_losses':             run_cfg.get('add_losses', False),
-        'add_first_prefix_ion':   run_cfg.get('add_first_prefix_ion', True),
-        'remove_precursor_peaks': run_cfg.get('remove_precursor_peaks', False),
-        'intensity_mode':         run_cfg.get('intensity_mode', 'Relative'),
-        'koina_enabled':          run_cfg.get('koina_enabled', False),
+        'selected-idxmls':        run_cfg.get('idxml_files', []),
+        'selected-mzmls':         run_cfg.get('mzml_files', []),
+        'target-peptides':        '\n'.join(run_cfg.get('peptides', [])),
+        'reference-substring':    run_cfg.get('reference_substring', ''),
+        'ion-types':              run_cfg.get('ion_types', ['b', 'y']),
+        'mz-tolerance':           run_cfg.get('mz_tolerance', 0.02),
+        'add-losses':             run_cfg.get('add_losses', False),
+        'add-first-prefix-ion':   run_cfg.get('add_first_prefix_ion', True),
+        'remove-precursor-peaks': run_cfg.get('remove_precursor_peaks', False),
+        'intensity-mode':         run_cfg.get('intensity_mode', 'Relative'),
+        'koina-enabled':          run_cfg.get('koina_enabled', False),
     }
     for key, value in mapping.items():
-        st.session_state[get_state_key(key)] = value
+        st.session_state[key] = value

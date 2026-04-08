@@ -7,9 +7,9 @@ does not rerun the file browsers, and vice versa.
 import streamlit as st
 from pathlib import Path
 
-from src.common.common import page_setup
+from src.common.common import page_setup, save_params
 from content._shared import (
-    STATE_PREFIX, get_state_key, _get_settings, init_session_state,
+    STATE_PREFIX, _get_settings, restore_analysis_if_needed,
     list_subdirectories, list_files,
 )
 from utils.helpers import get_nested as get_settings_value, parse_peptide_list
@@ -132,13 +132,13 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
             filtered_labels = file_labels
 
         if filtered_labels:
-            all_selected_paths = set(st.session_state.get(get_state_key(state_key), []))
+            all_selected_paths = set(st.session_state.get(state_key, []))
             current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
             if recursive:
-                other_dir_selections = [p for p in st.session_state.get(get_state_key(state_key), [])
+                other_dir_selections = [p for p in st.session_state.get(state_key, [])
                                         if p not in current_scope_paths]
             else:
-                other_dir_selections = [p for p in st.session_state.get(get_state_key(state_key), [])
+                other_dir_selections = [p for p in st.session_state.get(state_key, [])
                                         if Path(p).parent != current_path]
 
             valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
@@ -162,7 +162,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
 
             current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
             merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
-            st.session_state[get_state_key(state_key)] = merged_selections
+            st.session_state[state_key] = merged_selections
 
         else:
             if filter_text:
@@ -174,11 +174,11 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         st.error(f"Error listing files: {e}")
 
     # Clear selections button
-    all_selected = st.session_state.get(get_state_key(state_key), [])
+    all_selected = st.session_state.get(state_key, [])
     if all_selected:
         if st.button(f"Clear all selections ({len(all_selected)} files)",
                      key=f"{key_prefix}_clear_all", width="stretch"):
-            st.session_state[get_state_key(state_key)] = []
+            st.session_state[state_key] = []
             if select_all_key in st.session_state:
                 del st.session_state[select_all_key]
             st.rerun()
@@ -200,13 +200,13 @@ def file_selection_fragment():
         st.subheader("idXML Files (Identifications)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_idxml",
                                  extensions=['.idXML', '.idxml'],
-                                 state_key='selected_idxmls',
+                                 state_key='selected-idxmls',
                                  default_dir=data_dir_default)
     with col2:
         st.subheader("mzML Files (Spectra)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_mzml",
                                  extensions=['.mzML', '.mzml'],
-                                 state_key='selected_mzmls',
+                                 state_key='selected-mzmls',
                                  default_dir=data_dir_default)
 
 
@@ -215,7 +215,7 @@ def peptide_input_fragment():
     """Peptide input fragment with paste and idXML picker tabs."""
     st.subheader("Target Peptides")
 
-    idxmls = st.session_state.get(get_state_key('selected_idxmls'), [])
+    idxmls = st.session_state.get('selected-idxmls', [])
 
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
 
@@ -224,11 +224,10 @@ def peptide_input_fragment():
         with col1:
             peptide_text = st.text_area(
                 "Enter peptide sequences (one per line)",
-                value=st.session_state.get(get_state_key('target_peptides'), ''),
-                height=150, key=f"{STATE_PREFIX}_peptide_input",
+                value=params.get('target-peptides', ''),
+                height=150, key="target-peptides",
                 placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n..."
             )
-            st.session_state[get_state_key('target_peptides')] = peptide_text
         with col2:
             st.markdown("**Tips:**\n- One peptide per line\n"
                          "- Without modifications\n"
@@ -277,7 +276,7 @@ def peptide_input_fragment():
                 label_to_seq = {f"{seq} ({cnt})": seq for seq, cnt in shown_items}
 
                 current = set(parse_peptide_list(
-                    st.session_state.get(get_state_key('target_peptides'), '')
+                    st.session_state.get('target-peptides', '')
                 ))
                 defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
 
@@ -293,16 +292,16 @@ def peptide_input_fragment():
                 with c1:
                     if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
                                  type="primary"):
-                        st.session_state[get_state_key('target_peptides')] = "\n".join(selected)
+                        st.session_state['target-peptides'] = "\n".join(selected)
                         st.rerun()
                 with c2:
                     if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
                         merged = list(dict.fromkeys(
                             parse_peptide_list(
-                                st.session_state.get(get_state_key('target_peptides'), '')
+                                st.session_state.get('target-peptides', '')
                             ) + selected
                         ))
-                        st.session_state[get_state_key('target_peptides')] = "\n".join(merged)
+                        st.session_state['target-peptides'] = "\n".join(merged)
                         st.rerun()
 
 
@@ -310,7 +309,7 @@ def peptide_input_fragment():
 def reference_selection_fragment():
     """Reference substring configuration fragment."""
     st.subheader("Reference Identification")
-    mzmls = st.session_state.get(get_state_key('selected_mzmls'), [])
+    mzmls = st.session_state.get('selected-mzmls', [])
     if not mzmls:
         st.warning("Please select mzML files first")
         return
@@ -318,10 +317,9 @@ def reference_selection_fragment():
     st.markdown("Enter a substring to identify reference mzML files (e.g., 'Synpep', 'Standard', 'Ref')")
     ref_substring = st.text_input(
         "Reference identifier (Optional)",
-        value=st.session_state.get(get_state_key('reference_substring'), ''),
-        key=f"{STATE_PREFIX}_ref_input", placeholder="e.g., Synpep"
+        value=params.get('reference-substring', ''),
+        key="reference-substring", placeholder="e.g., Synpep"
     )
-    st.session_state[get_state_key('reference_substring')] = ref_substring
 
     if ref_substring:
         reference_files = [Path(m).name for m in mzmls if ref_substring.lower() in Path(m).name.lower()]
@@ -358,54 +356,47 @@ def settings_fragment():
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Ion Types**")
-        current_ions = st.session_state.get(get_state_key('ion_types'), ['b', 'y'])
-        selected_ions = st.multiselect("Select ion types", options=available_ions,
-                                       default=[i for i in current_ions if i in available_ions],
-                                       key=f"{STATE_PREFIX}_ion_select")
-        st.session_state[get_state_key('ion_types')] = selected_ions
+        current_ions = params.get('ion-types', ['b', 'y'])
+        st.multiselect("Select ion types", options=available_ions,
+                        default=[i for i in current_ions if i in available_ions],
+                        key="ion-types")
 
     with col2:
         st.markdown("**m/z Tolerance**")
-        tolerance = st.number_input("Tolerance (Da)", min_value=0.001, max_value=1.0,
-                                    value=float(st.session_state.get(get_state_key('mz_tolerance'), 0.02)),
-                                    step=0.005, format="%.3f", key=f"{STATE_PREFIX}_tol_input")
-        st.session_state[get_state_key('mz_tolerance')] = tolerance
+        st.number_input("Tolerance (Da)", min_value=0.001, max_value=1.0,
+                        value=float(params.get('mz-tolerance', 0.02)),
+                        step=0.005, format="%.3f", key="mz-tolerance")
 
     st.markdown("**Annotation Settings**")
     ann_col1, ann_col2, ann_col3 = st.columns(3)
 
     with ann_col1:
-        add_losses = st.checkbox("Add neutral losses (H2O, NH3)",
-                                 value=st.session_state.get(get_state_key('add_losses'), False),
-                                 key=f"{STATE_PREFIX}_add_losses")
-        st.session_state[get_state_key('add_losses')] = add_losses
+        st.checkbox("Add neutral losses (H2O, NH3)",
+                    value=params.get('add-losses', False),
+                    key="add-losses")
 
     with ann_col2:
-        add_first_prefix = st.checkbox("Add first prefix ion",
-                                       value=st.session_state.get(get_state_key('add_first_prefix_ion'), True),
-                                       key=f"{STATE_PREFIX}_add_first_prefix")
-        st.session_state[get_state_key('add_first_prefix_ion')] = add_first_prefix
+        st.checkbox("Add first prefix ion",
+                    value=params.get('add-first-prefix-ion', True),
+                    key="add-first-prefix-ion")
 
     with ann_col3:
-        remove_precursor = st.checkbox("Remove precursor peaks",
-                                       value=st.session_state.get(get_state_key('remove_precursor_peaks'), False),
-                                       key=f"{STATE_PREFIX}_remove_precursor")
-        st.session_state[get_state_key('remove_precursor_peaks')] = remove_precursor
+        st.checkbox("Remove precursor peaks",
+                    value=params.get('remove-precursor-peaks', False),
+                    key="remove-precursor-peaks")
 
-    intensity_mode = st.radio("**Intensity Display Mode**",
-                              options=["Relative", "Raw"],
-                              captions=["Relative to the highest intensity", "Raw intensity"],
-                              index=0 if st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative' else 1,
-                              horizontal=True, key=f"{STATE_PREFIX}_intensity_mode",
-                              label_visibility="visible")
-    st.session_state[get_state_key('intensity_mode')] = intensity_mode
+    st.radio("**Intensity Display Mode**",
+             options=["Relative", "Raw"],
+             captions=["Relative to the highest intensity", "Raw intensity"],
+             index=0 if params.get('intensity-mode', 'Relative') == 'Relative' else 1,
+             horizontal=True, key="intensity-mode",
+             label_visibility="visible")
 
     st.markdown("**Performance**")
-    workers = st.slider("Parallel workers", min_value=1, max_value=32,
-                        value=st.session_state.get(get_state_key('workers'), 4),
-                        key=f"{STATE_PREFIX}_workers",
-                        help="Number of parallel processes for plot generation (~30 MB per worker)")
-    st.session_state[get_state_key('workers')] = workers
+    st.slider("Parallel workers", min_value=1, max_value=32,
+              value=params.get('workers', 4),
+              key="workers",
+              help="Number of parallel processes for plot generation (~30 MB per worker)")
 
     # --- Koina AI Prediction Settings ---
     st.markdown("---")
@@ -438,12 +429,11 @@ def settings_fragment():
 
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",
-        value=st.session_state.get(get_state_key("koina_enabled"), _k_defaults["enabled"]),
-        key=f"{STATE_PREFIX}_koina_enabled_cb",
+        value=params.get("koina-enabled", _k_defaults["enabled"]),
+        key="koina-enabled",
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
         disabled=not KOINA_AVAILABLE,
     )
-    st.session_state[get_state_key("koina_enabled")] = koina_enabled
 
     if not KOINA_AVAILABLE:
         st.warning("koinapy is not installed. Install it to enable Koina predictions.")
@@ -454,9 +444,7 @@ def settings_fragment():
         with k_col1:
             model_names = list(KOINA_MODELS.keys())
             model_ids = list(KOINA_MODELS.values())
-            current_model_id = st.session_state.get(
-                get_state_key("koina_model"), _k_defaults["model"],
-            )
+            current_model_id = params.get("koina-model", _k_defaults["model"])
             try:
                 default_idx = model_ids.index(current_model_id)
             except ValueError:
@@ -467,30 +455,26 @@ def settings_fragment():
                 key=f"{STATE_PREFIX}_koina_model_select",
                 help="Deep-learning model for fragment ion prediction",
             )
-            st.session_state[get_state_key("koina_model")] = KOINA_MODELS[selected_model_name]
+            st.session_state["koina-model"] = KOINA_MODELS[selected_model_name]
 
         with k_col2:
-            ce = st.number_input(
+            st.number_input(
                 "Collision Energy (eV)", min_value=1, max_value=100,
-                value=st.session_state.get(get_state_key("koina_ce"), _k_defaults["collision_energy"]),
-                key=f"{STATE_PREFIX}_koina_ce_input",
+                value=params.get("koina-ce", _k_defaults["collision_energy"]),
+                key="koina-ce",
             )
-            st.session_state[get_state_key("koina_ce")] = ce
 
         with k_col3:
-            current_inst = st.session_state.get(
-                get_state_key("koina_instrument"), _k_defaults["instrument_type"],
-            )
+            current_inst = params.get("koina-instrument", _k_defaults["instrument_type"])
             try:
                 inst_idx = INSTRUMENT_TYPES.index(current_inst)
             except ValueError:
                 inst_idx = 0
 
-            instrument = st.selectbox(
+            st.selectbox(
                 "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
-                key=f"{STATE_PREFIX}_koina_inst_select",
+                key="koina-instrument",
             )
-            st.session_state[get_state_key("koina_instrument")] = instrument
 
 
 # ---------------------------------------------------------------------------
@@ -498,7 +482,7 @@ def settings_fragment():
 # ---------------------------------------------------------------------------
 
 def render():
-    init_session_state(params)
+    restore_analysis_if_needed()
     st.title("Setup")
     st.caption("Configure files, peptides, reference, and annotation settings")
 
@@ -509,6 +493,8 @@ def render():
     reference_selection_fragment()
     st.markdown("---")
     settings_fragment()
+
+    save_params(params)
 
 
 render()

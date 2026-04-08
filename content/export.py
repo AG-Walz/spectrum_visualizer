@@ -13,9 +13,9 @@ import streamlit as st
 from pathlib import Path
 from datetime import datetime
 
-from src.common.common import page_setup
+from src.common.common import page_setup, save_params
 from content._shared import (
-    STATE_PREFIX, get_state_key, init_session_state,
+    STATE_PREFIX, get_state_key, restore_analysis_if_needed,
     build_run_settings, apply_run_settings,
 )
 from utils.helpers import parse_peptide_list
@@ -53,7 +53,7 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative'
+    normalize = st.session_state.get('intensity-mode', 'Relative') == 'Relative'
 
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
@@ -453,12 +453,12 @@ def export_controls_fragment():
 
     _ws = st.session_state.get('workspace', None)
     _export_fallback = str(Path(_ws) / "exports") if _ws else "./exports"
-    export_dir = st.text_input(
+    export_default = params.get("export-dir", "") or _export_fallback
+    st.text_input(
         "Export Directory",
-        value=st.session_state.get(get_state_key('export_dir'), _export_fallback),
-        key=f"{STATE_PREFIX}_export_dir_input"
+        value=export_default,
+        key="export-dir"
     )
-    st.session_state[get_state_key('export_dir')] = export_dir
 
     export_col1, export_col2 = st.columns(2)
     with export_col1:
@@ -484,13 +484,15 @@ def export_controls_fragment():
 # ---------------------------------------------------------------------------
 
 def render():
-    init_session_state(params)
+    restore_analysis_if_needed()
     st.title("Export")
     st.caption("Export analysis results, plots, and data files")
 
     export_controls_fragment()
 
-    export_dir = st.session_state.get(get_state_key('export_dir'), './exports')
+    _ws = st.session_state.get('workspace', None)
+    _fallback = str(Path(_ws) / "exports") if _ws else "./exports"
+    export_dir = st.session_state.get('export-dir', '') or _fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)
@@ -501,6 +503,8 @@ def render():
         st.markdown("---")
         st.subheader("Download")
         zip_download_fragment(export_path)
+
+    save_params(params)
 
 
 render()

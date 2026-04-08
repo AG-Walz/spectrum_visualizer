@@ -10,9 +10,9 @@ import streamlit as st
 import polars as pl
 from pathlib import Path
 
-from src.common.common import page_setup
+from src.common.common import page_setup, save_params
 from content._shared import (
-    STATE_PREFIX, get_state_key, init_session_state,
+    STATE_PREFIX, get_state_key, restore_analysis_if_needed,
 )
 
 params = page_setup()
@@ -28,7 +28,8 @@ def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
     from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
 
-    CACHE_PATH = st.session_state.get(get_state_key('export_dir'), '/tmp/msinsight_cache')
+    _export_dir = st.session_state.get('export-dir', '')
+    CACHE_PATH = _export_dir if _export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
     cache_ver = st.session_state.get(get_state_key('cache_version'), 0)
@@ -90,8 +91,8 @@ def openms_insight_explorer_fragment():
             peaks_data=peaks_for_sv,
             filters={"selected_psm": "psm_id"},
             annotation_config={
-                "ion_types": st.session_state.get(get_state_key('ion_types'), ['b', 'y']),
-                "tolerance": st.session_state.get(get_state_key('mz_tolerance'), 0.02),
+                "ion_types": st.session_state.get('ion-types', ['b', 'y']),
+                "tolerance": st.session_state.get('mz-tolerance', 0.02),
                 "tolerance_ppm": False,
             },
             cache_path=CACHE_PATH,
@@ -195,7 +196,7 @@ def mirror_plots_fragment():
     vk = psm_id_to_vk.get(selected_pid)
     refs = reference_store.get(vk, []) if vk else []
 
-    normalize = st.session_state.get(get_state_key('intensity_mode'), 'Relative') == 'Relative'
+    normalize = st.session_state.get('intensity-mode', 'Relative') == 'Relative'
 
     if refs:
         for ref_spec, ref_df in refs:
@@ -285,7 +286,7 @@ def comparison_metrics_fragment():
 # ---------------------------------------------------------------------------
 
 def render():
-    init_session_state(params)
+    restore_analysis_if_needed()
     st.title("Explore")
     st.caption("Interactive visualization of loaded spectra and comparison metrics")
 
@@ -304,6 +305,8 @@ def render():
         mirror_plots_fragment()
     elif explore_mode == "Comparison Metrics":
         comparison_metrics_fragment()
+
+    save_params(params)
 
 
 render()
