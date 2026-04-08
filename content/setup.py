@@ -1,8 +1,5 @@
 """
 Setup Page — File selection, peptide input, reference config, annotation settings.
-
-Each section is an @st.fragment so that toggling a checkbox in Settings
-does not rerun the file browsers, and vice versa.
 """
 import streamlit as st
 from pathlib import Path
@@ -198,11 +195,14 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
 # Fragments
 # ---------------------------------------------------------------------------
 
-@st.fragment
 def file_selection_fragment():
-    """File browser fragment for idXML and mzML files."""
+    """File browser for idXML and mzML files."""
     _settings = _get_settings()
     data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
+
+    # Restore saved browser directories from params (persisted via save_params)
+    idxml_dir = params.get('idxml-browser-dir', data_dir_default)
+    mzml_dir = params.get('mzml-browser-dir', data_dir_default)
 
     st.header("File Selection")
     col1, col2 = st.columns(2)
@@ -211,18 +211,26 @@ def file_selection_fragment():
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_idxml",
                                  extensions=['.idXML', '.idxml'],
                                  state_key='selected-idxmls',
-                                 default_dir=data_dir_default)
+                                 default_dir=idxml_dir)
     with col2:
         st.subheader("mzML Files (Spectra)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_mzml",
                                  extensions=['.mzML', '.mzml'],
                                  state_key='selected-mzmls',
-                                 default_dir=data_dir_default)
+                                 default_dir=mzml_dir)
+
+    # Copy browser directories into params + session_state so save_params() captures them
+    for dir_param, dir_ss_key, fallback in [
+        ('idxml-browser-dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
+        ('mzml-browser-dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
+    ]:
+        val = st.session_state.get(dir_ss_key, fallback)
+        params[dir_param] = val
+        st.session_state[dir_param] = val
 
     save_params(params)
 
 
-@st.fragment
 def peptide_input_fragment():
     """Peptide input fragment with paste and idXML picker tabs."""
     # Apply pending peptide updates before widget renders
@@ -379,7 +387,6 @@ def reference_selection_fragment():
     save_params(params)
 
 
-@st.fragment
 def settings_fragment():
     """Annotation, display, performance, and Koina settings fragment."""
     st.subheader("Settings")
