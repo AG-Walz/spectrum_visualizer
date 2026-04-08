@@ -257,14 +257,29 @@ def peptide_input_fragment():
         if not idxmls:
             st.info("Select idXML files above first.")
         else:
-            try:
-                psm_counts = _load_idxml_peptides(tuple(idxmls))
-            except Exception as e:
-                st.warning(f"Could not load peptides: {e}")
-                psm_counts = {}
+            # Scan results are stored in session state so they persist
+            # across reruns but are never auto-triggered on page load.
+            scan_key = get_state_key('_idxml_psm_counts')
+            scan_files_key = get_state_key('_idxml_scan_files')
+            psm_counts = st.session_state.get(scan_key, {})
+            scanned_files = st.session_state.get(scan_files_key)
+
+            # Show scan button if never scanned or file selection changed
+            if not psm_counts or scanned_files != idxmls:
+                st.info(f"{len(idxmls)} idXML files selected")
+                if st.button(f"Scan {len(idxmls)} files for peptides",
+                             key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
+                    try:
+                        with st.spinner(f"Scanning {len(idxmls)} idXML files..."):
+                            psm_counts = _load_idxml_peptides(tuple(idxmls))
+                        st.session_state[scan_key] = psm_counts
+                        st.session_state[scan_files_key] = idxmls
+                        st.rerun()
+                    except Exception as e:
+                        st.warning(f"Could not load peptides: {e}")
 
             if not psm_counts:
-                st.info("No peptide hits found in selected idXML files.")
+                pass  # waiting for user to click scan
             else:
                 st.caption(f"{len(psm_counts)} unique peptides found")
 
