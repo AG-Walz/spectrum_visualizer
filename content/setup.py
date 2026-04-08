@@ -27,15 +27,21 @@ def _load_idxml_peptides(idxml_paths: tuple) -> dict:
     import pyopenms as oms
     from collections import Counter
     psm_counts: Counter = Counter()
+    errors = []
     for idxml_path in idxml_paths:
-        prot_ids = []
-        pep_ids = []
-        oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
-        for pid in pep_ids:
-            for hit in pid.getHits():
-                seq = str(hit.getSequence().toUnmodifiedString())
-                if seq:
-                    psm_counts[seq] += 1
+        try:
+            prot_ids = []
+            pep_ids = []
+            oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
+            for pid in pep_ids:
+                for hit in pid.getHits():
+                    seq = str(hit.getSequence().toUnmodifiedString())
+                    if seq:
+                        psm_counts[seq] += 1
+        except Exception as e:
+            errors.append(f"{Path(idxml_path).name}: {e}")
+    if errors and not psm_counts:
+        raise RuntimeError(f"All idXML files failed to load: {'; '.join(errors)}")
     return dict(sorted(psm_counts.items()))
 
 
@@ -49,6 +55,10 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     nav_key = f"{key_prefix}_nav_to"
     select_all_key = f"{key_prefix}_select_all"
     recursive_key = f"{key_prefix}_recursive"
+
+    # Restore saved selections from params on reload (session_state is empty)
+    if state_key not in st.session_state:
+        st.session_state[state_key] = params.get(state_key, [])
 
     if dir_key not in st.session_state:
         st.session_state[dir_key] = default_dir
@@ -209,13 +219,20 @@ def file_selection_fragment():
                                  state_key='selected-mzmls',
                                  default_dir=data_dir_default)
 
+    save_params(params)
+
 
 @st.fragment
 def peptide_input_fragment():
     """Peptide input fragment with paste and idXML picker tabs."""
+    # Apply pending peptide updates before widget renders
+    _pending_key = "_pending_target_peptides"
+    if _pending_key in st.session_state:
+        st.session_state['target-peptides'] = st.session_state.pop(_pending_key)
+
     st.subheader("Target Peptides")
 
-    idxmls = st.session_state.get('selected-idxmls', [])
+    idxmls = st.session_state.get('selected-idxmls', params.get('selected-idxmls', []))
 
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
 
@@ -292,7 +309,7 @@ def peptide_input_fragment():
                 with c1:
                     if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
                                  type="primary"):
-                        st.session_state['target-peptides'] = "\n".join(selected)
+                        st.session_state[_pending_key] = "\n".join(selected)
                         st.rerun()
                 with c2:
                     if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
@@ -301,7 +318,7 @@ def peptide_input_fragment():
                                 st.session_state.get('target-peptides', '')
                             ) + selected
                         ))
-                        st.session_state['target-peptides'] = "\n".join(merged)
+                        st.session_state[_pending_key] = "\n".join(merged)
                         st.rerun()
 
 
@@ -309,7 +326,7 @@ def peptide_input_fragment():
 def reference_selection_fragment():
     """Reference substring configuration fragment."""
     st.subheader("Reference Identification")
-    mzmls = st.session_state.get('selected-mzmls', [])
+    mzmls = st.session_state.get('selected-mzmls', params.get('selected-mzmls', []))
     if not mzmls:
         st.warning("Please select mzML files first")
         return
@@ -344,6 +361,8 @@ def reference_selection_fragment():
             st.warning("All files match as reference - no query files")
     else:
         st.info("No reference identifier -- individual annotated spectrum plots only.")
+
+    save_params(params)
 
 
 @st.fragment
@@ -475,6 +494,8 @@ def settings_fragment():
                 "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
                 key="koina-instrument",
             )
+
+    save_params(params)
 
 
 # ---------------------------------------------------------------------------

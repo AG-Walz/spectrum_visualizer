@@ -223,20 +223,26 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
-    peptide_text = st.session_state.get('target-peptides', '')
+    from src.common.common import load_params
+    _params = load_params()
+
+    def _p(key, default=None):
+        return st.session_state.get(key, _params.get(key, default))
+
+    peptide_text = _p('target-peptides', '')
     peptides = parse_peptide_list(peptide_text)
     return {
-        "idxml_files": st.session_state.get('selected-idxmls', []),
-        "mzml_files": st.session_state.get('selected-mzmls', []),
+        "idxml_files": _p('selected-idxmls', []),
+        "mzml_files": _p('selected-mzmls', []),
         "peptides": peptides,
-        "reference_substring": st.session_state.get('reference-substring', ''),
-        "ion_types": st.session_state.get('ion-types', ['b', 'y']),
-        "mz_tolerance": st.session_state.get('mz-tolerance', 0.02),
-        "add_losses": st.session_state.get('add-losses', False),
-        "add_first_prefix_ion": st.session_state.get('add-first-prefix-ion', True),
-        "remove_precursor_peaks": st.session_state.get('remove-precursor-peaks', False),
-        "intensity_mode": st.session_state.get('intensity-mode', 'Relative'),
-        "koina_enabled": st.session_state.get('koina-enabled', False),
+        "reference_substring": _p('reference-substring', ''),
+        "ion_types": _p('ion-types', ['b', 'y']),
+        "mz_tolerance": _p('mz-tolerance', 0.02),
+        "add_losses": _p('add-losses', False),
+        "add_first_prefix_ion": _p('add-first-prefix-ion', True),
+        "remove_precursor_peaks": _p('remove-precursor-peaks', False),
+        "intensity_mode": _p('intensity-mode', 'Relative'),
+        "koina_enabled": _p('koina-enabled', False),
         "_created_at": datetime.now().isoformat(),
         "_last_run": datetime.now().isoformat(),
     }

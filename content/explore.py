@@ -19,6 +19,11 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
+def _p(key, default=None):
+    """Get a param value: session_state first (if widget present), then params.json."""
+    return st.session_state.get(key, params.get(key, default))
+
+
 # ---------------------------------------------------------------------------
 # Sub-view: openms_insight Interactive Explorer
 # ---------------------------------------------------------------------------
@@ -28,7 +33,7 @@ def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
     from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
 
-    _export_dir = st.session_state.get('export-dir', '')
+    _export_dir = _p('export-dir', '')
     CACHE_PATH = _export_dir if _export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
@@ -91,8 +96,8 @@ def openms_insight_explorer_fragment():
             peaks_data=peaks_for_sv,
             filters={"selected_psm": "psm_id"},
             annotation_config={
-                "ion_types": st.session_state.get('ion-types', ['b', 'y']),
-                "tolerance": st.session_state.get('mz-tolerance', 0.02),
+                "ion_types": _p('ion-types', ['b', 'y']),
+                "tolerance": _p('mz-tolerance', 0.02),
                 "tolerance_ppm": False,
             },
             cache_path=CACHE_PATH,
@@ -196,7 +201,7 @@ def mirror_plots_fragment():
     vk = psm_id_to_vk.get(selected_pid)
     refs = reference_store.get(vk, []) if vk else []
 
-    normalize = st.session_state.get('intensity-mode', 'Relative') == 'Relative'
+    normalize = _p('intensity-mode', 'Relative') == 'Relative'
 
     if refs:
         for ref_spec, ref_df in refs:

@@ -24,6 +24,11 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
+def _p(key, default=None):
+    """Get a param value: session_state first (if widget present), then params.json."""
+    return st.session_state.get(key, params.get(key, default))
+
+
 # ---------------------------------------------------------------------------
 # Mirror plot export helper
 # ---------------------------------------------------------------------------
@@ -53,7 +58,7 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = st.session_state.get('intensity-mode', 'Relative') == 'Relative'
+    normalize = _p('intensity-mode', 'Relative') == 'Relative'
 
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
@@ -492,7 +497,7 @@ def render():
 
     _ws = st.session_state.get('workspace', None)
     _fallback = str(Path(_ws) / "exports") if _ws else "./exports"
-    export_dir = st.session_state.get('export-dir', '') or _fallback
+    export_dir = _p('export-dir', '') or _fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)
