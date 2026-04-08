@@ -337,9 +337,8 @@ def peptide_input_fragment():
                         st.rerun()
 
 
-@st.fragment
 def reference_selection_fragment():
-    """Reference substring configuration fragment."""
+    """Reference substring configuration (not a fragment — must update when file selection changes)."""
     st.subheader("Reference Identification")
     mzmls = st.session_state.get('selected-mzmls', params.get('selected-mzmls', []))
     if not mzmls:
