@@ -1,6 +1,8 @@
 {
     "selected-idxmls": [],
     "selected-mzmls": [],
+    "idxml-browser-dir": "",
+    "mzml-browser-dir": "",
     "target-peptides": "",
     "reference-substring": "",
     "ion-types": ["b", "y"],

@@ -40,27 +40,44 @@ def load_params(default: bool = False) -> dict[str, Any]:
     """
     Load parameters from a JSON file and return a dictionary containing them.
 
-    If a 'params.json' file exists in the workspace, load the parameters from there.
-    Otherwise, load the default parameters from 'default-parameters.json'.
+    Always starts from default-parameters.json to ensure all expected keys
+    are present, then overlays workspace params.json on top (if it exists).
 
     Args:
-        default (bool): Load default parameters. Defaults to False.
+        default (bool): Load default parameters only. Defaults to False.
 
     Returns:
         dict[str, Any]: A dictionary containing the parameters.
     """
-    if not st.session_state.settings.get("enable_workspaces", False):
-        default = True
+    default_path = Path(__file__).parents[2] / "default-parameters.json"
+    with open(default_path, "r", encoding="utf-8") as f:
+        params = json.load(f)
+
+    if default or not st.session_state.settings.get("enable_workspaces", False):
+        return params
 
     path = Path(st.session_state.workspace, "params.json")
-
-    if path.exists() and not default:
+    if path.exists():
         with open(path, "r", encoding="utf-8") as f:
-            params = json.load(f)
-    else:
-        default_path = Path(__file__).parents[2] / "default-parameters.json"
-        with open(default_path, "r", encoding="utf-8") as f:
-            params = json.load(f)
+            saved = json.load(f)
+
+        # Migrate old format: peptide_mirror.X_y -> x-y
+        if "peptide_mirror" in saved and isinstance(saved["peptide_mirror"], dict):
+            old = saved["peptide_mirror"]
+            for old_key, value in old.items():
+                short = old_key.replace("peptide_mirror.", "")
+                new_key = short.replace("_", "-")
+                if new_key in params and new_key not in saved:
+                    saved[new_key] = value
+
+        # Overlay saved values onto defaults
+        for key in params:
+            if key in saved:
+                params[key] = saved[key]
+        # Also restore any extra keys the workspace had (e.g. browser dirs)
+        for key in saved:
+            if key not in params:
+                params[key] = saved[key]
 
     return params
 

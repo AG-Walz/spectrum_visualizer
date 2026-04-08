@@ -18,28 +18,19 @@ params = page_setup()
 # Cached idXML peptide loader
 # ---------------------------------------------------------------------------
 
-@st.cache_data(show_spinner="Scanning idXML files...")
-def _load_idxml_peptides(idxml_paths: tuple) -> dict:
-    """Load unique peptide sequences from idXML files with PSM counts (cached)."""
-    import pyopenms as oms
+def _scan_idxml_psm_counts(idxml_path: str) -> dict:
+    """Worker: count PSMs per peptide in one idXML file. Module-level for pickling."""
     from collections import Counter
-    psm_counts: Counter = Counter()
-    errors = []
-    for idxml_path in idxml_paths:
-        try:
-            prot_ids = []
-            pep_ids = []
-            oms.IdXMLFile().load(idxml_path, prot_ids, pep_ids)
-            for pid in pep_ids:
-                for hit in pid.getHits():
-                    seq = str(hit.getSequence().toUnmodifiedString())
-                    if seq:
-                        psm_counts[seq] += 1
-        except Exception as e:
-            errors.append(f"{Path(idxml_path).name}: {e}")
-    if errors and not psm_counts:
-        raise RuntimeError(f"All idXML files failed to load: {'; '.join(errors)}")
-    return dict(sorted(psm_counts.items()))
+    counts: Counter = Counter()
+    try:
+        from psm_utils.io.idxml import IdXMLReader
+        for psm in IdXMLReader(str(idxml_path)):
+            seq = psm.peptidoform.sequence.upper()
+            if seq:
+                counts[seq] += 1
+    except Exception:
+        pass
+    return dict(counts)
 
 
 # ---------------------------------------------------------------------------
@@ -267,24 +258,60 @@ def peptide_input_fragment():
         else:
             # Scan results are stored in session state so they persist
             # across reruns but are never auto-triggered on page load.
-            scan_key = get_state_key('_idxml_psm_counts')
-            scan_files_key = get_state_key('_idxml_scan_files')
+            scan_key = '_idxml_psm_counts'
+            scan_files_key = '_idxml_scan_files'
             psm_counts = st.session_state.get(scan_key, {})
             scanned_files = st.session_state.get(scan_files_key)
 
             # Show scan button if never scanned or file selection changed
             if not psm_counts or scanned_files != idxmls:
-                st.info(f"{len(idxmls)} idXML files selected")
-                if st.button(f"Scan {len(idxmls)} files for peptides",
+                n = len(idxmls)
+                st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
+                workers = params.get('workers', 4)
+                if st.button(f"Scan {n} files for peptides",
                              key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-                    try:
-                        with st.spinner(f"Scanning {len(idxmls)} idXML files..."):
-                            psm_counts = _load_idxml_peptides(tuple(idxmls))
-                        st.session_state[scan_key] = psm_counts
-                        st.session_state[scan_files_key] = idxmls
-                        st.rerun()
-                    except Exception as e:
-                        st.warning(f"Could not load peptides: {e}")
+                    from collections import Counter
+                    from concurrent.futures import ProcessPoolExecutor, as_completed
+                    import time as _time
+
+                    merged = Counter()
+                    errors = []
+                    with st.status(f"Scanning {n} idXML files ({workers} workers)...",
+                                   expanded=True) as status:
+                        progress = st.progress(0)
+                        info = st.empty()
+                        t0 = _time.time()
+
+                        with ProcessPoolExecutor(max_workers=min(workers, n)) as pool:
+                            futures = {
+                                pool.submit(_scan_idxml_psm_counts, p): p for p in idxmls
+                            }
+                            done = 0
+                            for future in as_completed(futures):
+                                done += 1
+                                path = futures[future]
+                                try:
+                                    merged.update(future.result())
+                                except Exception as e:
+                                    errors.append(f"{Path(path).name}: {e}")
+                                elapsed = _time.time() - t0
+                                remaining = (elapsed / done) * (n - done) if done < n else 0
+                                progress.progress(done / n,
+                                    f"{done}/{n} files — {elapsed:.0f}s elapsed, ~{remaining:.0f}s remaining")
+                                info.caption(f"Scanned {Path(path).name}")
+
+                        progress.progress(1.0, f"Done — {len(merged)} peptides from {n} files in {_time.time()-t0:.1f}s")
+                        if errors:
+                            status.update(label=f"Completed with {len(errors)} errors", state="error")
+                            for e in errors[:5]:
+                                st.caption(e)
+                        else:
+                            status.update(label=f"{len(merged)} peptides from {n} files", state="complete")
+
+                    psm_counts = dict(sorted(merged.items()))
+                    st.session_state[scan_key] = psm_counts
+                    st.session_state[scan_files_key] = idxmls
+                    st.rerun()
 
             if not psm_counts:
                 pass  # waiting for user to click scan
