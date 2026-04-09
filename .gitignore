@@ -16,6 +16,15 @@ build/
 exports/
 workspaces-*/
 plots/
+cache/
+
+# Test/example data (keep locally, not in repo)
+test_output/
+example-data/
+
+# Removed standalone scripts/tools
+scripts/
+tools/
 
 # Profiling
 *.prof
