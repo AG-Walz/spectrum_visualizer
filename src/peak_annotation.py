@@ -318,6 +318,77 @@ def prepare_spectrum_for_plot(
     return annotated
 
 
+def _parse_koina_charge(annotation: str) -> int:
+    """
+    Extract charge from a Koina annotation string.
+
+    Koina formats: 'y3+1' (charge 1), 'b5+2' (charge 2), 'y7++' (charge 2).
+    """
+    if not annotation:
+        return 0
+    # Count trailing '+' signs (e.g. 'y3++' → charge 2)
+    plus_count = len(annotation) - len(annotation.rstrip("+"))
+    if plus_count >= 2:
+        return plus_count
+    # Try 'y3+1' or 'b5+2' format
+    parts = annotation.rsplit("+", 1)
+    if len(parts) == 2 and parts[1].isdigit():
+        return int(parts[1])
+    return 1
+
+
+def prepare_koina_spectrum_for_plot(
+    koina_df: pd.DataFrame,
+    ion_types: List[str] = None,
+    normalize: bool = True,
+    remove_precursor_peaks: bool = False,
+    **_kwargs,
+) -> pd.DataFrame:
+    """
+    Prepare a Koina-predicted spectrum for plotting, preserving native annotations.
+
+    Unlike prepare_spectrum_for_plot which re-matches against PyOpenMS theoretical
+    fragments, this function uses Koina's own AI-predicted annotations directly.
+
+    Args:
+        koina_df: DataFrame from predict_koina_spectrum() with columns [mz, intensity, annotation]
+        ion_types: Ion types to highlight (others shown as unannotated)
+        normalize: Whether to normalize intensities to [0, 1]
+        remove_precursor_peaks: Whether to remove precursor peaks
+
+    Returns:
+        DataFrame ready for plotting with: mz, intensity, annotation, ion_type, charge, is_annotated
+    """
+    if ion_types is None:
+        ion_types = DEFAULT_ION_TYPES
+
+    annotated = pd.DataFrame({
+        "mz": koina_df["mz"].values,
+        "intensity": koina_df["intensity"].values.astype(float),
+        "annotation": koina_df["annotation"].values,
+        "charge": koina_df["annotation"].apply(_parse_koina_charge).values,
+        "is_annotated": True,
+    })
+
+    annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
+
+    # Grey out ions not in the user's selected ion_types
+    unwanted_mask = ~annotated["ion_type"].isin(ion_types) & (annotated["ion_type"] != "unannotated")
+    annotated.loc[unwanted_mask, "ion_type"] = "unannotated"
+    annotated.loc[unwanted_mask, "is_annotated"] = False
+
+    if remove_precursor_peaks:
+        precursor_mask = annotated["ion_type"] == "precursor"
+        annotated = annotated[~precursor_mask].reset_index(drop=True)
+
+    if normalize and len(annotated) > 0:
+        max_int = annotated["intensity"].max()
+        if max_int > 0:
+            annotated["intensity"] = annotated["intensity"] / max_int
+
+    return annotated
+
+
 def msms_spectrum_from_loaded_spectrum(
     mz: np.ndarray,
     intensity: np.ndarray,

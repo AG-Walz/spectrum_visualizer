@@ -84,7 +84,7 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
 
         import numpy as np
         from src.spectrum_loader import LoadedSpectrum
-        from src.peak_annotation import prepare_spectrum_for_plot
+        from src.peak_annotation import prepare_koina_spectrum_for_plot
 
         pred_df = predict_koina_spectrum(
             peptidoform_str=peptidoform,
@@ -119,10 +119,8 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
             is_reference=True,
         )
 
-        ref_df = prepare_spectrum_for_plot(
-            mz_arr, int_arr, peptidoform, charge,
-            **annotation_kwargs,
-        )
+        # Use Koina's native AI-predicted annotations directly
+        ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
         return (ref_spec, ref_df)
     except Exception as e:
         logger.warning(f"Koina prediction failed for '{peptidoform}': {e}")

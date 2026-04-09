@@ -222,35 +222,35 @@ class TestPredictKoinaSpectrum:
 
 @pytest.mark.slow
 class TestKoinaPipelineIntegration:
-    def test_predict_and_annotate(self):
-        """Predict a spectrum via Koina, then annotate it with prepare_spectrum_for_plot."""
-        from src.peak_annotation import prepare_spectrum_for_plot
+    def test_predict_and_annotate_native(self):
+        """Predict a spectrum via Koina and annotate using native Koina annotations."""
+        from src.peak_annotation import prepare_koina_spectrum_for_plot
 
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 
-        annotated = prepare_spectrum_for_plot(
-            predicted["mz"].values,
-            predicted["intensity"].values,
-            "ASDDFDQASY",
-            charge=1,
-            normalize=True,
-        )
+        annotated = prepare_koina_spectrum_for_plot(predicted, normalize=True)
         assert isinstance(annotated, pd.DataFrame)
         assert len(annotated) > 0
         assert "annotation" in annotated.columns
         assert "ion_type" in annotated.columns
-        # At least some peaks should be annotated (not all unannotated)
+        # Koina predictions should all be annotated (they are predicted fragments)
         annotated_count = (annotated["is_annotated"]).sum()
-        assert annotated_count > 0, "Expected at least some annotated peaks from Koina prediction"
+        assert annotated_count > 0, "Expected annotated peaks from Koina prediction"
+        # Verify native annotations are preserved (not re-matched to PyOpenMS theory)
+        # Koina annotations should be like 'y3+1', 'b5+1', not PyOpenMS format
+        non_unannotated = annotated[annotated["annotation"] != "unannotated"]
+        if len(non_unannotated) > 0:
+            sample_ann = non_unannotated["annotation"].iloc[0]
+            assert "+" in sample_ann, f"Expected Koina annotation format (e.g. y3+1), got '{sample_ann}'"
 
     def test_koina_as_reference_spectrum(self):
         """
-        Full flow: predict reference via Koina, annotate both query and reference,
-        then compute comparison metrics.
+        Full flow: predict reference via Koina using native annotations,
+        annotate query with PyOpenMS, then compute comparison metrics.
         """
         import numpy as np
-        from src.peak_annotation import prepare_spectrum_for_plot
+        from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
         from src.spectrum_metrics import compute_all_metrics
 
         # Simulate a query spectrum (synthetic peaks around known ASDDFDQASY fragments)
@@ -261,17 +261,11 @@ class TestKoinaPipelineIntegration:
             query_mz, query_intensity, "ASDDFDQASY", charge=1, normalize=True
         )
 
-        # Predict reference via Koina
+        # Predict reference via Koina using native annotations
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 
-        ref_df = prepare_spectrum_for_plot(
-            predicted["mz"].values,
-            predicted["intensity"].values,
-            "ASDDFDQASY",
-            charge=1,
-            normalize=True,
-        )
+        ref_df = prepare_koina_spectrum_for_plot(predicted, normalize=True)
 
         # Compute metrics between query and reference
         metrics = compute_all_metrics(query_df, ref_df)

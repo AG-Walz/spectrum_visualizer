@@ -16,7 +16,9 @@ from src.peak_annotation import (
     generate_theoretical_fragments,
     peptidoform_to_aasequence,
     prepare_spectrum_for_plot,
+    prepare_koina_spectrum_for_plot,
     _generate_fragments_impl,
+    _parse_koina_charge,
 )
 
 
@@ -227,3 +229,82 @@ class TestAnnotateRealSpectrum:
             add_losses=True,
         )
         assert len(result) == len(mz)
+
+
+# ---------------------------------------------------------------------------
+# Koina annotation helpers
+# ---------------------------------------------------------------------------
+
+class TestParseKoinaCharge:
+    def test_plus_number(self):
+        assert _parse_koina_charge("y3+1") == 1
+        assert _parse_koina_charge("b5+2") == 2
+        assert _parse_koina_charge("y7+3") == 3
+
+    def test_double_plus(self):
+        assert _parse_koina_charge("y3++") == 2
+        assert _parse_koina_charge("b5+++") == 3
+
+    def test_no_charge(self):
+        assert _parse_koina_charge("y3") == 1
+
+    def test_empty(self):
+        assert _parse_koina_charge("") == 0
+
+    def test_loss_annotation(self):
+        # Koina sometimes includes losses like 'y3-H2O+1'
+        assert _parse_koina_charge("y3-H2O+1") == 1
+
+
+class TestPrepareKoinaSpectrumForPlot:
+    def _make_koina_df(self):
+        return pd.DataFrame({
+            "mz": [175.12, 290.14, 405.17, 520.0],
+            "intensity": [500.0, 1000.0, 300.0, 800.0],
+            "annotation": ["y3+1", "b5+1", "y7+2", "b2+1"],
+        })
+
+    def test_preserves_annotations(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df)
+        # Annotations should be Koina's native format, not PyOpenMS re-matched
+        assert result["annotation"].iloc[0] == "y3+1"
+        assert result["annotation"].iloc[1] == "b5+1"
+
+    def test_correct_ion_types(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df)
+        assert result["ion_type"].iloc[0] == "y"
+        assert result["ion_type"].iloc[1] == "b"
+
+    def test_correct_charges(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df)
+        assert result["charge"].iloc[0] == 1
+        assert result["charge"].iloc[2] == 2
+
+    def test_normalization(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df, normalize=True)
+        assert result["intensity"].max() == pytest.approx(1.0)
+
+    def test_no_normalization(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df, normalize=False)
+        assert result["intensity"].max() == 1000.0
+
+    def test_required_columns(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df)
+        for col in ("mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"):
+            assert col in result.columns
+
+    def test_ion_type_filtering(self):
+        koina_df = self._make_koina_df()
+        result = prepare_koina_spectrum_for_plot(koina_df, ion_types=["y"])
+        # b-ions should be marked unannotated
+        b_rows = result[result["annotation"].isin(["b5+1", "b2+1"])]
+        assert (b_rows["ion_type"] == "unannotated").all()
+        # y-ions should keep their ion_type
+        y_rows = result[result["annotation"].isin(["y3+1", "y7+2"])]
+        assert (y_rows["ion_type"] == "y").all()

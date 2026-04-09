@@ -101,7 +101,7 @@ def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict
 
         import numpy as np
         from src.spectrum_loader import LoadedSpectrum
-        from src.peak_annotation import prepare_spectrum_for_plot
+        from src.peak_annotation import prepare_koina_spectrum_for_plot
 
         model_id = _p("koina-model", "ms2pip_timsTOF2024")
         ce = _p("koina-ce", 35)
@@ -137,11 +137,9 @@ def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict
             is_reference=True,
         )
 
-        ref_df = prepare_spectrum_for_plot(
-            ref_spec.mz, ref_spec.intensity,
-            ref_spec.peptidoform, ref_spec.precursor_charge,
-            **annotation_kwargs,
-        )
+        # Use Koina's native AI-predicted annotations directly instead of
+        # re-matching against PyOpenMS theoretical fragments
+        ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
 
         return (ref_spec, ref_df)
 
