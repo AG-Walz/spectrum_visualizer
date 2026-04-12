@@ -11,7 +11,7 @@ from psm_utils.io.idxml import IdXMLReader
 
 from src.common.streamlit_setup import page_setup, save_params
 from content.page_state import (
-    STATE_PREFIX, _get_settings, restore_analysis_if_needed,
+    STATE_PREFIX, get_state_key, _get_settings, restore_analysis_if_needed,
     list_subdirectories, list_files,
 )
 from src.common.text_utils import get_nested as get_settings_value, parse_peptide_list
@@ -224,12 +224,16 @@ def file_selection_fragment():
 def peptide_input_fragment():
     """Peptide input fragment with paste and idXML picker tabs."""
     _pending_key = "_pending_target_peptides"
+    _persisted_key = get_state_key('target_peptides_persisted')
     if _pending_key in st.session_state:
         st.session_state['target-peptides'] = st.session_state.pop(_pending_key)
 
     st.subheader("Target Peptides")
 
     idxmls = st.session_state.get('selected-idxmls', params.get('selected-idxmls', []))
+
+    # Resolve initial value: persisted session_state (survives page nav) > workspace params
+    initial_value = st.session_state.get(_persisted_key, params.get('target-peptides', ''))
 
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
 
@@ -238,10 +242,12 @@ def peptide_input_fragment():
         with col1:
             peptide_text = st.text_area(
                 "Enter peptide sequences (one per line)",
-                value=params.get('target-peptides', ''),
+                value=initial_value,
                 height=150, key="target-peptides",
                 placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n..."
             )
+        # Persist in a non-widget key that survives page navigation
+        st.session_state[_persisted_key] = peptide_text
         with col2:
             st.markdown("**Tips:**\n- One peptide per line\n"
                          "- Without modifications\n"

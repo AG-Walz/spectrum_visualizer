@@ -71,13 +71,24 @@ def load_params(default: bool = False) -> dict[str, Any]:
 
 
 def save_params(params: dict[str, Any]) -> None:
-    """Sync widget values from session_state into params and write to workspace."""
+    """Sync widget values from session_state into params and write to workspace.
+
+    For each param key, checks:
+    1. The key itself in session_state (widget value, present on the page that owns it)
+    2. A persisted non-widget key (``peptide_mirror.<key>_persisted``), which
+       survives page navigation even after Streamlit cleans up widget keys.
+    """
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
     for key in params:
         if key in st.session_state:
             params[key] = st.session_state[key]
+        else:
+            # Check for a persisted non-widget copy (set by setup.py fragments)
+            persisted_key = f"peptide_mirror.{key.replace('-', '_')}_persisted"
+            if persisted_key in st.session_state:
+                params[key] = st.session_state[persisted_key]
 
     path = Path(st.session_state.workspace, "params.json")
     with open(path, "w", encoding="utf-8") as outfile:

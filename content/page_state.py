@@ -32,8 +32,14 @@ def get_state_key(key: str) -> str:
 
 
 def get_param(params, key, default=None):
-    """Get a param value: session_state first (if widget present), then params.json."""
-    return st.session_state.get(key, params.get(key, default))
+    """Get a param value: session_state widget key > persisted state key > params.json."""
+    if key in st.session_state:
+        return st.session_state[key]
+    # Check persisted non-widget key (survives page navigation)
+    persisted_key = get_state_key(key.replace('-', '_') + '_persisted')
+    if persisted_key in st.session_state:
+        return st.session_state[persisted_key]
+    return params.get(key, default)
 
 
 def _get_settings() -> dict:
@@ -236,3 +242,6 @@ def apply_run_settings(run_cfg: dict):
     }
     for key, value in mapping.items():
         st.session_state[key] = value
+        # Also update persisted non-widget keys so values survive page nav
+        persisted_key = get_state_key(key.replace('-', '_') + '_persisted')
+        st.session_state[persisted_key] = value
