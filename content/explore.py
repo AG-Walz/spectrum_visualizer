@@ -13,13 +13,13 @@ import streamlit as st
 import polars as pl
 from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
 
-from src.common.common import page_setup, save_params
+from src.common.streamlit_setup import page_setup, save_params
 from src.mirror_plot import (
     create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
 )
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
-from src.pipeline import build_psm_to_variant_mapping
-from content._shared import (
+from src.query_processing import build_psm_to_variant_mapping
+from content.page_state import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
 )
 
@@ -256,14 +256,6 @@ def comparison_metrics_fragment():
                     "Dice", "Jaccard", "SharedRatio", "shared", "ann_q", "ann_r"]
     available_cols = [c for c in display_cols if c in comparison_df.columns]
     st.dataframe(comparison_df[available_cols], width="stretch", hide_index=True)
-
-    # Ion match statistics
-    ims_cols = [c for c in comparison_df.columns if c.startswith("ims_")]
-    if ims_cols:
-        with st.expander(f"Ion Match Statistics ({len(ims_cols)} metrics)", expanded=False):
-            ims_display_cols = ["Peptide", "Query", "Reference"] + ims_cols
-            ims_available = [c for c in ims_display_cols if c in comparison_df.columns]
-            st.dataframe(comparison_df[ims_available], width="stretch", hide_index=True)
 
     # Summary statistics per peptidoform
     st.markdown("---")

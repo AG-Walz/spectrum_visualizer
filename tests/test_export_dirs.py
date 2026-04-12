@@ -1,7 +1,5 @@
 """
-Unit tests for src/export.py
-
-Note: get_workspace_plot_dirs() was removed in MSInsight.
+Unit tests for src/export_dirs.py
 """
 import json
 import sys
@@ -11,7 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.export import (
+from src.export_dirs import (
     find_or_create_export_directory,
     commit_export_directory,
     sanitize_filename,

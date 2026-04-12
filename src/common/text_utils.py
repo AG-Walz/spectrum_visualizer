@@ -1,10 +1,9 @@
 """
-Shared string utilities for filename handling.
-
-Used by src.export and src.summary_plots.
+Shared text and filename utilities.
 """
 import hashlib
 import re
+from typing import List
 
 
 def sanitize_filename(name: str) -> str:
@@ -37,3 +36,33 @@ def shorten_stem(stem: str, max_len: int = 30) -> str:
         return stem
     digest = hashlib.sha256(stem.encode("utf-8")).hexdigest()[:8]
     return f"{stem[:max_len - 9]}_{digest}"
+
+
+def parse_peptide_list(text: str) -> List[str]:
+    """Parse newline-separated peptide list, uppercased and stripped."""
+    return [p.strip().upper() for p in text.split('\n') if p.strip()]
+
+
+def format_time(seconds: float) -> str:
+    """Format seconds as human-readable duration (e.g. '2m 30s')."""
+    if seconds < 60:
+        return f"{seconds:.0f}s"
+    elif seconds < 3600:
+        mins = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{mins}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        mins = int((seconds % 3600) // 60)
+        return f"{hours}h {mins}m"
+
+
+def get_nested(d: dict, *keys, default=None):
+    """Safely traverse nested dicts: ``get_nested(d, 'a', 'b')`` -> ``d['a']['b']``."""
+    val = d
+    for k in keys:
+        if isinstance(val, dict):
+            val = val.get(k)
+        else:
+            return default
+    return val if val is not None else default

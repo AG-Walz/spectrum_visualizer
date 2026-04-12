@@ -14,13 +14,11 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
-import pyopenms as oms
 
 from src.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     create_plotly_mirror_plot, create_plotly_single_plot,
 )
-from src.peak_annotation import peptidoform_to_aasequence
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text
 
 logger = logging.getLogger(__name__)
@@ -104,74 +102,6 @@ class ComparisonResult:
     summary_row: Optional[Dict] = None
 
 
-# Keys written by SpectrumAnnotator.addIonMatchStatistics() as PeptideHit MetaValues
-_IMS_STAT_KEYS = [
-    "NTermIonCurrentRatio", "CTermIonCurrentRatio", "TIC", "MIC",
-    "annotated_tic_fraction", "matched_prefix_ions_fraction",
-    "matched_suffix_ions_fraction", "max_series_type", "max_series_charge",
-    "max_series_size", "coverage", "annotated_ion_fraction", "ms2_scan_index",
-    "precursor_mz_error_ppm", "fragment_mass_error_mean_ppm",
-    "fragment_mass_error_stdev_ppm", "median_fragment_error_ppm",
-]
-
-
-def compute_ion_match_statistics(
-    annotated_df: pd.DataFrame,
-    peptidoform_str: str,
-    precursor_charge: int,
-    precursor_mz: float = 0.0,
-) -> dict:
-    """Compute 17 ion-match statistics via oms.SpectrumAnnotator. Returns ims_-prefixed dict."""
-    try:
-        spec = oms.MSSpectrum()
-        spec.set_peaks([
-            annotated_df["mz"].tolist(),
-            annotated_df["intensity"].tolist(),
-        ])
-        spec.sortByPosition()
-        if precursor_mz > 0:
-            precursor = oms.Precursor()
-            precursor.setMZ(precursor_mz)
-            precursor.setCharge(precursor_charge)
-            spec.setPrecursors([precursor])
-
-        aa_seq = peptidoform_to_aasequence(peptidoform_str)
-        ph = oms.PeptideHit()
-        ph.setSequence(aa_seq)
-        ph.setCharge(precursor_charge)
-        pi = oms.PeptideIdentification()
-        pi.setHits([ph])
-
-        tsg = oms.TheoreticalSpectrumGenerator()
-        tsg_params = tsg.getParameters()
-        tsg_params.setValue("add_b_ions", "true")
-        tsg_params.setValue("add_y_ions", "true")
-        tsg_params.setValue("add_metainfo", "true")
-        tsg.setParameters(tsg_params)
-
-        sa = oms.SpectrumAlignment()
-        sa_params = sa.getParameters()
-        sa_params.setValue("tolerance", 0.02)
-        sa_params.setValue("is_relative_tolerance", "false")
-        sa.setParameters(sa_params)
-
-        annotator = oms.SpectrumAnnotator()
-        annotator.addIonMatchStatistics(pi, spec, tsg, sa)
-
-        updated_ph = pi.getHits()[0]
-        stats = {}
-        for key in _IMS_STAT_KEYS:
-            try:
-                stats[f"ims_{key}"] = updated_ph.getMetaValue(key)
-            except Exception:
-                stats[f"ims_{key}"] = None
-        return stats
-
-    except Exception as e:
-        logger.warning(f"compute_ion_match_statistics failed for '{peptidoform_str}': {e}")
-        return {f"ims_{k}": None for k in _IMS_STAT_KEYS}
-
-
 # ============================================================================
 # Worker function -- runs in a child process
 # ============================================================================
@@ -189,11 +119,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             # --- Metrics (always computed for summary CSV) ---
             metrics = compute_all_metrics(task.query_df, task.ref_df)
 
-            # Supplementary ims_ stats via SpectrumAnnotator.addIonMatchStatistics()
-            ims_stats = compute_ion_match_statistics(
-                task.query_df, task.peptide, task.charge,
-            )
-
             summary_row = {
                 "query_file": task.query_file,
                 "ref_file": task.ref_file,
@@ -201,7 +126,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 "modification": task.modification,
                 "charge": task.charge,
                 **metrics,
-                **ims_stats,
             }
 
             if not task.skip_plot:

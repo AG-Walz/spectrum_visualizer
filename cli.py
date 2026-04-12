@@ -41,20 +41,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.export import find_or_create_export_directory, commit_export_directory, sanitize_filename
+from src.export_dirs import find_or_create_export_directory, commit_export_directory, sanitize_filename
 from src.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     figure_to_bytes, create_plotly_mirror_plot,
 )
-from src.parquet_builder import (
+from src.insight_dataframes import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
 from src.peptide_search import search_peptides_in_idxmls, get_unique_peptides_from_idxmls
-from src.pipeline import process_query_result, build_plot_tasks
+from src.query_processing import process_query_result, build_plot_tasks
 from src.spectrum_loader import load_spectra_streaming
 from src.summary_plots import generate_all_summary_plots
-from utils.helpers import format_time, get_nested, parse_peptide_list
+from src.common.text_utils import format_time, get_nested, parse_peptide_list
 
 logger = logging.getLogger("msinsight.cli")
 
@@ -79,11 +79,11 @@ class TerminalProgress:
             return
         elapsed = time.time() - self.start
         pct = min(self.current / self.total * 100, 100)
-        elapsed_str = _fmt_duration(elapsed)
+        elapsed_str = format_time(elapsed)
         eta_str = ""
         if self.current > 0 and self.current < self.total:
             remaining = elapsed / self.current * (self.total - self.current)
-            eta_str = f", ~{_fmt_duration(remaining)} remaining"
+            eta_str = f", ~{format_time(remaining)} remaining"
         extra = f"  {message}" if message else ""
         print(f"\r  {self.label} [{self.current}/{self.total}] "
               f"{pct:5.1f}%  ({elapsed_str} elapsed{eta_str}){extra}",
@@ -95,13 +95,7 @@ class TerminalProgress:
             elapsed = time.time() - self.start
             extra = f"  {message}" if message else ""
             print(f"\r  {self.label} [{self.total}/{self.total}] "
-                  f"100.0%  ({_fmt_duration(elapsed)} elapsed){extra}")
-
-
-def _fmt_duration(seconds: float) -> str:
-    """Format seconds as MM:SS."""
-    m, s = divmod(int(seconds), 60)
-    return f"{m:02d}:{s:02d}"
+                  f"100.0%  ({format_time(elapsed)} elapsed){extra}")
 
 
 # ============================================================================

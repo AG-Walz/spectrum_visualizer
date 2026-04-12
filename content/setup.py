@@ -9,12 +9,12 @@ from pathlib import Path
 import streamlit as st
 from psm_utils.io.idxml import IdXMLReader
 
-from src.common.common import page_setup, save_params
-from content._shared import (
+from src.common.streamlit_setup import page_setup, save_params
+from content.page_state import (
     STATE_PREFIX, _get_settings, restore_analysis_if_needed,
     list_subdirectories, list_files,
 )
-from utils.helpers import get_nested as get_settings_value, parse_peptide_list
+from src.common.text_utils import get_nested as get_settings_value, parse_peptide_list
 
 try:
     from src.koina_prediction import (

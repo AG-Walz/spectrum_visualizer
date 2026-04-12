@@ -15,17 +15,25 @@ import pandas as pd
 import plotly.graph_objects as go
 
 from src.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
-from src.common.spectrum_utils import (  # noqa: F401
-    ensure_annotation_col as _ensure_annotation_col,
-    normalize_intensities as _normalize_intensities,
-)
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Shared helpers (used by both Plotly and Matplotlib plot functions)
-# ---------------------------------------------------------------------------
+def _normalize_intensities(df: pd.DataFrame) -> pd.DataFrame:
+    """Normalize df['intensity'] to [0, 1] in-place and return df."""
+    max_int = df["intensity"].max()
+    if max_int > 0:
+        df["intensity"] = df["intensity"] / max_int
+    return df
+
+
+def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
+    """Return df with an 'annotation' column, adding 'unannotated' if absent."""
+    if "annotation" not in df.columns:
+        df = df.copy()
+        df["annotation"] = "unannotated"
+    return df
+
 
 def _prepare_spectrum_data(df: pd.DataFrame, normalize: bool = True,
                            color_map: Dict[str, str] = None) -> pd.DataFrame:

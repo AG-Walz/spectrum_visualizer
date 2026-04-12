@@ -1,5 +1,5 @@
 """
-Unit tests for src/parallel_processor.py
+Unit tests for src/plot_worker.py
 """
 import sys
 from pathlib import Path
@@ -10,7 +10,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from src.parallel_processor import ComparisonTask, ComparisonResult, process_single_task
+from src.plot_worker import ComparisonTask, ComparisonResult, process_single_task
 from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
 
 

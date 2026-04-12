@@ -9,7 +9,7 @@ from pathlib import Path
 from typing import Tuple
 from datetime import datetime
 
-from src.common.string_utils import sanitize_filename, shorten_stem  # noqa: F401
+from src.common.text_utils import sanitize_filename, shorten_stem  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

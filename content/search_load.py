@@ -12,9 +12,8 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.common.common import page_setup, save_params
-from src.parallel_processor import compute_ion_match_statistics
-from src.parquet_builder import (
+from src.common.streamlit_setup import page_setup, save_params
+from src.insight_dataframes import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
@@ -22,12 +21,12 @@ from src.peak_annotation import prepare_spectrum_for_plot
 from src.peptide_search import search_peptides_in_idxmls, summarize_search_results
 from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
 from src.spectrum_metrics import compute_all_metrics
-from src.pipeline import get_koina_prediction, build_comparison_row
-from content._shared import (
+from src.query_processing import get_koina_prediction, build_comparison_row
+from content.page_state import (
     STATE_PREFIX, get_state_key,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
 )
-from utils.helpers import format_time, parse_peptide_list
+from src.common.text_utils import format_time, parse_peptide_list
 
 params = page_setup()
 logger = logging.getLogger(__name__)
@@ -193,14 +192,6 @@ def run_search_and_load():
                 try:
                     metrics = compute_all_metrics(query_df, ref_df)
                     row = build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics)
-
-                    ims_stats = compute_ion_match_statistics(
-                        query_df, result.query_spectrum.peptidoform,
-                        result.query_spectrum.precursor_charge,
-                        result.query_spectrum.precursor_mz,
-                    )
-                    row.update(ims_stats)
-
                     comparison_rows.append(row)
                 except Exception as e:
                     logger.warning(f"Metric computation failed: {e}")

@@ -13,7 +13,6 @@ import numpy as np
 from psm_utils import Peptidoform
 
 from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
-from src.parallel_processor import compute_ion_match_statistics
 from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
 from src.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
@@ -237,15 +236,6 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
             row = build_comparison_row(
                 psm_id, result, query_df, ref_spec, ref_df, metrics,
             )
-
-            # Ion match statistics
-            ims_stats = compute_ion_match_statistics(
-                query_df, result.query_spectrum.peptidoform,
-                result.query_spectrum.precursor_charge,
-                result.query_spectrum.precursor_mz,
-            )
-            row.update(ims_stats)
-
             comp_rows.append(row)
         except Exception as e:
             logger.warning(f"Metric computation failed: {e}")
