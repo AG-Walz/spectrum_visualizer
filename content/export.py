@@ -8,7 +8,6 @@ import io
 import json
 import logging
 import shutil
-import traceback as _tb
 import zipfile
 from pathlib import Path
 from datetime import datetime
@@ -207,13 +206,9 @@ def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
 
         if do_mirror or do_html:
             st.caption("Generating mirror plots...")
-            try:
-                n_plots, plot_files = _export_mirror_plots(export_root, do_html)
-                saved_files.extend(plot_files)
-                st.caption(f"  Generated {n_plots} mirror plot file(s)")
-            except Exception as e:
-                st.error(f"Mirror plot export failed: {e}")
-                logger.error(f"Mirror plot export failed:\n{_tb.format_exc()}")
+            n_plots, plot_files = _export_mirror_plots(export_root, do_html)
+            saved_files.extend(plot_files)
+            st.caption(f"  Generated {n_plots} mirror plot file(s)")
         else:
             st.caption("Mirror plots: skipped (unchecked)")
 
@@ -221,20 +216,16 @@ def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
             comparison_df = st.session_state.get(get_state_key('comparison_df'))
             if comparison_df is not None and not comparison_df.empty:
                 st.caption("Generating summary plots...")
-                try:
-                    results = generate_all_summary_plots(
-                        source=comparison_df,
-                        output_dir=str(export_root),
-                        formats=["png", "svg"],
-                    )
-                    n_summary = sum(len(v) for v in results.values())
-                    st.caption(f"  Generated {n_summary} summary plot(s)")
-                    for pt, paths in results.items():
-                        for fmt, p in paths.items():
-                            saved_files.append(p)
-                except Exception as e:
-                    logger.error(f"Summary plot generation failed: {e}")
-                    st.warning(f"Summary plots failed: {e}")
+                results = generate_all_summary_plots(
+                    source=comparison_df,
+                    output_dir=str(export_root),
+                    formats=["png", "svg"],
+                )
+                n_summary = sum(len(v) for v in results.values())
+                st.caption(f"  Generated {n_summary} summary plot(s)")
+                for pt, paths in results.items():
+                    for fmt, p in paths.items():
+                        saved_files.append(p)
 
         status.update(label=f"Exported {len(saved_files)} files to {export_root}", state="complete")
 

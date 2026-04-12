@@ -69,35 +69,31 @@ def run_peptide_search(idxmls: list, peptides: list):
         def error_callback(error_msg: str):
             error_messages.append(error_msg)
 
-        try:
-            workers = _p('workers', 4)
-            results = search_peptides_in_idxmls(
-                idxmls, peptides, mzml_paths=mzmls,
-                progress_callback=progress_callback, error_callback=error_callback,
-                workers=workers,
-            )
-            st.session_state[get_state_key('variant_groups')] = results
-            progress_bar.progress(1.0, "Search complete!")
+        workers = _p('workers', 4)
+        results = search_peptides_in_idxmls(
+            idxmls, peptides, mzml_paths=mzmls,
+            progress_callback=progress_callback, error_callback=error_callback,
+            workers=workers,
+        )
+        st.session_state[get_state_key('variant_groups')] = results
+        progress_bar.progress(1.0, "Search complete!")
 
-            if results:
-                total_matches = sum(len(vg.matches) for vg in results.values())
-                status.update(label=f"Found {total_matches} PSMs across {len(results)} variants",
-                              state="complete")
+        if results:
+            total_matches = sum(len(vg.matches) for vg in results.values())
+            status.update(label=f"Found {total_matches} PSMs across {len(results)} variants",
+                          state="complete")
 
-                save_params(params)
+            save_params(params)
 
-                unresolved = sum(1 for vg in results.values() for m in vg.matches if not m.mzml_filename)
-                if unresolved > 0:
-                    st.warning(f"{unresolved} PSMs could not be mapped to mzML files")
-                if error_messages:
-                    with st.expander(f"{len(error_messages)} warnings", expanded=False):
-                        for msg in error_messages[:10]:
-                            st.caption(msg)
-            else:
-                status.update(label="No matches found", state="error")
-        except Exception as e:
-            status.update(label=f"Search failed: {e}", state="error")
-            logger.exception("Peptide search error")
+            unresolved = sum(1 for vg in results.values() for m in vg.matches if not m.mzml_filename)
+            if unresolved > 0:
+                st.warning(f"{unresolved} PSMs could not be mapped to mzML files")
+            if error_messages:
+                with st.expander(f"{len(error_messages)} warnings", expanded=False):
+                    for msg in error_messages[:10]:
+                        st.caption(msg)
+        else:
+            status.update(label="No matches found", state="error")
 
 
 # ---------------------------------------------------------------------------
@@ -106,52 +102,44 @@ def run_peptide_search(idxmls: list, peptides: list):
 
 def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict):
     """Generate Koina AI-predicted spectrum as a fallback reference."""
-    try:
-        if not KOINA_AVAILABLE:
-            return None
-
-        model_id = _p("koina-model", "ms2pip_timsTOF2024")
-        ce = _p("koina-ce", 35)
-        instrument = _p("koina-instrument", "TIMSTOF")
-
-        pred_df = predict_koina_spectrum(
-            peptidoform_str=peptidoform,
-            charge=charge,
-            model_id=model_id,
-            collision_energy=ce,
-            instrument_type=instrument,
-        )
-
-        if pred_df is None or pred_df.empty:
-            return None
-
-        try:
-            base_seq = _PF(peptidoform.split("/")[0]).sequence
-        except Exception:
-            base_seq = peptidoform.split("/")[0]
-
-        ref_spec = LoadedSpectrum(
-            spectrum_id="koina_prediction",
-            mz=pred_df["mz"].values.astype(np.float64),
-            intensity=pred_df["intensity"].values.astype(np.float64),
-            precursor_mz=0.0,
-            precursor_charge=charge,
-            peptidoform=peptidoform,
-            base_sequence=base_seq,
-            rt=0.0,
-            source_file="Koina",
-            is_reference=True,
-        )
-
-        # Use Koina's native AI-predicted annotations directly instead of
-        # re-matching against PyOpenMS theoretical fragments
-        ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
-
-        return (ref_spec, ref_df)
-
-    except Exception as e:
-        logger.warning(f"Koina prediction failed for {peptidoform}: {e}")
+    if not KOINA_AVAILABLE:
         return None
+
+    model_id = _p("koina-model", "ms2pip_timsTOF2024")
+    ce = _p("koina-ce", 35)
+    instrument = _p("koina-instrument", "TIMSTOF")
+
+    pred_df = predict_koina_spectrum(
+        peptidoform_str=peptidoform,
+        charge=charge,
+        model_id=model_id,
+        collision_energy=ce,
+        instrument_type=instrument,
+    )
+
+    if pred_df is None or pred_df.empty:
+        return None
+
+    base_seq = _PF(peptidoform.split("/")[0]).sequence
+
+    ref_spec = LoadedSpectrum(
+        spectrum_id="koina_prediction",
+        mz=pred_df["mz"].values.astype(np.float64),
+        intensity=pred_df["intensity"].values.astype(np.float64),
+        precursor_mz=0.0,
+        precursor_charge=charge,
+        peptidoform=peptidoform,
+        base_sequence=base_seq,
+        rt=0.0,
+        source_file="Koina",
+        is_reference=True,
+    )
+
+    # Use Koina's native AI-predicted annotations directly instead of
+    # re-matching against PyOpenMS theoretical fragments
+    ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
+
+    return (ref_spec, ref_df)
 
 
 def run_search_and_load():
@@ -270,15 +258,12 @@ def run_search_and_load():
                     for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
                         row[count_key] = metrics.get(count_key, 0)
 
-                    try:
-                        ims_stats = compute_ion_match_statistics(
-                            query_df, result.query_spectrum.peptidoform,
-                            result.query_spectrum.precursor_charge,
-                            result.query_spectrum.precursor_mz,
-                        )
-                        row.update(ims_stats)
-                    except Exception:
-                        pass
+                    ims_stats = compute_ion_match_statistics(
+                        query_df, result.query_spectrum.peptidoform,
+                        result.query_spectrum.precursor_charge,
+                        result.query_spectrum.precursor_mz,
+                    )
+                    row.update(ims_stats)
 
                     comparison_rows.append(row)
                 except Exception as e:

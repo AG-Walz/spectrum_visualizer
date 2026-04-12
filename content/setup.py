@@ -105,93 +105,86 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
             st.session_state[nav_key] = parent
             st.rerun()
 
-    try:
-        subdir_paths = list_subdirectories(current_dir)
-        subdirs = [Path(d) for d in subdir_paths]
-        if subdirs:
-            st.markdown(
-                "<style>.folder-nav button{font-size:0.8rem !important;"
-                "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
-                unsafe_allow_html=True,
-            )
-            cols_per_row = 4
-            max_folders = 16
-            for i in range(0, min(len(subdirs), max_folders), cols_per_row):
-                cols = st.columns(cols_per_row)
-                for j, col in enumerate(cols):
-                    idx = i + j
-                    if idx < len(subdirs) and idx < max_folders:
-                        folder = subdirs[idx]
-                        with col:
-                            if st.button(f"{folder.name}", key=f"{key_prefix}_folder_{idx}",
-                                         help=str(folder)):
-                                st.session_state[nav_key] = str(folder)
-                                st.rerun()
-            if len(subdirs) > max_folders:
-                st.caption(f"... and {len(subdirs) - max_folders} more folders")
-    except Exception as e:
-        st.error(f"Cannot access: {e}")
+    subdir_paths = list_subdirectories(current_dir)
+    subdirs = [Path(d) for d in subdir_paths]
+    if subdirs:
+        st.markdown(
+            "<style>.folder-nav button{font-size:0.8rem !important;"
+            "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
+            unsafe_allow_html=True,
+        )
+        cols_per_row = 4
+        max_folders = 16
+        for i in range(0, min(len(subdirs), max_folders), cols_per_row):
+            cols = st.columns(cols_per_row)
+            for j, col in enumerate(cols):
+                idx = i + j
+                if idx < len(subdirs) and idx < max_folders:
+                    folder = subdirs[idx]
+                    with col:
+                        if st.button(f"{folder.name}", key=f"{key_prefix}_folder_{idx}",
+                                     help=str(folder)):
+                            st.session_state[nav_key] = str(folder)
+                            st.rerun()
+        if len(subdirs) > max_folders:
+            st.caption(f"... and {len(subdirs) - max_folders} more folders")
 
     recursive = st.checkbox("Include subdirectories", value=False,
                             key=f"{key_prefix}_recursive",
                             help="Scan all subdirectories for matching files")
 
-    try:
-        all_files = [Path(f) for f in list_files(current_dir, tuple(extensions), recursive)]
-        current_path = Path(current_dir)
-        file_labels = ([str(f.relative_to(current_path)) for f in all_files]
-                       if recursive else [f.name for f in all_files])
-        label_to_path = {lbl: str(f) for lbl, f in zip(file_labels, all_files)}
+    all_files = [Path(f) for f in list_files(current_dir, tuple(extensions), recursive)]
+    current_path = Path(current_dir)
+    file_labels = ([str(f.relative_to(current_path)) for f in all_files]
+                   if recursive else [f.name for f in all_files])
+    label_to_path = {lbl: str(f) for lbl, f in zip(file_labels, all_files)}
 
-        filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
-                                    placeholder="Type to filter filenames...")
-        if filter_text:
-            filter_lower = filter_text.lower()
-            filtered_labels = [lbl for lbl in file_labels if filter_lower in lbl.lower()]
+    filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
+                                placeholder="Type to filter filenames...")
+    if filter_text:
+        filter_lower = filter_text.lower()
+        filtered_labels = [lbl for lbl in file_labels if filter_lower in lbl.lower()]
+    else:
+        filtered_labels = file_labels
+
+    if filtered_labels:
+        all_selected_paths = set(st.session_state.get(state_key, []))
+        current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
+        if recursive:
+            other_dir_selections = [p for p in st.session_state.get(state_key, [])
+                                    if p not in current_scope_paths]
         else:
-            filtered_labels = file_labels
+            other_dir_selections = [p for p in st.session_state.get(state_key, [])
+                                    if Path(p).parent != current_path]
 
-        if filtered_labels:
-            all_selected_paths = set(st.session_state.get(state_key, []))
-            current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
-            if recursive:
-                other_dir_selections = [p for p in st.session_state.get(state_key, [])
-                                        if p not in current_scope_paths]
-            else:
-                other_dir_selections = [p for p in st.session_state.get(state_key, [])
-                                        if Path(p).parent != current_path]
+        valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
+        all_in_scope_selected = set(valid_defaults) == set(filtered_labels) and len(valid_defaults) > 0
 
-            valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
-            all_in_scope_selected = set(valid_defaults) == set(filtered_labels) and len(valid_defaults) > 0
+        select_all = st.checkbox(
+            f"Select all {len(filtered_labels)} files" +
+            (f" (filtered from {len(file_labels)})" if filter_text else ""),
+            value=all_in_scope_selected, key=select_all_key
+        )
 
-            select_all = st.checkbox(
-                f"Select all {len(filtered_labels)} files" +
-                (f" (filtered from {len(file_labels)})" if filter_text else ""),
-                value=all_in_scope_selected, key=select_all_key
+        if select_all:
+            selected_labels = filtered_labels
+        else:
+            selected_labels = st.multiselect(
+                "Select files" + (" (recursive):" if recursive else ":"),
+                options=filtered_labels,
+                default=valid_defaults if not all_in_scope_selected else [],
+                key=f"{key_prefix}_files"
             )
 
-            if select_all:
-                selected_labels = filtered_labels
-            else:
-                selected_labels = st.multiselect(
-                    "Select files" + (" (recursive):" if recursive else ":"),
-                    options=filtered_labels,
-                    default=valid_defaults if not all_in_scope_selected else [],
-                    key=f"{key_prefix}_files"
-                )
+        current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
+        merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
+        st.session_state[state_key] = merged_selections
 
-            current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
-            merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
-            st.session_state[state_key] = merged_selections
-
+    else:
+        if filter_text:
+            st.info(f"No files match filter '{filter_text}'")
         else:
-            if filter_text:
-                st.info(f"No files match filter '{filter_text}'")
-            else:
-                st.info(f"No {extensions[0]} files found")
-
-    except Exception as e:
-        st.error(f"Error listing files: {e}")
+            st.info(f"No {extensions[0]} files found")
 
     # Clear selections button
     all_selected = st.session_state.get(state_key, [])

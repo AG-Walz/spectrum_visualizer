@@ -620,22 +620,17 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
 
         # Summary plots
         if not comparison_df.empty:
-            try:
-                summary_formats = [f for f in cfg.export_formats if f in ("png", "svg", "pdf")]
-                if not summary_formats:
-                    summary_formats = ["png"]
-                results = generate_all_summary_plots(
-                    source=comparison_df,
-                    output_dir=str(root_dir),
-                    formats=summary_formats,
-                )
-                n_summary = sum(len(v) for v in results.values())
-                if not quiet:
-                    print(f"  Generated {n_summary} summary plot(s)")
-            except Exception as e:
-                logger.error(f"Summary plot generation failed: {e}")
-                if not quiet:
-                    print(f"  Warning: Summary plots failed: {e}")
+            summary_formats = [f for f in cfg.export_formats if f in ("png", "svg", "pdf")]
+            if not summary_formats:
+                summary_formats = ["png"]
+            results = generate_all_summary_plots(
+                source=comparison_df,
+                output_dir=str(root_dir),
+                formats=summary_formats,
+            )
+            n_summary = sum(len(v) for v in results.values())
+            if not quiet:
+                print(f"  Generated {n_summary} summary plot(s)")
 
     # ------------------------------------------------------------------
     # 10. Completion summary

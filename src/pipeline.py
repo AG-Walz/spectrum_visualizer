@@ -84,48 +84,40 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
 
     Returns ``(LoadedSpectrum, annotated_df)`` tuple or ``None``.
     """
-    try:
-        if not KOINA_AVAILABLE:
-            return None
-
-        pred_df = predict_koina_spectrum(
-            peptidoform_str=peptidoform,
-            charge=charge,
-            model_id=koina_model,
-            collision_energy=koina_ce,
-            instrument_type=koina_instrument,
-        )
-        if pred_df is None or pred_df.empty:
-            return None
-
-        mz_arr = pred_df["mz"].values.astype(np.float64)
-        int_arr = pred_df["intensity"].values.astype(np.float64)
-
-        # Extract base sequence
-        try:
-            base_seq = _PF(peptidoform.split("/")[0]).sequence
-        except Exception:
-            base_seq = peptidoform.split("/")[0]
-
-        ref_spec = LoadedSpectrum(
-            spectrum_id="koina_prediction",
-            mz=mz_arr,
-            intensity=int_arr,
-            precursor_mz=0.0,
-            precursor_charge=charge,
-            peptidoform=peptidoform,
-            base_sequence=base_seq,
-            rt=0.0,
-            source_file=f"Koina:{koina_model}",
-            is_reference=True,
-        )
-
-        # Use Koina's native AI-predicted annotations directly
-        ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
-        return (ref_spec, ref_df)
-    except Exception as e:
-        logger.warning(f"Koina prediction failed for '{peptidoform}': {e}")
+    if not KOINA_AVAILABLE:
         return None
+
+    pred_df = predict_koina_spectrum(
+        peptidoform_str=peptidoform,
+        charge=charge,
+        model_id=koina_model,
+        collision_energy=koina_ce,
+        instrument_type=koina_instrument,
+    )
+    if pred_df is None or pred_df.empty:
+        return None
+
+    mz_arr = pred_df["mz"].values.astype(np.float64)
+    int_arr = pred_df["intensity"].values.astype(np.float64)
+
+    base_seq = _PF(peptidoform.split("/")[0]).sequence
+
+    ref_spec = LoadedSpectrum(
+        spectrum_id="koina_prediction",
+        mz=mz_arr,
+        intensity=int_arr,
+        precursor_mz=0.0,
+        precursor_charge=charge,
+        peptidoform=peptidoform,
+        base_sequence=base_seq,
+        rt=0.0,
+        source_file=f"Koina:{koina_model}",
+        is_reference=True,
+    )
+
+    # Use Koina's native AI-predicted annotations directly
+    ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
+    return (ref_spec, ref_df)
 
 
 # ============================================================================
@@ -247,15 +239,12 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
             )
 
             # Ion match statistics
-            try:
-                ims_stats = compute_ion_match_statistics(
-                    query_df, result.query_spectrum.peptidoform,
-                    result.query_spectrum.precursor_charge,
-                    result.query_spectrum.precursor_mz,
-                )
-                row.update(ims_stats)
-            except Exception:
-                pass
+            ims_stats = compute_ion_match_statistics(
+                query_df, result.query_spectrum.peptidoform,
+                result.query_spectrum.precursor_charge,
+                result.query_spectrum.precursor_mz,
+            )
+            row.update(ims_stats)
 
             comp_rows.append(row)
         except Exception as e:
