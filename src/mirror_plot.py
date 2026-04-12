@@ -6,12 +6,11 @@ and interactive Plotly mirror plots (for Streamlit display and HTML export).
 """
 import logging
 from io import BytesIO
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import matplotlib
 matplotlib.use('Agg')
 from matplotlib.figure import Figure as MplFigure
-import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 

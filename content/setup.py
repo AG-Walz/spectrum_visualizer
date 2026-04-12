@@ -484,11 +484,11 @@ def settings_fragment():
         "against AI-predicted fragmentation patterns (intensity + m/z)."
     )
 
-    _k_defaults = get_koina_settings(_get_settings())
+    koina_defaults = get_koina_settings(_get_settings())
 
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",
-        value=params.get("koina-enabled", _k_defaults["enabled"]),
+        value=params.get("koina-enabled", koina_defaults["enabled"]),
         key="koina-enabled",
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
         disabled=not KOINA_AVAILABLE,
@@ -503,7 +503,7 @@ def settings_fragment():
         with k_col1:
             model_names = list(KOINA_MODELS.keys())
             model_ids = list(KOINA_MODELS.values())
-            current_model_id = params.get("koina-model", _k_defaults["model"])
+            current_model_id = params.get("koina-model", koina_defaults["model"])
             try:
                 default_idx = model_ids.index(current_model_id)
             except ValueError:
@@ -519,12 +519,12 @@ def settings_fragment():
         with k_col2:
             st.number_input(
                 "Collision Energy (eV)", min_value=1, max_value=100,
-                value=params.get("koina-ce", _k_defaults["collision_energy"]),
+                value=params.get("koina-ce", koina_defaults["collision_energy"]),
                 key="koina-ce",
             )
 
         with k_col3:
-            current_inst = params.get("koina-instrument", _k_defaults["instrument_type"])
+            current_inst = params.get("koina-instrument", koina_defaults["instrument_type"])
             try:
                 inst_idx = INSTRUMENT_TYPES.index(current_inst)
             except ValueError:

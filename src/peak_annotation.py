@@ -5,7 +5,7 @@ Generates theoretical fragment ions and annotates experimental peaks.
 """
 import functools
 import logging
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List
 
 import numpy as np
 import pandas as pd
@@ -30,21 +30,21 @@ def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
     correctly handling terminal modifications (e.g. [Acetyl]-PEPTIDE becomes
     .(Acetyl)PEPTIDE rather than the invalid (Acetyl)-PEPTIDE).
     """
-    pf_clean = peptidoform_str.split('/')[0]
-    pf = Peptidoform(pf_clean)
+    clean_peptidoform_str = peptidoform_str.split('/')[0]
+    peptidoform_obj = Peptidoform(clean_peptidoform_str)
 
     # Rebuild in OpenMS parenthesis notation from the parsed representation
     parts = []
-    if pf.properties.get("n_term"):
-        for m in pf.properties["n_term"]:
+    if peptidoform_obj.properties.get("n_term"):
+        for m in peptidoform_obj.properties["n_term"]:
             parts.append(f".({m.name})")
-    for aa, residue_mods in pf.parsed_sequence:
+    for aa, residue_mods in peptidoform_obj.parsed_sequence:
         parts.append(aa)
         if residue_mods:
             for m in residue_mods:
                 parts.append(f"({m.name})")
-    if pf.properties.get("c_term"):
-        for m in pf.properties["c_term"]:
+    if peptidoform_obj.properties.get("c_term"):
+        for m in peptidoform_obj.properties["c_term"]:
             parts.append(f".({m.name})")
     oms_str = "".join(parts)
 
@@ -53,7 +53,7 @@ def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
     except Exception as e:
         logger.warning(f"Could not parse peptidoform '{peptidoform_str}': {e}")
         try:
-            return oms.AASequence.fromString(pf.sequence)
+            return oms.AASequence.fromString(peptidoform_obj.sequence)
         except Exception:
             raise ValueError(f"Cannot convert peptidoform: {peptidoform_str}")
 
@@ -429,11 +429,11 @@ def _su_annotation_to_str(ann) -> str:
         ion_type = str(ann.ion_type)
         ion_index = getattr(ann, "ion_index", getattr(ann, "fragment_index", "?"))
         charge = int(getattr(ann, "charge", 1))
-        nl = getattr(ann, "neutral_loss", None)
+        neutral_loss = getattr(ann, "neutral_loss", None)
         charge_str = "+" * max(1, charge)
         base = f"{ion_type}{ion_index}"
-        if nl:
-            base += f"-{str(nl).lstrip('-')}"
+        if neutral_loss:
+            base += f"-{str(neutral_loss).lstrip('-')}"
         return base + charge_str
     except Exception:
         return "matched"

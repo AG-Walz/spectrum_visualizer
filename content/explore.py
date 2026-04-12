@@ -27,7 +27,7 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
-def _p(key, default=None):
+def get_param(key, default=None):
     """Get a param value: session_state first (if widget present), then params.json."""
     return st.session_state.get(key, params.get(key, default))
 
@@ -39,17 +39,17 @@ def _p(key, default=None):
 @st.fragment
 def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    _export_dir = _p('export-dir', '')
-    CACHE_PATH = _export_dir if _export_dir else str(Path(st.session_state.workspace) / "exports")
+    export_dir = get_param('export-dir', '')
+    CACHE_PATH = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
-    cache_ver = st.session_state.get(get_state_key('cache_version'), 0)
-    regen_key = get_state_key('cache_rendered_version')
-    needs_regen = st.session_state.get(regen_key, -1) != cache_ver
+    cache_version = st.session_state.get(get_state_key('cache_version'), 0)
+    regeneration_key = get_state_key('cache_rendered_version')
+    needs_regeneration = st.session_state.get(regeneration_key, -1) != cache_version
 
     if 'msinsight_sm' not in st.session_state:
         st.session_state['msinsight_sm'] = StateManager(session_key="msinsight_state")
-    sm = st.session_state['msinsight_sm']
+    state_manager = st.session_state['msinsight_sm']
 
     psm_lf = st.session_state.get(get_state_key('psm_lf'))
     peaks_lf = st.session_state.get(get_state_key('peaks_lf'))
@@ -57,7 +57,7 @@ def openms_insight_explorer_fragment():
     heatmap_lf = st.session_state.get(get_state_key('heatmap_lf'))
 
     # Show currently selected PSM info
-    current_state = sm.get_state_for_vue()
+    current_state = state_manager.get_state_for_vue()
     selected_id = current_state.get("selected_psm")
     if selected_id is not None and psm_lf is not None:
         try:
@@ -78,7 +78,7 @@ def openms_insight_explorer_fragment():
         {"field": "score", "title": "Score", "formatter": "money", "formatterParams": {"precision": 4}},
         {"field": "source_file", "title": "Source File"},
     ]
-    if needs_regen:
+    if needs_regeneration:
         table = Table(
             cache_id="psm_table",
             data=psm_lf,
@@ -90,32 +90,32 @@ def openms_insight_explorer_fragment():
         )
     else:
         table = Table(cache_id="psm_table", cache_path=CACHE_PATH)
-    table(key="psm_table", state_manager=sm)
+    table(key="psm_table", state_manager=state_manager)
 
     # SequenceView
     st.subheader("Sequence Coverage")
-    if needs_regen:
-        peaks_for_sv = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
-        sv = SequenceView(
+    if needs_regeneration:
+        peaks_for_sequence_view = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
+        sequence_view = SequenceView(
             cache_id="seq_view",
             sequence_data=seq_lf,
-            peaks_data=peaks_for_sv,
+            peaks_data=peaks_for_sequence_view,
             filters={"selected_psm": "psm_id"},
             annotation_config={
-                "ion_types": _p('ion-types', ['b', 'y']),
-                "tolerance": _p('mz-tolerance', 0.02),
+                "ion_types": get_param('ion-types', ['b', 'y']),
+                "tolerance": get_param('mz-tolerance', 0.02),
                 "tolerance_ppm": False,
             },
             cache_path=CACHE_PATH,
             height=350,
         )
     else:
-        sv = SequenceView(cache_id="seq_view", cache_path=CACHE_PATH)
-    sv(key="seq_view", state_manager=sm)
+        sequence_view = SequenceView(cache_id="seq_view", cache_path=CACHE_PATH)
+    sequence_view(key="seq_view", state_manager=state_manager)
 
     # LinePlot linked to SequenceView
     st.subheader("Fragment Spectrum")
-    if needs_regen:
+    if needs_regeneration:
         lineplot = LinePlot(
             cache_id="spectrum_plot",
             data=peaks_lf,
@@ -130,11 +130,11 @@ def openms_insight_explorer_fragment():
         )
     else:
         lineplot = LinePlot(cache_id="spectrum_plot", cache_path=CACHE_PATH)
-    lineplot(key="spectrum_plot", state_manager=sm, sequence_view_key="seq_view")
+    lineplot(key="spectrum_plot", state_manager=state_manager, sequence_view_key="seq_view")
 
     # Heatmap
     st.subheader("RT x m/z Heatmap")
-    if needs_regen:
+    if needs_regeneration:
         heatmap_comp = Heatmap(
             cache_id="rt_heatmap",
             data=heatmap_lf,
@@ -146,10 +146,10 @@ def openms_insight_explorer_fragment():
         )
     else:
         heatmap_comp = Heatmap(cache_id="rt_heatmap", cache_path=CACHE_PATH)
-    heatmap_comp(key="rt_heatmap", state_manager=sm)
+    heatmap_comp(key="rt_heatmap", state_manager=state_manager)
 
-    if needs_regen:
-        st.session_state[regen_key] = cache_ver
+    if needs_regeneration:
+        st.session_state[regeneration_key] = cache_version
 
 
 # ---------------------------------------------------------------------------
@@ -169,39 +169,39 @@ def mirror_plots_fragment():
 
     # Build list of PSMs for selection
     psm_options = []
-    psm_id_to_vk = {}
-    for vk, vg in variant_groups.items():
-        for match in vg.matches:
+    psm_id_to_variant_key = {}
+    for variant_key, variant_group in variant_groups.items():
+        for match in variant_group.matches:
             key = f"{match.spectrum_id}|{match.peptidoform}"
-            for pid, (spec, _) in annotated_queries.items():
+            for psm_id, (spec, _) in annotated_queries.items():
                 if spectrum_lookup_key(spec) == key:
-                    label = f"[{pid}] {vg.display_label} -- {Path(spec.source_file).stem} (RT: {spec.rt:.1f})"
-                    psm_options.append((pid, label))
-                    psm_id_to_vk[pid] = vk
+                    label = f"[{psm_id}] {variant_group.display_label} -- {Path(spec.source_file).stem} (RT: {spec.rt:.1f})"
+                    psm_options.append((psm_id, label))
+                    psm_id_to_variant_key[psm_id] = variant_key
                     break
 
     if not psm_options:
-        for pid, (spec, _) in sorted(annotated_queries.items()):
-            label = f"[{pid}] {spec.peptidoform} -- {Path(spec.source_file).stem}"
-            psm_options.append((pid, label))
+        for psm_id, (spec, _) in sorted(annotated_queries.items()):
+            label = f"[{psm_id}] {spec.peptidoform} -- {Path(spec.source_file).stem}"
+            psm_options.append((psm_id, label))
 
     selected_label = st.selectbox("Select PSM", options=[lbl for _, lbl in psm_options],
                                   key=f"{STATE_PREFIX}_mirror_psm_select")
 
-    selected_pid = None
-    for pid, lbl in psm_options:
+    selected_psm_id = None
+    for psm_id, lbl in psm_options:
         if lbl == selected_label:
-            selected_pid = pid
+            selected_psm_id = psm_id
             break
 
-    if selected_pid is None or selected_pid not in annotated_queries:
+    if selected_psm_id is None or selected_psm_id not in annotated_queries:
         return
 
-    query_spec, query_df = annotated_queries[selected_pid]
-    vk = psm_id_to_vk.get(selected_pid)
-    refs = reference_store.get(vk, []) if vk else []
+    query_spec, query_df = annotated_queries[selected_psm_id]
+    variant_key = psm_id_to_variant_key.get(selected_psm_id)
+    refs = reference_store.get(variant_key, []) if variant_key else []
 
-    normalize = _p('intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param('intensity-mode', 'Relative') == 'Relative'
 
     if refs:
         for ref_spec, ref_df in refs:

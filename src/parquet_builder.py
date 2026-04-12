@@ -172,19 +172,19 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
     which uses its own ``parse_openms_sequence()`` to handle this format.
     """
     try:
-        pf_clean = peptidoform_str.split("/")[0]
-        pf = Peptidoform(pf_clean)
+        clean_peptidoform_str = peptidoform_str.split("/")[0]
+        peptidoform_obj = Peptidoform(clean_peptidoform_str)
         parts = []
-        if pf.properties.get("n_term"):
-            for m in pf.properties["n_term"]:
+        if peptidoform_obj.properties.get("n_term"):
+            for m in peptidoform_obj.properties["n_term"]:
                 parts.append(f".({m.name})")
-        for aa, residue_mods in pf.parsed_sequence:
+        for aa, residue_mods in peptidoform_obj.parsed_sequence:
             parts.append(aa)
             if residue_mods:
                 for m in residue_mods:
                     parts.append(f"({m.name})")
-        if pf.properties.get("c_term"):
-            for m in pf.properties["c_term"]:
+        if peptidoform_obj.properties.get("c_term"):
+            for m in peptidoform_obj.properties["c_term"]:
                 parts.append(f".({m.name})")
         return "".join(parts)
     except Exception:
@@ -228,17 +228,17 @@ def build_psm_table(
     psm_lookup: Dict[str, int] = {}
     psm_id = 0
 
-    for variant_key, vg in variant_groups.items():
-        for match in vg.matches:
+    for variant_key, variant_group in variant_groups.items():
+        for match in variant_group.matches:
             # Key must match spectrum_lookup_key() in spectrum_loader
             key = f"{match.spectrum_id}|{match.peptidoform}"
             psm_lookup[key] = psm_id
             rows.append({
                 "id": psm_id,
                 "variant_key": variant_key,
-                "base_sequence": vg.base_sequence,
-                "modification": vg.modification_key or "(unmodified)",
-                "display_label": vg.display_label,
+                "base_sequence": variant_group.base_sequence,
+                "modification": variant_group.modification_key or "(unmodified)",
+                "display_label": variant_group.display_label,
                 "peptidoform": match.peptidoform,
                 "charge": match.charge,
                 "score": float(match.score),

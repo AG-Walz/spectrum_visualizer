@@ -9,7 +9,6 @@ import logging
 import re
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable
 
@@ -117,8 +116,8 @@ def build_mzml_to_matches_map(
 
     mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]] = {}
 
-    for variant_key, vg in variant_groups.items():
-        for match in vg.matches:
+    for variant_key, variant_group in variant_groups.items():
+        for match in variant_group.matches:
             if not match.mzml_filename:
                 continue
 
@@ -539,8 +538,8 @@ def load_spectra_streaming(
         filtered_map = {}
         for path_key, matches_for_file in mzml_to_matches.items():
             remaining = [
-                (match, vk) for match, vk in matches_for_file
-                if (vk, match.spectrum_id) not in skip_ids
+                (match, variant_key) for match, variant_key in matches_for_file
+                if (variant_key, match.spectrum_id) not in skip_ids
             ]
             skipped_count += len(matches_for_file) - len(remaining)
             if remaining:
@@ -585,7 +584,7 @@ def load_spectra_streaming(
             if on_file_start:
                 on_file_start(display_name, True)
 
-            _, _, loaded_list, lc, nf, errs = _load_spectra_from_mzml(
+            _, _, loaded_list, loaded_count, not_found_count, errs = _load_spectra_from_mzml(
                 mzml_path_str, display_name, matches_for_file, True
             )
             for variant_key, spec in loaded_list:
@@ -595,31 +594,31 @@ def load_spectra_streaming(
                     error_callback(err)
 
             if on_file_complete:
-                on_file_complete(display_name, lc, nf)
+                on_file_complete(display_name, loaded_count, not_found_count)
     else:
         # Parallel reference loading
         logger.info(f"Parallel reference loading: {len(ref_file_tasks)} files, {effective_workers} workers")
 
         with ProcessPoolExecutor(max_workers=effective_workers) as pool:
             future_map = {
-                pool.submit(_load_spectra_from_mzml, mzml_path_str, dn, mff, True): dn
-                for mzml_path_str, dn, mff in ref_file_tasks
+                pool.submit(_load_spectra_from_mzml, mzml_path_str, display_name, matches_for_file, True): display_name
+                for mzml_path_str, display_name, matches_for_file in ref_file_tasks
             }
 
             for future in as_completed(future_map):
                 try:
-                    dn, _, loaded_list, lc, nf, errs = future.result()
+                    display_name, _, loaded_list, loaded_count, not_found_count, errs = future.result()
                     for variant_key, spec in loaded_list:
                         reference_spectra[variant_key].append(spec)
                     for err in errs:
                         if error_callback:
                             error_callback(err)
                     if on_file_complete:
-                        on_file_complete(dn, lc, nf)
+                        on_file_complete(display_name, loaded_count, not_found_count)
                 except Exception as e:
-                    dn = future_map[future]
+                    display_name = future_map[future]
                     if error_callback:
-                        error_callback(f"Worker crashed loading reference {dn}: {e}")
+                        error_callback(f"Worker crashed loading reference {display_name}: {e}")
 
     # Notify that references are loaded for each variant
     if on_reference_loaded:
@@ -647,10 +646,10 @@ def load_spectra_streaming(
         matches_for_file = mzml_to_matches[path_key]
         query_file_tasks.append((str(mzml_path), display_name, matches_for_file))
 
-    def _dispatch_query_results(loaded_list, dn):
+    def _dispatch_query_results(loaded_list, file_display_name):
         """Dispatch loaded query spectra through on_query_ready callback (main process)."""
         for variant_key, loaded in loaded_list:
-            vg = variant_groups[variant_key]
+            variant_group = variant_groups[variant_key]
             current_idx = query_indices[variant_key]
             query_indices[variant_key] += 1
 
@@ -659,8 +658,8 @@ def load_spectra_streaming(
                     query_spectrum=loaded,
                     reference_spectra=reference_spectra[variant_key],
                     variant_key=variant_key,
-                    base_sequence=vg.base_sequence,
-                    modification_key=vg.modification_key,
+                    base_sequence=variant_group.base_sequence,
+                    modification_key=variant_group.modification_key,
                     query_index=current_idx,
                     total_queries=query_counts[variant_key]
                 )
@@ -672,7 +671,7 @@ def load_spectra_streaming(
             if on_file_start:
                 on_file_start(display_name, False)
 
-            _, _, loaded_list, lc, nf, errs = _load_spectra_from_mzml(
+            _, _, loaded_list, loaded_count, not_found_count, errs = _load_spectra_from_mzml(
                 mzml_path_str, display_name, matches_for_file, False
             )
             for err in errs:
@@ -681,30 +680,30 @@ def load_spectra_streaming(
             _dispatch_query_results(loaded_list, display_name)
 
             if on_file_complete:
-                on_file_complete(display_name, lc, nf)
+                on_file_complete(display_name, loaded_count, not_found_count)
     else:
         # Parallel query loading — load files in parallel, dispatch callbacks sequentially
         logger.info(f"Parallel query loading: {len(query_file_tasks)} files, {effective_workers} workers")
 
         with ProcessPoolExecutor(max_workers=effective_workers) as pool:
             future_map = {
-                pool.submit(_load_spectra_from_mzml, mzml_path_str, dn, mff, False): dn
-                for mzml_path_str, dn, mff in query_file_tasks
+                pool.submit(_load_spectra_from_mzml, mzml_path_str, display_name, matches_for_file, False): display_name
+                for mzml_path_str, display_name, matches_for_file in query_file_tasks
             }
 
             for future in as_completed(future_map):
                 try:
-                    dn, _, loaded_list, lc, nf, errs = future.result()
+                    display_name, _, loaded_list, loaded_count, not_found_count, errs = future.result()
                     for err in errs:
                         if error_callback:
                             error_callback(err)
-                    _dispatch_query_results(loaded_list, dn)
+                    _dispatch_query_results(loaded_list, display_name)
                     if on_file_complete:
-                        on_file_complete(dn, lc, nf)
+                        on_file_complete(display_name, loaded_count, not_found_count)
                 except Exception as e:
-                    dn = future_map[future]
+                    display_name = future_map[future]
                     if error_callback:
-                        error_callback(f"Worker crashed loading query {dn}: {e}")
+                        error_callback(f"Worker crashed loading query {display_name}: {e}")
 
     logger.info("Query streaming complete")
 
@@ -843,9 +842,9 @@ def load_spectra_from_parquet(
 
     # Phase 1: Notify references
     if on_reference_loaded:
-        for vk, refs in reference_spectra.items():
+        for variant_key, refs in reference_spectra.items():
             if refs:
-                on_reference_loaded(vk, len(refs))
+                on_reference_loaded(variant_key, len(refs))
 
     total_refs = sum(len(v) for v in reference_spectra.values())
     total_queries = sum(len(v) for v in query_spectra_by_variant.values())
@@ -853,14 +852,14 @@ def load_spectra_from_parquet(
 
     # Phase 2: Stream query spectra
     if on_query_ready:
-        for vk, queries in query_spectra_by_variant.items():
-            base_seq, mod_key = variant_info[vk]
-            refs = reference_spectra.get(vk, [])
+        for variant_key, queries in query_spectra_by_variant.items():
+            base_seq, mod_key = variant_info[variant_key]
+            refs = reference_spectra.get(variant_key, [])
             for i, query in enumerate(queries):
                 result = StreamingResult(
                     query_spectrum=query,
                     reference_spectra=refs,
-                    variant_key=vk,
+                    variant_key=variant_key,
                     base_sequence=base_seq,
                     modification_key=mod_key,
                     query_index=i,

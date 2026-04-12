@@ -426,7 +426,7 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
         for err in search_errors:
             print(f"  Warning: {err}")
 
-    total_psms = sum(len(vg.matches) for vg in variant_groups.values())
+    total_psms = sum(len(variant_group.matches) for variant_group in variant_groups.values())
     if not quiet:
         print(f"  Found {total_psms} PSMs across {len(variant_groups)} variant(s)\n")
 
@@ -520,8 +520,8 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     if not quiet:
         print("Step 3: Building DataFrames...")
 
-    peaks_lf = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_queries])
-    seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
+    peaks_lf = build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries])
+    seq_lf = build_sequence_dataframe([(psm_id, s) for psm_id, s, _ in annotated_queries])
     heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
 
     comparison_df = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()

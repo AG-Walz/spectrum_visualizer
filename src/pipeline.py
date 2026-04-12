@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-from psm_utils import Peptidoform as _PF
+from psm_utils import Peptidoform
 
 from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
 from src.parallel_processor import compute_ion_match_statistics
@@ -55,22 +55,22 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
     * ``dict``  -- ``{psm_id: (spec, df)}``   (Streamlit format)
     * ``list``  -- ``[(psm_id, spec, df)]``    (CLI format)
     """
-    psm_id_to_vk: Dict[str, str] = {}
+    psm_id_to_variant_key: Dict[str, str] = {}
 
-    # Normalise to iterable of (pid, spec)
+    # Normalise to iterable of (psm_id, spec)
     if isinstance(annotated_queries, dict):
-        items = [(pid, spec) for pid, (spec, _) in annotated_queries.items()]
+        items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
     else:
-        items = [(pid, spec) for pid, spec, _ in annotated_queries]
+        items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
 
-    for vk, vg in variant_groups.items():
-        for match in vg.matches:
+    for variant_key, variant_group in variant_groups.items():
+        for match in variant_group.matches:
             key = f"{match.spectrum_id}|{match.peptidoform}"
-            for pid, spec in items:
+            for psm_id, spec in items:
                 if spectrum_lookup_key(spec) == key:
-                    psm_id_to_vk[pid] = vk
+                    psm_id_to_variant_key[psm_id] = variant_key
                     break
-    return psm_id_to_vk
+    return psm_id_to_variant_key
 
 
 # ============================================================================
@@ -100,7 +100,7 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     mz_arr = pred_df["mz"].values.astype(np.float64)
     int_arr = pred_df["intensity"].values.astype(np.float64)
 
-    base_seq = _PF(peptidoform.split("/")[0]).sequence
+    base_seq = Peptidoform(peptidoform.split("/")[0]).sequence
 
     ref_spec = LoadedSpectrum(
         spectrum_id="koina_prediction",
@@ -199,8 +199,8 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
         return None
 
     # Annotate and cache references for this variant (once)
-    vk = result.variant_key
-    if vk not in reference_store and result.reference_spectra:
+    variant_key = result.variant_key
+    if variant_key not in reference_store and result.reference_spectra:
         ref_list = []
         for ref_spec in result.reference_spectra:
             try:
@@ -212,10 +212,10 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
                 ref_list.append((ref_spec, ref_df))
             except Exception as e:
                 logger.warning(f"Reference annotation failed: {e}")
-        reference_store[vk] = ref_list
+        reference_store[variant_key] = ref_list
 
     # Koina fallback
-    refs = reference_store.get(vk, [])
+    refs = reference_store.get(variant_key, [])
     if not refs and koina_enabled:
         koina_ref = get_koina_prediction(
             result.query_spectrum.peptidoform,
@@ -226,8 +226,8 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
             koina_instrument=koina_instrument,
         )
         if koina_ref is not None:
-            reference_store[vk] = [koina_ref]
-            refs = reference_store[vk]
+            reference_store[variant_key] = [koina_ref]
+            refs = reference_store[variant_key]
 
     # Compute comparison metrics against each reference
     comp_rows: List[Dict[str, Any]] = []
@@ -289,14 +289,14 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     if fmt_dirs is None:
         fmt_dirs = {}
 
-    psm_id_to_vk = build_psm_to_variant_mapping(
+    psm_id_to_variant_key = build_psm_to_variant_mapping(
         variant_groups, annotated_queries,
     )
 
     tasks: List[dict] = []
-    for pid, query_spec, query_df in sorted(annotated_queries, key=lambda x: x[0]):
-        vk = psm_id_to_vk.get(pid)
-        refs = reference_store.get(vk, []) if vk else []
+    for psm_id, query_spec, query_df in sorted(annotated_queries, key=lambda x: x[0]):
+        variant_key = psm_id_to_variant_key.get(psm_id)
+        refs = reference_store.get(variant_key, []) if variant_key else []
         folder_name = sanitize_fn(query_spec.peptidoform)
 
         if refs:

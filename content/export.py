@@ -15,7 +15,6 @@ from datetime import datetime
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
-import pandas as pd
 import streamlit as st
 
 from src.common.common import page_setup, save_params
@@ -30,13 +29,12 @@ from content._shared import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
     build_run_settings, apply_run_settings,
 )
-from utils.helpers import parse_peptide_list
 
 params = page_setup()
 logger = logging.getLogger(__name__)
 
 
-def _p(key, default=None):
+def get_param(key, default=None):
     """Get a param value: session_state first (if widget present), then params.json."""
     return st.session_state.get(key, params.get(key, default))
 
@@ -45,7 +43,7 @@ def _p(key, default=None):
 # Mirror plot export helper
 # ---------------------------------------------------------------------------
 
-def _export_mirror_plots(export_root: Path, do_html: bool):
+def _export_spectrum_plots(export_root: Path, do_html: bool):
     """Generate mirror/single plots organized by peptidoform.
 
     Returns (file_count, list_of_file_paths).
@@ -60,27 +58,27 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = _p('intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param('intensity-mode', 'Relative') == 'Relative'
 
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None
 
-    psm_id_to_vk = {}
-    for vk, vg in variant_groups.items():
-        for match in vg.matches:
+    psm_id_to_variant_key = {}
+    for variant_key, variant_group in variant_groups.items():
+        for match in variant_group.matches:
             key = f"{match.spectrum_id}|{match.peptidoform}"
-            for pid, (spec, _) in annotated_queries.items():
+            for psm_id, (spec, _) in annotated_queries.items():
                 if spectrum_lookup_key(spec) == key:
-                    psm_id_to_vk[pid] = vk
+                    psm_id_to_variant_key[psm_id] = variant_key
                     break
 
     saved_files = []
     errors = []
 
-    for pid, (query_spec, query_df) in sorted(annotated_queries.items()):
-        vk = psm_id_to_vk.get(pid)
-        refs = reference_store.get(vk, []) if vk else []
+    for psm_id, (query_spec, query_df) in sorted(annotated_queries.items()):
+        variant_key = psm_id_to_variant_key.get(psm_id)
+        refs = reference_store.get(variant_key, []) if variant_key else []
         folder_name = sanitize_filename(query_spec.peptidoform)
 
         if refs:
@@ -126,7 +124,7 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
                 except Exception as e:
                     errors.append(f"{folder_name}/{safe_name}: {e}")
-                    logger.error(f"Mirror plot failed for PSM {pid}: {e}")
+                    logger.error(f"Mirror plot failed for PSM {psm_id}: {e}")
         else:
             try:
                 safe_name = sanitize_filename(Path(query_spec.source_file).stem)
@@ -148,7 +146,7 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
             except Exception as e:
                 errors.append(f"{folder_name}/{safe_name}: {e}")
-                logger.error(f"Single plot failed for PSM {pid}: {e}")
+                logger.error(f"Single plot failed for PSM {psm_id}: {e}")
 
     if errors:
         st.warning(f"{len(errors)} plot(s) failed:")
@@ -206,7 +204,7 @@ def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
 
         if do_mirror or do_html:
             st.caption("Generating mirror plots...")
-            n_plots, plot_files = _export_mirror_plots(export_root, do_html)
+            n_plots, plot_files = _export_spectrum_plots(export_root, do_html)
             saved_files.extend(plot_files)
             st.caption(f"  Generated {n_plots} mirror plot file(s)")
         else:
@@ -269,9 +267,9 @@ def _render_plot_gallery(root_dir: Path) -> None:
 
         with st.expander(f"{peptide_dir.name} ({len(plot_files)} plots)", expanded=False):
             ref_groups: dict = {}
-            for pf in plot_files:
-                ref_stem = pf.stem.rsplit("_vs_", 1)[1] if "_vs_" in pf.stem else "(no reference)"
-                ref_groups.setdefault(ref_stem, []).append(pf)
+            for plot_file in plot_files:
+                ref_stem = plot_file.stem.rsplit("_vs_", 1)[1] if "_vs_" in plot_file.stem else "(no reference)"
+                ref_groups.setdefault(ref_stem, []).append(plot_file)
 
             for ref_stem, ref_files in sorted(ref_groups.items()):
                 sub_label = (
@@ -445,9 +443,9 @@ def export_controls_fragment():
         st.info("Load data first (Search & Load page).")
         return
 
-    _ws = st.session_state.get('workspace', None)
-    _export_fallback = str(Path(_ws) / "exports") if _ws else "./exports"
-    export_default = params.get("export-dir", "") or _export_fallback
+    workspace = st.session_state.get('workspace', None)
+    export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
+    export_default = params.get("export-dir", "") or export_fallback
     st.text_input(
         "Export Directory",
         value=export_default,
@@ -484,9 +482,9 @@ def render():
 
     export_controls_fragment()
 
-    _ws = st.session_state.get('workspace', None)
-    _fallback = str(Path(_ws) / "exports") if _ws else "./exports"
-    export_dir = _p('export-dir', '') or _fallback
+    workspace = st.session_state.get('workspace', None)
+    export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
+    export_dir = get_param('export-dir', '') or export_fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)

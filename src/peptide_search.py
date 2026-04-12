@@ -13,7 +13,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-import pandas as pd
 import numpy as np
 import polars as pl
 from psm_utils.io.idxml import IdXMLReader
@@ -209,7 +208,7 @@ def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], D
     return run_map, run_map_full
 
 
-def _mod_key_from_peptidoform(pf) -> str:
+def _mod_key_from_peptidoform(peptidoform_obj) -> str:
     """
     Build compact modification key from a psm_utils Peptidoform object.
 
@@ -218,17 +217,17 @@ def _mod_key_from_peptidoform(pf) -> str:
     """
     mods = []
     # N-terminal modification
-    if pf.properties.get("n_term"):
-        for m in pf.properties["n_term"]:
+    if peptidoform_obj.properties.get("n_term"):
+        for m in peptidoform_obj.properties["n_term"]:
             mods.append(f"NTerm[{abbreviate_mod(m.name)}]")
     # Per-residue modifications
-    for i, (aa, residue_mods) in enumerate(pf.parsed_sequence):
+    for i, (aa, residue_mods) in enumerate(peptidoform_obj.parsed_sequence):
         if residue_mods:
             for m in residue_mods:
                 mods.append(f"{aa}{i + 1}[{abbreviate_mod(m.name)}]")
     # C-terminal modification
-    if pf.properties.get("c_term"):
-        for m in pf.properties["c_term"]:
+    if peptidoform_obj.properties.get("c_term"):
+        for m in peptidoform_obj.properties["c_term"]:
             mods.append(f"CTerm[{abbreviate_mod(m.name)}]")
     return "|".join(mods) if mods else ""
 
@@ -574,17 +573,17 @@ def summarize_search_results(variant_groups: Dict[str, VariantGroup]) -> pl.Lazy
         - unresolved (Int32): PSMs where mzML could not be resolved
     """
     rows = []
-    for row_id, (variant_key, vg) in enumerate(variant_groups.items()):
-        idxml_files = set(m.idxml_file for m in vg.matches)
-        unresolved = sum(1 for m in vg.matches if not m.mzml_filename)
+    for row_id, (variant_key, variant_group) in enumerate(variant_groups.items()):
+        idxml_files = set(m.idxml_file for m in variant_group.matches)
+        unresolved = sum(1 for m in variant_group.matches if not m.mzml_filename)
         rows.append({
             "id": row_id,
-            "base_sequence": vg.base_sequence,
-            "modification": vg.modification_key or "(unmodified)",
-            "display_label": vg.display_label,
-            "psm_count": len(vg.matches),
+            "base_sequence": variant_group.base_sequence,
+            "modification": variant_group.modification_key or "(unmodified)",
+            "display_label": variant_group.display_label,
+            "psm_count": len(variant_group.matches),
             "idxml_files": len(idxml_files),
-            "mzml_resolved": len(vg.matches) - unresolved,
+            "mzml_resolved": len(variant_group.matches) - unresolved,
             "unresolved": unresolved,
         })
 
