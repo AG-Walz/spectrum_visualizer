@@ -110,20 +110,7 @@ HEATMAP_SCHEMA: Dict[str, pl.DataType] = {
 # ---------------------------------------------------------------------------
 
 def validate_dataframe(lf: pl.LazyFrame, schema: dict, name: str) -> bool:
-    """
-    Check that a LazyFrame contains all expected columns with correct types.
-
-    Logs a warning for each missing column or type mismatch. Returns True if
-    the schema matches exactly, False otherwise.
-
-    Args:
-        lf: Polars LazyFrame to validate.
-        schema: Expected schema dict (column_name -> pl.DataType).
-        name: Human-readable name for log messages (e.g. "PSM table").
-
-    Returns:
-        True if all columns are present with the correct types, False otherwise.
-    """
+    """Check that a LazyFrame matches the expected schema, logging mismatches."""
     actual_schema = lf.collect_schema()
     valid = True
 

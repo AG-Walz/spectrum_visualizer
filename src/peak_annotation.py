@@ -252,24 +252,7 @@ def prepare_spectrum_for_plot(
     add_first_prefix_ion: bool = True,
     remove_precursor_peaks: bool = False
 ) -> pd.DataFrame:
-    """
-    Prepare a spectrum for plotting with annotations.
-
-    Args:
-        mz: m/z array
-        intensity: Intensity array
-        peptidoform: Peptidoform string
-        charge: Precursor charge
-        ion_types: Ion types to annotate (determines coloring)
-        mz_tolerance: Matching tolerance
-        normalize: Whether to normalize intensities to [0, 1]
-        add_losses: Whether to include neutral loss peaks in theoretical spectrum
-        add_first_prefix_ion: Whether to include first prefix ion (a1, b1)
-        remove_precursor_peaks: Whether to remove precursor peaks from the result
-
-    Returns:
-        DataFrame ready for plotting with: mz, intensity, annotation, ion_type, charge
-    """
+    """Annotate a spectrum and return a DataFrame ready for plotting."""
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 

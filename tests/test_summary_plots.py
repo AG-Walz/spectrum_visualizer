@@ -6,14 +6,11 @@ MSInsight changes from MSpecViz:
            prepare_peptide_detail_data
 - Added: sanitize_filename, shorten_stem (tested in test_export.py)
 """
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.summary_plots import (
     generate_all_summary_plots,

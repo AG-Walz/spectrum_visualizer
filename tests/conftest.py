@@ -66,6 +66,19 @@ def app_settings():
         return json.load(f)
 
 
+def make_peptide_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
+                       spectrum_id="index=1", charge=2, score=0.95,
+                       idxml_file="test.idXML", mzml_filename="test.mzML"):
+    """Create a PeptideMatch for testing. Importable via ``from tests.conftest import ...``."""
+    from src.peptide_search import PeptideMatch
+    return PeptideMatch(
+        peptidoform=peptidoform, base_sequence=base_seq,
+        spectrum_id=spectrum_id, charge=charge, score=score,
+        idxml_file=idxml_file, mzml_filename=mzml_filename,
+        id_merge_index=-1,
+    )
+
+
 @pytest.fixture
 def spectrum_df():
     """Standard annotated spectrum DataFrame for testing."""

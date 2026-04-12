@@ -9,9 +9,9 @@ from src.peptide_search import (
     format_inline_sequence,
     MOD_ABBREVIATIONS,
     VariantGroup,
-    PeptideMatch,
     summarize_search_results,
 )
+from tests.conftest import make_peptide_match
 
 
 class TestAbbreviateMod:
@@ -74,26 +74,12 @@ class TestFormatInlineSequence:
 class TestSummarizeSearchResults:
     """Tests for summarize_search_results() which returns pl.LazyFrame in MSInsight."""
 
-    def _make_match(self, peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
-                    spectrum_id="index=1", charge=2, score=0.95,
-                    idxml_file="test.idXML", mzml_filename="test.mzML"):
-        return PeptideMatch(
-            peptidoform=peptidoform,
-            base_sequence=base_seq,
-            spectrum_id=spectrum_id,
-            charge=charge,
-            score=score,
-            idxml_file=idxml_file,
-            mzml_filename=mzml_filename,
-            id_merge_index=-1,
-        )
-
     def test_returns_lazyframe(self):
         vg = VariantGroup(
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
-            matches=[self._make_match()],
+            matches=[make_peptide_match()],
         )
         result = summarize_search_results({"PEPTIDEK": vg})
         assert isinstance(result, pl.LazyFrame)
@@ -103,7 +89,7 @@ class TestSummarizeSearchResults:
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
-            matches=[self._make_match()],
+            matches=[make_peptide_match()],
         )
         result = summarize_search_results({"PEPTIDEK": vg})
         df = result.collect()
@@ -117,8 +103,8 @@ class TestSummarizeSearchResults:
             modification_key="",
             display_label="PEPTIDEK",
             matches=[
-                self._make_match(spectrum_id="index=1"),
-                self._make_match(spectrum_id="index=2"),
+                make_peptide_match(spectrum_id="index=1"),
+                make_peptide_match(spectrum_id="index=2"),
             ],
         )
         result = summarize_search_results({"PEPTIDEK": vg})
@@ -136,13 +122,13 @@ class TestSummarizeSearchResults:
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
-            matches=[self._make_match()],
+            matches=[make_peptide_match()],
         )
         vg2 = VariantGroup(
             base_sequence="AAAVAAAK",
             modification_key="",
             display_label="AAAVAAAK",
-            matches=[self._make_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK")],
+            matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK")],
         )
         result = summarize_search_results({"PEPTIDEK": vg1, "AAAVAAAK": vg2})
         df = result.collect()

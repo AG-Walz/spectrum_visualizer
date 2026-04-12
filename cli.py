@@ -34,9 +34,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
-# ---------------------------------------------------------------------------
-# Path setup -- ensure project root is importable
-# ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
@@ -58,10 +55,6 @@ from src.common.text_utils import format_time, get_nested, parse_peptide_list
 
 logger = logging.getLogger("msinsight.cli")
 
-
-# ============================================================================
-# Terminal progress display
-# ============================================================================
 
 class TerminalProgress:
     """Simple terminal progress indicator with elapsed / ETA."""
@@ -97,10 +90,6 @@ class TerminalProgress:
             print(f"\r  {self.label} [{self.total}/{self.total}] "
                   f"100.0%  ({format_time(elapsed)} elapsed){extra}")
 
-
-# ============================================================================
-# CLIConfig dataclass
-# ============================================================================
 
 @dataclass
 class CLIConfig:
@@ -143,10 +132,6 @@ class CLIConfig:
     koina_ce: int = 35
     koina_instrument: str = "TIMSTOF"
 
-
-# ============================================================================
-# Config loading and merging
-# ============================================================================
 
 def load_settings_defaults() -> dict:
     """Load defaults from settings.json."""
@@ -256,40 +241,32 @@ def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
     cfg.mzml_files = expand_globs(get_nested(yaml_cfg, "input", "mzml_files", default=[]))
     cfg.reference_substring = get_nested(yaml_cfg, "reference", "substring", default="")
 
-    def _apply_section(section_name, mapping):
-        """Apply YAML section values to cfg using {yaml_key: (attr, cast)}."""
-        section = yaml_cfg.get(section_name)
-        if not section:
-            return
-        for yaml_key, (attr, cast) in mapping.items():
+    _yaml_mappings = [
+        ("annotation", [
+            ("ion_types", "ion_types"), ("mz_tolerance", "mz_tolerance", float),
+            ("add_losses", "add_losses", bool), ("add_first_prefix_ion", "add_first_prefix_ion", bool),
+            ("remove_precursor_peaks", "remove_precursor_peaks", bool),
+            ("intensity_mode", "intensity_mode"),
+        ]),
+        ("export", [
+            ("directory", "export_dir"), ("project_name", "project_name"),
+            ("formats", "export_formats"), ("dpi", "dpi", int),
+            ("figsize", "figsize", tuple), ("plot_unpaired", "plot_unpaired", bool),
+        ]),
+        ("performance", [("workers", "workers", int)]),
+        ("koina", [
+            ("enabled", "koina_enabled", bool), ("model", "koina_model"),
+            ("collision_energy", "koina_ce", int), ("instrument_type", "koina_instrument"),
+        ]),
+    ]
+    for section_name, keys in _yaml_mappings:
+        section = yaml_cfg.get(section_name, {})
+        for entry in keys:
+            yaml_key, attr = entry[0], entry[1]
+            cast = entry[2] if len(entry) > 2 else None
             if yaml_key in section:
-                setattr(cfg, attr, cast(section[yaml_key]))
-
-    _apply_section("annotation", {
-        "ion_types":             ("ion_types",             lambda v: v),
-        "mz_tolerance":          ("mz_tolerance",          float),
-        "add_losses":            ("add_losses",            bool),
-        "add_first_prefix_ion":  ("add_first_prefix_ion",  bool),
-        "remove_precursor_peaks":("remove_precursor_peaks", bool),
-        "intensity_mode":        ("intensity_mode",        lambda v: v),
-    })
-    _apply_section("export", {
-        "directory":    ("export_dir",      lambda v: v),
-        "project_name": ("project_name",    lambda v: v),
-        "formats":      ("export_formats",  lambda v: v),
-        "dpi":          ("dpi",             int),
-        "figsize":      ("figsize",         tuple),
-        "plot_unpaired":("plot_unpaired",   bool),
-    })
-    _apply_section("performance", {
-        "workers": ("workers", int),
-    })
-    _apply_section("koina", {
-        "enabled":          ("koina_enabled",    bool),
-        "model":            ("koina_model",      lambda v: v),
-        "collision_energy": ("koina_ce",         int),
-        "instrument_type":  ("koina_instrument", lambda v: v),
-    })
+                val = cast(section[yaml_key]) if cast else section[yaml_key]
+                setattr(cfg, attr, val)
 
     # --- CLI overrides (highest priority) ---
     if args.idxml:
@@ -324,10 +301,6 @@ def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
     return cfg
 
 
-# ============================================================================
-# Pipeline
-# ============================================================================
-
 def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     """
     Execute the full MSInsight analysis pipeline.
@@ -346,14 +319,11 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
         print("Error: No mzML files found. Check your config or --mzml argument.", file=sys.stderr)
         return 2
 
-    for f in cfg.idxml_files:
-        if not Path(f).exists():
-            print(f"Error: idXML file not found: {f}", file=sys.stderr)
-            return 2
-    for f in cfg.mzml_files:
-        if not Path(f).exists():
-            print(f"Error: mzML file not found: {f}", file=sys.stderr)
-            return 2
+    for label, files in [("idXML", cfg.idxml_files), ("mzML", cfg.mzml_files)]:
+        for f in files:
+            if not Path(f).exists():
+                print(f"Error: {label} file not found: {f}", file=sys.stderr)
+                return 2
 
     # ------------------------------------------------------------------
     # 2. Print configuration summary
@@ -647,10 +617,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     return 0
 
 
-# ============================================================================
-# Mirror plot export (parallel)
-# ============================================================================
-
 def _generate_single_plot(task: dict) -> int:
     """Worker function for parallel plot generation. Returns file count."""
     count = 0
@@ -760,10 +726,6 @@ def _export_mirror_plots(annotated_queries, reference_store, variant_groups,
     return total_files
 
 
-# ============================================================================
-# Argument parser
-# ============================================================================
-
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="msinsight-cli",
@@ -824,10 +786,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     return parser
 
-
-# ============================================================================
-# Main
-# ============================================================================
 
 def main():
     parser = build_parser()

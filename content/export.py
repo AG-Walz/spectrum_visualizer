@@ -26,22 +26,13 @@ from src.spectrum_metrics import compute_all_metrics, format_metrics_text
 from src.query_processing import build_psm_to_variant_mapping
 from src.summary_plots import sanitize_filename, generate_all_summary_plots
 from content.page_state import (
-    STATE_PREFIX, get_state_key, restore_analysis_if_needed,
+    STATE_PREFIX, get_state_key, get_param, restore_analysis_if_needed,
     build_run_settings, apply_run_settings,
 )
 
 params = page_setup()
 logger = logging.getLogger(__name__)
 
-
-def get_param(key, default=None):
-    """Get a param value: session_state first (if widget present), then params.json."""
-    return st.session_state.get(key, params.get(key, default))
-
-
-# ---------------------------------------------------------------------------
-# Mirror plot export helper
-# ---------------------------------------------------------------------------
 
 def _export_spectrum_plots(export_root: Path, do_html: bool):
     """Generate mirror/single plots organized by peptidoform.
@@ -58,7 +49,7 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = get_param('intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
 
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
@@ -149,10 +140,6 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
     return len(saved_files), saved_files
 
 
-# ---------------------------------------------------------------------------
-# Export execution
-# ---------------------------------------------------------------------------
-
 def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool):
     """Execute all selected exports with versioned directory."""
@@ -228,10 +215,6 @@ def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
     _render_plot_gallery(export_root)
 
 
-# ---------------------------------------------------------------------------
-# Plot gallery
-# ---------------------------------------------------------------------------
-
 def _render_plot_gallery(root_dir: Path) -> None:
     """Display plots saved in root_dir organized by peptidoform then reference."""
     format_dirs = [(root_dir / "svg", "svg"), (root_dir / "png", "png")]
@@ -281,42 +264,24 @@ def _render_plot_gallery(root_dir: Path) -> None:
                                 st.caption(f"Could not render: {plot_file.name}")
 
                         run_id = root_dir.name
-                        dl_col1, dl_col2, dl_col3 = st.columns(3)
-                        with dl_col1:
-                            png_path = root_dir / "png" / peptide_dir.name / f"{plot_file.stem}.png"
-                            if png_path.exists():
-                                st.download_button(
-                                    "PNG", data=png_path.read_bytes(),
-                                    file_name=f"{plot_file.stem}.png",
-                                    mime="image/png",
-                                    key=f"dl_png_{run_id}_{peptide_dir.name}_{plot_file.stem}",
-                                )
-                        with dl_col2:
-                            svg_path = root_dir / "svg" / peptide_dir.name / f"{plot_file.stem}.svg"
-                            if svg_path.exists():
-                                st.download_button(
-                                    "SVG", data=svg_path.read_bytes(),
-                                    file_name=f"{plot_file.stem}.svg",
-                                    mime="image/svg+xml",
-                                    key=f"dl_svg_{run_id}_{peptide_dir.name}_{plot_file.stem}",
-                                )
-                        with dl_col3:
-                            html_file = html_base_dir / peptide_dir.name / f"{plot_file.stem}.html"
-                            if html_file.exists():
-                                st.download_button(
-                                    "HTML", data=html_file.read_bytes(),
-                                    file_name=f"{plot_file.stem}.html",
-                                    mime="text/html",
-                                    key=f"dl_html_{run_id}_{peptide_dir.name}_{plot_file.stem}",
-                                )
+                        dl_formats = [
+                            ("png", "PNG", "image/png", root_dir / "png"),
+                            ("svg", "SVG", "image/svg+xml", root_dir / "svg"),
+                            ("html", "HTML", "text/html", html_base_dir),
+                        ]
+                        for col, (ext, label, mime, base) in zip(st.columns(3), dl_formats):
+                            path = base / peptide_dir.name / f"{plot_file.stem}.{ext}"
+                            if path.exists():
+                                with col:
+                                    st.download_button(
+                                        label, data=path.read_bytes(),
+                                        file_name=f"{plot_file.stem}.{ext}", mime=mime,
+                                        key=f"dl_{ext}_{run_id}_{peptide_dir.name}_{plot_file.stem}",
+                                    )
 
                     if len(ref_files) > 20:
                         st.caption(f"... and {len(ref_files) - 20} more")
 
-
-# ---------------------------------------------------------------------------
-# Export history
-# ---------------------------------------------------------------------------
 
 @st.fragment
 def export_history_fragment(export_dir: str):
@@ -401,10 +366,6 @@ def export_history_fragment(export_dir: str):
             _render_plot_gallery(run_dir)
 
 
-# ---------------------------------------------------------------------------
-# ZIP download
-# ---------------------------------------------------------------------------
-
 @st.fragment
 def zip_download_fragment(export_root: Path) -> None:
     """Deferred zip download of the export directory."""
@@ -424,10 +385,6 @@ def zip_download_fragment(export_root: Path) -> None:
         mime="application/zip",
     )
 
-
-# ---------------------------------------------------------------------------
-# Export controls fragment
-# ---------------------------------------------------------------------------
 
 @st.fragment
 def export_controls_fragment():
@@ -464,10 +421,6 @@ def export_controls_fragment():
                     export_summary, export_html)
 
 
-# ---------------------------------------------------------------------------
-# Page render
-# ---------------------------------------------------------------------------
-
 def render():
     restore_analysis_if_needed()
     st.title("Export")
@@ -477,7 +430,7 @@ def render():
 
     workspace = st.session_state.get('workspace', None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
-    export_dir = get_param('export-dir', '') or export_fallback
+    export_dir = get_param(params, 'export-dir', '') or export_fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)

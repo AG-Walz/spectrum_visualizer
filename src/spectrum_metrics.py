@@ -21,10 +21,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Filename shortening
-# ---------------------------------------------------------------------------
-
 def shorten_filenames(filenames: List[str]) -> List[str]:
     """
     Strip extensions, split on '_', remove common prefix/suffix tokens.
@@ -69,10 +65,6 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
 
     return result
 
-
-# ---------------------------------------------------------------------------
-# Internal helpers
-# ---------------------------------------------------------------------------
 
 def _get_matching_intensities(
     query_df: pd.DataFrame,
@@ -122,10 +114,6 @@ def _cosine_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
         return float("nan")
     return float(dot / (norm_q * norm_r))
 
-
-# ---------------------------------------------------------------------------
-# Metric functions
-# ---------------------------------------------------------------------------
 
 def compute_r2_matching(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
     """R^2 (matching) -- LinearRegression R^2 on matching annotated ion intensities."""
@@ -227,10 +215,6 @@ def compute_shared_peak_ratio(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> f
         return float("nan")
     return float(len(shared) / denominator)
 
-
-# ---------------------------------------------------------------------------
-# Aggregation
-# ---------------------------------------------------------------------------
 
 def compute_all_metrics(
     query_df: pd.DataFrame,

@@ -2,18 +2,15 @@
 Unit tests for src/export_dirs.py
 """
 import json
-import sys
 from pathlib import Path
 
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+from src.common.text_utils import shorten_stem
 from src.export_dirs import (
     find_or_create_export_directory,
     commit_export_directory,
     sanitize_filename,
-    shorten_stem,
 )
 
 

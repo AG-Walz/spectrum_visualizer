@@ -26,7 +26,7 @@ import numpy as np
 import pandas as pd
 from scipy.stats import gaussian_kde
 
-from src.common.text_utils import sanitize_filename, shorten_stem  # noqa: F401
+from src.common.text_utils import sanitize_filename
 from src.peptide_search import format_inline_sequence
 
 logger = logging.getLogger(__name__)

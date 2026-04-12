@@ -22,9 +22,6 @@ from src.common.text_utils import format_time, parse_peptide_list
 
 logger = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Session state key management
-# ---------------------------------------------------------------------------
 
 STATE_PREFIX = "peptide_mirror"
 
@@ -34,14 +31,15 @@ def get_state_key(key: str) -> str:
     return f"{STATE_PREFIX}.{key}"
 
 
+def get_param(params, key, default=None):
+    """Get a param value: session_state first (if widget present), then params.json."""
+    return st.session_state.get(key, params.get(key, default))
+
+
 def _get_settings() -> dict:
     """Get settings from session state (loaded by page_setup)."""
     return st.session_state.get("settings", {})
 
-
-# ---------------------------------------------------------------------------
-# Analysis cache constants
-# ---------------------------------------------------------------------------
 
 ANALYSIS_CACHE_DIR = "analysis_cache"
 
@@ -51,10 +49,6 @@ _LAZYFRAME_KEYS = ("psm_lf", "peaks_lf", "seq_lf", "heatmap_lf")
 # Keys whose values are pickle-safe Python objects
 _PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
 
-
-# ---------------------------------------------------------------------------
-# Analysis cache management
-# ---------------------------------------------------------------------------
 
 def _analysis_cache_path() -> Path:
     """Return the analysis cache directory inside the current workspace."""
@@ -172,19 +166,11 @@ def clear_analysis_cache() -> None:
         logger.info("Analysis cache cleared: %s", cache_dir)
 
 
-# ---------------------------------------------------------------------------
-# Session state initialization
-# ---------------------------------------------------------------------------
-
 def restore_analysis_if_needed():
     """Auto-restore analysis results from disk cache on reload."""
     if not st.session_state.get(get_state_key('data_ready'), False):
         load_analysis_cache()
 
-
-# ---------------------------------------------------------------------------
-# Cached filesystem helpers
-# ---------------------------------------------------------------------------
 
 @st.cache_data(ttl=10)
 def list_subdirectories(path: str) -> list:
@@ -211,31 +197,23 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
         return []
 
 
-# ---------------------------------------------------------------------------
-# Run settings serialization
-# ---------------------------------------------------------------------------
-
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
-    saved_params = load_params()
-
-    def get_param(key, default=None):
-        return st.session_state.get(key, saved_params.get(key, default))
-
-    peptide_text = get_param('target-peptides', '')
+    p = load_params()
+    peptide_text = get_param(p, 'target-peptides', '')
     peptides = parse_peptide_list(peptide_text)
     return {
-        "idxml_files": get_param('selected-idxmls', []),
-        "mzml_files": get_param('selected-mzmls', []),
+        "idxml_files": get_param(p, 'selected-idxmls', []),
+        "mzml_files": get_param(p, 'selected-mzmls', []),
         "peptides": peptides,
-        "reference_substring": get_param('reference-substring', ''),
-        "ion_types": get_param('ion-types', ['b', 'y']),
-        "mz_tolerance": get_param('mz-tolerance', 0.02),
-        "add_losses": get_param('add-losses', False),
-        "add_first_prefix_ion": get_param('add-first-prefix-ion', True),
-        "remove_precursor_peaks": get_param('remove-precursor-peaks', False),
-        "intensity_mode": get_param('intensity-mode', 'Relative'),
-        "koina_enabled": get_param('koina-enabled', False),
+        "reference_substring": get_param(p, 'reference-substring', ''),
+        "ion_types": get_param(p, 'ion-types', ['b', 'y']),
+        "mz_tolerance": get_param(p, 'mz-tolerance', 0.02),
+        "add_losses": get_param(p, 'add-losses', False),
+        "add_first_prefix_ion": get_param(p, 'add-first-prefix-ion', True),
+        "remove_precursor_peaks": get_param(p, 'remove-precursor-peaks', False),
+        "intensity_mode": get_param(p, 'intensity-mode', 'Relative'),
+        "koina_enabled": get_param(p, 'koina-enabled', False),
         "_created_at": datetime.now().isoformat(),
         "_last_run": datetime.now().isoformat(),
     }

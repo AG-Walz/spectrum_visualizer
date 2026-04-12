@@ -20,10 +20,6 @@ from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRI
 logger = logging.getLogger("msinsight.pipeline")
 
 
-# ============================================================================
-# Label helpers
-# ============================================================================
-
 def get_source_label(spec) -> str:
     """Extract filename stem from spectrum, or 'Koina' if no source file."""
     return Path(spec.source_file).stem if spec.source_file else "Koina"
@@ -41,10 +37,6 @@ def format_spectrum_labels(query_spec, ref_spec=None):
     ref_label = f"Ref: {get_source_label(ref_spec)} (RT: {ref_spec.rt:.1f})"
     return query_label, ref_label
 
-
-# ============================================================================
-# PSM-to-variant mapping
-# ============================================================================
 
 def build_psm_to_variant_mapping(variant_groups, annotated_queries):
     """Build mapping from PSM ID to variant key.
@@ -71,10 +63,6 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
                     break
     return psm_id_to_variant_key
 
-
-# ============================================================================
-# Koina prediction
-# ============================================================================
 
 def get_koina_prediction(peptidoform, charge, annotation_kwargs,
                          koina_model="ms2pip_timsTOF2024",
@@ -119,10 +107,6 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     return (ref_spec, ref_df)
 
 
-# ============================================================================
-# Comparison row builder
-# ============================================================================
-
 def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
     """Build a single comparison row dict from query/reference pair.
 
@@ -149,36 +133,11 @@ def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
     return row
 
 
-# ============================================================================
-# process_query_result — core of the shared on_query_ready callback
-# ============================================================================
-
 def process_query_result(result, psm_lookup, annotation_kwargs,
                          reference_store, koina_enabled=False,
                          koina_model="ms2pip_timsTOF2024",
                          koina_ce=35, koina_instrument="TIMSTOF"):
-    """Process a single query result: annotate, cache refs, compute metrics.
-
-    Parameters
-    ----------
-    result : QueryResult
-        From ``load_spectra_streaming``.
-    psm_lookup : dict
-        ``{spectrum_lookup_key: psm_id}``
-    annotation_kwargs : dict
-        Passed through to ``prepare_spectrum_for_plot``.
-    reference_store : dict
-        Mutable ``{variant_key: [(LoadedSpectrum, df)]}`` -- updated in place.
-    koina_enabled, koina_model, koina_ce, koina_instrument :
-        Koina fallback settings.
-
-    Returns
-    -------
-    tuple or None
-        ``(psm_id, query_spec, query_df, comparison_rows)`` where
-        *comparison_rows* is a list of metric dicts.  Returns ``None``
-        when the result cannot be processed (missing PSM, annotation failure).
-    """
+    """Annotate query, cache refs, compute metrics. Returns (psm_id, spec, df, rows) or None."""
     key = spectrum_lookup_key(result.query_spectrum)
     psm_id = psm_lookup.get(key)
     if psm_id is None:
@@ -243,39 +202,10 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     return (psm_id, result.query_spectrum, query_df, comp_rows)
 
 
-# ============================================================================
-# Plot task building
-# ============================================================================
-
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                      normalize, sanitize_fn, fmt_dirs=None, figsize=(12, 8),
                      dpi=300, html_dir="", plot_unpaired=False):
-    """Build list of plot task dicts for parallel/sequential generation.
-
-    Parameters
-    ----------
-    annotated_queries : list
-        ``[(psm_id, LoadedSpectrum, annotated_df), ...]``
-    reference_store : dict
-        ``{variant_key: [(LoadedSpectrum, annotated_df), ...]}``
-    variant_groups : dict
-        ``{variant_key: VariantGroup}``
-    normalize : bool
-    sanitize_fn : callable
-        ``sanitize_filename(str) -> str``
-    fmt_dirs : dict or None
-        ``{"png": "/path", "svg": "/path", ...}`` -- only listed formats are exported.
-    figsize : tuple
-    dpi : int
-    html_dir : str
-        Path for HTML export; ``""`` to skip.
-    plot_unpaired : bool
-        If True, generate single-spectrum plots for queries with no reference.
-
-    Returns
-    -------
-    list[dict]
-    """
+    """Build list of plot task dicts for parallel/sequential generation."""
     if fmt_dirs is None:
         fmt_dirs = {}
 

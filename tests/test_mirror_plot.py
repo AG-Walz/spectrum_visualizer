@@ -7,9 +7,7 @@ MSInsight changes from MSpecViz:
 - Removed: create_legend_figure, add_color_column, figure_to_base64
 - Added: figure_to_bytes
 """
-import sys
 from io import BytesIO
-from pathlib import Path
 
 import matplotlib
 matplotlib.use("Agg")  # Must be before importing mirror_plot
@@ -17,8 +15,6 @@ matplotlib.use("Agg")  # Must be before importing mirror_plot
 import numpy as np
 import pytest
 from matplotlib.figure import Figure
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.mirror_plot import (
     ION_COLORS,

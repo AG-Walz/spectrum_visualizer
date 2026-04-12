@@ -1,15 +1,10 @@
 """
 Unit tests for src/peak_annotation.py
 """
-import sys
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import pytest
 import pyopenms as oms
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.peak_annotation import (
     annotate_spectrum,

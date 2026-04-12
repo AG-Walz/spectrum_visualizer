@@ -1,18 +1,12 @@
 """
-Unit tests for src/parquet_builder.py (new module in MSInsight).
-
-Tests schema validation, ProForma-to-OpenMS conversion, and all four
-DataFrame builders: PSM table, peaks, sequence, heatmap.
+Unit tests for src/insight_dataframes.py.
 """
-import sys
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import polars as pl
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.insight_dataframes import (
     PSM_TABLE_SCHEMA,
@@ -27,27 +21,11 @@ from src.insight_dataframes import (
     build_heatmap_dataframe,
     save_to_parquet,
 )
-from src.peptide_search import VariantGroup, PeptideMatch
+from src.peptide_search import VariantGroup
 from src.spectrum_loader import LoadedSpectrum
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _make_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
-                spectrum_id="index=1", charge=2, score=0.95,
-                idxml_file="test.idXML", mzml_filename="test.mzML"):
-    return PeptideMatch(
-        peptidoform=peptidoform,
-        base_sequence=base_seq,
-        spectrum_id=spectrum_id,
-        charge=charge,
-        score=score,
-        idxml_file=idxml_file,
-        mzml_filename=mzml_filename,
-        id_merge_index=-1,
-    )
+from tests.conftest import make_peptide_match
 
 
 def _make_variant_groups():
@@ -57,8 +35,8 @@ def _make_variant_groups():
         modification_key="",
         display_label="PEPTIDEK",
         matches=[
-            _make_match(spectrum_id="index=1"),
-            _make_match(spectrum_id="index=2"),
+            make_peptide_match(spectrum_id="index=1"),
+            make_peptide_match(spectrum_id="index=2"),
         ],
     )
     return {"PEPTIDEK": vg}
@@ -202,13 +180,13 @@ class TestBuildPsmTable:
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
-            matches=[_make_match(spectrum_id="index=1")],
+            matches=[make_peptide_match(spectrum_id="index=1")],
         )
         vg2 = VariantGroup(
             base_sequence="AAAVAAAK",
             modification_key="",
             display_label="AAAVAAAK",
-            matches=[_make_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK",
+            matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK",
                                  spectrum_id="index=3")],
         )
         lf, lookup = build_psm_table({"PEPTIDEK": vg1, "AAAVAAAK": vg2})

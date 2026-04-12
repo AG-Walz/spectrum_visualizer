@@ -24,10 +24,6 @@ from src.spectrum_metrics import compute_all_metrics, format_metrics_text
 logger = logging.getLogger(__name__)
 
 
-# ============================================================================
-# Data containers -- must be picklable for multiprocessing
-# ============================================================================
-
 @dataclass
 class ComparisonTask:
     """All data needed to produce one plot in a worker process."""
@@ -101,10 +97,6 @@ class ComparisonResult:
     # Dict with metrics for summary CSV (only for mirror tasks)
     summary_row: Optional[Dict] = None
 
-
-# ============================================================================
-# Worker function -- runs in a child process
-# ============================================================================
 
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
     """Worker: compute metrics, create figure, save to disk. Skips plot if skip_plot is set."""
@@ -246,10 +238,6 @@ def _save_task_html(task: ComparisonTask) -> str:
         logger.warning(f"HTML plot save failed for task {task.task_id}: {e}")
         return ""
 
-
-# ============================================================================
-# Orchestrator -- called from the main process
-# ============================================================================
 
 def run_parallel_comparisons(
     tasks: List[ComparisonTask],

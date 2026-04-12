@@ -340,22 +340,7 @@ def _load_spectra_from_mzml(
     matches_for_file: List[Tuple["PeptideMatch", str]],
     is_reference: bool,
 ) -> Tuple[str, bool, List[Tuple[str, "LoadedSpectrum"]], int, int, List[str]]:
-    """
-    Worker: open one mzML file and extract all matched spectra.
-
-    Must be a module-level function for ProcessPoolExecutor pickling.
-
-    Args:
-        mzml_path_str: Full path to mzML file
-        display_name: Display name for logging
-        matches_for_file: List of (PeptideMatch, variant_key) tuples
-        is_reference: Whether this is a reference file
-
-    Returns:
-        Tuple of (display_name, is_reference, loaded_spectra, loaded_count,
-                  not_found_count, errors)
-        where loaded_spectra is a list of (variant_key, LoadedSpectrum) tuples
-    """
+    """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
     loaded: List[Tuple[str, LoadedSpectrum]] = []
     errors: List[str] = []
     loaded_count = 0

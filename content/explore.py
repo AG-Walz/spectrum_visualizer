@@ -20,26 +20,17 @@ from src.mirror_plot import (
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 from src.query_processing import build_psm_to_variant_mapping
 from content.page_state import (
-    STATE_PREFIX, get_state_key, restore_analysis_if_needed,
+    STATE_PREFIX, get_state_key, get_param, restore_analysis_if_needed,
 )
 
 params = page_setup()
 logger = logging.getLogger(__name__)
 
 
-def get_param(key, default=None):
-    """Get a param value: session_state first (if widget present), then params.json."""
-    return st.session_state.get(key, params.get(key, default))
-
-
-# ---------------------------------------------------------------------------
-# Sub-view: openms_insight Interactive Explorer
-# ---------------------------------------------------------------------------
-
 @st.fragment
 def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    export_dir = get_param('export-dir', '')
+    export_dir = get_param(params, 'export-dir', '')
     CACHE_PATH = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
@@ -102,8 +93,8 @@ def openms_insight_explorer_fragment():
             peaks_data=peaks_for_sequence_view,
             filters={"selected_psm": "psm_id"},
             annotation_config={
-                "ion_types": get_param('ion-types', ['b', 'y']),
-                "tolerance": get_param('mz-tolerance', 0.02),
+                "ion_types": get_param(params, 'ion-types', ['b', 'y']),
+                "tolerance": get_param(params, 'mz-tolerance', 0.02),
                 "tolerance_ppm": False,
             },
             cache_path=CACHE_PATH,
@@ -152,10 +143,6 @@ def openms_insight_explorer_fragment():
         st.session_state[regeneration_key] = cache_version
 
 
-# ---------------------------------------------------------------------------
-# Sub-view: Mirror Plots
-# ---------------------------------------------------------------------------
-
 @st.fragment
 def mirror_plots_fragment():
     """Interactive Plotly mirror plots for each PSM vs its references."""
@@ -197,7 +184,7 @@ def mirror_plots_fragment():
     variant_key = psm_id_to_variant_key.get(selected_psm_id)
     refs = reference_store.get(variant_key, []) if variant_key else []
 
-    normalize = get_param('intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
 
     if refs:
         for ref_spec, ref_df in refs:
@@ -236,10 +223,6 @@ def mirror_plots_fragment():
         st.plotly_chart(fig, width="stretch")
 
 
-# ---------------------------------------------------------------------------
-# Sub-view: Comparison Metrics
-# ---------------------------------------------------------------------------
-
 @st.fragment
 def comparison_metrics_fragment():
     """Show comparison metrics table and summary statistics."""
@@ -268,10 +251,6 @@ def comparison_metrics_fragment():
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
 
-
-# ---------------------------------------------------------------------------
-# Page render
-# ---------------------------------------------------------------------------
 
 def render():
     restore_analysis_if_needed()

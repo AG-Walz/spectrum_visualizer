@@ -1,12 +1,7 @@
 """
 Unit tests for src/path_utils.py
 """
-import sys
-from pathlib import Path
-
 import pytest
-
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from src.path_utils import deduplicate_paths, disambiguate_paths, resolve_mzml_path
 

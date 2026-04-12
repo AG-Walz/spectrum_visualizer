@@ -23,7 +23,7 @@ from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
 from src.spectrum_metrics import compute_all_metrics
 from src.query_processing import get_koina_prediction, build_comparison_row
 from content.page_state import (
-    STATE_PREFIX, get_state_key,
+    STATE_PREFIX, get_state_key, get_param,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
 )
 from src.common.text_utils import format_time, parse_peptide_list
@@ -32,14 +32,9 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
-def get_param(key, default=None):
-    """Get a param value: session_state first (if widget present), then params.json."""
-    return st.session_state.get(key, params.get(key, default))
-
-
 def run_peptide_search(idxmls: list, peptides: list):
     """Execute peptide search."""
-    mzmls = get_param('selected-mzmls', [])
+    mzmls = get_param(params, 'selected-mzmls', [])
     error_messages = []
 
     with st.status("Searching peptides...", expanded=True) as status:
@@ -62,7 +57,7 @@ def run_peptide_search(idxmls: list, peptides: list):
         def error_callback(error_msg: str):
             error_messages.append(error_msg)
 
-        workers = get_param('workers', 4)
+        workers = get_param(params, 'workers', 4)
         results = search_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
             progress_callback=progress_callback, error_callback=error_callback,
@@ -98,16 +93,16 @@ def run_search_and_load():
         st.error("No search results. Run peptide search first.")
         return
 
-    mzmls = get_param('selected-mzmls', [])
+    mzmls = get_param(params, 'selected-mzmls', [])
     if not mzmls:
         st.error("No mzML files selected.")
         return
 
-    ref_substring = get_param('reference-substring', '')
-    ion_types = get_param('ion-types', ['b', 'y'])
-    mz_tolerance = get_param('mz-tolerance', 0.02)
-    normalize = get_param('intensity-mode', 'Relative') == 'Relative'
-    workers = get_param('workers', 4)
+    ref_substring = get_param(params, 'reference-substring', '')
+    ion_types = get_param(params, 'ion-types', ['b', 'y'])
+    mz_tolerance = get_param(params, 'mz-tolerance', 0.02)
+    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
+    workers = get_param(params, 'workers', 4)
 
     vg_copy = copy.deepcopy(variant_groups)
     psm_lf, psm_lookup = build_psm_table(vg_copy)
@@ -118,9 +113,9 @@ def run_search_and_load():
 
     total_psms = sum(len(variant_group.matches) for variant_group in vg_copy.values())
 
-    add_losses = get_param('add-losses', False)
-    add_first_prefix_ion = get_param('add-first-prefix-ion', True)
-    remove_precursor_peaks = get_param('remove-precursor-peaks', False)
+    add_losses = get_param(params, 'add-losses', False)
+    add_first_prefix_ion = get_param(params, 'add-first-prefix-ion', True)
+    remove_precursor_peaks = get_param(params, 'remove-precursor-peaks', False)
 
     annotation_kwargs = dict(
         ion_types=ion_types,
@@ -175,14 +170,14 @@ def run_search_and_load():
                 reference_store[variant_key] = ref_list
 
             refs = reference_store.get(variant_key, [])
-            if not refs and get_param('koina-enabled', False):
+            if not refs and get_param(params, 'koina-enabled', False):
                 koina_ref = get_koina_prediction(
                     result.query_spectrum.peptidoform,
                     result.query_spectrum.precursor_charge,
                     annotation_kwargs,
-                    koina_model=get_param("koina-model", "ms2pip_timsTOF2024"),
-                    koina_ce=get_param("koina-ce", 35),
-                    koina_instrument=get_param("koina-instrument", "TIMSTOF"),
+                    koina_model=get_param(params, "koina-model", "ms2pip_timsTOF2024"),
+                    koina_ce=get_param(params, "koina-ce", 35),
+                    koina_instrument=get_param(params, "koina-instrument", "TIMSTOF"),
                 )
                 if koina_ref is not None:
                     reference_store[variant_key] = [koina_ref]
@@ -297,15 +292,15 @@ def search_results_fragment():
         total_matches = sum(len(variant_group.matches) for variant_group in variant_groups.values())
         st.success(f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
                    f"Click **Search & Load Spectra** below to load and annotate them.")
-        mzmls = get_param('selected-mzmls', [])
+        mzmls = get_param(params, 'selected-mzmls', [])
         if mzmls:
             st.subheader("Load Spectra & Compute Metrics")
-            reference_substring = get_param('reference-substring', '')
+            reference_substring = get_param(params, 'reference-substring', '')
             if reference_substring:
                 st.caption(f"Will pair query spectra with references (substring: '{reference_substring}') "
                            f"and compute 7 comparison metrics per pair.")
             else:
-                koina_enabled = get_param('koina-enabled', False)
+                koina_enabled = get_param(params, 'koina-enabled', False)
                 if koina_enabled:
                     st.caption("No reference configured -- will use Koina AI prediction as fallback.")
                 else:
@@ -331,8 +326,8 @@ def render():
     st.title("Search & Load")
     st.caption("Search for peptides in idXML files and load spectra for analysis")
 
-    idxmls = get_param('selected-idxmls', [])
-    peptide_text = get_param('target-peptides', '')
+    idxmls = get_param(params, 'selected-idxmls', [])
+    peptide_text = get_param(params, 'target-peptides', '')
     peptides = parse_peptide_list(peptide_text)
 
     if not idxmls:
