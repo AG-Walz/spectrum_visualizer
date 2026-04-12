@@ -19,18 +19,7 @@ def create_export_directory(
     experiment_name: str = None,
     formats: list = None,
 ) -> Tuple[Path, Path, Path, Path]:
-    """
-    Create export directory structure, creating only subdirs for requested formats.
-
-    Args:
-        base_dir: Base output directory
-        experiment_name: Optional name for the experiment
-        formats: List of export formats (e.g. ["png", "svg"]). Creates all
-                 format subdirs when None (backwards-compatible default).
-
-    Returns:
-        Tuple of (root_dir, png_dir, svg_dir, pdf_dir)
-    """
+    """Create timestamped export directory with format subdirs. Returns (root, png, svg, pdf)."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
     if experiment_name:
@@ -45,7 +34,6 @@ def create_export_directory(
 
     root_dir.mkdir(parents=True, exist_ok=True)
 
-    # Only create subdirectories for the requested formats
     create_all = formats is None
     if create_all or "png" in formats:
         png_dir.mkdir(exist_ok=True)
@@ -153,17 +141,7 @@ def find_or_create_export_directory(
 
 
 def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
-    """
-    Create the export root directory and write run_settings.json.
-
-    Call this only when you are certain plots will be written.  Format
-    subdirectories (png/, svg/, pdf/) are created lazily on first write
-    and do not need to be pre-created here.
-
-    Args:
-        root_dir: The root export directory path (from find_or_create_export_directory)
-        run_settings: Dict of all settings that affect output
-    """
+    """Create export root directory and write run_settings.json."""
     root_dir.mkdir(parents=True, exist_ok=True)
 
     settings_file = root_dir / "run_settings.json"
@@ -175,8 +153,8 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
             saved["_last_run"] = datetime.now().isoformat()
             with open(settings_file, "w") as f:
                 json.dump(saved, f, indent=2, default=str)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Could not update run_settings.json: {e}")
     else:
         # New dir -- write full settings
         fingerprint = _settings_fingerprint(run_settings)

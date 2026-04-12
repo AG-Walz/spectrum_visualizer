@@ -22,8 +22,8 @@ from src.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     figure_to_bytes, create_plotly_mirror_plot,
 )
-from src.spectrum_loader import spectrum_lookup_key
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text
+from src.pipeline import build_psm_to_variant_mapping
 from src.summary_plots import sanitize_filename, generate_all_summary_plots
 from content._shared import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
@@ -64,14 +64,7 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None
 
-    psm_id_to_variant_key = {}
-    for variant_key, variant_group in variant_groups.items():
-        for match in variant_group.matches:
-            key = f"{match.spectrum_id}|{match.peptidoform}"
-            for psm_id, (spec, _) in annotated_queries.items():
-                if spectrum_lookup_key(spec) == key:
-                    psm_id_to_variant_key[psm_id] = variant_key
-                    break
+    psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
 
     saved_files = []
     errors = []

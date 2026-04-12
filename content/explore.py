@@ -17,8 +17,8 @@ from src.common.common import page_setup, save_params
 from src.mirror_plot import (
     create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
 )
-from src.spectrum_loader import spectrum_lookup_key
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+from src.pipeline import build_psm_to_variant_mapping
 from content._shared import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
 )
@@ -168,17 +168,13 @@ def mirror_plots_fragment():
         return
 
     # Build list of PSMs for selection
+    psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
     psm_options = []
-    psm_id_to_variant_key = {}
-    for variant_key, variant_group in variant_groups.items():
-        for match in variant_group.matches:
-            key = f"{match.spectrum_id}|{match.peptidoform}"
-            for psm_id, (spec, _) in annotated_queries.items():
-                if spectrum_lookup_key(spec) == key:
-                    label = f"[{psm_id}] {variant_group.display_label} -- {Path(spec.source_file).stem} (RT: {spec.rt:.1f})"
-                    psm_options.append((psm_id, label))
-                    psm_id_to_variant_key[psm_id] = variant_key
-                    break
+    for psm_id, variant_key in psm_id_to_variant_key.items():
+        spec, _ = annotated_queries[psm_id]
+        variant_group = variant_groups[variant_key]
+        label = f"[{psm_id}] {variant_group.display_label} -- {Path(spec.source_file).stem} (RT: {spec.rt:.1f})"
+        psm_options.append((psm_id, label))
 
     if not psm_options:
         for psm_id, (spec, _) in sorted(annotated_queries.items()):

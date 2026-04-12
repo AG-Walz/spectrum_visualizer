@@ -17,15 +17,12 @@ from src.peak_annotation import peptidoform_to_aasequence
 
 logger = logging.getLogger(__name__)
 
-# Graceful degradation when koinapy is not installed
 try:
     from koinapy import Koina
     KOINA_AVAILABLE = True
 except ImportError:
     KOINA_AVAILABLE = False
 
-# Display name -> model ID mapping for UI
-# Comprehensive list of Koina intensity prediction models
 KOINA_MODELS: Dict[str, str] = {
     # MS2PIP family
     "MS2PIP TimsTOF 2024": "ms2pip_timsTOF2024",
@@ -47,27 +44,15 @@ KOINA_MODELS: Dict[str, str] = {
     "PredFull": "PredFull",
 }
 
-# Instrument options for models that accept instrument_type
 INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
-# Defaults
 DEFAULT_MODEL = "ms2pip_timsTOF2024"
 DEFAULT_COLLISION_ENERGY = 35
 DEFAULT_INSTRUMENT_TYPE = "TIMSTOF"
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
-    """
-    Convert a ProForma peptidoform string to UniMod notation for Koina input.
-
-    Uses PyOpenMS AASequence.toUniModString() for robust modification handling.
-
-    Args:
-        peptidoform_str: ProForma peptidoform (e.g. 'PEPTM[Oxidation]IDE/2')
-
-    Returns:
-        UniMod-formatted string with bracket notation (e.g. 'PEPTM[UNIMOD:35]IDE')
-    """
+    """Convert ProForma peptidoform to UniMod bracket notation for Koina input."""
     aa_seq = peptidoform_to_aasequence(peptidoform_str)
     # toUniModString() uses parentheses: PEPTM(UniMod:35)IDE
     # Koina expects brackets: PEPTM[UNIMOD:35]IDE
@@ -82,20 +67,7 @@ def predict_koina_spectrum(
     collision_energy: int = DEFAULT_COLLISION_ENERGY,
     instrument_type: str = DEFAULT_INSTRUMENT_TYPE,
 ) -> Optional[pd.DataFrame]:
-    """
-    Predict an MS/MS fragment spectrum using a Koina deep-learning model.
-
-    Args:
-        peptidoform_str: ProForma peptidoform string (e.g. 'PEPTIDE/2')
-        charge: Precursor charge state
-        model_id: Koina model ID (e.g. 'ms2pip_timsTOF2024')
-        collision_energy: Collision energy in eV
-        instrument_type: Mass spectrometer type (e.g. 'TIMSTOF')
-
-    Returns:
-        DataFrame with columns [mz, intensity, annotation], or None on failure.
-        Intensities are raw predicted values (not normalized).
-    """
+    """Predict MS/MS spectrum via Koina. Returns DataFrame [mz, intensity, annotation] or None."""
     if not KOINA_AVAILABLE:
         logger.warning("koinapy not installed -- cannot generate Koina predictions")
         return None
@@ -109,8 +81,6 @@ def predict_koina_spectrum(
     try:
         koina = Koina(model_id)
 
-        # Build input DataFrame with all possible columns;
-        # koinapy automatically filters to only those the model requires
         inputs = pd.DataFrame({
             "peptide_sequences": [unimod_seq],
             "precursor_charges": [charge],
@@ -133,7 +103,6 @@ def predict_koina_spectrum(
             "annotation": annotations,
         })
 
-        # Drop zero-intensity predictions (noise)
         result = result[result["intensity"] > 0].reset_index(drop=True)
 
         if result.empty:
@@ -152,12 +121,7 @@ def predict_koina_spectrum(
 
 
 def get_koina_settings(settings: dict) -> dict:
-    """
-    Extract Koina configuration from the app settings dict.
-
-    Returns a dict with keys: enabled, model, collision_energy, instrument_type.
-    Falls back to defaults for any missing keys.
-    """
+    """Extract Koina config from settings, falling back to defaults."""
     koina_cfg = settings.get("koina", {})
     return {
         "enabled": koina_cfg.get("enabled", True),

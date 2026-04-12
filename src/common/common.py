@@ -5,7 +5,6 @@ Adapted from the OpenMS streamlit-template src/common/common.py.
 Provides page_setup(), render_sidebar(), workspace management, and UI helpers.
 """
 
-import os
 import sys
 import json
 import shutil
@@ -17,38 +16,18 @@ from typing import Any
 from pathlib import Path
 
 
-# Detect system platform
 OS_PLATFORM = sys.platform
 
 
 def is_safe_workspace_name(name: str) -> bool:
-    """
-    Check if a workspace name is safe (no path traversal characters).
-
-    Args:
-        name: The workspace name to validate.
-
-    Returns:
-        bool: True if safe, False if contains path separators or parent references.
-    """
+    """Check if a workspace name is safe (no path traversal characters)."""
     if not name:
         return False
     return "/" not in name and "\\" not in name and name not in ("..", ".")
 
 
 def load_params(default: bool = False) -> dict[str, Any]:
-    """
-    Load parameters from a JSON file and return a dictionary containing them.
-
-    Always starts from default-parameters.json to ensure all expected keys
-    are present, then overlays workspace params.json on top (if it exists).
-
-    Args:
-        default (bool): Load default parameters only. Defaults to False.
-
-    Returns:
-        dict[str, Any]: A dictionary containing the parameters.
-    """
+    """Load default-parameters.json, then overlay workspace params.json on top."""
     default_path = Path(__file__).parents[2] / "default-parameters.json"
     with open(default_path, "r", encoding="utf-8") as f:
         params = json.load(f)
@@ -93,15 +72,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
 
 
 def save_params(params: dict[str, Any]) -> None:
-    """
-    Save the given dictionary of parameters to a JSON file in the workspace.
-
-    Syncs widget values from st.session_state back into the params dict
-    for keys that exist in default-parameters.json, then writes to disk.
-
-    Args:
-        params (dict[str, Any]): A dictionary containing the parameters to be saved.
-    """
+    """Sync widget values from session_state into params and write to workspace."""
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
@@ -115,23 +86,11 @@ def save_params(params: dict[str, Any]) -> None:
 
 
 def page_setup(page: str = "") -> dict[str, Any]:
-    """
-    Set up the Streamlit page configuration and determine the workspace.
-
-    This function should be run at the start of every page for setup
-    and to get the parameters dictionary.
-
-    Args:
-        page (str, optional): The name of the current page, by default "".
-
-    Returns:
-        dict[str, Any]: A dictionary containing the parameters.
-    """
+    """Set up page config, workspace, and sidebar. Call at the top of every page."""
     if "settings" not in st.session_state:
         with open("settings.json", "r") as f:
             st.session_state.settings = json.load(f)
 
-    # Set Streamlit page configurations
     st.set_page_config(
         page_title=st.session_state.settings.get("app-name", "MSpecViz"),
         page_icon="assets/openms_transparent_bg_logo.svg" if Path("assets/openms_transparent_bg_logo.svg").exists() else None,
@@ -140,25 +99,15 @@ def page_setup(page: str = "") -> dict[str, Any]:
         menu_items=None,
     )
 
-    # Determine the workspace for the current session
     if "workspace" not in st.session_state or (
         "workspace" in st.query_params
         and st.query_params.workspace != st.session_state.workspace.name
     ):
         st.cache_data.clear()
         st.cache_resource.clear()
-
         st.session_state.location = "local"
 
-        # Define the directory where all workspaces will be stored
-        if st.session_state.settings.get("workspaces_dir"):
-            workspaces_dir = Path(
-                st.session_state.settings["workspaces_dir"],
-                "workspaces-" + st.session_state.settings.get("repository-name", "MSpecViz"),
-            )
-        else:
-            workspaces_dir = Path("..")
-
+        workspaces_dir = _get_workspaces_dir()
         if st.session_state.settings.get("enable_workspaces", False):
             if "workspace" in st.query_params:
                 requested_workspace = st.query_params.workspace
@@ -173,117 +122,105 @@ def page_setup(page: str = "") -> dict[str, Any]:
         else:
             st.session_state.workspace = Path(workspaces_dir, "default")
 
-    # Ensure query param is set when workspaces enabled
     if (
         "workspace" not in st.query_params
         and st.session_state.settings.get("enable_workspaces", False)
     ):
         st.query_params.workspace = st.session_state.workspace.name
 
-    # Make sure workspace directories exist
     st.session_state.workspace.mkdir(parents=True, exist_ok=True)
 
-    # Render the sidebar
-    params = render_sidebar(page)
+    return render_sidebar(page)
 
-    return params
+
+def _get_workspaces_dir() -> Path:
+    """Return the workspaces directory from settings."""
+    if st.session_state.settings.get("workspaces_dir"):
+        return Path(
+            st.session_state.settings["workspaces_dir"],
+            "workspaces-" + st.session_state.settings.get("repository-name", "MSpecViz"),
+        )
+    return Path("..")
+
+
+def _render_workspace_switcher(params: dict) -> None:
+    """Render workspace selector, create, and delete controls."""
+    workspaces_dir = _get_workspaces_dir()
+
+    with st.expander("**Workspaces**"):
+        def change_workspace():
+            for key in params:
+                if key in st.session_state:
+                    del st.session_state[key]
+            # Clear page-namespaced keys so stale analysis state from
+            # the previous workspace is not shown in the new one.
+            stale_keys = [
+                k for k in st.session_state
+                if k.startswith("peptide_mirror")
+            ]
+            for key in stale_keys:
+                del st.session_state[key]
+            st.query_params.workspace = st.session_state["chosen-workspace"]
+
+        workspaces_dir.mkdir(parents=True, exist_ok=True)
+        options = sorted(
+            f.name for f in workspaces_dir.iterdir() if f.is_dir()
+        )
+        if not options:
+            options = ["default"]
+
+        current_workspace = str(st.session_state.workspace.stem)
+        index = options.index(current_workspace) if current_workspace in options else 0
+
+        st.selectbox(
+            "choose existing workspace",
+            options, index=index,
+            on_change=change_workspace, key="chosen-workspace",
+        )
+
+        new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
+        if st.button("**Create Workspace**"):
+            if new_ws_name and is_safe_workspace_name(new_ws_name):
+                new_path = Path(workspaces_dir, new_ws_name)
+                new_path.mkdir(parents=True, exist_ok=True)
+                st.session_state.workspace = new_path
+                st.query_params.workspace = new_ws_name
+                st.rerun()
+            else:
+                st.warning("Please enter a valid workspace name.")
+
+        if current_workspace != "default":
+            confirm_key = "_confirm_delete_workspace"
+            if st.session_state.get(confirm_key):
+                st.warning(f"Delete workspace **{current_workspace}** and all its data?")
+                yes_col, no_col = st.columns(2)
+                with yes_col:
+                    if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
+                        ws_path = Path(workspaces_dir, current_workspace)
+                        if ws_path.exists():
+                            shutil.rmtree(ws_path)
+                        st.session_state.workspace = Path(workspaces_dir, "default")
+                        st.query_params.workspace = "default"
+                        del st.session_state[confirm_key]
+                        st.rerun()
+                with no_col:
+                    if st.button("Cancel", key="ws-confirm-no"):
+                        del st.session_state[confirm_key]
+                        st.rerun()
+            else:
+                if st.button("Delete this workspace"):
+                    st.session_state[confirm_key] = True
+                    st.rerun()
 
 
 def render_sidebar(page: str = "") -> dict[str, Any]:
-    """
-    Renders the sidebar on the Streamlit app, which includes the workspace switcher,
-    settings, and version info.
-
-    Args:
-        page (str): A string indicating the current page.
-
-    Returns:
-        dict[str, Any]: The loaded parameters dictionary.
-    """
+    """Render sidebar with workspace switcher, settings, and version info."""
     params = load_params()
 
     with st.sidebar:
-        # Workspace switcher (local mode, workspaces enabled)
         if st.session_state.settings.get("enable_workspaces", False):
-            if st.session_state.settings.get("workspaces_dir"):
-                workspaces_dir = Path(
-                    st.session_state.settings["workspaces_dir"],
-                    "workspaces-" + st.session_state.settings.get("repository-name", "MSpecViz"),
-                )
-            else:
-                workspaces_dir = Path("..")
+            _render_workspace_switcher(params)
 
-            with st.expander("**Workspaces**"):
-                def change_workspace():
-                    for key in params:
-                        if key in st.session_state:
-                            del st.session_state[key]
-                    # Clear all page-namespaced keys so stale analysis state from
-                    # the previous workspace is not shown in the new one.
-                    stale_keys = [
-                        k for k in st.session_state
-                        if k.startswith("peptide_mirror")
-                    ]
-                    for key in stale_keys:
-                        del st.session_state[key]
-                    st.query_params.workspace = st.session_state["chosen-workspace"]
-
-                # Get all available workspaces
-                workspaces_dir.mkdir(parents=True, exist_ok=True)
-                options = sorted(
-                    f.name for f in workspaces_dir.iterdir() if f.is_dir()
-                )
-                if not options:
-                    options = ["default"]
-
-                current_workspace = str(st.session_state.workspace.stem)
-                index = options.index(current_workspace) if current_workspace in options else 0
-
-                st.selectbox(
-                    "choose existing workspace",
-                    options,
-                    index=index,
-                    on_change=change_workspace,
-                    key="chosen-workspace",
-                )
-
-                # --- Create workspace ---
-                new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
-                if st.button("**Create Workspace**"):
-                    if new_ws_name and is_safe_workspace_name(new_ws_name):
-                        new_path = Path(workspaces_dir, new_ws_name)
-                        new_path.mkdir(parents=True, exist_ok=True)
-                        st.session_state.workspace = new_path
-                        st.query_params.workspace = new_ws_name
-                        st.rerun()
-                    else:
-                        st.warning("Please enter a valid workspace name.")
-
-                # --- Delete current workspace ---
-                if current_workspace != "default":
-                    confirm_key = "_confirm_delete_workspace"
-                    if st.session_state.get(confirm_key):
-                        st.warning(f"Delete workspace **{current_workspace}** and all its data?")
-                        yes_col, no_col = st.columns(2)
-                        with yes_col:
-                            if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
-                                ws_path = Path(workspaces_dir, current_workspace)
-                                if ws_path.exists():
-                                    shutil.rmtree(ws_path)
-                                st.session_state.workspace = Path(workspaces_dir, "default")
-                                st.query_params.workspace = "default"
-                                del st.session_state[confirm_key]
-                                st.rerun()
-                        with no_col:
-                            if st.button("Cancel", key="ws-confirm-no"):
-                                del st.session_state[confirm_key]
-                                st.rerun()
-                    else:
-                        if st.button("Delete this workspace"):
-                            st.session_state[confirm_key] = True
-                            st.rerun()
-
-        # Settings expander
         with st.expander("**Settings**"):
             img_formats = ["svg", "png", "jpeg", "webp"]
             default_format = params.get("image-format", "png")
@@ -296,42 +233,24 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
                 key="image-format",
             )
 
-        # Version display
-        with st.container():
-            st.markdown(
-                """
-                <style>
-                .version-box {
-                    border: 1px solid #a4a5ad;
-                    padding: 10px;
-                    border-radius: 0.5rem;
-                    text-align: center;
-                    display: flex;
-                    justify-content: center;
-                    align-items: center;
-                }
-                </style>
-                """,
-                unsafe_allow_html=True,
-            )
-            version_info = st.session_state.settings.get("version", "0.1.0")
-            app_name = st.session_state.settings.get("app-name", "MSpecViz")
-            st.markdown(
-                f'<div class="version-box">{app_name}<br>Version: {version_info}</div>',
-                unsafe_allow_html=True,
-            )
+        version_info = st.session_state.settings.get("version", "0.1.0")
+        app_name = st.session_state.settings.get("app-name", "MSpecViz")
+        st.markdown(
+            '<style>.version-box{border:1px solid #a4a5ad;padding:10px;'
+            'border-radius:.5rem;text-align:center;display:flex;'
+            'justify-content:center;align-items:center}</style>',
+            unsafe_allow_html=True,
+        )
+        st.markdown(
+            f'<div class="version-box">{app_name}<br>Version: {version_info}</div>',
+            unsafe_allow_html=True,
+        )
 
     return params
 
 
 def v_space(n: int, col=None) -> None:
-    """
-    Writes empty strings to create vertical space in the Streamlit app.
-
-    Args:
-        n (int): Number of empty lines to add.
-        col: A streamlit column to add vertical space in.
-    """
+    """Add *n* blank lines for vertical spacing."""
     for _ in range(n):
         if col:
             col.write("")
@@ -345,65 +264,35 @@ def show_fig(
     container_width: bool = True,
     selection_session_state_key: str = "",
 ) -> None:
-    """
-    Displays a Plotly chart and adds a download button to the plot.
-
-    Args:
-        fig: The Plotly figure to display.
-        download_name (str): The name for the downloaded file.
-        container_width (bool): If True, use container width. Defaults to True.
-        selection_session_state_key (str): If set, save selection to session state.
-    """
+    """Display a Plotly chart with export config and optional selection mode."""
     image_format = st.session_state.get("image-format", "png")
+    config = {
+        "displaylogo": False,
+        "modeBarButtonsToRemove": [
+            "zoom", "pan", "select", "lasso",
+            "zoomin", "autoscale", "zoomout", "resetscale",
+        ],
+        "toImageButtonOptions": {
+            "filename": download_name,
+            "format": image_format,
+        },
+    }
 
-    if not selection_session_state_key:
+    if selection_session_state_key:
         st.plotly_chart(
-            fig,
-            width="stretch" if container_width else "content",
-            config={
-                "displaylogo": False,
-                "modeBarButtonsToRemove": [
-                    "zoom", "pan", "select", "lasso",
-                    "zoomin", "autoscale", "zoomout", "resetscale",
-                ],
-                "toImageButtonOptions": {
-                    "filename": download_name,
-                    "format": image_format,
-                },
-            },
+            fig, key=selection_session_state_key,
+            selection_mode=["points", "box"], on_select="rerun",
+            config=config, width="stretch",
         )
     else:
         st.plotly_chart(
-            fig,
-            key=selection_session_state_key,
-            selection_mode=["points", "box"],
-            on_select="rerun",
-            config={
-                "displaylogo": False,
-                "modeBarButtonsToRemove": [
-                    "zoom", "pan", "lasso",
-                    "zoomin", "autoscale", "zoomout", "resetscale", "select",
-                ],
-                "toImageButtonOptions": {
-                    "filename": download_name,
-                    "format": image_format,
-                },
-            },
-            width="stretch",
+            fig, config=config,
+            width="stretch" if container_width else "content",
         )
 
 
 def show_table(df: pd.DataFrame, download_name: str = "") -> pd.DataFrame:
-    """
-    Displays a pandas dataframe and provides a download button.
-
-    Args:
-        df (pd.DataFrame): The dataframe to display.
-        download_name (str): The name for the downloaded file.
-
-    Returns:
-        pd.DataFrame: The displayed dataframe.
-    """
+    """Display a DataFrame with optional TSV download button."""
     st.dataframe(df, width="stretch")
     if download_name:
         st.download_button(
@@ -415,12 +304,7 @@ def show_table(df: pd.DataFrame, download_name: str = "") -> pd.DataFrame:
 
 
 def reset_directory(path: Path) -> None:
-    """
-    Remove the given directory and re-create it.
-
-    Args:
-        path (Path): Path to the directory to be reset.
-    """
+    """Remove the given directory and re-create it empty."""
     path = Path(path)
     if path.exists():
         shutil.rmtree(path)
@@ -428,19 +312,10 @@ def reset_directory(path: Path) -> None:
 
 
 def get_workspace_url(workspace_name: str) -> str:
-    """
-    Build a shareable URL for a workspace using the current Streamlit server config.
-
-    Args:
-        workspace_name: The workspace name (e.g. "default", "my_run")
-
-    Returns:
-        URL string with ?workspace= query parameter
-    """
+    """Build a shareable URL for a workspace."""
     return f"?workspace={workspace_name}"
 
 
-# General warning/error messages
 WARNINGS = {
     "missing-mzML": "Upload or select some mzML files first!",
 }

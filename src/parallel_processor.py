@@ -1,15 +1,8 @@
 """
-Parallel plot generation for MSInsight.
+Parallel plot generation via ProcessPoolExecutor.
 
-Moves the heavy per-plot work (metrics computation, matplotlib figure creation,
-savefig) into worker processes via ProcessPoolExecutor.  The annotation step
-stays in the main process (fast, ~10 ms) while the expensive steps (~400 ms
-each) run in parallel.
-
-Architecture:
-    main process:  stream queries -> annotate -> build ComparisonTask list
-    worker pool:   process_single_task(task) -> ComparisonResult
-    main process:  collect results, update progress, write summary
+Main process annotates spectra, worker pool runs process_single_task()
+(metrics + matplotlib/plotly), main process collects ComparisonResults.
 """
 import logging
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -128,23 +121,8 @@ def compute_ion_match_statistics(
     precursor_charge: int,
     precursor_mz: float = 0.0,
 ) -> dict:
-    """
-    Compute 17 SpectrumAnnotator ion-match statistics as supplementary metrics.
-
-    Wraps oms.SpectrumAnnotator.addIonMatchStatistics().  Results are returned
-    with an ``ims_`` prefix to avoid collision with existing metric columns.
-
-    Args:
-        annotated_df: Annotated spectrum DataFrame (mz, intensity columns required)
-        peptidoform_str: ProForma peptidoform string
-        precursor_charge: Precursor charge state
-        precursor_mz: Precursor m/z (used for precursor_mz_error_ppm stat)
-
-    Returns:
-        Dict of {ims_<key>: value} for all 17 stats; None values on failure.
-    """
+    """Compute 17 ion-match statistics via oms.SpectrumAnnotator. Returns ims_-prefixed dict."""
     try:
-        # Build MSSpectrum from annotated DataFrame
         spec = oms.MSSpectrum()
         spec.set_peaks([
             annotated_df["mz"].tolist(),
@@ -157,7 +135,6 @@ def compute_ion_match_statistics(
             precursor.setCharge(precursor_charge)
             spec.setPrecursors([precursor])
 
-        # Build PeptideIdentification with PeptideHit
         aa_seq = peptidoform_to_aasequence(peptidoform_str)
         ph = oms.PeptideHit()
         ph.setSequence(aa_seq)
@@ -165,7 +142,6 @@ def compute_ion_match_statistics(
         pi = oms.PeptideIdentification()
         pi.setHits([ph])
 
-        # Configure a minimal TSG and SpectrumAlignment for addIonMatchStatistics
         tsg = oms.TheoreticalSpectrumGenerator()
         tsg_params = tsg.getParameters()
         tsg_params.setValue("add_b_ions", "true")
@@ -180,7 +156,6 @@ def compute_ion_match_statistics(
         sa.setParameters(sa_params)
 
         annotator = oms.SpectrumAnnotator()
-        # Signature: addIonMatchStatistics(pi, spec, tg, sa)
         annotator.addIonMatchStatistics(pi, spec, tsg, sa)
 
         updated_ph = pi.getHits()[0]
@@ -202,16 +177,7 @@ def compute_ion_match_statistics(
 # ============================================================================
 
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
-    """
-    Top-level worker: compute metrics, create figure, save to disk.
-
-    If task.skip_plot is True, only computes metrics (for summary CSV)
-    without creating or saving a figure -- used when the plot file already
-    exists on disk from a previous run.
-
-    Imports are done inside the function so each worker process initialises
-    its own matplotlib backend and module references.
-    """
+    """Worker: compute metrics, create figure, save to disk. Skips plot if skip_plot is set."""
     try:
         summary_row = None
         png_path = ""
@@ -327,14 +293,7 @@ def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
 
 
 def _save_task_html(task: ComparisonTask) -> str:
-    """
-    Save an interactive Plotly HTML plot.
-
-    Uses the Plotly mirror/single plot functions from src.mirror_plot.
-    The HTML uses include_plotlyjs='cdn' (~10 KB file size).
-
-    Returns the saved path as a string, or "" on failure.
-    """
+    """Save interactive Plotly HTML plot. Returns path or "" on failure."""
     if not task.html_plot_path:
         return ""
 
@@ -373,19 +332,7 @@ def run_parallel_comparisons(
     workers: int = 4,
     on_task_complete: Optional[Callable] = None,
 ) -> List[ComparisonResult]:
-    """
-    Process a list of ComparisonTasks, optionally in parallel.
-
-    Args:
-        tasks: List of tasks to process.
-        workers: Number of worker processes.  Clamped to len(tasks).
-                 If 1, runs sequentially (useful for debugging).
-        on_task_complete: Optional callback(result, completed, total)
-                         called from the main thread after each task finishes.
-
-    Returns:
-        List of ComparisonResult in completion order.
-    """
+    """Run tasks via ProcessPoolExecutor (workers=1 for sequential fallback)."""
     if not tasks:
         return []
 
@@ -394,7 +341,6 @@ def run_parallel_comparisons(
     results: List[ComparisonResult] = []
 
     if workers == 1:
-        # Sequential fallback -- no subprocess overhead, easier to debug
         for i, task in enumerate(tasks):
             result = process_single_task(task)
             results.append(result)

@@ -38,10 +38,6 @@ except ImportError:
 params = page_setup()
 
 
-# ---------------------------------------------------------------------------
-# Cached idXML peptide loader
-# ---------------------------------------------------------------------------
-
 def _scan_idxml_psm_counts(idxml_path: str) -> dict:
     """Worker: count PSMs per peptide in one idXML file. Module-level for pickling."""
     counts: Counter = Counter()
@@ -55,10 +51,6 @@ def _scan_idxml_psm_counts(idxml_path: str) -> dict:
     return dict(counts)
 
 
-# ---------------------------------------------------------------------------
-# Directory browser (reusable within fragments)
-# ---------------------------------------------------------------------------
-
 def render_directory_browser(key_prefix: str, extensions: list, state_key: str, default_dir: str = "/"):
     """Render a directory browser with file selection."""
     dir_key = f"{key_prefix}_dir"
@@ -66,7 +58,6 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
     select_all_key = f"{key_prefix}_select_all"
     recursive_key = f"{key_prefix}_recursive"
 
-    # Restore saved selections from params on reload (session_state is empty)
     if state_key not in st.session_state:
         st.session_state[state_key] = params.get(state_key, [])
 
@@ -186,7 +177,6 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
         else:
             st.info(f"No {extensions[0]} files found")
 
-    # Clear selections button
     all_selected = st.session_state.get(state_key, [])
     if all_selected:
         if st.button(f"Clear all selections ({len(all_selected)} files)",
@@ -197,16 +187,11 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
             st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Fragments
-# ---------------------------------------------------------------------------
-
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
     _settings = _get_settings()
     data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
 
-    # Restore saved browser directories from params (persisted via save_params)
     idxml_dir = params.get('idxml-browser-dir', data_dir_default)
     mzml_dir = params.get('mzml-browser-dir', data_dir_default)
 
@@ -225,7 +210,6 @@ def file_selection_fragment():
                                  state_key='selected-mzmls',
                                  default_dir=mzml_dir)
 
-    # Copy browser directories into params + session_state so save_params() captures them
     for dir_param, dir_ss_key, fallback in [
         ('idxml-browser-dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
         ('mzml-browser-dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
@@ -239,7 +223,6 @@ def file_selection_fragment():
 
 def peptide_input_fragment():
     """Peptide input fragment with paste and idXML picker tabs."""
-    # Apply pending peptide updates before widget renders
     _pending_key = "_pending_target_peptides"
     if _pending_key in st.session_state:
         st.session_state['target-peptides'] = st.session_state.pop(_pending_key)
@@ -271,14 +254,11 @@ def peptide_input_fragment():
         if not idxmls:
             st.info("Select idXML files above first.")
         else:
-            # Scan results are stored in session state so they persist
-            # across reruns but are never auto-triggered on page load.
             scan_key = '_idxml_psm_counts'
             scan_files_key = '_idxml_scan_files'
             psm_counts = st.session_state.get(scan_key, {})
             scanned_files = st.session_state.get(scan_files_key)
 
-            # Show scan button if never scanned or file selection changed
             if not psm_counts or scanned_files != idxmls:
                 n = len(idxmls)
                 st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
@@ -324,9 +304,7 @@ def peptide_input_fragment():
                     st.session_state[scan_files_key] = idxmls
                     st.rerun()
 
-            if not psm_counts:
-                pass  # waiting for user to click scan
-            else:
+            if psm_counts:
                 st.caption(f"{len(psm_counts)} unique peptides found")
 
                 f_col1, f_col2 = st.columns([2, 1])
@@ -476,7 +454,6 @@ def settings_fragment():
               key="workers",
               help="Number of parallel processes for plot generation (~30 MB per worker)")
 
-    # --- Koina AI Prediction Settings ---
     st.markdown("---")
     st.markdown("**Koina AI Prediction**")
     st.caption(
@@ -504,10 +481,7 @@ def settings_fragment():
             model_names = list(KOINA_MODELS.keys())
             model_ids = list(KOINA_MODELS.values())
             current_model_id = params.get("koina-model", koina_defaults["model"])
-            try:
-                default_idx = model_ids.index(current_model_id)
-            except ValueError:
-                default_idx = 0
+            default_idx = model_ids.index(current_model_id) if current_model_id in model_ids else 0
 
             selected_model_name = st.selectbox(
                 "Prediction Model", options=model_names, index=default_idx,
@@ -525,10 +499,7 @@ def settings_fragment():
 
         with k_col3:
             current_inst = params.get("koina-instrument", koina_defaults["instrument_type"])
-            try:
-                inst_idx = INSTRUMENT_TYPES.index(current_inst)
-            except ValueError:
-                inst_idx = 0
+            inst_idx = INSTRUMENT_TYPES.index(current_inst) if current_inst in INSTRUMENT_TYPES else 0
 
             st.selectbox(
                 "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
@@ -537,10 +508,6 @@ def settings_fragment():
 
     save_params(params)
 
-
-# ---------------------------------------------------------------------------
-# Page render
-# ---------------------------------------------------------------------------
 
 def render():
     restore_analysis_if_needed()

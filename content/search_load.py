@@ -9,22 +9,20 @@ import logging
 import time as _time
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import streamlit as st
-from psm_utils import Peptidoform
 
 from src.common.common import page_setup, save_params
-from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
 from src.parallel_processor import compute_ion_match_statistics
 from src.parquet_builder import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
-from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+from src.peak_annotation import prepare_spectrum_for_plot
 from src.peptide_search import search_peptides_in_idxmls, summarize_search_results
-from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key, LoadedSpectrum
-from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
+from src.spectrum_metrics import compute_all_metrics
+from src.pipeline import get_koina_prediction, build_comparison_row
 from content._shared import (
     STATE_PREFIX, get_state_key,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
@@ -39,10 +37,6 @@ def get_param(key, default=None):
     """Get a param value: session_state first (if widget present), then params.json."""
     return st.session_state.get(key, params.get(key, default))
 
-
-# ---------------------------------------------------------------------------
-# Peptide search
-# ---------------------------------------------------------------------------
 
 def run_peptide_search(idxmls: list, peptides: list):
     """Execute peptide search."""
@@ -94,52 +88,6 @@ def run_peptide_search(idxmls: list, peptides: list):
                         st.caption(msg)
         else:
             status.update(label="No matches found", state="error")
-
-
-# ---------------------------------------------------------------------------
-# Spectrum loading + annotation + metrics
-# ---------------------------------------------------------------------------
-
-def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict):
-    """Generate Koina AI-predicted spectrum as a fallback reference."""
-    if not KOINA_AVAILABLE:
-        return None
-
-    model_id = get_param("koina-model", "ms2pip_timsTOF2024")
-    ce = get_param("koina-ce", 35)
-    instrument = get_param("koina-instrument", "TIMSTOF")
-
-    pred_df = predict_koina_spectrum(
-        peptidoform_str=peptidoform,
-        charge=charge,
-        model_id=model_id,
-        collision_energy=ce,
-        instrument_type=instrument,
-    )
-
-    if pred_df is None or pred_df.empty:
-        return None
-
-    base_seq = Peptidoform(peptidoform.split("/")[0]).sequence
-
-    ref_spec = LoadedSpectrum(
-        spectrum_id="koina_prediction",
-        mz=pred_df["mz"].values.astype(np.float64),
-        intensity=pred_df["intensity"].values.astype(np.float64),
-        precursor_mz=0.0,
-        precursor_charge=charge,
-        peptidoform=peptidoform,
-        base_sequence=base_seq,
-        rt=0.0,
-        source_file="Koina",
-        is_reference=True,
-    )
-
-    # Use Koina's native AI-predicted annotations directly instead of
-    # re-matching against PyOpenMS theoretical fragments
-    ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
-
-    return (ref_spec, ref_df)
 
 
 def run_search_and_load():
@@ -229,10 +177,13 @@ def run_search_and_load():
 
             refs = reference_store.get(variant_key, [])
             if not refs and get_param('koina-enabled', False):
-                koina_ref = _get_koina_prediction(
+                koina_ref = get_koina_prediction(
                     result.query_spectrum.peptidoform,
                     result.query_spectrum.precursor_charge,
                     annotation_kwargs,
+                    koina_model=get_param("koina-model", "ms2pip_timsTOF2024"),
+                    koina_ce=get_param("koina-ce", 35),
+                    koina_instrument=get_param("koina-instrument", "TIMSTOF"),
                 )
                 if koina_ref is not None:
                     reference_store[variant_key] = [koina_ref]
@@ -241,22 +192,7 @@ def run_search_and_load():
             for ref_spec, ref_df in refs:
                 try:
                     metrics = compute_all_metrics(query_df, ref_df)
-                    row = {
-                        "psm_id": psm_id,
-                        "Peptide": result.base_sequence,
-                        "Modification": result.modification_key,
-                        "Charge": result.query_spectrum.precursor_charge,
-                        "Query": Path(result.query_spectrum.source_file).stem,
-                        "Reference": Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
-                        "query_spectrum_id": result.query_spectrum.spectrum_id,
-                        "ref_spectrum_id": ref_spec.spectrum_id,
-                        "query_rt": result.query_spectrum.rt,
-                        "ref_rt": ref_spec.rt,
-                    }
-                    for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
-                        row[display_name] = metrics.get(short_key, float("nan"))
-                    for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
-                        row[count_key] = metrics.get(count_key, 0)
+                    row = build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics)
 
                     ims_stats = compute_ion_match_statistics(
                         query_df, result.query_spectrum.peptidoform,
@@ -345,10 +281,6 @@ def run_search_and_load():
     st.rerun()
 
 
-# ---------------------------------------------------------------------------
-# Search results display
-# ---------------------------------------------------------------------------
-
 def display_search_results(results: dict):
     """Display search results table."""
     summary_lf = summarize_search_results(results)
@@ -402,10 +334,6 @@ def search_results_fragment():
     else:
         st.caption("Search results will appear here after running the search.")
 
-
-# ---------------------------------------------------------------------------
-# Page render
-# ---------------------------------------------------------------------------
 
 def render():
     restore_analysis_if_needed()

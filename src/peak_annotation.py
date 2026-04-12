@@ -17,7 +17,6 @@ from src.common.ion_utils import get_ion_type  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-# Default ion types for fragmentation
 DEFAULT_ION_TYPES = ["b", "y"]
 ALL_ION_TYPES = ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
 
