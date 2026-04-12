@@ -17,11 +17,9 @@ from src.insight_dataframes import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
-from src.peak_annotation import prepare_spectrum_for_plot
 from src.peptide_search import search_peptides_in_idxmls, summarize_search_results
-from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
-from src.spectrum_metrics import compute_all_metrics
-from src.query_processing import get_koina_prediction, build_comparison_row
+from src.spectrum_loader import load_spectra_streaming
+from src.query_processing import process_query_result
 from content.page_state import (
     STATE_PREFIX, get_state_key, get_param,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
@@ -84,8 +82,48 @@ def run_peptide_search(idxmls: list, peptides: list):
             status.update(label="No matches found", state="error")
 
 
+def _build_annotation_kwargs(params) -> dict:
+    """Collect annotation settings from params into a kwargs dict."""
+    return dict(
+        ion_types=get_param(params, 'ion-types', ['b', 'y']),
+        mz_tolerance=get_param(params, 'mz-tolerance', 0.02),
+        normalize=get_param(params, 'intensity-mode', 'Relative') == 'Relative',
+        add_losses=get_param(params, 'add-losses', False),
+        add_first_prefix_ion=get_param(params, 'add-first-prefix-ion', True),
+        remove_precursor_peaks=get_param(params, 'remove-precursor-peaks', False),
+    )
+
+
+def _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
+                            reference_store, comparison_rows):
+    """Persist all analysis results to session state and disk cache."""
+    peaks_lf = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_queries])
+    seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
+    heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
+
+    st.session_state[get_state_key('psm_lf')] = psm_lf
+    st.session_state[get_state_key('psm_lookup')] = psm_lookup
+    st.session_state[get_state_key('peaks_lf')] = peaks_lf
+    st.session_state[get_state_key('seq_lf')] = seq_lf
+    st.session_state[get_state_key('heatmap_lf')] = heatmap_lf
+
+    st.session_state[get_state_key('annotated_queries')] = {
+        pid: (spec, df) for pid, spec, df in annotated_queries
+    }
+    st.session_state[get_state_key('reference_store')] = reference_store
+    st.session_state[get_state_key('comparison_df')] = (
+        pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
+    )
+
+    st.session_state[get_state_key('data_ready')] = True
+    st.session_state[get_state_key('cache_version')] = \
+        st.session_state.get(get_state_key('cache_version'), 0) + 1
+
+    save_analysis_cache()
+
+
 def run_search_and_load():
-    """Stream spectra, capture references, annotate, compute metrics, build DataFrames."""
+    """Stream spectra, annotate, compute metrics, build DataFrames."""
     clear_analysis_cache()
 
     variant_groups = st.session_state.get(get_state_key('variant_groups'))
@@ -98,33 +136,14 @@ def run_search_and_load():
         st.error("No mzML files selected.")
         return
 
-    ref_substring = get_param(params, 'reference-substring', '')
-    ion_types = get_param(params, 'ion-types', ['b', 'y'])
-    mz_tolerance = get_param(params, 'mz-tolerance', 0.02)
-    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
-    workers = get_param(params, 'workers', 4)
-
     vg_copy = copy.deepcopy(variant_groups)
     psm_lf, psm_lookup = build_psm_table(vg_copy)
+    annotation_kwargs = _build_annotation_kwargs(params)
 
     annotated_queries = []
     reference_store = {}
     comparison_rows = []
-
-    total_psms = sum(len(variant_group.matches) for variant_group in vg_copy.values())
-
-    add_losses = get_param(params, 'add-losses', False)
-    add_first_prefix_ion = get_param(params, 'add-first-prefix-ion', True)
-    remove_precursor_peaks = get_param(params, 'remove-precursor-peaks', False)
-
-    annotation_kwargs = dict(
-        ion_types=ion_types,
-        mz_tolerance=mz_tolerance,
-        normalize=normalize,
-        add_losses=add_losses,
-        add_first_prefix_ion=add_first_prefix_ion,
-        remove_precursor_peaks=remove_precursor_peaks,
-    )
+    total_psms = sum(len(vg.matches) for vg in vg_copy.values())
 
     with st.status(f"Loading {total_psms} spectra...", expanded=True) as status:
         progress_bar = st.progress(0)
@@ -132,64 +151,19 @@ def run_search_and_load():
         _load_start = _time.time()
         loaded_count = [0]
 
-        def on_reference_loaded(variant_key, count):
-            pass
-
         def on_query_ready(result):
-            key = spectrum_lookup_key(result.query_spectrum)
-            psm_id = psm_lookup.get(key)
-            if psm_id is None:
+            processed = process_query_result(
+                result, psm_lookup, annotation_kwargs, reference_store,
+                koina_enabled=get_param(params, 'koina-enabled', False),
+                koina_model=get_param(params, "koina-model", "ms2pip_timsTOF2024"),
+                koina_ce=get_param(params, "koina-ce", 35),
+                koina_instrument=get_param(params, "koina-instrument", "TIMSTOF"),
+            )
+            if processed is None:
                 return
-
-            try:
-                query_df = prepare_spectrum_for_plot(
-                    result.query_spectrum.mz,
-                    result.query_spectrum.intensity,
-                    result.query_spectrum.peptidoform,
-                    result.query_spectrum.precursor_charge,
-                    **annotation_kwargs,
-                )
-                annotated_queries.append((psm_id, result.query_spectrum, query_df))
-            except Exception as e:
-                logger.warning(f"Annotation failed psm_id={psm_id}: {e}")
-                return
-
-            variant_key = result.variant_key
-            if variant_key not in reference_store and result.reference_spectra:
-                ref_list = []
-                for ref_spec in result.reference_spectra:
-                    try:
-                        ref_df = prepare_spectrum_for_plot(
-                            ref_spec.mz, ref_spec.intensity,
-                            ref_spec.peptidoform, ref_spec.precursor_charge,
-                            **annotation_kwargs,
-                        )
-                        ref_list.append((ref_spec, ref_df))
-                    except Exception as e:
-                        logger.warning(f"Reference annotation failed: {e}")
-                reference_store[variant_key] = ref_list
-
-            refs = reference_store.get(variant_key, [])
-            if not refs and get_param(params, 'koina-enabled', False):
-                koina_ref = get_koina_prediction(
-                    result.query_spectrum.peptidoform,
-                    result.query_spectrum.precursor_charge,
-                    annotation_kwargs,
-                    koina_model=get_param(params, "koina-model", "ms2pip_timsTOF2024"),
-                    koina_ce=get_param(params, "koina-ce", 35),
-                    koina_instrument=get_param(params, "koina-instrument", "TIMSTOF"),
-                )
-                if koina_ref is not None:
-                    reference_store[variant_key] = [koina_ref]
-                    refs = reference_store[variant_key]
-
-            for ref_spec, ref_df in refs:
-                try:
-                    metrics = compute_all_metrics(query_df, ref_df)
-                    row = build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics)
-                    comparison_rows.append(row)
-                except Exception as e:
-                    logger.warning(f"Metric computation failed: {e}")
+            psm_id, query_spec, query_df, comp_rows = processed
+            annotated_queries.append((psm_id, query_spec, query_df))
+            comparison_rows.extend(comp_rows)
 
             loaded_count[0] += 1
             if loaded_count[0] % 10 == 0 or loaded_count[0] == total_psms:
@@ -203,22 +177,16 @@ def run_search_and_load():
             kind = "reference" if is_reference else "query"
             status_text.caption(f"Processing {kind}: {Path(path).name}")
 
-        def on_file_complete(path, loaded, total):
-            logger.info(f"Completed {Path(path).name}: {loaded}/{total} spectra")
-
-        def error_callback(error):
-            logger.error(f"Streaming error: {error}")
-
         load_spectra_streaming(
             variant_groups=vg_copy,
             mzml_paths=[Path(m) for m in mzmls],
-            reference_substring=ref_substring,
-            on_reference_loaded=on_reference_loaded,
+            reference_substring=get_param(params, 'reference-substring', ''),
+            on_reference_loaded=lambda vk, c: None,
             on_query_ready=on_query_ready,
             on_file_start=on_file_start,
-            on_file_complete=on_file_complete,
-            error_callback=error_callback,
-            workers=workers,
+            on_file_complete=lambda p, l, t: logger.info(f"Completed {Path(p).name}: {l}/{t}"),
+            error_callback=lambda e: logger.error(f"Streaming error: {e}"),
+            workers=get_param(params, 'workers', 4),
         )
 
         progress_bar.progress(1.0)
@@ -229,37 +197,11 @@ def run_search_and_load():
             return
 
         status_text.caption(f"Building DataFrames from {len(annotated_queries)} spectra...")
+        _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
+                                reference_store, comparison_rows)
 
-        peaks_lf = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_queries])
-        seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
-        heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
-
-        st.session_state[get_state_key('psm_lf')] = psm_lf
-        st.session_state[get_state_key('psm_lookup')] = psm_lookup
-        st.session_state[get_state_key('peaks_lf')] = peaks_lf
-        st.session_state[get_state_key('seq_lf')] = seq_lf
-        st.session_state[get_state_key('heatmap_lf')] = heatmap_lf
-
-        st.session_state[get_state_key('annotated_queries')] = {
-            pid: (spec, df) for pid, spec, df in annotated_queries
-        }
-        st.session_state[get_state_key('reference_store')] = reference_store
-
-        if comparison_rows:
-            comparison_df = pd.DataFrame(comparison_rows)
-        else:
-            comparison_df = pd.DataFrame()
-        st.session_state[get_state_key('comparison_df')] = comparison_df
-
-        st.session_state[get_state_key('data_ready')] = True
-        st.session_state[get_state_key('cache_version')] = \
-            st.session_state.get(get_state_key('cache_version'), 0) + 1
-
-        save_analysis_cache()
-
-        n_comparisons = len(comparison_rows)
         status.update(
-            label=f"Loaded {len(annotated_queries)} spectra, {n_comparisons} comparisons "
+            label=f"Loaded {len(annotated_queries)} spectra, {len(comparison_rows)} comparisons "
                   f"in {format_time(elapsed)}",
             state="complete",
         )

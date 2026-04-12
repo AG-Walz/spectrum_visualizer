@@ -34,6 +34,17 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
+def _save_figure(fig, png_dir, svg_dir, folder_name, safe_name, saved_files):
+    """Save a matplotlib figure to PNG and SVG, then close it."""
+    for fmt_dir, fmt in [(png_dir, "png"), (svg_dir, "svg")]:
+        out_dir = fmt_dir / folder_name
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_file = out_dir / f"{safe_name}.{fmt}"
+        out_file.write_bytes(figure_to_bytes(fig, format=fmt))
+        saved_files.append(str(out_file))
+    plt.close(fig)
+
+
 def _export_spectrum_plots(export_root: Path, do_html: bool):
     """Generate mirror/single plots organized by peptidoform.
 
@@ -50,7 +61,6 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
     normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
-
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None
@@ -64,34 +74,26 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
         variant_key = psm_id_to_variant_key.get(psm_id)
         refs = reference_store.get(variant_key, []) if variant_key else []
         folder_name = sanitize_filename(query_spec.peptidoform)
+        title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
 
         if refs:
             for ref_spec, ref_df in refs:
                 try:
                     metrics = compute_all_metrics(query_df, ref_df)
-                    metrics_text = format_metrics_text(metrics)
                     ref_source = Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina"
                     safe_name = sanitize_filename(
                         f"{Path(query_spec.source_file).stem}_vs_{ref_source}"
                     )
-                    title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
                     query_label = f"Query: {Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
                     ref_label = f"Ref: {ref_source} (RT: {ref_spec.rt:.1f})"
+                    metrics_text = format_metrics_text(metrics)
 
                     fig = create_mirror_plot(
                         upper_spectrum=query_df, lower_spectrum=ref_df,
                         title=title, upper_label=query_label, lower_label=ref_label,
                         metrics_text=metrics_text, normalize=normalize,
                     )
-
-                    for fmt_dir, fmt in [(png_dir, "png"), (svg_dir, "svg")]:
-                        out_dir = fmt_dir / folder_name
-                        out_dir.mkdir(parents=True, exist_ok=True)
-                        out_file = out_dir / f"{safe_name}.{fmt}"
-                        out_file.write_bytes(figure_to_bytes(fig, format=fmt))
-                        saved_files.append(str(out_file))
-
-                    plt.close(fig)
+                    _save_figure(fig, png_dir, svg_dir, folder_name, safe_name, saved_files)
 
                     if do_html and html_dir:
                         plotly_fig = create_plotly_mirror_plot(
@@ -112,21 +114,11 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
         else:
             try:
                 safe_name = sanitize_filename(Path(query_spec.source_file).stem)
-                title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
                 label = f"{Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
-
                 fig = create_single_spectrum_plot(
                     spectrum=query_df, title=title, label=label, normalize=normalize,
                 )
-
-                for fmt_dir, fmt in [(png_dir, "png"), (svg_dir, "svg")]:
-                    out_dir = fmt_dir / folder_name
-                    out_dir.mkdir(parents=True, exist_ok=True)
-                    out_file = out_dir / f"{safe_name}.{fmt}"
-                    out_file.write_bytes(figure_to_bytes(fig, format=fmt))
-                    saved_files.append(str(out_file))
-
-                plt.close(fig)
+                _save_figure(fig, png_dir, svg_dir, folder_name, safe_name, saved_files)
 
             except Exception as e:
                 errors.append(f"{folder_name}/{safe_name}: {e}")

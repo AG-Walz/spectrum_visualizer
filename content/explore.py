@@ -27,6 +27,13 @@ params = page_setup()
 logger = logging.getLogger(__name__)
 
 
+def _create_component(cls, cache_id, cache_path, needs_regeneration, **kwargs):
+    """Create an openms_insight component, using cache when available."""
+    if needs_regeneration:
+        return cls(cache_id=cache_id, cache_path=cache_path, **kwargs)
+    return cls(cache_id=cache_id, cache_path=cache_path)
+
+
 @st.fragment
 def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
@@ -69,74 +76,48 @@ def openms_insight_explorer_fragment():
         {"field": "score", "title": "Score", "formatter": "money", "formatterParams": {"precision": 4}},
         {"field": "source_file", "title": "Source File"},
     ]
-    if needs_regeneration:
-        table = Table(
-            cache_id="psm_table",
-            data=psm_lf,
-            interactivity={"selected_psm": "id"},
-            column_definitions=psm_columns,
-            cache_path=CACHE_PATH,
-            regenerate_cache=True,
-            index_field="id",
-        )
-    else:
-        table = Table(cache_id="psm_table", cache_path=CACHE_PATH)
+    table = _create_component(Table, "psm_table", CACHE_PATH, needs_regeneration,
+                              data=psm_lf, interactivity={"selected_psm": "id"},
+                              column_definitions=psm_columns, regenerate_cache=True, index_field="id")
     table(key="psm_table", state_manager=state_manager)
 
     # SequenceView
     st.subheader("Sequence Coverage")
     if needs_regeneration:
-        peaks_for_sequence_view = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
-        sequence_view = SequenceView(
-            cache_id="seq_view",
-            sequence_data=seq_lf,
-            peaks_data=peaks_for_sequence_view,
-            filters={"selected_psm": "psm_id"},
-            annotation_config={
-                "ion_types": get_param(params, 'ion-types', ['b', 'y']),
-                "tolerance": get_param(params, 'mz-tolerance', 0.02),
-                "tolerance_ppm": False,
-            },
-            cache_path=CACHE_PATH,
-            height=350,
-        )
+        peaks_for_sv = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
     else:
-        sequence_view = SequenceView(cache_id="seq_view", cache_path=CACHE_PATH)
+        peaks_for_sv = None
+    sequence_view = _create_component(
+        SequenceView, "seq_view", CACHE_PATH, needs_regeneration,
+        sequence_data=seq_lf, peaks_data=peaks_for_sv,
+        filters={"selected_psm": "psm_id"},
+        annotation_config={
+            "ion_types": get_param(params, 'ion-types', ['b', 'y']),
+            "tolerance": get_param(params, 'mz-tolerance', 0.02),
+            "tolerance_ppm": False,
+        },
+        height=350,
+    )
     sequence_view(key="seq_view", state_manager=state_manager)
 
     # LinePlot linked to SequenceView
     st.subheader("Fragment Spectrum")
-    if needs_regeneration:
-        lineplot = LinePlot(
-            cache_id="spectrum_plot",
-            data=peaks_lf,
-            filters={"selected_psm": "psm_id"},
-            filter_defaults={"selected_psm": 0},
-            cache_path=CACHE_PATH,
-            regenerate_cache=True,
-            x_column="x", y_column="y",
-            highlight_column="highlight",
-            annotation_column="annotation",
-            x_label="m/z", y_label="Intensity",
-        )
-    else:
-        lineplot = LinePlot(cache_id="spectrum_plot", cache_path=CACHE_PATH)
+    lineplot = _create_component(
+        LinePlot, "spectrum_plot", CACHE_PATH, needs_regeneration,
+        data=peaks_lf, filters={"selected_psm": "psm_id"},
+        filter_defaults={"selected_psm": 0}, regenerate_cache=True,
+        x_column="x", y_column="y", highlight_column="highlight",
+        annotation_column="annotation", x_label="m/z", y_label="Intensity",
+    )
     lineplot(key="spectrum_plot", state_manager=state_manager, sequence_view_key="seq_view")
 
     # Heatmap
     st.subheader("RT x m/z Heatmap")
-    if needs_regeneration:
-        heatmap_comp = Heatmap(
-            cache_id="rt_heatmap",
-            data=heatmap_lf,
-            x_column="x", y_column="y", intensity_column="intensity",
-            x_label="Retention Time (s)", y_label="m/z",
-            log_scale=True,
-            cache_path=CACHE_PATH,
-            regenerate_cache=True,
-        )
-    else:
-        heatmap_comp = Heatmap(cache_id="rt_heatmap", cache_path=CACHE_PATH)
+    heatmap_comp = _create_component(
+        Heatmap, "rt_heatmap", CACHE_PATH, needs_regeneration,
+        data=heatmap_lf, x_column="x", y_column="y", intensity_column="intensity",
+        x_label="Retention Time (s)", y_label="m/z", log_scale=True, regenerate_cache=True,
+    )
     heatmap_comp(key="rt_heatmap", state_manager=state_manager)
 
     if needs_regeneration:

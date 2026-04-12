@@ -113,20 +113,39 @@ class TestShortenFilenames:
 
 
 # ---------------------------------------------------------------------------
-# R squared matching
+# Parametrized tests for identical/disjoint behavior (shared across 5 metrics)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("metric_fn, identical_val, disjoint_val", [
+    (compute_r2_matching, 1.0, float("nan")),
+    (compute_cosine_similarity, 1.0, float("nan")),
+    (compute_shared_peak_dice, 1.0, 0.0),
+    (compute_shared_peak_jaccard, 1.0, 0.0),
+    (compute_shared_peak_ratio, 1.0, 0.0),
+])
+class TestMetricBehavior:
+    def test_identical_returns_perfect(self, metric_fn, identical_val, disjoint_val):
+        q, r = _identical_pair()
+        val = metric_fn(q, r)
+        if math.isnan(identical_val):
+            assert math.isnan(val)
+        else:
+            assert val == pytest.approx(identical_val, abs=1e-6)
+
+    def test_disjoint_returns_expected(self, metric_fn, identical_val, disjoint_val):
+        q, r = _disjoint_pair()
+        val = metric_fn(q, r)
+        if math.isnan(disjoint_val):
+            assert math.isnan(val)
+        else:
+            assert val == pytest.approx(disjoint_val, abs=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Edge cases unique to individual metrics
 # ---------------------------------------------------------------------------
 
 class TestR2Matching:
-    def test_identical_spectra(self):
-        q, r = _identical_pair()
-        val = compute_r2_matching(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
-
-    def test_no_overlap(self):
-        q, r = _disjoint_pair()
-        val = compute_r2_matching(q, r)
-        assert math.isnan(val)
-
     def test_partial_overlap(self):
         q, r = _partial_overlap_pair()
         val = compute_r2_matching(q, r)
@@ -139,10 +158,6 @@ class TestR2Matching:
         val = compute_r2_matching(q, r)
         assert val > 0.9
 
-
-# ---------------------------------------------------------------------------
-# R squared binned
-# ---------------------------------------------------------------------------
 
 class TestR2Binned:
     def test_identical_spectra(self):
@@ -157,31 +172,10 @@ class TestR2Binned:
         assert math.isnan(val)
 
 
-# ---------------------------------------------------------------------------
-# Cosine similarity
-# ---------------------------------------------------------------------------
-
-class TestCosineSimilarity:
-    def test_identical(self):
-        q, r = _identical_pair()
-        val = compute_cosine_similarity(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
-
-    def test_no_overlap(self):
-        q, r = _disjoint_pair()
-        val = compute_cosine_similarity(q, r)
-        assert math.isnan(val)
-
-
-# ---------------------------------------------------------------------------
-# Spectral entropy similarity
-# ---------------------------------------------------------------------------
-
 class TestSpectralEntropy:
     def test_identical(self):
         q, r = _identical_pair()
         val = compute_spectral_entropy_similarity(q, r)
-        # Identical spectra should have high similarity
         if not math.isnan(val):  # skip if ms_entropy not installed
             assert val > 0.9
 
@@ -192,58 +186,12 @@ class TestSpectralEntropy:
         assert math.isnan(val)
 
 
-# ---------------------------------------------------------------------------
-# Shared peak Dice
-# ---------------------------------------------------------------------------
-
 class TestSharedPeakDice:
-    def test_identical(self):
-        q, r = _identical_pair()
-        val = compute_shared_peak_dice(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
-
-    def test_no_overlap(self):
-        q, r = _disjoint_pair()
-        val = compute_shared_peak_dice(q, r)
-        assert val == pytest.approx(0.0, abs=1e-6)
-
     def test_no_annotations(self):
         q = _make_df([100], [1.0], ["unannotated"])
         r = _make_df([100], [1.0], ["unannotated"])
         val = compute_shared_peak_dice(q, r)
         assert math.isnan(val)
-
-
-# ---------------------------------------------------------------------------
-# Shared peak Jaccard
-# ---------------------------------------------------------------------------
-
-class TestSharedPeakJaccard:
-    def test_identical(self):
-        q, r = _identical_pair()
-        val = compute_shared_peak_jaccard(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
-
-    def test_no_overlap(self):
-        q, r = _disjoint_pair()
-        val = compute_shared_peak_jaccard(q, r)
-        assert val == pytest.approx(0.0, abs=1e-6)
-
-
-# ---------------------------------------------------------------------------
-# Shared peak ratio
-# ---------------------------------------------------------------------------
-
-class TestSharedPeakRatio:
-    def test_identical(self):
-        q, r = _identical_pair()
-        val = compute_shared_peak_ratio(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
-
-    def test_no_overlap(self):
-        q, r = _disjoint_pair()
-        val = compute_shared_peak_ratio(q, r)
-        assert val == pytest.approx(0.0, abs=1e-6)
 
 
 # ---------------------------------------------------------------------------

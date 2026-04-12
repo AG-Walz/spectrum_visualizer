@@ -11,8 +11,6 @@ import numpy as np
 import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
-from spectrum_utils.spectrum import MsmsSpectrum
-
 from src.common.ion_utils import get_ion_type  # noqa: F401
 
 logger = logging.getLogger(__name__)
@@ -240,6 +238,30 @@ def annotate_spectrum(
     return pd.DataFrame(result_data)
 
 
+def _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_peaks):
+    """Filter unwanted ions, remove precursor peaks, and normalize intensities."""
+    annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
+
+    # Mask ions not in selected ion_types as unannotated
+    unwanted = ~annotated["ion_type"].isin(ion_types) & (annotated["ion_type"] != "unannotated")
+    annotated.loc[unwanted, "ion_type"] = "unannotated"
+    annotated.loc[unwanted, "is_annotated"] = False
+
+    if remove_precursor_peaks:
+        precursor_mask = annotated["annotation"].apply(
+            lambda ann: bool(ann and ann != "unannotated" and
+                             (ann.lower().startswith("[m") or "precursor" in ann.lower()))
+        )
+        annotated = annotated[~precursor_mask].reset_index(drop=True)
+
+    if normalize and len(annotated) > 0:
+        max_int = annotated["intensity"].max()
+        if max_int > 0:
+            annotated["intensity"] = annotated["intensity"] / max_int
+
+    return annotated
+
+
 def prepare_spectrum_for_plot(
     mz: np.ndarray,
     intensity: np.ndarray,
@@ -256,49 +278,12 @@ def prepare_spectrum_for_plot(
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 
-    # Generate theoretical fragments — lru_cache avoids repeated PyOpenMS calls
-    # for the same peptidoform+charge+ion_types combination.
     theo_frags = generate_theoretical_fragments(
-        peptidoform,
-        charge=charge,
-        ion_types=ion_types,
-        add_losses=add_losses,
-        add_first_prefix_ion=add_first_prefix_ion
+        peptidoform, charge=charge, ion_types=ion_types,
+        add_losses=add_losses, add_first_prefix_ion=add_first_prefix_ion,
     )
-
-    # Annotate spectrum
-    annotated = annotate_spectrum(
-        mz, intensity, theo_frags,
-        mz_tolerance=mz_tolerance
-    )
-
-    # Add ion type column
-    annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
-
-    # If "precursor" not in ion_types, mark precursor peaks as unannotated (grey)
-    if "precursor" not in ion_types:
-        precursor_mask = annotated["ion_type"] == "precursor"
-        annotated.loc[precursor_mask, "ion_type"] = "unannotated"
-        annotated.loc[precursor_mask, "is_annotated"] = False
-
-    # Remove precursor peaks if requested
-    if remove_precursor_peaks:
-        def is_precursor_annotation(ann):
-            if not ann or ann == "unannotated":
-                return False
-            ann_lower = ann.lower()
-            return ann_lower.startswith("[m") or "precursor" in ann_lower
-
-        precursor_mask = annotated["annotation"].apply(is_precursor_annotation)
-        annotated = annotated[~precursor_mask].reset_index(drop=True)
-
-    # Normalize if requested (do this AFTER filtering so max is recalculated)
-    if normalize and len(annotated) > 0:
-        max_int = annotated["intensity"].max()
-        if max_int > 0:
-            annotated["intensity"] = annotated["intensity"] / max_int
-
-    return annotated
+    annotated = annotate_spectrum(mz, intensity, theo_frags, mz_tolerance=mz_tolerance)
+    return _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_peaks)
 
 
 def _parse_koina_charge(annotation: str) -> int:
@@ -327,21 +312,7 @@ def prepare_koina_spectrum_for_plot(
     remove_precursor_peaks: bool = False,
     **_kwargs,
 ) -> pd.DataFrame:
-    """
-    Prepare a Koina-predicted spectrum for plotting, preserving native annotations.
-
-    Unlike prepare_spectrum_for_plot which re-matches against PyOpenMS theoretical
-    fragments, this function uses Koina's own AI-predicted annotations directly.
-
-    Args:
-        koina_df: DataFrame from predict_koina_spectrum() with columns [mz, intensity, annotation]
-        ion_types: Ion types to highlight (others shown as unannotated)
-        normalize: Whether to normalize intensities to [0, 1]
-        remove_precursor_peaks: Whether to remove precursor peaks
-
-    Returns:
-        DataFrame ready for plotting with: mz, intensity, annotation, ion_type, charge, is_annotated
-    """
+    """Prepare a Koina-predicted spectrum for plotting, preserving native annotations."""
     if ion_types is None:
         ion_types = DEFAULT_ION_TYPES
 
@@ -352,163 +323,7 @@ def prepare_koina_spectrum_for_plot(
         "charge": koina_df["annotation"].apply(_parse_koina_charge).values,
         "is_annotated": True,
     })
-
-    annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
-
-    # Grey out ions not in the user's selected ion_types
-    unwanted_mask = ~annotated["ion_type"].isin(ion_types) & (annotated["ion_type"] != "unannotated")
-    annotated.loc[unwanted_mask, "ion_type"] = "unannotated"
-    annotated.loc[unwanted_mask, "is_annotated"] = False
-
-    if remove_precursor_peaks:
-        precursor_mask = annotated["ion_type"] == "precursor"
-        annotated = annotated[~precursor_mask].reset_index(drop=True)
-
-    if normalize and len(annotated) > 0:
-        max_int = annotated["intensity"].max()
-        if max_int > 0:
-            annotated["intensity"] = annotated["intensity"] / max_int
-
-    return annotated
-
-
-def msms_spectrum_from_loaded_spectrum(
-    mz: np.ndarray,
-    intensity: np.ndarray,
-    peptidoform_str: str,
-    precursor_mz: float,
-    precursor_charge: int,
-) -> "spectrum_utils.spectrum.MsmsSpectrum":
-    """
-    Build a spectrum_utils MsmsSpectrum from raw arrays.
-
-    Entry point for spectrum_utils-based annotation (e.g. edge-case ProForma mods
-    using UNIMOD:N notation that PyOpenMS cannot parse).
-
-    Args:
-        mz: m/z array
-        intensity: intensity array
-        peptidoform_str: ProForma peptidoform string (charge suffix stripped)
-        precursor_mz: Precursor m/z
-        precursor_charge: Precursor charge state
-
-    Returns:
-        spectrum_utils MsmsSpectrum ready for annotate_proforma()
-    """
-    proforma_str = peptidoform_str.split("/")[0]
-    return MsmsSpectrum(
-        identifier=proforma_str,
-        precursor_mz=float(precursor_mz),
-        precursor_charge=int(precursor_charge),
-        mz=np.array(mz, dtype=np.float64),
-        intensity=np.array(intensity, dtype=np.float32),
-    )
-
-
-def _su_annotation_to_str(ann) -> str:
-    """Convert a spectrum_utils FragmentAnnotation to an MSpecViz annotation string."""
-    try:
-        ion_type = str(ann.ion_type)
-        ion_index = getattr(ann, "ion_index", getattr(ann, "fragment_index", "?"))
-        charge = int(getattr(ann, "charge", 1))
-        neutral_loss = getattr(ann, "neutral_loss", None)
-        charge_str = "+" * max(1, charge)
-        base = f"{ion_type}{ion_index}"
-        if neutral_loss:
-            base += f"-{str(neutral_loss).lstrip('-')}"
-        return base + charge_str
-    except Exception:
-        return "matched"
-
-
-def annotate_with_spectrum_utils(
-    mz: np.ndarray,
-    intensity: np.ndarray,
-    peptidoform_str: str,
-    precursor_mz: float,
-    precursor_charge: int,
-    fragment_tol_mass: float = 0.02,
-    fragment_tol_mode: str = "Da",
-    ion_types: List[str] = None,
-    normalize: bool = True,
-) -> pd.DataFrame:
-    """
-    Annotate a spectrum using spectrum_utils annotate_proforma().
-
-    Secondary annotation path for ProForma 2.0 / UNIMOD:N edge cases that
-    PyOpenMS cannot handle.  Falls back to an unannotated DataFrame on error.
-
-    Returns a DataFrame in the same format as the primary annotation pipeline:
-    columns: mz, intensity, annotation, charge, is_annotated, ion_type
-    """
-    if ion_types is None:
-        ion_types = DEFAULT_ION_TYPES
-
-    su_ion_types = "".join(t for t in ion_types if t in ("a", "b", "c", "x", "y", "z"))
-    if not su_ion_types:
-        su_ion_types = "by"
-
-    proforma_str = peptidoform_str.split("/")[0]
-
-    def _unannotated_df():
-        int_arr = np.array(intensity, dtype=float)
-        if normalize and int_arr.max() > 0:
-            int_arr = int_arr / int_arr.max()
-        return pd.DataFrame({
-            "mz": np.array(mz, dtype=float),
-            "intensity": int_arr,
-            "annotation": ["unannotated"] * len(mz),
-            "charge": [0] * len(mz),
-            "is_annotated": [False] * len(mz),
-            "ion_type": ["unannotated"] * len(mz),
-        })
-
-    try:
-        spec = msms_spectrum_from_loaded_spectrum(
-            mz, intensity, proforma_str, precursor_mz, precursor_charge
-        )
-        spec.annotate_proforma(
-            proforma_str,
-            fragment_tol_mass,
-            fragment_tol_mode,
-            ion_types=su_ion_types,
-        )
-    except Exception as e:
-        logger.warning(f"spectrum_utils annotation failed for '{peptidoform_str}': {e}")
-        return _unannotated_df()
-
-    annotations_out = []
-    charges_out = []
-    is_annotated_out = []
-    ion_types_out = []
-
-    for ann in spec.annotation:
-        if ann is None:
-            annotations_out.append("unannotated")
-            charges_out.append(0)
-            is_annotated_out.append(False)
-            ion_types_out.append("unannotated")
-        else:
-            ann_str = _su_annotation_to_str(ann)
-            charge = int(getattr(ann, "charge", 1))
-            ion_t = str(getattr(ann, "ion_type", ""))[0:1] or "unannotated"
-            annotations_out.append(ann_str)
-            charges_out.append(charge)
-            is_annotated_out.append(True)
-            ion_types_out.append(ion_t)
-
-    int_arr = np.array(spec.intensity, dtype=float)
-    if normalize and int_arr.max() > 0:
-        int_arr = int_arr / int_arr.max()
-
-    return pd.DataFrame({
-        "mz": np.array(spec.mz, dtype=float),
-        "intensity": int_arr,
-        "annotation": annotations_out,
-        "charge": charges_out,
-        "is_annotated": is_annotated_out,
-        "ion_type": ion_types_out,
-    })
+    return _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_peaks)
 
 
 def calculate_annotation_stats(annotated_df: pd.DataFrame) -> Dict:

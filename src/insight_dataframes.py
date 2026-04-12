@@ -1,53 +1,8 @@
 """
-Parquet builder for MSInsight.
+Build Polars LazyFrames for openms_insight components.
 
-Converts backend objects (VariantGroup dicts, LoadedSpectrum objects, annotated
-pandas DataFrames from peak_annotation) into Polars LazyFrames for openms_insight
-visualization components.
-
-Four DataFrames are produced:
-
-  1. PSM table     -> openms_insight Table
-     One row per PeptideMatch (individual spectrum-to-peptide assignment).
-     Schema: id, variant_key, base_sequence, modification, display_label,
-             peptidoform, charge, score, source_file, spectrum_id, idxml_file
-
-  2. Peaks         -> openms_insight LinePlot / SequenceView peaks_data
-     One row per peak in each spectrum, with annotation data.
-     Schema: x (m/z), y (intensity), highlight, annotation, ion_type, psm_id
-
-  3. Sequences     -> openms_insight SequenceView sequence_data
-     One row per unique PSM (the peptide + charge for SequenceView rendering).
-     Schema: sequence (OpenMS notation), precursor_charge, psm_id
-
-  4. Heatmap       -> openms_insight Heatmap
-     One row per peak from every loaded spectrum (RT x m/z intensity map).
-     Schema: x (RT in seconds), y (m/z), intensity
-
-Usage pattern in content/peptide_mirror.py
--------------------------------------------
-# After peptide search:
-psm_df, psm_lookup = build_psm_table(variant_groups)
-
-# Accumulate (psm_id, annotated_df) pairs while streaming spectra:
-annotated_list = []
-def on_query_ready(result):
-    key = spectrum_lookup_key(result.query_spectrum)
-    psm_id = psm_lookup.get(key)
-    if psm_id is not None:
-        annotated_df = prepare_spectrum_for_plot(
-            result.query_spectrum.mz,
-            result.query_spectrum.intensity,
-            result.query_spectrum.peptidoform,
-            result.query_spectrum.precursor_charge,
-            ...
-        )
-        annotated_list.append((psm_id, result.query_spectrum, annotated_df))
-
-# After all spectra loaded:
-peaks_df    = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_list])
-seq_df      = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_list])
-heatmap_df  = build_heatmap_dataframe([s for _, s, _ in annotated_list])
+Produces four DataFrames: PSM table, Peaks (LinePlot/SequenceView),
+Sequences (SequenceView), and Heatmap (RT x m/z).
 """
 
 import logging

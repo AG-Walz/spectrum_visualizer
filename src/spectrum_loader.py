@@ -412,6 +412,63 @@ class StreamingResult:
     total_queries: int  # Total queries expected for this variant
 
 
+def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map, mzml_disambig):
+    """Build (path_str, display_name, matches) tuples for files that have matches."""
+    tasks = []
+    for path_key in file_keys:
+        if path_key not in mzml_to_matches:
+            continue
+        mzml_path = mzml_path_map[path_key]
+        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
+        tasks.append((str(mzml_path), display_name, mzml_to_matches[path_key]))
+    return tasks
+
+
+def _execute_load_tasks(file_tasks, is_reference, effective_workers,
+                        on_file_start, on_file_complete, error_callback):
+    """Load spectra from mzML files, sequentially or in parallel.
+
+    Returns list of (display_name, loaded_list, loaded_count, not_found_count).
+    """
+    kind = "reference" if is_reference else "query"
+    all_results = []
+
+    if effective_workers <= 1 or len(file_tasks) <= 1:
+        for mzml_path_str, display_name, matches_for_file in file_tasks:
+            if on_file_start:
+                on_file_start(display_name, is_reference)
+            _, _, loaded_list, loaded_count, not_found_count, errs = \
+                _load_spectra_from_mzml(mzml_path_str, display_name, matches_for_file, is_reference)
+            for err in errs:
+                if error_callback:
+                    error_callback(err)
+            all_results.append((display_name, loaded_list, loaded_count, not_found_count))
+            if on_file_complete:
+                on_file_complete(display_name, loaded_count, not_found_count)
+    else:
+        logger.info(f"Parallel {kind} loading: {len(file_tasks)} files, {effective_workers} workers")
+        with ProcessPoolExecutor(max_workers=effective_workers) as pool:
+            future_map = {
+                pool.submit(_load_spectra_from_mzml, p, d, m, is_reference): d
+                for p, d, m in file_tasks
+            }
+            for future in as_completed(future_map):
+                try:
+                    display_name, _, loaded_list, loaded_count, not_found_count, errs = future.result()
+                    for err in errs:
+                        if error_callback:
+                            error_callback(err)
+                    all_results.append((display_name, loaded_list, loaded_count, not_found_count))
+                    if on_file_complete:
+                        on_file_complete(display_name, loaded_count, not_found_count)
+                except Exception as e:
+                    display_name = future_map[future]
+                    if error_callback:
+                        error_callback(f"Worker crashed loading {kind} {display_name}: {e}")
+
+    return all_results
+
+
 def load_spectra_streaming(
     variant_groups: Dict[str, VariantGroup],
     mzml_paths: List[Path],
@@ -427,220 +484,101 @@ def load_spectra_streaming(
     """
     Load spectra with streaming: references first, then yield each query spectrum.
 
-    This approach allows immediate processing of each query spectrum as it's loaded,
-    enabling real-time visualization and export.
-
     Args:
         variant_groups: Dict of variant_key -> VariantGroup with matches
         mzml_paths: List of available mzML paths
         reference_substring: Substring to identify reference files (case-insensitive)
-        on_reference_loaded: Callback(variant_key, count) when all references for a variant are loaded
-        on_query_ready: Callback(StreamingResult) for each query spectrum ready for processing
-        on_file_start: Callback(filename, is_reference) when starting to process a file
-        on_file_complete: Callback(filename, loaded_count, not_found_count) when file is done
+        on_reference_loaded: Callback(variant_key, count) when references are loaded
+        on_query_ready: Callback(StreamingResult) for each query spectrum
+        on_file_start: Callback(filename, is_reference) when starting a file
+        on_file_complete: Callback(filename, loaded_count, not_found_count) when done
         error_callback: Callback(error_message) for errors
-        workers: Number of parallel workers for mzML loading. 1 = sequential (default).
-        skip_ids: Optional set of (variant_key, spectrum_id) tuples to skip.
-            Used for resuming from a partial cache — spectra already loaded are skipped.
+        workers: Number of parallel workers. 1 = sequential (default).
+        skip_ids: Set of (variant_key, spectrum_id) tuples to skip (for resume).
 
     Returns:
-        Dict of variant_key -> list of reference spectra (for summary purposes)
+        Dict of variant_key -> list of reference spectra
     """
-    # Build available mzML lookup keyed by resolved lowercase path (collision-free)
+    # Build available mzML lookup keyed by resolved lowercase path
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
-
-    # Compute disambiguated display names
     mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])
 
     # Separate reference and query files
-    reference_files = {}
-    query_files = {}
-
+    reference_keys = {}
+    query_keys = {}
     for path_key, path in mzml_path_map.items():
-        is_ref = reference_substring and reference_substring.lower() in str(path).lower()
-        if is_ref:
-            reference_files[path_key] = path
+        if reference_substring and reference_substring.lower() in str(path).lower():
+            reference_keys[path_key] = path
         else:
-            query_files[path_key] = path
+            query_keys[path_key] = path
 
-    # Build mapping using resolved paths
     mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
 
-    # Filter out already-loaded spectra when resuming from partial cache
-    skipped_count = 0
+    # Filter already-loaded spectra when resuming from partial cache
     if skip_ids:
         filtered_map = {}
+        skipped = 0
         for path_key, matches_for_file in mzml_to_matches.items():
-            remaining = [
-                (match, variant_key) for match, variant_key in matches_for_file
-                if (variant_key, match.spectrum_id) not in skip_ids
-            ]
-            skipped_count += len(matches_for_file) - len(remaining)
+            remaining = [(m, vk) for m, vk in matches_for_file
+                         if (vk, m.spectrum_id) not in skip_ids]
+            skipped += len(matches_for_file) - len(remaining)
             if remaining:
                 filtered_map[path_key] = remaining
         mzml_to_matches = filtered_map
-        if skipped_count > 0:
-            logger.info(f"Resume: skipping {skipped_count} already-cached spectra, "
+        if skipped > 0:
+            logger.info(f"Resume: skipping {skipped} cached spectra, "
                         f"{sum(len(v) for v in mzml_to_matches.values())} remaining")
 
-    # Storage for reference spectra by variant
-    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups.keys()}
+    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups}
 
-    # Track query counts per variant for progress
-    query_counts: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
+    # Count queries per variant (for progress tracking)
+    query_counts: Dict[str, int] = {k: 0 for k in variant_groups}
     for path_key, matches in mzml_to_matches.items():
-        if path_key not in reference_files:
-            for match, variant_key in matches:
+        if path_key not in reference_keys:
+            for _, variant_key in matches:
                 query_counts[variant_key] += 1
 
-    # Determine effective worker count for file-level parallelism
-    total_mzml_files = sum(1 for pk in list(reference_files) + list(query_files) if pk in mzml_to_matches)
-    effective_workers = max(1, min(workers, total_mzml_files))
+    total_files = sum(1 for pk in list(reference_keys) + list(query_keys) if pk in mzml_to_matches)
+    effective_workers = max(1, min(workers, total_files))
 
-    # =========================================================================
     # Phase 1: Load all reference spectra
-    # =========================================================================
-    logger.info(f"Loading reference spectra from {len(reference_files)} files...")
+    ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map, mzml_disambig)
+    ref_results = _execute_load_tasks(ref_tasks, True, effective_workers,
+                                      on_file_start, on_file_complete, error_callback)
+    for _, loaded_list, _, _ in ref_results:
+        for variant_key, spec in loaded_list:
+            reference_spectra[variant_key].append(spec)
 
-    # Build list of reference file tasks
-    ref_file_tasks = []
-    for path_key in reference_files:
-        if path_key not in mzml_to_matches:
-            continue
-        mzml_path = mzml_path_map[path_key]
-        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
-        matches_for_file = mzml_to_matches[path_key]
-        ref_file_tasks.append((str(mzml_path), display_name, matches_for_file))
-
-    if effective_workers <= 1 or len(ref_file_tasks) <= 1:
-        # Sequential reference loading
-        for mzml_path_str, display_name, matches_for_file in ref_file_tasks:
-            if on_file_start:
-                on_file_start(display_name, True)
-
-            _, _, loaded_list, loaded_count, not_found_count, errs = _load_spectra_from_mzml(
-                mzml_path_str, display_name, matches_for_file, True
-            )
-            for variant_key, spec in loaded_list:
-                reference_spectra[variant_key].append(spec)
-            for err in errs:
-                if error_callback:
-                    error_callback(err)
-
-            if on_file_complete:
-                on_file_complete(display_name, loaded_count, not_found_count)
-    else:
-        # Parallel reference loading
-        logger.info(f"Parallel reference loading: {len(ref_file_tasks)} files, {effective_workers} workers")
-
-        with ProcessPoolExecutor(max_workers=effective_workers) as pool:
-            future_map = {
-                pool.submit(_load_spectra_from_mzml, mzml_path_str, display_name, matches_for_file, True): display_name
-                for mzml_path_str, display_name, matches_for_file in ref_file_tasks
-            }
-
-            for future in as_completed(future_map):
-                try:
-                    display_name, _, loaded_list, loaded_count, not_found_count, errs = future.result()
-                    for variant_key, spec in loaded_list:
-                        reference_spectra[variant_key].append(spec)
-                    for err in errs:
-                        if error_callback:
-                            error_callback(err)
-                    if on_file_complete:
-                        on_file_complete(display_name, loaded_count, not_found_count)
-                except Exception as e:
-                    display_name = future_map[future]
-                    if error_callback:
-                        error_callback(f"Worker crashed loading reference {display_name}: {e}")
-
-    # Notify that references are loaded for each variant
     if on_reference_loaded:
         for variant_key, refs in reference_spectra.items():
             if refs:
                 on_reference_loaded(variant_key, len(refs))
 
-    logger.info(f"Reference loading complete: {sum(len(v) for v in reference_spectra.values())} spectra")
+    logger.info(f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra")
 
-    # =========================================================================
-    # Phase 2: Stream query spectra one at a time
-    # =========================================================================
-    logger.info(f"Streaming query spectra from {len(query_files)} files...")
+    # Phase 2: Stream query spectra and dispatch via callback
+    query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map, mzml_disambig)
+    query_results = _execute_load_tasks(query_tasks, False, effective_workers,
+                                        on_file_start, on_file_complete, error_callback)
 
-    # Track query index per variant
-    query_indices: Dict[str, int] = {k: 0 for k in variant_groups.keys()}
-
-    # Build list of query file tasks
-    query_file_tasks = []
-    for path_key in query_files:
-        if path_key not in mzml_to_matches:
-            continue
-        mzml_path = mzml_path_map[path_key]
-        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
-        matches_for_file = mzml_to_matches[path_key]
-        query_file_tasks.append((str(mzml_path), display_name, matches_for_file))
-
-    def _dispatch_query_results(loaded_list, file_display_name):
-        """Dispatch loaded query spectra through on_query_ready callback (main process)."""
+    query_indices: Dict[str, int] = {k: 0 for k in variant_groups}
+    for _, loaded_list, _, _ in query_results:
         for variant_key, loaded in loaded_list:
-            variant_group = variant_groups[variant_key]
-            current_idx = query_indices[variant_key]
-            query_indices[variant_key] += 1
-
             if on_query_ready:
+                variant_group = variant_groups[variant_key]
                 result = StreamingResult(
                     query_spectrum=loaded,
                     reference_spectra=reference_spectra[variant_key],
                     variant_key=variant_key,
                     base_sequence=variant_group.base_sequence,
                     modification_key=variant_group.modification_key,
-                    query_index=current_idx,
-                    total_queries=query_counts[variant_key]
+                    query_index=query_indices[variant_key],
+                    total_queries=query_counts[variant_key],
                 )
                 on_query_ready(result)
-
-    if effective_workers <= 1 or len(query_file_tasks) <= 1:
-        # Sequential query loading
-        for mzml_path_str, display_name, matches_for_file in query_file_tasks:
-            if on_file_start:
-                on_file_start(display_name, False)
-
-            _, _, loaded_list, loaded_count, not_found_count, errs = _load_spectra_from_mzml(
-                mzml_path_str, display_name, matches_for_file, False
-            )
-            for err in errs:
-                if error_callback:
-                    error_callback(err)
-            _dispatch_query_results(loaded_list, display_name)
-
-            if on_file_complete:
-                on_file_complete(display_name, loaded_count, not_found_count)
-    else:
-        # Parallel query loading — load files in parallel, dispatch callbacks sequentially
-        logger.info(f"Parallel query loading: {len(query_file_tasks)} files, {effective_workers} workers")
-
-        with ProcessPoolExecutor(max_workers=effective_workers) as pool:
-            future_map = {
-                pool.submit(_load_spectra_from_mzml, mzml_path_str, display_name, matches_for_file, False): display_name
-                for mzml_path_str, display_name, matches_for_file in query_file_tasks
-            }
-
-            for future in as_completed(future_map):
-                try:
-                    display_name, _, loaded_list, loaded_count, not_found_count, errs = future.result()
-                    for err in errs:
-                        if error_callback:
-                            error_callback(err)
-                    _dispatch_query_results(loaded_list, display_name)
-                    if on_file_complete:
-                        on_file_complete(display_name, loaded_count, not_found_count)
-                except Exception as e:
-                    display_name = future_map[future]
-                    if error_callback:
-                        error_callback(f"Worker crashed loading query {display_name}: {e}")
+            query_indices[variant_key] += 1
 
     logger.info("Query streaming complete")
-
     return reference_spectra
 
 

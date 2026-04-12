@@ -9,7 +9,6 @@ import sys
 import json
 import shutil
 
-import pandas as pd
 import streamlit as st
 
 from typing import Any
@@ -249,79 +248,3 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
     return params
 
 
-def v_space(n: int, col=None) -> None:
-    """Add *n* blank lines for vertical spacing."""
-    for _ in range(n):
-        if col:
-            col.write("")
-        else:
-            st.write("")
-
-
-def show_fig(
-    fig,
-    download_name: str,
-    container_width: bool = True,
-    selection_session_state_key: str = "",
-) -> None:
-    """Display a Plotly chart with export config and optional selection mode."""
-    image_format = st.session_state.get("image-format", "png")
-    config = {
-        "displaylogo": False,
-        "modeBarButtonsToRemove": [
-            "zoom", "pan", "select", "lasso",
-            "zoomin", "autoscale", "zoomout", "resetscale",
-        ],
-        "toImageButtonOptions": {
-            "filename": download_name,
-            "format": image_format,
-        },
-    }
-
-    if selection_session_state_key:
-        st.plotly_chart(
-            fig, key=selection_session_state_key,
-            selection_mode=["points", "box"], on_select="rerun",
-            config=config, width="stretch",
-        )
-    else:
-        st.plotly_chart(
-            fig, config=config,
-            width="stretch" if container_width else "content",
-        )
-
-
-def show_table(df: pd.DataFrame, download_name: str = "") -> pd.DataFrame:
-    """Display a DataFrame with optional TSV download button."""
-    st.dataframe(df, width="stretch")
-    if download_name:
-        st.download_button(
-            "Download Table",
-            df.to_csv(sep="\t").encode("utf-8"),
-            download_name.replace(" ", "-") + ".tsv",
-        )
-    return df
-
-
-def reset_directory(path: Path) -> None:
-    """Remove the given directory and re-create it empty."""
-    path = Path(path)
-    if path.exists():
-        shutil.rmtree(path)
-    path.mkdir(parents=True, exist_ok=True)
-
-
-def get_workspace_url(workspace_name: str) -> str:
-    """Build a shareable URL for a workspace."""
-    return f"?workspace={workspace_name}"
-
-
-WARNINGS = {
-    "missing-mzML": "Upload or select some mzML files first!",
-}
-
-ERRORS = {
-    "general": "Something went wrong.",
-    "workflow": "Something went wrong during workflow execution.",
-    "visualization": "Something went wrong during visualization of results.",
-}
