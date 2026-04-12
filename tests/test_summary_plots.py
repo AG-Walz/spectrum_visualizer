@@ -122,11 +122,10 @@ class TestSummaryPlotsFromCsv:
             source=df,
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis", "heatmap"],
+            plot_types=["dual_axis", "ridgeline"],
         )
-        # dual_axis and heatmap should both produce output
         assert "dual_axis" in results
-        assert "heatmap" in results
+        assert "ridgeline" in results
 
     def test_empty_csv_raises_or_returns_empty(self, tmp_path):
         # CSV with required column headers but no data rows

@@ -4,7 +4,6 @@ Summary plots for comparison metric data.
 Generates per-peptidoform metric distribution visualizations:
   - Classic dual-axis (count bars + metric boxplots)
   - Ridgeline / Joy plot (KDE densities + count sidebar)
-  - Multi-metric heatmap
 
 Can be called programmatically::
 
@@ -53,10 +52,9 @@ SUMMARY_COLORS = {
     "box": "#2C3E50",
     "box_fill": "#BDC3C7",
     "scatter": "#2C3E50",
-    "heatmap_cmap": "RdYlGn",
 }
 
-PLOT_TYPES = ["dual_axis", "ridgeline", "heatmap"]
+PLOT_TYPES = ["dual_axis", "ridgeline"]
 
 MAX_SCATTER_PER_GROUP = 200
 
@@ -324,76 +322,6 @@ def plot_ridgeline(
 # Plot 3: Multi-Metric Heatmap
 # ---------------------------------------------------------------------------
 
-def plot_heatmap(
-    raw_df: pd.DataFrame,
-    agg_df: pd.DataFrame,
-    metric: str = DEFAULT_METRIC,
-    metrics: List[str] = None,
-    figsize: Tuple[float, float] = None,
-    dpi: int = 300,
-    title: str = None,
-) -> Figure:
-    """All metrics as heatmap columns with count sidebar."""
-    agg_df = agg_df.sort_values("count", ascending=False).reset_index(drop=True)
-
-    if metrics is None:
-        metrics = [m for m in METRIC_COLUMNS if m in raw_df.columns]
-
-    n = len(agg_df)
-    n_metrics = len(metrics)
-    if figsize is None:
-        figsize = (4 + n_metrics * 1.2, _auto_height(n, per_row=0.42))
-
-    fig, (ax_heat, ax_bar) = plt.subplots(
-        1, 2, figsize=figsize, dpi=dpi,
-        gridspec_kw={"width_ratios": [n_metrics, 1.5], "wspace": 0.08}, sharey=True,
-    )
-
-    labels = agg_df["peptidoform"].values
-    y_pos = np.arange(n)
-
-    grouped = raw_df.groupby("peptidoform", sort=False)
-    matrix = np.zeros((n, n_metrics))
-    for j, m in enumerate(metrics):
-        medians_series = grouped[m].median()
-        for i, pf in enumerate(labels):
-            matrix[i, j] = medians_series.get(pf, np.nan)
-
-    im = ax_heat.imshow(matrix, aspect="auto", cmap=SUMMARY_COLORS["heatmap_cmap"],
-                        vmin=0, vmax=1, interpolation="nearest")
-
-    for i in range(n):
-        for j in range(n_metrics):
-            val = matrix[i, j]
-            if not np.isnan(val):
-                text_color = "white" if val < 0.3 or val > 0.85 else "black"
-                ax_heat.text(j, i, f"{val:.2f}", ha="center", va="center",
-                            fontsize=6.5, color=text_color, fontweight="bold")
-
-    ax_heat.set_xticks(range(n_metrics))
-    ax_heat.set_xticklabels([_metric_label(m) for m in metrics], fontsize=8,
-                            rotation=35, ha="right")
-    ax_heat.set_yticks(y_pos)
-    ax_heat.set_yticklabels(labels, fontsize=8)
-    ax_heat.tick_params(axis="both", length=0)
-
-    ax_bar.barh(y_pos, agg_df["count"].values, height=0.7,
-                color=SUMMARY_COLORS["bar"], alpha=0.7,
-                edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5)
-    ax_bar.set_xlabel("Count", fontsize=10, fontweight="bold")
-    ax_bar.tick_params(axis="y", left=False, labelleft=False)
-    _style_ax(ax_bar)
-
-    if title:
-        fig.subplots_adjust(left=0.22, bottom=0.18, top=0.92, wspace=0.08)
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-    else:
-        fig.subplots_adjust(left=0.22, bottom=0.18, top=0.96, wspace=0.08)
-    cbar_ax = fig.add_axes([0.25, 0.04, 0.35, 0.015])
-    cbar = fig.colorbar(im, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label("Median metric value", fontsize=9)
-    return fig
-
 
 # ---------------------------------------------------------------------------
 # Orchestrator
@@ -402,7 +330,6 @@ def plot_heatmap(
 _PLOT_REGISTRY = {
     "dual_axis": plot_classic_dual_axis,
     "ridgeline": plot_ridgeline,
-    "heatmap": plot_heatmap,
 }
 
 
