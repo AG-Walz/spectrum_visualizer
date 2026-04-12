@@ -51,11 +51,13 @@ heatmap_df  = build_heatmap_dataframe([s for _, s, _ in annotated_list])
 """
 
 import logging
+import os
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import polars as pl
+from psm_utils import Peptidoform
 
 from src.peptide_search import VariantGroup
 from src.spectrum_loader import LoadedSpectrum
@@ -170,7 +172,6 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
     which uses its own ``parse_openms_sequence()`` to handle this format.
     """
     try:
-        from psm_utils import Peptidoform
         pf_clean = peptidoform_str.split("/")[0]
         pf = Peptidoform(pf_clean)
         parts = []
@@ -189,7 +190,6 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
     except Exception:
         # Safe fallback: return unmodified sequence
         try:
-            from psm_utils import Peptidoform
             return Peptidoform(peptidoform_str.split("/")[0]).sequence
         except Exception:
             return peptidoform_str.split("/")[0]
@@ -464,7 +464,6 @@ def save_to_parquet(lf: pl.LazyFrame, path: str) -> None:
         lf: Polars LazyFrame to persist.
         path: Output file path (e.g. "cache/psm_table.parquet").
     """
-    import os
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     lf.collect().write_parquet(path, compression="zstd")
     logger.info(f"Saved parquet: {path}")

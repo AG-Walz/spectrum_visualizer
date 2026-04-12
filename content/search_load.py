@@ -4,11 +4,27 @@ Search & Load Page — Peptide search, spectrum streaming, annotation, metrics.
 Long-running operations use st.status with progress bars.
 The results display section is an @st.fragment.
 """
+import copy
 import logging
-import streamlit as st
+import time as _time
 from pathlib import Path
 
+import numpy as np
+import pandas as pd
+import streamlit as st
+from psm_utils import Peptidoform as _PF
+
 from src.common.common import page_setup, save_params
+from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
+from src.parallel_processor import compute_ion_match_statistics
+from src.parquet_builder import (
+    build_psm_table, build_peaks_dataframe,
+    build_sequence_dataframe, build_heatmap_dataframe,
+)
+from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+from src.peptide_search import search_peptides_in_idxmls, summarize_search_results
+from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key, LoadedSpectrum
+from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 from content._shared import (
     STATE_PREFIX, get_state_key,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
@@ -30,9 +46,6 @@ def _p(key, default=None):
 
 def run_peptide_search(idxmls: list, peptides: list):
     """Execute peptide search."""
-    from src.peptide_search import search_peptides_in_idxmls
-    import time as _time
-
     mzmls = _p('selected-mzmls', [])
     error_messages = []
 
@@ -71,7 +84,6 @@ def run_peptide_search(idxmls: list, peptides: list):
                 status.update(label=f"Found {total_matches} PSMs across {len(results)} variants",
                               state="complete")
 
-                from src.common.common import save_params
                 save_params(params)
 
                 unresolved = sum(1 for vg in results.values() for m in vg.matches if not m.mzml_filename)
@@ -95,13 +107,8 @@ def run_peptide_search(idxmls: list, peptides: list):
 def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict):
     """Generate Koina AI-predicted spectrum as a fallback reference."""
     try:
-        from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
         if not KOINA_AVAILABLE:
             return None
-
-        import numpy as np
-        from src.spectrum_loader import LoadedSpectrum
-        from src.peak_annotation import prepare_koina_spectrum_for_plot
 
         model_id = _p("koina-model", "ms2pip_timsTOF2024")
         ce = _p("koina-ce", 35)
@@ -119,7 +126,6 @@ def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict
             return None
 
         try:
-            from psm_utils import Peptidoform as _PF
             base_seq = _PF(peptidoform.split("/")[0]).sequence
         except Exception:
             base_seq = peptidoform.split("/")[0]
@@ -151,17 +157,6 @@ def _get_koina_prediction(peptidoform: str, charge: int, annotation_kwargs: dict
 def run_search_and_load():
     """Stream spectra, capture references, annotate, compute metrics, build DataFrames."""
     clear_analysis_cache()
-
-    from pathlib import Path as _Path
-    import copy
-    import time as _time
-    from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
-    from src.peak_annotation import prepare_spectrum_for_plot
-    from src.parquet_builder import (
-        build_psm_table, build_peaks_dataframe,
-        build_sequence_dataframe, build_heatmap_dataframe,
-    )
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 
     variant_groups = st.session_state.get(get_state_key('variant_groups'))
     if not variant_groups:
@@ -263,8 +258,8 @@ def run_search_and_load():
                         "Peptide": result.base_sequence,
                         "Modification": result.modification_key,
                         "Charge": result.query_spectrum.precursor_charge,
-                        "Query": _Path(result.query_spectrum.source_file).stem,
-                        "Reference": _Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
+                        "Query": Path(result.query_spectrum.source_file).stem,
+                        "Reference": Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
                         "query_spectrum_id": result.query_spectrum.spectrum_id,
                         "ref_spectrum_id": ref_spec.spectrum_id,
                         "query_rt": result.query_spectrum.rt,
@@ -276,7 +271,6 @@ def run_search_and_load():
                         row[count_key] = metrics.get(count_key, 0)
 
                     try:
-                        from src.parallel_processor import compute_ion_match_statistics
                         ims_stats = compute_ion_match_statistics(
                             query_df, result.query_spectrum.peptidoform,
                             result.query_spectrum.precursor_charge,
@@ -300,17 +294,17 @@ def run_search_and_load():
 
         def on_file_start(path, is_reference):
             kind = "reference" if is_reference else "query"
-            status_text.caption(f"Processing {kind}: {_Path(path).name}")
+            status_text.caption(f"Processing {kind}: {Path(path).name}")
 
         def on_file_complete(path, loaded, total):
-            logger.info(f"Completed {_Path(path).name}: {loaded}/{total} spectra")
+            logger.info(f"Completed {Path(path).name}: {loaded}/{total} spectra")
 
         def error_callback(error):
             logger.error(f"Streaming error: {error}")
 
         load_spectra_streaming(
             variant_groups=vg_copy,
-            mzml_paths=[_Path(m) for m in mzmls],
+            mzml_paths=[Path(m) for m in mzmls],
             reference_substring=ref_substring,
             on_reference_loaded=on_reference_loaded,
             on_query_ready=on_query_ready,
@@ -344,7 +338,6 @@ def run_search_and_load():
         }
         st.session_state[get_state_key('reference_store')] = reference_store
 
-        import pandas as pd
         if comparison_rows:
             comparison_df = pd.DataFrame(comparison_rows)
         else:
@@ -373,7 +366,6 @@ def run_search_and_load():
 
 def display_search_results(results: dict):
     """Display search results table."""
-    from src.peptide_search import summarize_search_results
     summary_lf = summarize_search_results(results)
     summary_df = summary_lf.collect().to_pandas()
     if not summary_df.empty:

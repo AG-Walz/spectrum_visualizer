@@ -8,12 +8,25 @@ import io
 import json
 import logging
 import shutil
+import traceback as _tb
 import zipfile
-import streamlit as st
 from pathlib import Path
 from datetime import datetime
 
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import pandas as pd
+import streamlit as st
+
 from src.common.common import page_setup, save_params
+from src.mirror_plot import (
+    create_mirror_plot, create_single_spectrum_plot,
+    figure_to_bytes, create_plotly_mirror_plot,
+)
+from src.spectrum_loader import spectrum_lookup_key
+from src.spectrum_metrics import compute_all_metrics, format_metrics_text
+from src.summary_plots import sanitize_filename, generate_all_summary_plots
 from content._shared import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
     build_run_settings, apply_run_settings,
@@ -38,16 +51,6 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 
     Returns (file_count, list_of_file_paths).
     """
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text
-    from src.summary_plots import sanitize_filename
-    from src.mirror_plot import (
-        create_mirror_plot, create_single_spectrum_plot,
-        figure_to_bytes, create_plotly_mirror_plot,
-    )
-    import matplotlib
-    matplotlib.use('Agg')
-    import matplotlib.pyplot as plt
-
     annotated_queries = st.session_state.get(get_state_key('annotated_queries'), {})
     reference_store = st.session_state.get(get_state_key('reference_store'), {})
     variant_groups = st.session_state.get(get_state_key('variant_groups'), {})
@@ -64,7 +67,6 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None
 
-    from src.spectrum_loader import spectrum_lookup_key
     psm_id_to_vk = {}
     for vk, vg in variant_groups.items():
         for match in vg.matches:
@@ -164,9 +166,6 @@ def _export_mirror_plots(export_root: Path, do_html: bool):
 def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool):
     """Execute all selected exports with versioned directory."""
-    import pandas as pd
-    import traceback as _tb
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     export_root = Path(export_dir) / f"export_{timestamp}"
     export_root.mkdir(parents=True, exist_ok=True)
@@ -222,7 +221,6 @@ def _run_export(export_dir: str, do_parquet: bool, do_csv: bool,
             comparison_df = st.session_state.get(get_state_key('comparison_df'))
             if comparison_df is not None and not comparison_df.empty:
                 st.caption("Generating summary plots...")
-                from src.summary_plots import generate_all_summary_plots
                 try:
                     results = generate_all_summary_plots(
                         source=comparison_df,

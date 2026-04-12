@@ -8,8 +8,12 @@ import logging
 from io import BytesIO
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib
+matplotlib.use('Agg')
+from matplotlib.figure import Figure as MplFigure
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 
 from src.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
 from src.common.spectrum_utils import (  # noqa: F401
@@ -52,8 +56,6 @@ def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float,
         label: hover label prefix (e.g. "Query", "Reference", or "").
         show_annotations: whether to add text annotations on peaks.
     """
-    import plotly.graph_objects as go
-
     hover_prefix = f"{label}<br>" if label else ""
 
     for color, group in df.groupby("_color", sort=False):
@@ -150,8 +152,6 @@ def create_plotly_mirror_plot(
     Returns:
         plotly.graph_objs.Figure
     """
-    import plotly.graph_objects as go
-
     if color_map is None:
         color_map = ION_COLORS
 
@@ -231,8 +231,6 @@ def create_plotly_single_plot(
     height: int = 500,
 ):
     """Create an interactive Plotly single-spectrum plot."""
-    import plotly.graph_objects as go
-
     if color_map is None:
         color_map = ION_COLORS
 
@@ -284,10 +282,6 @@ def create_mirror_plot(
     normalize: bool = True,
 ):
     """Create a publication-ready static matplotlib mirror plot."""
-    import matplotlib
-    matplotlib.use('Agg')
-    from matplotlib.figure import Figure as MplFigure
-
     if color_map is None:
         color_map = ION_COLORS
 
@@ -377,10 +371,6 @@ def create_single_spectrum_plot(
     normalize: bool = True,
 ):
     """Create a static matplotlib single annotated spectrum plot."""
-    import matplotlib
-    matplotlib.use('Agg')
-    from matplotlib.figure import Figure as MplFigure
-
     if color_map is None:
         color_map = ION_COLORS
 

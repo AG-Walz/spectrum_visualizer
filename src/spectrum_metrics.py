@@ -11,6 +11,12 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
+from scipy.stats import linregress
+
+try:
+    import ms_entropy
+except ImportError:
+    ms_entropy = None
 
 logger = logging.getLogger(__name__)
 
@@ -101,7 +107,6 @@ def _r2_from_arrays(q_ints: np.ndarray, r_ints: np.ndarray) -> float:
     """R^2 from pre-computed matched intensity arrays."""
     if len(q_ints) < 2:
         return float("nan")
-    from scipy.stats import linregress
     _, _, r_value, _, _ = linregress(q_ints, r_ints)
     return float(r_value ** 2)
 
@@ -155,7 +160,6 @@ def compute_r2_binned(
     if shared_mask.sum() < 2:
         return float("nan")
 
-    from scipy.stats import linregress
     _, _, r_value, _, _ = linregress(q_sums[shared_mask], r_sums[shared_mask])
     return float(r_value ** 2)
 
@@ -174,9 +178,7 @@ def compute_spectral_entropy_similarity(
     if query_df.empty or ref_df.empty:
         return float("nan")
 
-    try:
-        import ms_entropy
-    except ImportError:
+    if ms_entropy is None:
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 

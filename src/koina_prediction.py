@@ -13,6 +13,8 @@ from typing import Dict, Optional
 
 import pandas as pd
 
+from src.peak_annotation import peptidoform_to_aasequence
+
 logger = logging.getLogger(__name__)
 
 # Graceful degradation when koinapy is not installed
@@ -66,8 +68,6 @@ def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     Returns:
         UniMod-formatted string with bracket notation (e.g. 'PEPTM[UNIMOD:35]IDE')
     """
-    from src.peak_annotation import peptidoform_to_aasequence
-
     aa_seq = peptidoform_to_aasequence(peptidoform_str)
     # toUniModString() uses parentheses: PEPTM(UniMod:35)IDE
     # Koina expects brackets: PEPTM[UNIMOD:35]IDE

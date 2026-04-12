@@ -1,8 +1,13 @@
 """
 Setup Page — File selection, peptide input, reference config, annotation settings.
 """
-import streamlit as st
+import time as _time
+from collections import Counter
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+
+import streamlit as st
+from psm_utils.io.idxml import IdXMLReader
 
 from src.common.common import page_setup, save_params
 from content._shared import (
@@ -10,6 +15,25 @@ from content._shared import (
     list_subdirectories, list_files,
 )
 from utils.helpers import get_nested as get_settings_value, parse_peptide_list
+
+try:
+    from src.koina_prediction import (
+        KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
+        DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
+        get_koina_settings,
+    )
+except ImportError:
+    KOINA_AVAILABLE = False
+    KOINA_MODELS = {}
+    INSTRUMENT_TYPES = []
+    DEFAULT_MODEL = ""
+    DEFAULT_COLLISION_ENERGY = 35
+    DEFAULT_INSTRUMENT_TYPE = "TIMSTOF"
+
+    def get_koina_settings(s):
+        return {"enabled": False, "model": DEFAULT_MODEL,
+                "collision_energy": DEFAULT_COLLISION_ENERGY,
+                "instrument_type": DEFAULT_INSTRUMENT_TYPE}
 
 params = page_setup()
 
@@ -20,10 +44,8 @@ params = page_setup()
 
 def _scan_idxml_psm_counts(idxml_path: str) -> dict:
     """Worker: count PSMs per peptide in one idXML file. Module-level for pickling."""
-    from collections import Counter
     counts: Counter = Counter()
     try:
-        from psm_utils.io.idxml import IdXMLReader
         for psm in IdXMLReader(str(idxml_path)):
             seq = psm.peptidoform.sequence.upper()
             if seq:
@@ -270,10 +292,6 @@ def peptide_input_fragment():
                 workers = params.get('workers', 4)
                 if st.button(f"Scan {n} files for peptides",
                              key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-                    from collections import Counter
-                    from concurrent.futures import ProcessPoolExecutor, as_completed
-                    import time as _time
-
                     merged = Counter()
                     errors = []
                     with st.status(f"Scanning {n} idXML files ({workers} workers)...",
@@ -472,25 +490,6 @@ def settings_fragment():
         "When enabled, spectra without an experimental reference are compared "
         "against AI-predicted fragmentation patterns (intensity + m/z)."
     )
-
-    try:
-        from src.koina_prediction import (
-            KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
-            DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
-            get_koina_settings,
-        )
-    except ImportError:
-        KOINA_AVAILABLE = False
-        KOINA_MODELS = {}
-        INSTRUMENT_TYPES = []
-        DEFAULT_MODEL = ""
-        DEFAULT_COLLISION_ENERGY = 35
-        DEFAULT_INSTRUMENT_TYPE = "TIMSTOF"
-
-        def get_koina_settings(s):
-            return {"enabled": False, "model": DEFAULT_MODEL,
-                    "collision_energy": DEFAULT_COLLISION_ENERGY,
-                    "instrument_type": DEFAULT_INSTRUMENT_TYPE}
 
     _k_defaults = get_koina_settings(_get_settings())
 

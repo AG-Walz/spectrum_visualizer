@@ -12,11 +12,23 @@ Architecture:
     main process:  collect results, update progress, write summary
 """
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import pandas as pd
+import pyopenms as oms
+
+from src.mirror_plot import (
+    create_mirror_plot, create_single_spectrum_plot,
+    create_plotly_mirror_plot, create_plotly_single_plot,
+)
+from src.peak_annotation import peptidoform_to_aasequence
+from src.spectrum_metrics import compute_all_metrics, format_metrics_text
 
 logger = logging.getLogger(__name__)
 
@@ -132,9 +144,6 @@ def compute_ion_match_statistics(
         Dict of {ims_<key>: value} for all 17 stats; None values on failure.
     """
     try:
-        import pyopenms as oms
-        from src.peak_annotation import peptidoform_to_aasequence
-
         # Build MSSpectrum from annotated DataFrame
         spec = oms.MSSpectrum()
         spec.set_peaks([
@@ -212,8 +221,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
         if task.task_type == "mirror" and task.ref_df is not None:
             # --- Metrics (always computed for summary CSV) ---
-            from src.spectrum_metrics import compute_all_metrics
-
             metrics = compute_all_metrics(task.query_df, task.ref_df)
 
             # Supplementary ims_ stats via SpectrumAnnotator.addIonMatchStatistics()
@@ -233,11 +240,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
             if not task.skip_plot:
                 # --- Full mirror plot (Matplotlib, batch export) ---
-                import matplotlib
-                matplotlib.use("Agg")
-                from src.mirror_plot import create_mirror_plot
-                from src.spectrum_metrics import format_metrics_text
-
                 metrics_text = format_metrics_text(metrics)
                 fig = create_mirror_plot(
                     upper_spectrum=task.query_df,
@@ -251,7 +253,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                     normalize=task.normalize,
                 )
                 png_path, svg_path, pdf_path = _save_task_figure(fig, task)
-                import matplotlib.pyplot as plt
                 plt.close(fig)
                 del fig
 
@@ -261,10 +262,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
         elif not task.skip_plot:
             # --- Single spectrum plot (no metrics) ---
-            import matplotlib
-            matplotlib.use("Agg")
-            from src.mirror_plot import create_single_spectrum_plot
-
             fig = create_single_spectrum_plot(
                 spectrum=task.query_df,
                 title=task.plot_title,
@@ -274,7 +271,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 normalize=task.normalize,
             )
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
-            import matplotlib.pyplot as plt
             plt.close(fig)
             del fig
 
@@ -347,7 +343,6 @@ def _save_task_html(task: ComparisonTask) -> str:
         out.parent.mkdir(parents=True, exist_ok=True)
 
         if task.task_type == "mirror" and task.ref_df is not None:
-            from src.mirror_plot import create_plotly_mirror_plot
             fig = create_plotly_mirror_plot(
                 upper_spectrum=task.query_df,
                 lower_spectrum=task.ref_df,
@@ -355,7 +350,6 @@ def _save_task_html(task: ComparisonTask) -> str:
                 normalize=task.normalize,
             )
         else:
-            from src.mirror_plot import create_plotly_single_plot
             fig = create_plotly_single_plot(
                 spectrum=task.query_df,
                 title=task.plot_title,
@@ -407,8 +401,6 @@ def run_parallel_comparisons(
             if on_task_complete:
                 on_task_complete(result, i + 1, total)
     else:
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         with ProcessPoolExecutor(max_workers=workers) as pool:
             future_map = {
                 pool.submit(process_single_task, task): task

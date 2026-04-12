@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
+from spectrum_utils.spectrum import MsmsSpectrum
 
 from src.common.ion_utils import get_ion_type  # noqa: F401
 
@@ -412,8 +413,6 @@ def msms_spectrum_from_loaded_spectrum(
     Returns:
         spectrum_utils MsmsSpectrum ready for annotate_proforma()
     """
-    from spectrum_utils.spectrum import MsmsSpectrum
-
     proforma_str = peptidoform_str.split("/")[0]
     return MsmsSpectrum(
         identifier=proforma_str,

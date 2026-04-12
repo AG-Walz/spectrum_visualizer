@@ -7,14 +7,18 @@ Supports fast Parquet-based loading for pre-converted datasets.
 """
 import logging
 import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Callable
 
 import numpy as np
+import polars as pl
+import pyarrow.parquet as pq
 import pyopenms as oms
 
+from src.path_utils import disambiguate_paths
 from src.peptide_search import PeptideMatch, VariantGroup
 
 logger = logging.getLogger(__name__)
@@ -509,8 +513,6 @@ def load_spectra_streaming(
     Returns:
         Dict of variant_key -> list of reference spectra (for summary purposes)
     """
-    from src.path_utils import disambiguate_paths
-
     # Build available mzML lookup keyed by resolved lowercase path (collision-free)
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
 
@@ -596,8 +598,6 @@ def load_spectra_streaming(
                 on_file_complete(display_name, lc, nf)
     else:
         # Parallel reference loading
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         logger.info(f"Parallel reference loading: {len(ref_file_tasks)} files, {effective_workers} workers")
 
         with ProcessPoolExecutor(max_workers=effective_workers) as pool:
@@ -684,8 +684,6 @@ def load_spectra_streaming(
                 on_file_complete(display_name, lc, nf)
     else:
         # Parallel query loading — load files in parallel, dispatch callbacks sequentially
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         logger.info(f"Parallel query loading: {len(query_file_tasks)} files, {effective_workers} workers")
 
         with ProcessPoolExecutor(max_workers=effective_workers) as pool:
@@ -752,8 +750,6 @@ def load_spectra_from_parquet(
     Returns:
         Dict of variant_key -> list of reference LoadedSpectrum objects
     """
-    import pyarrow.parquet as pq
-
     logger.info(f"Loading spectra from Parquet: {parquet_path}")
 
     try:
@@ -910,8 +906,6 @@ def spectra_metadata_to_polars(
         psm_id, spectrum_id, peptidoform, base_sequence,
         source_file, precursor_mz, precursor_charge, rt, is_reference
     """
-    import polars as pl
-
     if not spectra_with_ids:
         return pl.DataFrame(schema={
             "psm_id": pl.Int32, "spectrum_id": pl.String, "peptidoform": pl.String,

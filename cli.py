@@ -28,6 +28,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import pandas as pd
 import yaml
 
 # ---------------------------------------------------------------------------
@@ -37,7 +41,20 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from utils.helpers import format_time, get_nested
+from src.export import find_or_create_export_directory, commit_export_directory, sanitize_filename
+from src.mirror_plot import (
+    create_mirror_plot, create_single_spectrum_plot,
+    figure_to_bytes, create_plotly_mirror_plot,
+)
+from src.parquet_builder import (
+    build_psm_table, build_peaks_dataframe,
+    build_sequence_dataframe, build_heatmap_dataframe,
+)
+from src.peptide_search import search_peptides_in_idxmls, get_unique_peptides_from_idxmls
+from src.pipeline import process_query_result, build_plot_tasks
+from src.spectrum_loader import load_spectra_streaming
+from src.summary_plots import generate_all_summary_plots
+from utils.helpers import format_time, get_nested, parse_peptide_list
 
 logger = logging.getLogger("msinsight.cli")
 
@@ -191,7 +208,6 @@ def load_peptides(peptide_spec: str, idxml_files: List[str], workers: int,
     peptide_spec = str(peptide_spec).strip()
 
     if peptide_spec.lower() == "all":
-        from src.peptide_search import get_unique_peptides_from_idxmls
         if not quiet:
             print("  Extracting all peptides from idXML files...")
         progress = TerminalProgress("Scanning", len(idxml_files), quiet)
@@ -210,7 +226,6 @@ def load_peptides(peptide_spec: str, idxml_files: List[str], workers: int,
     pep_path = Path(peptide_spec)
     if pep_path.exists() and pep_path.is_file():
         text = pep_path.read_text()
-        from utils.helpers import parse_peptide_list
         peps = parse_peptide_list(text)
         return peps, "file"
 
@@ -384,12 +399,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     # ------------------------------------------------------------------
     # 3. Search peptides in idXML files
     # ------------------------------------------------------------------
-    from src.peptide_search import search_peptides_in_idxmls
-    from src.parquet_builder import (
-        build_psm_table, build_peaks_dataframe,
-        build_sequence_dataframe, build_heatmap_dataframe,
-    )
-
     if not quiet:
         print("Step 1: Searching peptides in idXML files...")
 
@@ -432,9 +441,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     # ------------------------------------------------------------------
     # 4. Stream spectra from mzML files
     # ------------------------------------------------------------------
-    from src.spectrum_loader import load_spectra_streaming
-    from src.pipeline import process_query_result
-
     if not quiet:
         print("Step 2: Loading and annotating spectra...")
 
@@ -518,7 +524,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
     heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
 
-    import pandas as pd
     comparison_df = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
 
     if not quiet:
@@ -532,8 +537,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     # ------------------------------------------------------------------
     if not quiet:
         print("Step 4: Exporting results...")
-
-    from src.export import find_or_create_export_directory, commit_export_directory
 
     run_settings = {
         "idxml_files": cfg.idxml_files,
@@ -618,7 +621,6 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
         # Summary plots
         if not comparison_df.empty:
             try:
-                from src.summary_plots import generate_all_summary_plots
                 summary_formats = [f for f in cfg.export_formats if f in ("png", "svg", "pdf")]
                 if not summary_formats:
                     summary_formats = ["png"]
@@ -662,12 +664,9 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
 
 def _generate_single_plot(task: dict) -> int:
     """Worker function for parallel plot generation. Returns file count."""
-    import matplotlib
-    matplotlib.use("Agg")
     count = 0
 
     if task["type"] == "mirror":
-        from src.mirror_plot import create_mirror_plot, figure_to_bytes, create_plotly_mirror_plot
         fig = create_mirror_plot(
             upper_spectrum=task["query_df"],
             lower_spectrum=task["ref_df"],
@@ -680,7 +679,6 @@ def _generate_single_plot(task: dict) -> int:
             dpi=task.get("dpi", 300),
         )
     else:
-        from src.mirror_plot import create_single_spectrum_plot, figure_to_bytes
         fig = create_single_spectrum_plot(
             spectrum=task["query_df"],
             title=task["title"],
@@ -689,8 +687,6 @@ def _generate_single_plot(task: dict) -> int:
             figsize=task.get("figsize", (12, 8)),
             dpi=task.get("dpi", 300),
         )
-
-    from src.mirror_plot import figure_to_bytes
 
     for fmt_dir_key, fmt in [("png_dir", "png"), ("svg_dir", "svg"), ("pdf_dir", "pdf")]:
         fmt_dir = task.get(fmt_dir_key, "")
@@ -703,12 +699,10 @@ def _generate_single_plot(task: dict) -> int:
         out_file.write_bytes(data)
         count += 1
 
-    import matplotlib.pyplot as plt
     plt.close(fig)
 
     # HTML interactive plot
     if task.get("html_dir") and task["type"] == "mirror":
-        from src.mirror_plot import create_plotly_mirror_plot
         plotly_fig = create_plotly_mirror_plot(
             upper_spectrum=task["query_df"],
             lower_spectrum=task["ref_df"],
@@ -731,9 +725,6 @@ def _export_mirror_plots(annotated_queries, reference_store, variant_groups,
                          cfg, root_dir, png_dir, svg_dir, pdf_dir,
                          normalize, quiet):
     """Generate mirror / single-spectrum plots using parallel workers."""
-    from src.export import sanitize_filename
-    from src.pipeline import build_plot_tasks
-
     # Determine which format directories are active
     fmt_dirs = {}
     for fmt, d in [("png", png_dir), ("svg", svg_dir), ("pdf", pdf_dir)]:

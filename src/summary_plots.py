@@ -20,10 +20,14 @@ matplotlib.use("Agg")
 
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
+from matplotlib.lines import Line2D
+from matplotlib.patches import Patch
 import numpy as np
 import pandas as pd
+from scipy.stats import gaussian_kde
 
 from src.common.string_utils import sanitize_filename, shorten_stem  # noqa: F401
+from src.peptide_search import format_inline_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +85,6 @@ def prepare_summary_data(
         )
 
     # Build peptidoform label
-    from src.peptide_search import format_inline_sequence
     mod = raw_df["Modification"].fillna("").astype(str)
     raw_df["peptidoform"] = (
         raw_df.apply(
@@ -210,8 +213,6 @@ def plot_classic_dual_axis(
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=8)
 
-    from matplotlib.patches import Patch
-    from matplotlib.lines import Line2D
     legend_elements = [
         Patch(facecolor=SUMMARY_COLORS["bar"], alpha=0.55, edgecolor=SUMMARY_COLORS["bar_edge"],
               label="Peptide Count"),
@@ -243,8 +244,6 @@ def plot_ridgeline(
     title: str = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
-    from scipy.stats import gaussian_kde
-
     n = len(agg_df)
     overlap = 0.65
     if figsize is None:

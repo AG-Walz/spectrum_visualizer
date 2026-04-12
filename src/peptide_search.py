@@ -6,7 +6,9 @@ id_merge_index and spectra_data internally so the per-PSM loop is format-agnosti
 PyOpenMS is used only in extract_spectra_data_map() for mzML path disambiguation
 from protein-level spectra_data metadata in merged idXML files.
 """
+import importlib
 import logging
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
@@ -15,6 +17,8 @@ import pandas as pd
 import numpy as np
 import polars as pl
 from psm_utils.io.idxml import IdXMLReader
+
+from src.path_utils import disambiguate_paths, resolve_mzml_path
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +112,6 @@ def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
 
 def _rebuild_peptide_match(*args):
     """Reconstruct PeptideMatch from pickled args (avoids Streamlit reload identity issues)."""
-    import importlib
     mod = importlib.import_module("src.peptide_search")
     return mod.PeptideMatch(*args)
 
@@ -247,8 +250,6 @@ def _search_single_idxml(
     Returns:
         Tuple of (idxml_name, list of (variant_key, PeptideMatch), list of errors)
     """
-    from src.path_utils import resolve_mzml_path
-
     matches: List[Tuple[str, PeptideMatch]] = []
     errors: List[str] = []
 
@@ -354,7 +355,6 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
     """
     peptides: Set[str] = set()
     try:
-        from psm_utils.io.idxml import IdXMLReader
         _reader = IdXMLReader(str(idxml_path))
         for _psm in _reader:
             _base_seq = _psm.peptidoform.sequence.upper()
@@ -390,8 +390,6 @@ def search_peptides_in_idxmls(
     Returns:
         Dict mapping variant_key -> VariantGroup
     """
-    from src.path_utils import disambiguate_paths
-
     # Normalize target peptides to uppercase, strip whitespace
     target_set = {p.strip().upper() for p in target_peptides if p.strip()}
 
@@ -449,8 +447,6 @@ def search_peptides_in_idxmls(
 
     else:
         # Parallel path — ProcessPoolExecutor with as_completed
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
 
         with ProcessPoolExecutor(max_workers=workers) as pool:
@@ -524,8 +520,6 @@ def get_unique_peptides_from_idxmls(
 
     else:
         # Parallel path
-        from concurrent.futures import ProcessPoolExecutor, as_completed
-
         logger.info(f"Parallel peptide scan: {total_files} files, {workers} workers")
 
         with ProcessPoolExecutor(max_workers=workers) as pool:

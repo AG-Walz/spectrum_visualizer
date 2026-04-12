@@ -9,6 +9,15 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import numpy as np
+from psm_utils import Peptidoform as _PF
+
+from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
+from src.parallel_processor import compute_ion_match_statistics
+from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+from src.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
+from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+
 logger = logging.getLogger("msinsight.pipeline")
 
 
@@ -46,8 +55,6 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
     * ``dict``  -- ``{psm_id: (spec, df)}``   (Streamlit format)
     * ``list``  -- ``[(psm_id, spec, df)]``    (CLI format)
     """
-    from src.spectrum_loader import spectrum_lookup_key
-
     psm_id_to_vk: Dict[str, str] = {}
 
     # Normalise to iterable of (pid, spec)
@@ -78,13 +85,8 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     Returns ``(LoadedSpectrum, annotated_df)`` tuple or ``None``.
     """
     try:
-        from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
         if not KOINA_AVAILABLE:
             return None
-
-        import numpy as np
-        from src.spectrum_loader import LoadedSpectrum
-        from src.peak_annotation import prepare_koina_spectrum_for_plot
 
         pred_df = predict_koina_spectrum(
             peptidoform_str=peptidoform,
@@ -101,7 +103,6 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
 
         # Extract base sequence
         try:
-            from psm_utils import Peptidoform as _PF
             base_seq = _PF(peptidoform.split("/")[0]).sequence
         except Exception:
             base_seq = peptidoform.split("/")[0]
@@ -137,8 +138,6 @@ def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
     *result* is a ``QueryResult`` from ``load_spectra_streaming``.
     *metrics* is the dict returned by ``compute_all_metrics``.
     """
-    from src.spectrum_metrics import METRIC_SHORT_TO_DISPLAY
-
     row: Dict[str, Any] = {
         "psm_id": psm_id,
         "Peptide": result.base_sequence,
@@ -189,11 +188,6 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
         *comparison_rows* is a list of metric dicts.  Returns ``None``
         when the result cannot be processed (missing PSM, annotation failure).
     """
-    from src.spectrum_loader import spectrum_lookup_key
-    from src.peak_annotation import prepare_spectrum_for_plot
-    from src.spectrum_metrics import compute_all_metrics
-    from src.parallel_processor import compute_ion_match_statistics
-
     key = spectrum_lookup_key(result.query_spectrum)
     psm_id = psm_lookup.get(key)
     if psm_id is None:
@@ -303,8 +297,6 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     -------
     list[dict]
     """
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text
-
     if fmt_dirs is None:
         fmt_dirs = {}
 

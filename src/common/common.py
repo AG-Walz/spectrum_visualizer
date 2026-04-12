@@ -62,13 +62,23 @@ def load_params(default: bool = False) -> dict[str, Any]:
             saved = json.load(f)
 
         # Migrate old format: peptide_mirror.X_y -> x-y
+        migrated = False
         if "peptide_mirror" in saved and isinstance(saved["peptide_mirror"], dict):
             old = saved["peptide_mirror"]
             for old_key, value in old.items():
                 short = old_key.replace("peptide_mirror.", "")
                 new_key = short.replace("_", "-")
-                if new_key in params and new_key not in saved:
+                # Prefer old-format value when the flat key is still at its default
+                if new_key in params and saved.get(new_key) == params[new_key]:
                     saved[new_key] = value
+            # Remove the old dict once migrated
+            del saved["peptide_mirror"]
+            migrated = True
+
+        # Persist migration so it only runs once
+        if migrated:
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(saved, f, indent=4)
 
         # Overlay saved values onto defaults
         for key in params:
@@ -427,13 +437,6 @@ def get_workspace_url(workspace_name: str) -> str:
     Returns:
         URL string with ?workspace= query parameter
     """
-    try:
-        import streamlit as st
-        # Try to get server address from Streamlit config
-        from streamlit.server.server import Server
-        port = 8501
-    except Exception:
-        port = 8501
     return f"?workspace={workspace_name}"
 
 

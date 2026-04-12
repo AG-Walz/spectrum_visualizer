@@ -6,11 +6,19 @@ Each sub-view is an @st.fragment so interactions within one view
 """
 import os
 import logging
-import streamlit as st
-import polars as pl
 from pathlib import Path
 
+import pandas as pd
+import streamlit as st
+import polars as pl
+from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
+
 from src.common.common import page_setup, save_params
+from src.mirror_plot import (
+    create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
+)
+from src.spectrum_loader import spectrum_lookup_key
+from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 from content._shared import (
     STATE_PREFIX, get_state_key, restore_analysis_if_needed,
 )
@@ -31,8 +39,6 @@ def _p(key, default=None):
 @st.fragment
 def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
-
     _export_dir = _p('export-dir', '')
     CACHE_PATH = _export_dir if _export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
@@ -153,11 +159,6 @@ def openms_insight_explorer_fragment():
 @st.fragment
 def mirror_plots_fragment():
     """Interactive Plotly mirror plots for each PSM vs its references."""
-    from src.mirror_plot import (
-        create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
-    )
-    from src.spectrum_metrics import compute_all_metrics, format_metrics_text
-
     annotated_queries = st.session_state.get(get_state_key('annotated_queries'), {})
     reference_store = st.session_state.get(get_state_key('reference_store'), {})
     variant_groups = st.session_state.get(get_state_key('variant_groups'), {})
@@ -171,7 +172,6 @@ def mirror_plots_fragment():
     psm_id_to_vk = {}
     for vk, vg in variant_groups.items():
         for match in vg.matches:
-            from src.spectrum_loader import spectrum_lookup_key
             key = f"{match.spectrum_id}|{match.peptidoform}"
             for pid, (spec, _) in annotated_queries.items():
                 if spectrum_lookup_key(spec) == key:
@@ -225,8 +225,6 @@ def mirror_plots_fragment():
             st.plotly_chart(fig, width="stretch")
 
             with st.expander("Comparison Metrics", expanded=False):
-                import pandas as pd
-                from src.spectrum_metrics import METRIC_SHORT_TO_DISPLAY
                 metric_data = {METRIC_SHORT_TO_DISPLAY[k]: f"{v:.4f}" if not (isinstance(v, float) and v != v) else "N/A"
                                for k, v in metrics.items() if k in METRIC_SHORT_TO_DISPLAY}
                 metric_data["Shared Ions"] = str(metrics.get("shared", 0))
@@ -249,8 +247,6 @@ def mirror_plots_fragment():
 @st.fragment
 def comparison_metrics_fragment():
     """Show comparison metrics table and summary statistics."""
-    import pandas as pd
-
     comparison_df = st.session_state.get(get_state_key('comparison_df'))
     if comparison_df is None or comparison_df.empty:
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
@@ -276,7 +272,6 @@ def comparison_metrics_fragment():
     # Summary statistics per peptidoform
     st.markdown("---")
     st.subheader("Summary Statistics")
-    from src.spectrum_metrics import METRIC_SHORT_TO_DISPLAY
     metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_df.columns]
     if metric_cols:
         summary = comparison_df.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(

@@ -8,9 +8,11 @@ import io
 import json
 import logging
 import os
+import pickle
 import shutil
 import zipfile
 
+import pandas as pd
 import streamlit as st
 import polars as pl
 
@@ -18,6 +20,7 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
+from src.common.common import load_params
 from utils.helpers import format_time, parse_peptide_list
 
 logger = logging.getLogger(__name__)
@@ -63,9 +66,6 @@ def _analysis_cache_path() -> Path:
 
 def save_analysis_cache() -> None:
     """Persist all analysis results to disk so they survive page reloads."""
-    import pickle
-    import pandas as pd
-
     cache_dir = _analysis_cache_path()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -109,9 +109,6 @@ def save_analysis_cache() -> None:
 @st.cache_resource(show_spinner="Restoring analysis from cache...")
 def _read_analysis_cache(cache_dir_str: str, _cache_mtime: float):
     """Read all analysis cache files from disk (cached across sessions/users)."""
-    import pickle
-    import pandas as pd
-
     cache_dir = Path(cache_dir_str)
     data = {}
 
@@ -223,7 +220,6 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
-    from src.common.common import load_params
     _params = load_params()
 
     def _p(key, default=None):
