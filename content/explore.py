@@ -8,6 +8,7 @@ import os
 import logging
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import pandas as pd
 import streamlit as st
 import polars as pl
@@ -18,6 +19,10 @@ from src.mirror_plot import (
     create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
 )
 from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+from src.summary_plots import (
+    METRIC_COLUMNS, DEFAULT_METRIC,
+    prepare_summary_data, plot_classic_dual_axis, plot_ridgeline,
+)
 from src.query_processing import build_psm_to_variant_mapping
 from content.page_state import (
     STATE_PREFIX, get_state_key, get_param, restore_analysis_if_needed,
@@ -231,6 +236,27 @@ def comparison_metrics_fragment():
         )
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
+
+    # Summary plots (same as export)
+    available_metrics = [m for m in METRIC_COLUMNS if m in comparison_df.columns]
+    if available_metrics:
+        st.markdown("---")
+        st.subheader("Summary Plots")
+        metric = st.selectbox(
+            "Metric", options=available_metrics,
+            index=available_metrics.index(DEFAULT_METRIC) if DEFAULT_METRIC in available_metrics else 0,
+            key=f"{STATE_PREFIX}_summary_metric",
+        )
+        try:
+            raw_df, agg_df = prepare_summary_data(comparison_df, metric=metric)
+            fig_dual = plot_classic_dual_axis(raw_df, agg_df, metric=metric)
+            st.pyplot(fig_dual)
+            plt.close(fig_dual)
+            fig_ridge = plot_ridgeline(raw_df, agg_df, metric=metric)
+            st.pyplot(fig_ridge)
+            plt.close(fig_ridge)
+        except Exception as e:
+            st.warning(f"Could not generate summary plots: {e}")
 
 
 def render():
