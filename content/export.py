@@ -409,7 +409,8 @@ def export_controls_fragment():
                                      key=f"{STATE_PREFIX}_exp_summary")
 
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
-        _run_export(export_dir, export_parquet, export_csv, export_mirror,
+        _run_export(get_param(params, 'export-dir', '') or export_fallback,
+                    export_parquet, export_csv, export_mirror,
                     export_summary, export_html)
 
 

@@ -31,95 +31,70 @@ from src.mirror_plot import (
 # ---------------------------------------------------------------------------
 
 class TestGetIonColor:
-    def test_unannotated_returns_gray(self):
-        color = get_ion_color("unannotated")
-        assert color == ION_COLORS["unannotated"]
+    @pytest.mark.parametrize("annotation, expect_hex", [
+        ("b3", True),
+        ("y2", True),
+    ])
+    def test_known_ions_return_hex_color(self, annotation, expect_hex):
+        color = get_ion_color(annotation)
+        assert isinstance(color, str) and color.startswith("#")
 
-    def test_b_ion_returns_color(self):
-        color = get_ion_color("b3")
-        assert isinstance(color, str)
-        assert color.startswith("#")
-
-    def test_y_ion_returns_color(self):
-        color = get_ion_color("y2")
-        assert isinstance(color, str)
-        assert color.startswith("#")
-
-    def test_unknown_returns_gray_fallback(self):
-        # "hello_world" does not start with any ion letter (a,b,c,x,y,z) nor [M
-        color = get_ion_color("hello_world")
-        assert color == ION_COLORS["unannotated"]
+    @pytest.mark.parametrize("annotation", ["unannotated", "hello_world"])
+    def test_unannotated_or_unknown_returns_gray(self, annotation):
+        assert get_ion_color(annotation) == ION_COLORS["unannotated"]
 
 
 # ---------------------------------------------------------------------------
-# TestCreateMirrorPlot (Matplotlib static)
+# TestPlotCreation (all 4 plot functions: returns correct type, handles empty)
 # ---------------------------------------------------------------------------
 
-class TestCreateMirrorPlot:
-    def test_returns_figure(self, spectrum_df):
-        fig = create_mirror_plot(spectrum_df, spectrum_df.copy())
-        assert isinstance(fig, Figure)
+class TestPlotCreation:
+    """Parametrized tests for all plot creation functions."""
 
-    def test_empty_dfs_do_not_crash(self, empty_spectrum_df):
-        fig = create_mirror_plot(empty_spectrum_df, empty_spectrum_df.copy())
-        assert isinstance(fig, Figure)
+    @pytest.mark.parametrize("plot_fn, is_mirror", [
+        (create_mirror_plot, True),
+        (create_single_spectrum_plot, False),
+        (create_plotly_mirror_plot, True),
+        (create_plotly_single_plot, False),
+    ])
+    def test_returns_correct_figure_type(self, spectrum_df, plot_fn, is_mirror):
+        import plotly.graph_objects as go
+        if is_mirror:
+            fig = plot_fn(spectrum_df, spectrum_df.copy())
+        else:
+            fig = plot_fn(spectrum_df)
+        assert isinstance(fig, (Figure, go.Figure))
 
+    @pytest.mark.parametrize("plot_fn, is_mirror", [
+        (create_mirror_plot, True),
+        (create_single_spectrum_plot, False),
+        (create_plotly_mirror_plot, True),
+        (create_plotly_single_plot, False),
+    ])
+    def test_empty_df_does_not_crash(self, empty_spectrum_df, plot_fn, is_mirror):
+        import plotly.graph_objects as go
+        if is_mirror:
+            fig = plot_fn(empty_spectrum_df, empty_spectrum_df.copy())
+        else:
+            fig = plot_fn(empty_spectrum_df)
+        assert isinstance(fig, (Figure, go.Figure))
+
+
+# ---------------------------------------------------------------------------
+# TestMirrorPlotExtras (Matplotlib-specific features)
+# ---------------------------------------------------------------------------
+
+class TestMirrorPlotExtras:
     def test_figsize_respected(self, spectrum_df):
         fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), figsize=(10, 6))
         size = fig.get_size_inches()
         assert abs(size[0] - 10.0) < 0.1
         assert abs(size[1] - 6.0) < 0.1
 
-    def test_metrics_dict_accepted(self, spectrum_df):
+    def test_metrics_text_accepted(self, spectrum_df):
         metrics_text = "R\u00b2 match: 0.92\nCosine: 0.95"
         fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), metrics_text=metrics_text)
         assert isinstance(fig, Figure)
-
-
-# ---------------------------------------------------------------------------
-# TestCreateSingleSpectrumPlot (Matplotlib static)
-# ---------------------------------------------------------------------------
-
-class TestCreateSingleSpectrumPlot:
-    def test_returns_figure(self, spectrum_df):
-        fig = create_single_spectrum_plot(spectrum_df)
-        assert isinstance(fig, Figure)
-
-    def test_empty_df_does_not_crash(self, empty_spectrum_df):
-        fig = create_single_spectrum_plot(empty_spectrum_df)
-        assert isinstance(fig, Figure)
-
-
-# ---------------------------------------------------------------------------
-# TestPlotlyMirrorPlot
-# ---------------------------------------------------------------------------
-
-class TestPlotlyMirrorPlot:
-    def test_returns_plotly_figure(self, spectrum_df):
-        import plotly.graph_objects as go
-        fig = create_plotly_mirror_plot(spectrum_df, spectrum_df.copy())
-        assert isinstance(fig, go.Figure)
-
-    def test_empty_dfs_do_not_crash(self, empty_spectrum_df):
-        import plotly.graph_objects as go
-        fig = create_plotly_mirror_plot(empty_spectrum_df, empty_spectrum_df.copy())
-        assert isinstance(fig, go.Figure)
-
-
-# ---------------------------------------------------------------------------
-# TestPlotlySinglePlot
-# ---------------------------------------------------------------------------
-
-class TestPlotlySinglePlot:
-    def test_returns_plotly_figure(self, spectrum_df):
-        import plotly.graph_objects as go
-        fig = create_plotly_single_plot(spectrum_df)
-        assert isinstance(fig, go.Figure)
-
-    def test_empty_df_does_not_crash(self, empty_spectrum_df):
-        import plotly.graph_objects as go
-        fig = create_plotly_single_plot(empty_spectrum_df)
-        assert isinstance(fig, go.Figure)
 
 
 # ---------------------------------------------------------------------------

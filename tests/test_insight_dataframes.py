@@ -145,53 +145,36 @@ class TestProformaToOpenmsStr:
 # ---------------------------------------------------------------------------
 
 class TestBuildPsmTable:
-    def test_returns_lazyframe_and_lookup(self):
+    def test_basic_build(self):
+        """Build PSM table from standard variant groups: type, schema, row count, lookup keys."""
         vgs = _make_variant_groups()
         lf, lookup = build_psm_table(vgs)
         assert isinstance(lf, pl.LazyFrame)
         assert isinstance(lookup, dict)
-
-    def test_correct_row_count(self):
-        vgs = _make_variant_groups()
-        lf, lookup = build_psm_table(vgs)
-        df = lf.collect()
-        assert len(df) == 2  # 2 matches in _make_variant_groups
-
-    def test_schema_valid(self):
-        vgs = _make_variant_groups()
-        lf, _ = build_psm_table(vgs)
         assert validate_dataframe(lf, PSM_TABLE_SCHEMA, "PSM table")
-
-    def test_lookup_keys(self):
-        vgs = _make_variant_groups()
-        _, lookup = build_psm_table(vgs)
-        # Keys should be "spectrum_id|peptidoform"
-        expected_keys = {"index=1|PEPTIDEK", "index=2|PEPTIDEK"}
-        assert set(lookup.keys()) == expected_keys
+        df = lf.collect()
+        assert len(df) == 2
+        assert set(lookup.keys()) == {"index=1|PEPTIDEK", "index=2|PEPTIDEK"}
 
     def test_empty_variant_groups(self):
         lf, lookup = build_psm_table({})
-        df = lf.collect()
-        assert len(df) == 0
+        assert len(lf.collect()) == 0
         assert len(lookup) == 0
 
     def test_multiple_variants(self):
         vg1 = VariantGroup(
-            base_sequence="PEPTIDEK",
-            modification_key="",
+            base_sequence="PEPTIDEK", modification_key="",
             display_label="PEPTIDEK",
             matches=[make_peptide_match(spectrum_id="index=1")],
         )
         vg2 = VariantGroup(
-            base_sequence="AAAVAAAK",
-            modification_key="",
+            base_sequence="AAAVAAAK", modification_key="",
             display_label="AAAVAAAK",
             matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK",
                                  spectrum_id="index=3")],
         )
         lf, lookup = build_psm_table({"PEPTIDEK": vg1, "AAAVAAAK": vg2})
-        df = lf.collect()
-        assert len(df) == 2
+        assert len(lf.collect()) == 2
         assert len(lookup) == 2
 
 
@@ -200,44 +183,28 @@ class TestBuildPsmTable:
 # ---------------------------------------------------------------------------
 
 class TestBuildPeaksDataframe:
-    def test_returns_lazyframe(self):
-        annotated = [(0, _make_annotated_df())]
-        lf = build_peaks_dataframe(annotated)
-        assert isinstance(lf, pl.LazyFrame)
-
-    def test_correct_peak_count(self):
+    def test_basic_build(self):
+        """Build peaks DF: type, schema, peak count, highlight column."""
         annotated = [(0, _make_annotated_df(n_peaks=5))]
         lf = build_peaks_dataframe(annotated)
+        assert isinstance(lf, pl.LazyFrame)
+        assert validate_dataframe(lf, PEAKS_SCHEMA, "Peaks")
         df = lf.collect()
         assert len(df) == 5
-
-    def test_schema_valid(self):
-        annotated = [(0, _make_annotated_df())]
-        lf = build_peaks_dataframe(annotated)
-        assert validate_dataframe(lf, PEAKS_SCHEMA, "Peaks")
-
-    def test_highlight_column_from_is_annotated(self):
-        annotated = [(0, _make_annotated_df())]
-        lf = build_peaks_dataframe(annotated)
-        df = lf.collect()
         # First 4 peaks are annotated (highlight=1), last is not (highlight=0)
         assert df["highlight"][0] == 1
         assert df["highlight"][4] == 0
 
     def test_empty_input(self):
-        lf = build_peaks_dataframe([])
-        df = lf.collect()
-        assert len(df) == 0
+        assert len(build_peaks_dataframe([]).collect()) == 0
 
     def test_multiple_spectra(self):
         annotated = [
             (0, _make_annotated_df(n_peaks=3)),
             (1, _make_annotated_df(n_peaks=4)),
         ]
-        lf = build_peaks_dataframe(annotated)
-        df = lf.collect()
+        df = build_peaks_dataframe(annotated).collect()
         assert len(df) == 7
-        # Check psm_id values
         assert set(df["psm_id"].to_list()) == {0, 1}
 
 
@@ -246,36 +213,23 @@ class TestBuildPeaksDataframe:
 # ---------------------------------------------------------------------------
 
 class TestBuildSequenceDataframe:
-    def test_returns_lazyframe(self):
-        spectra = [(0, _make_loaded_spectrum())]
-        lf = build_sequence_dataframe(spectra)
-        assert isinstance(lf, pl.LazyFrame)
-
-    def test_schema_valid(self):
-        spectra = [(0, _make_loaded_spectrum())]
-        lf = build_sequence_dataframe(spectra)
-        assert validate_dataframe(lf, SEQUENCE_SCHEMA, "Sequence")
-
-    def test_correct_row_count(self):
+    def test_basic_build(self):
+        """Build sequence DF: type, schema, row count."""
         spectra = [
             (0, _make_loaded_spectrum(spectrum_id="index=1")),
             (1, _make_loaded_spectrum(spectrum_id="index=2")),
         ]
         lf = build_sequence_dataframe(spectra)
-        df = lf.collect()
-        assert len(df) == 2
+        assert isinstance(lf, pl.LazyFrame)
+        assert validate_dataframe(lf, SEQUENCE_SCHEMA, "Sequence")
+        assert len(lf.collect()) == 2
 
     def test_empty_input(self):
-        lf = build_sequence_dataframe([])
-        df = lf.collect()
-        assert len(df) == 0
+        assert len(build_sequence_dataframe([]).collect()) == 0
 
     def test_sequence_is_openms_notation(self):
         spectra = [(0, _make_loaded_spectrum(peptidoform="PEPTM[Oxidation]IDEK"))]
-        lf = build_sequence_dataframe(spectra)
-        df = lf.collect()
-        seq = df["sequence"][0]
-        # Should use parentheses (OpenMS notation), not brackets
+        seq = build_sequence_dataframe(spectra).collect()["sequence"][0]
         assert "(" in seq or "PEPTM" in seq
 
 
@@ -284,33 +238,21 @@ class TestBuildSequenceDataframe:
 # ---------------------------------------------------------------------------
 
 class TestBuildHeatmapDataframe:
-    def test_returns_lazyframe(self):
-        spectra = [_make_loaded_spectrum()]
-        lf = build_heatmap_dataframe(spectra)
-        assert isinstance(lf, pl.LazyFrame)
-
-    def test_schema_valid(self):
-        spectra = [_make_loaded_spectrum()]
-        lf = build_heatmap_dataframe(spectra)
-        assert validate_dataframe(lf, HEATMAP_SCHEMA, "Heatmap")
-
-    def test_correct_point_count(self):
+    def test_basic_build(self):
+        """Build heatmap DF: type, schema, point count."""
         spectra = [_make_loaded_spectrum(n_peaks=10)]
         lf = build_heatmap_dataframe(spectra)
-        df = lf.collect()
-        assert len(df) == 10
+        assert isinstance(lf, pl.LazyFrame)
+        assert validate_dataframe(lf, HEATMAP_SCHEMA, "Heatmap")
+        assert len(lf.collect()) == 10
 
     def test_empty_input(self):
-        lf = build_heatmap_dataframe([])
-        df = lf.collect()
-        assert len(df) == 0
+        assert len(build_heatmap_dataframe([]).collect()) == 0
 
     def test_min_rt_filtering(self):
         spec_low_rt = _make_loaded_spectrum(rt=10.0, n_peaks=5)
         spec_high_rt = _make_loaded_spectrum(rt=200.0, n_peaks=5)
-        lf = build_heatmap_dataframe([spec_low_rt, spec_high_rt], min_rt=100.0)
-        df = lf.collect()
-        # Only high RT spectrum should be included
+        df = build_heatmap_dataframe([spec_low_rt, spec_high_rt], min_rt=100.0).collect()
         assert len(df) == 5
         assert all(df["x"].to_list()[i] == pytest.approx(200.0, abs=0.1) for i in range(5))
 
@@ -319,9 +261,7 @@ class TestBuildHeatmapDataframe:
             _make_loaded_spectrum(rt=100.0, n_peaks=3),
             _make_loaded_spectrum(rt=200.0, n_peaks=4),
         ]
-        lf = build_heatmap_dataframe(spectra)
-        df = lf.collect()
-        assert len(df) == 7
+        assert len(build_heatmap_dataframe(spectra).collect()) == 7
 
 
 # ---------------------------------------------------------------------------
@@ -329,27 +269,19 @@ class TestBuildHeatmapDataframe:
 # ---------------------------------------------------------------------------
 
 class TestSaveToParquet:
-    def test_round_trip(self, tmp_path):
-        # Build a peaks DataFrame, save to parquet, read back
-        annotated = [(0, _make_annotated_df())]
-        lf = build_peaks_dataframe(annotated)
-        parquet_path = str(tmp_path / "test.parquet")
+    @pytest.mark.parametrize("build_fn", ["peaks", "psm"], ids=["peaks", "psm_table"])
+    def test_round_trip(self, tmp_path, build_fn):
+        if build_fn == "peaks":
+            lf = build_peaks_dataframe([(0, _make_annotated_df())])
+        else:
+            lf, _ = build_psm_table(_make_variant_groups())
+        parquet_path = str(tmp_path / f"{build_fn}.parquet")
         save_to_parquet(lf, parquet_path)
-
-        # Read back
         assert Path(parquet_path).exists()
         read_back = pl.read_parquet(parquet_path)
         original = lf.collect()
         assert read_back.shape == original.shape
         assert read_back.columns == original.columns
-
-    def test_psm_table_round_trip(self, tmp_path):
-        vgs = _make_variant_groups()
-        lf, _ = build_psm_table(vgs)
-        parquet_path = str(tmp_path / "psm.parquet")
-        save_to_parquet(lf, parquet_path)
-        read_back = pl.read_parquet(parquet_path)
-        assert len(read_back) == 2
 
     def test_creates_parent_directories(self, tmp_path):
         lf = pl.DataFrame(schema=PEAKS_SCHEMA).lazy()

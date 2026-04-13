@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.plot_worker import ComparisonTask, ComparisonResult, process_single_task
+from src.plot_worker import ComparisonTask, process_single_task
 from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
 
 

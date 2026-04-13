@@ -1,7 +1,6 @@
 """
 Unit tests for src/export_dirs.py
 """
-import json
 from pathlib import Path
 
 import pytest
@@ -20,40 +19,19 @@ from src.export_dirs import (
 
 class TestSanitizeFilename:
     def test_removes_illegal_chars(self):
-        # Characters < > : " / \ | ? * [ ] should be replaced with _
         result = sanitize_filename('a<b>c:d"e/f\\g|h?i*j')
-        assert "<" not in result
-        assert ">" not in result
-        assert ":" not in result
-        assert '"' not in result
-        assert "/" not in result
-        assert "\\" not in result
-        assert "|" not in result
-        assert "?" not in result
-        assert "*" not in result
+        for char in '<>:"/\\|?*':
+            assert char not in result
 
-    def test_collapses_multiple_underscores(self):
-        result = sanitize_filename("hello___world")
-        assert "__" not in result
-        assert result == "hello_world"
-
-    def test_strips_leading_trailing_underscores(self):
-        result = sanitize_filename("_hello_world_")
-        assert not result.startswith("_")
-        assert not result.endswith("_")
-
-    def test_truncates_long_names(self):
-        long_name = "a" * 110
-        result = sanitize_filename(long_name)
-        assert len(result) <= 100
-
-    def test_empty_string_returns_fallback(self):
-        result = sanitize_filename("")
-        assert isinstance(result, str)
-
-    def test_already_valid_unchanged(self):
-        name = "valid_filename_123"
-        assert sanitize_filename(name) == name
+    @pytest.mark.parametrize("input_name, check", [
+        ("hello___world", lambda r: "__" not in r and r == "hello_world"),
+        ("_hello_world_", lambda r: not r.startswith("_") and not r.endswith("_")),
+        ("a" * 110, lambda r: len(r) <= 100),
+        ("", lambda r: isinstance(r, str)),
+        ("valid_filename_123", lambda r: r == "valid_filename_123"),
+    ], ids=["collapses_underscores", "strips_edges", "truncates_long", "empty_fallback", "valid_unchanged"])
+    def test_sanitize_rules(self, input_name, check):
+        assert check(sanitize_filename(input_name))
 
 
 # ---------------------------------------------------------------------------
@@ -61,33 +39,24 @@ class TestSanitizeFilename:
 # ---------------------------------------------------------------------------
 
 class TestShortenStem:
-    def test_short_stem_unchanged(self):
-        stem = "short_name"
-        assert shorten_stem(stem) == stem
+    @pytest.mark.parametrize("stem, max_len, should_truncate", [
+        ("short_name", 30, False),
+        ("a" * 30, 30, False),
+        ("a" * 40, 30, True),
+    ], ids=["short_unchanged", "exact_length_unchanged", "long_truncated"])
+    def test_length_behavior(self, stem, max_len, should_truncate):
+        result = shorten_stem(stem, max_len=max_len)
+        if should_truncate:
+            assert len(result) == max_len
+            parts = result.rsplit("_", 1)
+            assert len(parts[1]) == 8  # 8-char hash suffix
+        else:
+            assert result == stem
 
-    def test_exactly_30_chars_unchanged(self):
-        stem = "a" * 30
-        assert shorten_stem(stem, max_len=30) == stem
-
-    def test_long_stem_truncated_with_hash(self):
-        stem = "a" * 40
-        result = shorten_stem(stem, max_len=30)
-        assert len(result) == 30
-        # Must contain underscore separator before 8-char hash
-        assert "_" in result
-        parts = result.rsplit("_", 1)
-        assert len(parts[1]) == 8
-
-    def test_different_long_stems_produce_different_results(self):
-        stem1 = "x" * 40
-        stem2 = "y" * 40
-        assert shorten_stem(stem1) != shorten_stem(stem2)
-
-    def test_same_input_always_same_output(self):
+    def test_deterministic_and_unique(self):
         stem = "this_is_a_very_long_filename_for_testing_determinism"
-        result1 = shorten_stem(stem)
-        result2 = shorten_stem(stem)
-        assert result1 == result2
+        assert shorten_stem(stem) == shorten_stem(stem)  # deterministic
+        assert shorten_stem("x" * 40) != shorten_stem("y" * 40)  # unique
 
 
 # ---------------------------------------------------------------------------

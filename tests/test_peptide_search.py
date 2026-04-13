@@ -143,27 +143,24 @@ class TestSummarizeSearchResults:
 class TestSearchWithRealData:
     """Tests using real idXML/mzML test data."""
 
-    def test_search_finds_two_psms(self, idxml_path, target_peptides):
-        """Search known peptides in real idXML file."""
+    @pytest.fixture(scope="class")
+    def search_results(self, idxml_path, target_peptides):
+        """Shared fixture: search once for all tests in this class."""
         from src.peptide_search import search_peptides_in_idxmls
-        results = search_peptides_in_idxmls([idxml_path], target_peptides)
-        assert len(results) == 2
-        assert "ASDDFDQASY" in results
-        assert "RTEFNLNQY" in results
+        return search_peptides_in_idxmls([idxml_path], target_peptides)
 
-    def test_each_variant_has_one_psm(self, idxml_path, target_peptides):
-        from src.peptide_search import search_peptides_in_idxmls
-        results = search_peptides_in_idxmls([idxml_path], target_peptides)
-        for key, vg in results.items():
+    def test_search_finds_expected_peptides(self, search_results):
+        assert len(search_results) == 2
+        assert "ASDDFDQASY" in search_results
+        assert "RTEFNLNQY" in search_results
+
+    def test_each_variant_has_one_psm_with_valid_fields(self, search_results):
+        for key, vg in search_results.items():
             assert len(vg.matches) == 1
-
-    def test_psm_has_expected_fields(self, idxml_path, target_peptides):
-        from src.peptide_search import search_peptides_in_idxmls
-        results = search_peptides_in_idxmls([idxml_path], target_peptides)
-        match = list(results.values())[0].matches[0]
-        assert match.peptidoform is not None
-        assert match.spectrum_id is not None
-        assert match.charge > 0
+            match = vg.matches[0]
+            assert match.peptidoform is not None
+            assert match.spectrum_id is not None
+            assert match.charge > 0
 
     def test_get_unique_peptides(self, idxml_path):
         from src.peptide_search import get_unique_peptides_from_idxmls
@@ -171,10 +168,8 @@ class TestSearchWithRealData:
         assert len(peptides) > 0
         assert isinstance(peptides, (list, set))
 
-    def test_summarize_returns_polars(self, idxml_path, target_peptides):
-        from src.peptide_search import search_peptides_in_idxmls
-        results = search_peptides_in_idxmls([idxml_path], target_peptides)
-        summary = summarize_search_results(results)
+    def test_summarize_returns_polars(self, search_results):
+        summary = summarize_search_results(search_results)
         assert isinstance(summary, pl.LazyFrame)
         df = summary.collect()
         assert len(df) == 2

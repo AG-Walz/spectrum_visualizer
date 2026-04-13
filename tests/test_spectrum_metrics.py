@@ -82,34 +82,26 @@ def _partial_overlap_pair():
 # ---------------------------------------------------------------------------
 
 class TestShortenFilenames:
-    def test_empty(self):
-        assert shorten_filenames([]) == []
+    @pytest.mark.parametrize("filenames, check", [
+        ([], lambda r: r == []),
+        (["Experiment_batch1_sample_A.mzML"],
+         lambda r: r == ["Experiment_batch1_sample_A"]),
+        (["alpha.mzML", "beta.mzML"],
+         lambda r: r == ["alpha", "beta"]),
+        (["same_name.mzML", "same_name.mzML"],
+         lambda r: r == ["same_name", "same_name"]),
+    ], ids=["empty", "single_file", "no_common_parts", "all_common_fallback"])
+    def test_basic_cases(self, filenames, check):
+        assert check(shorten_filenames(filenames))
 
-    def test_single_file(self):
-        result = shorten_filenames(["Experiment_batch1_sample_A.mzML"])
-        assert result == ["Experiment_batch1_sample_A"]
-
-    def test_common_prefix_suffix(self):
+    def test_common_prefix_suffix_produces_distinct_results(self):
         filenames = [
             "Experiment_batch1_sample_A.mzML",
             "Experiment_batch1_sample_B.mzML",
         ]
         result = shorten_filenames(filenames)
-        # Common prefix: Experiment, batch1, sample -> removed
-        # Result: just A and B (or sample_A, sample_B depending on algo)
         assert len(result) == 2
-        assert result[0] != result[1]  # Must be distinct
-
-    def test_no_common_parts(self):
-        filenames = ["alpha.mzML", "beta.mzML"]
-        result = shorten_filenames(filenames)
-        assert result == ["alpha", "beta"]
-
-    def test_all_common_falls_back(self):
-        """When all tokens are identical, return original stems."""
-        filenames = ["same_name.mzML", "same_name.mzML"]
-        result = shorten_filenames(filenames)
-        assert result == ["same_name", "same_name"]
+        assert result[0] != result[1]
 
 
 # ---------------------------------------------------------------------------
@@ -228,29 +220,22 @@ class TestComputeAllMetrics:
 # ---------------------------------------------------------------------------
 
 class TestFormatMetricsText:
-    def test_contains_metric_labels(self):
-        metrics = {"R2m": 0.85, "R2b": 0.72, "Cos": 0.91, "Ent": 0.88,
-                   "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
-        text = format_metrics_text(metrics)
-        # MSInsight uses "R\u00b2 Match" and "R\u00b2 Binned"
-        assert "Match" in text
-        assert "Binned" in text
-        assert "0.850" in text
-        assert "0.720" in text
+    @pytest.fixture
+    def all_valid_metrics(self):
+        return {"R2m": 0.85, "R2b": 0.72, "Cos": 0.91, "Ent": 0.88,
+                "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
+
+    def test_format_with_valid_values(self, all_valid_metrics):
+        text = format_metrics_text(all_valid_metrics)
+        assert "Match" in text and "Binned" in text
+        assert "0.850" in text and "0.720" in text
+        # Should produce 7 lines (one per metric)
+        assert len(text.strip().split("\n")) == 7
 
     def test_nan_shows_na(self):
         metrics = {"R2m": float("nan"), "R2b": 0.72, "Cos": float("nan"),
                    "Ent": 0.88, "Dice": float("nan"), "Jacc": 0.5, "ShR": 0.7}
-        text = format_metrics_text(metrics)
-        assert "N/A" in text
-
-    def test_multiline(self):
-        metrics = {"R2m": 0.85, "R2b": 0.72, "Cos": 0.91, "Ent": 0.88,
-                   "Dice": 0.65, "Jacc": 0.5, "ShR": 0.7}
-        text = format_metrics_text(metrics)
-        lines = text.strip().split("\n")
-        # MSInsight format_metrics_text produces 7 lines (one per metric)
-        assert len(lines) == 7
+        assert "N/A" in format_metrics_text(metrics)
 
 
 # ---------------------------------------------------------------------------

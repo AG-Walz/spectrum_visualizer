@@ -16,7 +16,6 @@ sys.path.insert(0, str(PROJECT_ROOT))
 SMALL_DATASET = Path("/mnt/volume/nacho/data/ProCa_runs/small_dataset")
 IDXML_PATH = SMALL_DATASET / "ProT001_1_pout_filtered.idXML"
 MZML_DIR = SMALL_DATASET
-PEPTIDES_PATH = Path("/mnt/volume/nacho/data/peptide_lists/peptides.txt")
 
 
 def pytest_configure(config):
@@ -34,29 +33,19 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip_marker)
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def idxml_path():
     return str(IDXML_PATH)
 
 
-@pytest.fixture
-def mzml_dir():
-    return MZML_DIR
-
-
-@pytest.fixture
+@pytest.fixture(scope="session")
 def mzml_paths():
     return sorted(str(p) for p in MZML_DIR.glob("231204_DF_ProCa_ProT001_*.mzML"))
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def target_peptides():
     return ["ASDDFDQASY", "RTEFNLNQY"]
-
-
-@pytest.fixture
-def peptides_path():
-    return Path("/mnt/volume/nacho/data/peptide_lists/peptides.txt")
 
 
 @pytest.fixture

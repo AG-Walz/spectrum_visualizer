@@ -26,41 +26,32 @@ class TestConvertPeptideToUnimod:
         result = convert_peptide_to_unimod("PEPTIDE")
         assert isinstance(result, str)
         assert len(result) > 0
-        # Simple peptide without mods should come back essentially unchanged
         assert "PEPTIDE" in result
 
-    def test_with_charge_suffix(self):
+    def test_charge_suffix_stripped(self):
         result_with = convert_peptide_to_unimod("PEPTIDE/2")
         result_without = convert_peptide_to_unimod("PEPTIDE")
-        # Charge suffix should be stripped; both should produce the same UniMod string
         assert result_with == result_without
 
     def test_oxidation_modification(self):
         result = convert_peptide_to_unimod("PEPTM[Oxidation]DE")
         assert isinstance(result, str)
-        # Should contain UNIMOD notation with brackets
         assert "UNIMOD" in result.upper() or "UniMod" in result
 
-    def test_known_psm_asddfdqasy(self):
-        result = convert_peptide_to_unimod("ASDDFDQASY")
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_known_psm_rtefnlnqy(self):
-        result = convert_peptide_to_unimod("RTEFNLNQY")
+    @pytest.mark.parametrize("peptide", ["ASDDFDQASY", "RTEFNLNQY"])
+    def test_known_psm_peptides(self, peptide):
+        result = convert_peptide_to_unimod(peptide)
         assert isinstance(result, str)
         assert len(result) > 0
 
     def test_empty_string(self):
-        # Empty string should either return empty or raise
         try:
             result = convert_peptide_to_unimod("")
-            # If it doesn't raise, result should be a string
             assert isinstance(result, str)
         except (ValueError, Exception):
-            pass  # Raising is acceptable
+            pass
 
-    def test_invalid_peptide(self):
+    def test_invalid_peptide_raises(self):
         with pytest.raises((ValueError, Exception)):
             convert_peptide_to_unimod("!@#$%^&*")
 
@@ -114,35 +105,20 @@ class TestGetKoinaSettings:
 # ---------------------------------------------------------------------------
 
 class TestKoinaConstants:
-    def test_koina_available_is_true(self):
+    def test_koina_available(self):
         assert KOINA_AVAILABLE is True, "koinapy should be installed in mspecviz env"
 
-    def test_koina_models_not_empty(self):
+    def test_defaults_valid(self):
         assert len(KOINA_MODELS) > 0
-
-    def test_instrument_types_not_empty(self):
         assert len(INSTRUMENT_TYPES) > 0
-
-    def test_default_model_in_models(self):
         assert DEFAULT_MODEL in KOINA_MODELS.values()
-
-    def test_default_instrument_in_types(self):
         assert DEFAULT_INSTRUMENT_TYPE in INSTRUMENT_TYPES
-
-    def test_default_collision_energy_positive(self):
         assert DEFAULT_COLLISION_ENERGY > 0
 
-    def test_model_keys_are_display_names(self):
-        # Keys are human-readable display names (contain spaces or capitals)
-        for key in KOINA_MODELS:
-            assert isinstance(key, str)
-            assert len(key) > 0
-
-    def test_model_values_are_ids(self):
-        # Values are machine-readable IDs
-        for value in KOINA_MODELS.values():
-            assert isinstance(value, str)
-            assert " " not in value
+    def test_model_keys_are_display_names_and_values_are_ids(self):
+        for key, value in KOINA_MODELS.items():
+            assert isinstance(key, str) and len(key) > 0
+            assert isinstance(value, str) and " " not in value
 
 
 # ---------------------------------------------------------------------------
@@ -151,62 +127,43 @@ class TestKoinaConstants:
 
 @pytest.mark.slow
 class TestPredictKoinaSpectrum:
-    def test_predict_simple_peptide(self):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
-        assert result is not None
+    @pytest.fixture(scope="class")
+    def predicted_asddfdqasy(self):
+        """Shared prediction result to avoid redundant network calls."""
+        return predict_koina_spectrum("ASDDFDQASY", charge=1)
 
-    def test_predict_second_peptide(self):
-        result = predict_koina_spectrum("RTEFNLNQY", charge=2)
+    def test_prediction_returns_valid_dataframe(self, predicted_asddfdqasy):
+        """Verify prediction result is a non-empty DataFrame with required columns and valid values."""
+        result = predicted_asddfdqasy
         assert result is not None
-
-    def test_result_is_dataframe(self):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert isinstance(result, pd.DataFrame)
-
-    def test_result_has_required_columns(self):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
-        assert result is not None
+        assert len(result) > 0
         for col in ["mz", "intensity", "annotation"]:
             assert col in result.columns, f"Missing column: {col}"
+        assert (result["mz"] > 0).all()
+        assert (result["intensity"] > 0).all()
 
-    def test_result_not_empty(self):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
+    @pytest.mark.parametrize("peptide,charge", [
+        ("ASDDFDQASY", 1),
+        ("RTEFNLNQY", 2),
+    ])
+    def test_predict_known_peptides(self, peptide, charge):
+        result = predict_koina_spectrum(peptide, charge=charge)
         assert result is not None
         assert len(result) > 0
-
-    def test_mz_values_positive(self):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
-        assert result is not None
-        assert (result["mz"] > 0).all()
-
-    def test_intensity_values_positive(self):
-        # After filtering zero-intensity peaks, all remaining should be > 0
-        result = predict_koina_spectrum("ASDDFDQASY", charge=1)
-        assert result is not None
-        assert (result["intensity"] > 0).all()
 
     def test_invalid_peptide_returns_none(self):
         result = predict_koina_spectrum("ZZZZZZZ", charge=1)
         assert result is None
 
-    def test_model_prosit_2019(self):
-        result = predict_koina_spectrum(
-            "ASDDFDQASY", charge=2, model_id="Prosit_2019_intensity"
-        )
-        assert result is not None
-        assert len(result) > 0
-
-    def test_model_ms2pip_hcd2021(self):
-        result = predict_koina_spectrum(
-            "ASDDFDQASY", charge=2, model_id="ms2pip_HCD2021"
-        )
+    @pytest.mark.parametrize("model_id", ["Prosit_2019_intensity", "ms2pip_HCD2021"])
+    def test_alternative_models(self, model_id):
+        result = predict_koina_spectrum("ASDDFDQASY", charge=2, model_id=model_id)
         assert result is not None
         assert len(result) > 0
 
     def test_different_collision_energy(self):
-        result = predict_koina_spectrum(
-            "RTEFNLNQY", charge=2, collision_energy=25
-        )
+        result = predict_koina_spectrum("RTEFNLNQY", charge=2, collision_energy=25)
         assert result is not None
         assert len(result) > 0
 
