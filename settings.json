@@ -4,7 +4,7 @@
   "repository-name": "MSInsight",
   "online_deployment": false,
   "enable_workspaces": true,
-  "workspaces_dir": "..",
+  "workspaces_dir": "workspaces",
   "test": false,
   "image-format": "png",
   "data_directories": {

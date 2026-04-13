@@ -5,6 +5,7 @@ Adapted from the OpenMS streamlit-template src/common/common.py.
 Provides page_setup(), render_sidebar(), workspace management, and UI helpers.
 """
 
+import os
 import sys
 import json
 import shutil
@@ -90,9 +91,13 @@ def save_params(params: dict[str, Any]) -> None:
             if persisted_key in st.session_state:
                 params[key] = st.session_state[persisted_key]
 
+    # Atomic write: a Streamlit rerun mid-write must never leave a 0-byte file
+    # that breaks load_params() on the next page load.
     path = Path(st.session_state.workspace, "params.json")
-    with open(path, "w", encoding="utf-8") as outfile:
+    tmp = path.with_suffix(".json.tmp")
+    with open(tmp, "w", encoding="utf-8") as outfile:
         json.dump(params, outfile, indent=4)
+    os.replace(tmp, path)
 
 
 def page_setup(page: str = "") -> dict[str, Any]:
@@ -144,13 +149,13 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
 
 def _get_workspaces_dir() -> Path:
-    """Return the workspaces directory from settings."""
-    if st.session_state.settings.get("workspaces_dir"):
-        return Path(
-            st.session_state.settings["workspaces_dir"],
-            "workspaces-" + st.session_state.settings.get("repository-name", "MSpecViz"),
-        )
-    return Path("..")
+    """Return the workspaces directory from settings.
+
+    Resolved relative to the CWD where ``streamlit run`` was launched, so
+    ``"workspaces"`` lands at ``<app-dir>/workspaces/`` for the standard
+    invocation. Absolute paths are honored as-is.
+    """
+    return Path(st.session_state.settings.get("workspaces_dir", "workspaces"))
 
 
 def _render_workspace_switcher(params: dict) -> None:
