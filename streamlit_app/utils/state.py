@@ -24,6 +24,36 @@ OS_PLATFORM = sys.platform
 # directory from which ``streamlit run`` is invoked.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
+# Namespace for session state keys owned by this app. Keeps our keys from
+# colliding with widget keys that Streamlit or third-party components manage.
+STATE_PREFIX = "peptide_mirror"
+
+
+def get_state_key(key: str) -> str:
+    """Return a namespaced session state key (e.g. ``peptide_mirror.foo``)."""
+    return f"{STATE_PREFIX}.{key}"
+
+
+def _persisted_key(key: str) -> str:
+    """Non-widget backup key that survives page navigation.
+
+    Widget keys (``'ion-types'``) get garbage-collected by Streamlit when the
+    owning page unmounts. Fragments mirror the value into a second key that
+    replaces hyphens with underscores and adds a ``_persisted`` suffix; this
+    helper builds that key so the convention lives in exactly one place.
+    """
+    return get_state_key(key.replace("-", "_") + "_persisted")
+
+
+def get_param(params: dict, key: str, default: Any = None) -> Any:
+    """Resolve a param: widget session_state > persisted backup > params.json."""
+    if key in st.session_state:
+        return st.session_state[key]
+    persisted = _persisted_key(key)
+    if persisted in st.session_state:
+        return st.session_state[persisted]
+    return params.get(key, default)
+
 
 def is_safe_workspace_name(name: str) -> bool:
     """Check if a workspace name is safe (no path traversal characters)."""
@@ -92,10 +122,11 @@ def save_params(params: dict[str, Any]) -> None:
         if key in st.session_state:
             params[key] = st.session_state[key]
         else:
-            # Check for a persisted non-widget copy (set by setup.py fragments)
-            persisted_key = f"peptide_mirror.{key.replace('-', '_')}_persisted"
-            if persisted_key in st.session_state:
-                params[key] = st.session_state[persisted_key]
+            # Fall back to the persisted non-widget copy (set by setup.py
+            # fragments) so values survive page navigation.
+            persisted = _persisted_key(key)
+            if persisted in st.session_state:
+                params[key] = st.session_state[persisted]
 
     # Atomic write: a Streamlit rerun mid-write must never leave a 0-byte file
     # that breaks load_params() on the next page load.
@@ -183,7 +214,7 @@ def _render_workspace_switcher(params: dict) -> None:
             # the previous workspace is not shown in the new one.
             stale_keys = [
                 k for k in st.session_state
-                if k.startswith("peptide_mirror")
+                if k.startswith(STATE_PREFIX)
             ]
             for key in stale_keys:
                 del st.session_state[key]

@@ -8,10 +8,11 @@ from pathlib import Path
 
 import streamlit as st
 
-from streamlit_app.utils.state import page_setup, save_params
-from streamlit_app.views.page_state import (
-    STATE_PREFIX, get_state_key, _get_settings, restore_analysis_if_needed,
-    list_subdirectories, list_files,
+from streamlit_app.utils.state import (
+    STATE_PREFIX, get_state_key, page_setup, save_params,
+)
+from streamlit_app.utils.page_state import (
+    list_files, list_subdirectories, restore_analysis_if_needed,
 )
 from mspecviz.peptide_search import count_psms_per_peptide
 from mspecviz.common.text_utils import get_nested as get_settings_value, parse_peptide_list
@@ -176,7 +177,7 @@ def render_directory_browser(key_prefix: str, extensions: list, state_key: str, 
 
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
-    _settings = _get_settings()
+    _settings = st.session_state.get("settings", {})
     data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
 
     idxml_dir = params.get('idxml-browser-dir', data_dir_default)
@@ -399,7 +400,7 @@ def reference_selection_fragment():
 def settings_fragment():
     """Annotation, display, performance, and Koina settings fragment."""
     st.subheader("Settings")
-    available_ions = get_settings_value(_get_settings(), "ion_types", "available",
+    available_ions = get_settings_value(st.session_state.get("settings", {}), "ion_types", "available",
                                         default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
 
     col1, col2 = st.columns(2)
@@ -454,7 +455,7 @@ def settings_fragment():
         "against AI-predicted fragmentation patterns (intensity + m/z)."
     )
 
-    koina_defaults = get_koina_settings(_get_settings())
+    koina_defaults = get_koina_settings(st.session_state.get("settings", {}))
 
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",

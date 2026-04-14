@@ -1,8 +1,14 @@
 """
-Shared utilities for MSpecViz page modules.
+Analysis-state helpers for MSpecViz view modules.
 
-Contains session state helpers, analysis cache management, settings access,
-filesystem helpers, and run settings serialization used across all pages.
+Handles the on-disk analysis cache (Polars LazyFrames as Parquet, pandas as
+Parquet, pickled Python objects, JSON metadata), filesystem listings cached
+for the directory browser, and ``run_settings.json`` serialization used by
+the Export tab.
+
+Session state primitives (``STATE_PREFIX``, ``get_state_key``, ``get_param``)
+live in ``streamlit_app.utils.state`` alongside the rest of the Streamlit
+framework plumbing.
 """
 import json
 import logging
@@ -15,36 +21,16 @@ import polars as pl
 
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
 
-from streamlit_app.utils.state import load_params
-from mspecviz.common.text_utils import format_time, parse_peptide_list
+from streamlit_app.utils.state import (
+    _persisted_key,
+    get_param,
+    get_state_key,
+    load_params,
+)
+from mspecviz.common.text_utils import parse_peptide_list
 
 logger = logging.getLogger(__name__)
-
-
-STATE_PREFIX = "peptide_mirror"
-
-
-def get_state_key(key: str) -> str:
-    """Get namespaced session state key."""
-    return f"{STATE_PREFIX}.{key}"
-
-
-def get_param(params, key, default=None):
-    """Get a param value: session_state widget key > persisted state key > params.json."""
-    if key in st.session_state:
-        return st.session_state[key]
-    # Check persisted non-widget key (survives page navigation)
-    persisted_key = get_state_key(key.replace('-', '_') + '_persisted')
-    if persisted_key in st.session_state:
-        return st.session_state[persisted_key]
-    return params.get(key, default)
-
-
-def _get_settings() -> dict:
-    """Get settings from session state (loaded by page_setup)."""
-    return st.session_state.get("settings", {})
 
 
 ANALYSIS_CACHE_DIR = "analysis_cache"
@@ -203,45 +189,55 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
         return []
 
 
+# ---------------------------------------------------------------------------
+# run_settings.json serialization
+# ---------------------------------------------------------------------------
+# Single source of truth for which params land in run_settings.json.
+# Each entry: (run_settings_key, param_key, default_value).
+# ``target-peptides`` needs a list<->newline-joined-string conversion, so it
+# is handled separately below.
+RUN_SETTINGS_FIELDS: list[tuple[str, str, object]] = [
+    ("idxml_files",            "selected-idxmls",        []),
+    ("mzml_files",             "selected-mzmls",         []),
+    ("reference_substring",    "reference-substring",    ""),
+    ("ion_types",              "ion-types",              ["b", "y"]),
+    ("mz_tolerance",           "mz-tolerance",           0.02),
+    ("add_losses",             "add-losses",             False),
+    ("add_first_prefix_ion",   "add-first-prefix-ion",   True),
+    ("remove_precursor_peaks", "remove-precursor-peaks", False),
+    ("intensity_mode",         "intensity-mode",         "Relative"),
+    ("koina_enabled",          "koina-enabled",          False),
+]
+
+
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
     p = load_params()
-    peptide_text = get_param(p, 'target-peptides', '')
-    peptides = parse_peptide_list(peptide_text)
-    return {
-        "idxml_files": get_param(p, 'selected-idxmls', []),
-        "mzml_files": get_param(p, 'selected-mzmls', []),
-        "peptides": peptides,
-        "reference_substring": get_param(p, 'reference-substring', ''),
-        "ion_types": get_param(p, 'ion-types', ['b', 'y']),
-        "mz_tolerance": get_param(p, 'mz-tolerance', 0.02),
-        "add_losses": get_param(p, 'add-losses', False),
-        "add_first_prefix_ion": get_param(p, 'add-first-prefix-ion', True),
-        "remove_precursor_peaks": get_param(p, 'remove-precursor-peaks', False),
-        "intensity_mode": get_param(p, 'intensity-mode', 'Relative'),
-        "koina_enabled": get_param(p, 'koina-enabled', False),
-        "_created_at": datetime.now().isoformat(),
-        "_last_run": datetime.now().isoformat(),
+    cfg: dict = {
+        rs_key: get_param(p, param_key, default)
+        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
     }
+    cfg["peptides"] = parse_peptide_list(get_param(p, "target-peptides", ""))
+    now = datetime.now().isoformat()
+    cfg["_created_at"] = now
+    cfg["_last_run"] = now
+    return cfg
 
 
 def apply_run_settings(run_cfg: dict):
-    """Load a run_settings.json dict back into session state."""
-    mapping = {
-        'selected-idxmls':        run_cfg.get('idxml_files', []),
-        'selected-mzmls':         run_cfg.get('mzml_files', []),
-        'target-peptides':        '\n'.join(run_cfg.get('peptides', [])),
-        'reference-substring':    run_cfg.get('reference_substring', ''),
-        'ion-types':              run_cfg.get('ion_types', ['b', 'y']),
-        'mz-tolerance':           run_cfg.get('mz_tolerance', 0.02),
-        'add-losses':             run_cfg.get('add_losses', False),
-        'add-first-prefix-ion':   run_cfg.get('add_first_prefix_ion', True),
-        'remove-precursor-peaks': run_cfg.get('remove_precursor_peaks', False),
-        'intensity-mode':         run_cfg.get('intensity_mode', 'Relative'),
-        'koina-enabled':          run_cfg.get('koina_enabled', False),
-    }
-    for key, value in mapping.items():
-        st.session_state[key] = value
-        # Also update persisted non-widget keys so values survive page nav
-        persisted_key = get_state_key(key.replace('-', '_') + '_persisted')
-        st.session_state[persisted_key] = value
+    """Load a run_settings.json dict back into session state.
+
+    Writes both the widget key and its ``_persisted`` backup so values survive
+    page navigation even after Streamlit reaps the owning widget.
+    """
+    updates: list[tuple[str, object]] = [
+        (param_key, run_cfg.get(rs_key, default))
+        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
+    ]
+    updates.append(
+        ("target-peptides", "\n".join(run_cfg.get("peptides", [])))
+    )
+
+    for param_key, value in updates:
+        st.session_state[param_key] = value
+        st.session_state[_persisted_key(param_key)] = value

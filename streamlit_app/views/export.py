@@ -17,7 +17,12 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import streamlit as st
 
-from streamlit_app.utils.state import page_setup, save_params
+from streamlit_app.utils.state import (
+    STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
+)
+from streamlit_app.utils.page_state import (
+    apply_run_settings, build_run_settings, restore_analysis_if_needed,
+)
 from mspecviz.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     figure_to_bytes, create_plotly_mirror_plot,
@@ -25,10 +30,6 @@ from mspecviz.mirror_plot import (
 from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text
 from mspecviz.query_processing import build_psm_to_variant_mapping
 from mspecviz.summary_plots import sanitize_filename, generate_all_summary_plots
-from streamlit_app.views.page_state import (
-    STATE_PREFIX, get_state_key, get_param, restore_analysis_if_needed,
-    build_run_settings, apply_run_settings,
-)
 
 params = page_setup()
 logger = logging.getLogger(__name__)
