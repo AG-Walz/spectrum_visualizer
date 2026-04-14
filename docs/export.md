@@ -237,7 +237,7 @@ Matplotlib-generated publication-quality mirror plots. Each plot shows:
 
 - Upper panel: query spectrum with peaks pointing upward.
 - Lower panel: reference spectrum with peaks pointing downward.
-- Color-coded peaks by ion type (configurable via `ion_colors` in settings.json).
+- Color-coded peaks by ion type (configurable via `ion_colors` in `streamlit_app/config/settings.json`).
 - Annotation labels on matched peaks.
 - Metrics overlay text showing all 7 comparison metrics.
 - Title with peptide, modification, charge, and source file information.
@@ -248,7 +248,7 @@ Long filenames are truncated to 30 characters with a SHA-256 hash suffix to
 guarantee uniqueness.
 
 Default settings: 300 DPI, 12x8 inch figure size (configurable in the
-Export tab or settings.json).
+Export tab or `streamlit_app/config/settings.json`).
 
 ### Interactive HTML Plots
 

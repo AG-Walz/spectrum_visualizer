@@ -1,6 +1,9 @@
 from streamlit.testing.v1 import AppTest
 import pytest
 import json
+from pathlib import Path
+
+SETTINGS_PATH = Path(__file__).resolve().parent.parent / "streamlit_app" / "config" / "settings.json"
 
 
 @pytest.fixture
@@ -8,7 +11,7 @@ def launch(request):
     test = AppTest.from_file(request.param)
 
     ## Initialize session state ##
-    with open("settings.json", "r") as f:
+    with open(SETTINGS_PATH, "r") as f:
         test.session_state.settings = json.load(f)
     return test
 

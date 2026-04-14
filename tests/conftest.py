@@ -50,7 +50,7 @@ def target_peptides():
 
 @pytest.fixture
 def app_settings():
-    settings_path = PROJECT_ROOT / "settings.json"
+    settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
     with open(settings_path) as f:
         return json.load(f)
 

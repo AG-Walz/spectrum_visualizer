@@ -36,10 +36,21 @@ Expected results: 2 PSMs (ASDDFDQASY and RTEFNLNQY), 373 total peaks.
 
 ```bash
 conda activate mspecviz
+cd streamlit_app
 streamlit run app.py
 ```
 
+Run from inside `streamlit_app/` so Streamlit picks up
+`.streamlit/config.toml`. Workspaces still resolve to `<project-root>/workspaces/`,
+so `cd` does not strand your existing data.
+
 Open http://localhost:8501 in your browser.
+
+To run headlessly without the Streamlit UI, use the CLI from the project root:
+
+```bash
+python -m cli -c cli/config/config_example.yaml
+```
 
 ---
 
@@ -262,7 +273,7 @@ See [EXPORT.md](EXPORT.md) for the full directory structure and file schemas.
 
 | Problem | Solution |
 |---|---|
-| No files shown in the directory browser | Verify the path exists and you have read permissions. Check the `data_directories.default` setting in `settings.json`. |
+| No files shown in the directory browser | Verify the path exists and you have read permissions. Check the `data_directories.default` setting in `streamlit_app/config/settings.json`. |
 | "No matches found" after peptide search | Verify the peptide sequences exist in your idXML files using the Preview button. Sequences are case-insensitive but must match the base (unmodified) sequence. |
 | PSMs not resolved to mzML files | Ensure the mzML files referenced in the idXML metadata are among your selected files. The filenames must match. |
 | openms_insight components not rendering | Confirm openms_insight 0.1.11 is installed. Restart the Streamlit server if components fail to load. |

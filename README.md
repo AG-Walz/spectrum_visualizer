@@ -1,12 +1,15 @@
 # MSpecViz
 
-MSpecViz is a Streamlit application for interactive peptide-spectrum match (PSM)
-analysis and visualization. It combines the openms_insight library for linked
-interactive exploration with Plotly mirror plots, quantitative comparison metrics,
-and batch export capabilities.
+MSpecViz is a peptide-spectrum match (PSM) analysis and visualization toolkit.
+The core pipeline is pure Python and ships with two interchangeable front ends:
 
-The current release introduces a streamlined 4-tab workflow, Koina AI spectrum
-prediction, and parallel export.
+- **Streamlit UI** — interactive 4-tab workflow built on the openms_insight
+  library with Plotly mirror plots and quantitative comparison metrics.
+- **CLI** — headless pipeline driven by a YAML config, suitable for batch jobs
+  and servers without a browser.
+
+Both front ends share the same `mspecviz/` core (search, annotation, metrics,
+export). Pick the interface that fits your workflow; neither is required.
 
 ---
 
@@ -67,23 +70,41 @@ Key dependencies (installed in the environment):
 
 ## Quick Start
 
-Run the application:
+MSpecViz has two interfaces — pick whichever fits your workflow:
+
+### Streamlit (interactive UI)
+
+Run from the `streamlit_app/` directory so that `.streamlit/config.toml` is
+picked up:
 
 ```bash
+cd streamlit_app
 streamlit run app.py
 ```
 
 Or with the full path to the environment's Streamlit:
 
 ```bash
+cd streamlit_app
 /mnt/volume/bin/miniconda/envs/mspecviz/bin/streamlit run app.py
 ```
 
-Open http://localhost:8501 in your browser. If connecting to a remote server,
-set up an SSH tunnel:
+Open http://localhost:8501 in your browser. For a remote server:
 
 ```bash
 ssh -L 8501:localhost:8501 user@server
+```
+
+Workspaces, exports, and workspace defaults all resolve relative to the
+**project root**, so you can safely `cd` into `streamlit_app/` without
+reshuffling data directories.
+
+### CLI (headless pipeline)
+
+Run from the project root:
+
+```bash
+python -m cli -c cli/config/config_example.yaml
 ```
 
 See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a walkthrough of the 4-tab
@@ -106,7 +127,6 @@ tested independently of the Streamlit UI and CLI runners:
 
 ```
 MSpecViz/
-├── app.py                     # Streamlit entry point (navigation only)
 ├── mspecviz/                  # Core package — pure Python, no Streamlit imports
 │   ├── peptide_search.py      # idXML search + PSM counting
 │   ├── spectrum_loader.py     # Stream spectra from mzML files
@@ -121,7 +141,13 @@ MSpecViz/
 │   ├── export_dirs.py         # Versioned export directories with fingerprinting
 │   ├── path_utils.py          # Path disambiguation helpers
 │   └── common/                # Pure helpers (ion colors, text utilities)
-├── streamlit_app/             # Streamlit UI
+├── streamlit_app/             # Streamlit UI (self-contained)
+│   ├── app.py                 # Streamlit entry point (navigation only)
+│   ├── .streamlit/            # Streamlit server config (CWD-relative)
+│   │   └── config.toml
+│   ├── config/                # App-wide Streamlit config
+│   │   ├── settings.json      # App-wide settings (ion types, tolerances, Koina…)
+│   │   └── default-parameters.json  # Defaults applied to each new workspace
 │   ├── utils/state.py         # page_setup(), workspace management, sidebar
 │   └── views/                 # One module per page
 │       ├── setup.py           # Setup page
@@ -134,16 +160,14 @@ MSpecViz/
 │   ├── __main__.py            # Enables `python -m cli`
 │   └── config/                # Example YAML configs (CLI-only)
 ├── tests/                     # Unit + integration + GUI tests (pytest)
-├── docs/                      # Documentation
-├── settings.json              # App-wide settings (ion types, tolerances, Koina…)
-└── default-parameters.json    # Defaults applied to each new workspace
+└── docs/                      # Documentation
 ```
 
 ---
 
 ## Configuration
 
-Application defaults are defined in `settings.json`:
+Application defaults are defined in `streamlit_app/config/settings.json`:
 
 - **ion_types** -- Default fragment ion types for annotation (default: b, y)
 - **mz_tolerance** -- m/z matching tolerance in Da (default: 0.02)

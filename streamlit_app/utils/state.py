@@ -18,6 +18,12 @@ from pathlib import Path
 
 OS_PLATFORM = sys.platform
 
+# Project root = two levels up from streamlit_app/utils/state.py.
+# All CWD-relative paths (workspaces dir, assets, settings) should be
+# anchored here so that the app behaves identically regardless of the
+# directory from which ``streamlit run`` is invoked.
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
 
 def is_safe_workspace_name(name: str) -> bool:
     """Check if a workspace name is safe (no path traversal characters)."""
@@ -28,7 +34,7 @@ def is_safe_workspace_name(name: str) -> bool:
 
 def load_params(default: bool = False) -> dict[str, Any]:
     """Load default-parameters.json, then overlay workspace params.json on top."""
-    default_path = Path(__file__).parents[2] / "default-parameters.json"
+    default_path = PROJECT_ROOT / "streamlit_app" / "config" / "default-parameters.json"
     with open(default_path, "r", encoding="utf-8") as f:
         params = json.load(f)
 
@@ -103,12 +109,14 @@ def save_params(params: dict[str, Any]) -> None:
 def page_setup(page: str = "") -> dict[str, Any]:
     """Set up page config, workspace, and sidebar. Call at the top of every page."""
     if "settings" not in st.session_state:
-        with open("settings.json", "r") as f:
+        settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
+        with open(settings_path, "r") as f:
             st.session_state.settings = json.load(f)
 
+    logo_path = PROJECT_ROOT / "assets" / "openms_transparent_bg_logo.svg"
     st.set_page_config(
         page_title=st.session_state.settings.get("app-name", "MSpecViz"),
-        page_icon="assets/openms_transparent_bg_logo.svg" if Path("assets/openms_transparent_bg_logo.svg").exists() else None,
+        page_icon=str(logo_path) if logo_path.exists() else None,
         layout="wide",
         initial_sidebar_state="auto",
         menu_items=None,
@@ -151,11 +159,15 @@ def page_setup(page: str = "") -> dict[str, Any]:
 def _get_workspaces_dir() -> Path:
     """Return the workspaces directory from settings.
 
-    Resolved relative to the CWD where ``streamlit run`` was launched, so
-    ``"workspaces"`` lands at ``<app-dir>/workspaces/`` for the standard
-    invocation. Absolute paths are honored as-is.
+    Absolute paths in ``workspaces_dir`` are honored as-is. Relative paths
+    are anchored to the project root (not the CWD) so workspaces always
+    land at ``<project-root>/workspaces/`` regardless of where
+    ``streamlit run`` is invoked from.
     """
-    return Path(st.session_state.settings.get("workspaces_dir", "workspaces"))
+    configured = Path(st.session_state.settings.get("workspaces_dir", "workspaces"))
+    if configured.is_absolute():
+        return configured
+    return PROJECT_ROOT / configured
 
 
 def _render_workspace_switcher(params: dict) -> None:
