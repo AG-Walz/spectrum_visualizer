@@ -13,7 +13,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from src.peak_annotation import peptidoform_to_aasequence
+from mspecviz.peak_annotation import peptidoform_to_aasequence
 
 logger = logging.getLogger(__name__)
 

@@ -1,9 +1,9 @@
 """
 Shared processing logic for the MSInsight pipeline.
 
-Used by both ``cli.py`` (terminal mode) and ``content/peptide_mirror.py``
-(Streamlit mode).  Keeps all duplicated spectrum-processing helpers in a
-single authoritative location.
+Used by both ``cli/main.py`` (terminal mode) and the Streamlit app in
+``streamlit_app/views/`` (interactive mode).  Keeps all duplicated
+spectrum-processing helpers in a single authoritative location.
 """
 import logging
 from pathlib import Path
@@ -12,10 +12,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import numpy as np
 from psm_utils import Peptidoform
 
-from src.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
-from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
-from src.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
-from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+from mspecviz.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
+from mspecviz.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+from mspecviz.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
+from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 
 logger = logging.getLogger("msinsight.pipeline")
 

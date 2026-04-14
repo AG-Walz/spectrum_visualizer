@@ -17,8 +17,8 @@ from pathlib import Path
 from datetime import datetime
 from typing import Optional
 
-from src.common.streamlit_setup import load_params
-from src.common.text_utils import format_time, parse_peptide_list
+from streamlit_app.utils.state import load_params
+from mspecviz.common.text_utils import format_time, parse_peptide_list
 
 logger = logging.getLogger(__name__)
 

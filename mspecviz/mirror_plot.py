@@ -14,7 +14,7 @@ from matplotlib.figure import Figure as MplFigure
 import pandas as pd
 import plotly.graph_objects as go
 
-from src.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
+from mspecviz.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

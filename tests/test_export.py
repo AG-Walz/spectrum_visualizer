@@ -1,5 +1,5 @@
 """
-Unit tests for content/export.py — export pipeline.
+Unit tests for streamlit_app/views/export.py — export pipeline.
 
 Tests _run_export with mocked Streamlit state to verify file creation,
 and verifies the export_controls_fragment bug fix (export_dir NameError).
@@ -13,9 +13,9 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from src.spectrum_loader import LoadedSpectrum
-from src.peptide_search import PeptideMatch, VariantGroup
-from src.spectrum_metrics import METRIC_SHORT_TO_DISPLAY
+from mspecviz.spectrum_loader import LoadedSpectrum
+from mspecviz.peptide_search import PeptideMatch, VariantGroup
+from mspecviz.spectrum_metrics import METRIC_SHORT_TO_DISPLAY
 
 
 # ---------------------------------------------------------------------------
@@ -141,10 +141,10 @@ class TestRunExport:
         """Patch Streamlit to allow _run_export to run outside of the app."""
         state = _build_session_state(tmp_path)
 
-        with patch("content.export.st") as mock_st, \
-             patch("content.export.build_run_settings") as mock_brs, \
-             patch("content.export.get_state_key", side_effect=lambda k: f"peptide_mirror.{k}"), \
-             patch("content.export.get_param") as mock_gp:
+        with patch("streamlit_app.views.export.st") as mock_st, \
+             patch("streamlit_app.views.export.build_run_settings") as mock_brs, \
+             patch("streamlit_app.views.export.get_state_key", side_effect=lambda k: f"peptide_mirror.{k}"), \
+             patch("streamlit_app.views.export.get_param") as mock_gp:
 
             mock_st.session_state = state
             mock_st.status.return_value.__enter__ = MagicMock(return_value=MagicMock())
@@ -168,7 +168,7 @@ class TestRunExport:
             yield mock_st, tmp_path
 
     def test_parquet_export(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -184,7 +184,7 @@ class TestRunExport:
         assert len(parquet_files) >= 1
 
     def test_csv_export(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -198,7 +198,7 @@ class TestRunExport:
         assert "Peptide" in df.columns
 
     def test_mirror_plot_export(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -212,7 +212,7 @@ class TestRunExport:
         assert len(svg_files) >= 1, "Expected at least one SVG mirror plot"
 
     def test_summary_plot_export(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -226,7 +226,7 @@ class TestRunExport:
         assert len(summary_files) >= 2, "Expected dual_axis + ridgeline plots"
 
     def test_full_export(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -241,7 +241,7 @@ class TestRunExport:
         assert (export_root / "summary").exists()
 
     def test_run_settings_json_valid(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -254,7 +254,7 @@ class TestRunExport:
         assert "peptides" in settings
 
     def test_export_creates_versioned_directory(self, mock_st):
-        from content.export import _run_export
+        from streamlit_app.views.export import _run_export
         _, tmp_path = mock_st
         export_dir = str(tmp_path / "exports")
 
@@ -271,7 +271,7 @@ class TestExportControlsBugFix:
     def test_export_controls_no_name_error(self):
         """The function source should reference get_param for export-dir, not bare export_dir."""
         import inspect
-        from content.export import export_controls_fragment
+        from streamlit_app.views.export import export_controls_fragment
         source = inspect.getsource(export_controls_fragment)
         # The bug was: _run_export(export_dir, ...) where export_dir was undefined.
         # The fix uses get_param(params, 'export-dir', '') or export_fallback.

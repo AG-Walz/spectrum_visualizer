@@ -7,17 +7,17 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import streamlit as st
-from psm_utils.io.idxml import IdXMLReader
 
-from src.common.streamlit_setup import page_setup, save_params
-from content.page_state import (
+from streamlit_app.utils.state import page_setup, save_params
+from streamlit_app.views.page_state import (
     STATE_PREFIX, get_state_key, _get_settings, restore_analysis_if_needed,
     list_subdirectories, list_files,
 )
-from src.common.text_utils import get_nested as get_settings_value, parse_peptide_list
+from mspecviz.peptide_search import count_psms_per_peptide
+from mspecviz.common.text_utils import get_nested as get_settings_value, parse_peptide_list
 
 try:
-    from src.koina_prediction import (
+    from mspecviz.koina_prediction import (
         KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
         DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
         get_koina_settings,
@@ -36,19 +36,6 @@ except ImportError:
                 "instrument_type": DEFAULT_INSTRUMENT_TYPE}
 
 params = page_setup()
-
-
-def _scan_idxml_psm_counts(idxml_path: str) -> dict:
-    """Worker: count PSMs per peptide in one idXML file. Module-level for pickling."""
-    counts: Counter = Counter()
-    try:
-        for psm in IdXMLReader(str(idxml_path)):
-            seq = psm.peptidoform.sequence.upper()
-            if seq:
-                counts[seq] += 1
-    except Exception:
-        pass
-    return dict(counts)
 
 
 def render_directory_browser(key_prefix: str, extensions: list, state_key: str, default_dir: str = "/"):
@@ -281,7 +268,7 @@ def peptide_input_fragment():
 
                         with ProcessPoolExecutor(max_workers=min(workers, n)) as pool:
                             futures = {
-                                pool.submit(_scan_idxml_psm_counts, p): p for p in idxmls
+                                pool.submit(count_psms_per_peptide, p): p for p in idxmls
                             }
                             done = 0
                             for future in as_completed(futures):

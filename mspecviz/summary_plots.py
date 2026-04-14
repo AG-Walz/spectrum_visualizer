@@ -7,7 +7,7 @@ Generates per-peptidoform metric distribution visualizations:
 
 Can be called programmatically::
 
-    from src.summary_plots import generate_all_summary_plots
+    from mspecviz.summary_plots import generate_all_summary_plots
     results = generate_all_summary_plots(source=df, output_dir="exports/run1")
 """
 import logging
@@ -25,8 +25,8 @@ import numpy as np
 import pandas as pd
 from scipy.stats import gaussian_kde
 
-from src.common.text_utils import sanitize_filename
-from src.peptide_search import format_inline_sequence
+from mspecviz.common.text_utils import sanitize_filename
+from mspecviz.peptide_search import format_inline_sequence
 
 logger = logging.getLogger(__name__)
 

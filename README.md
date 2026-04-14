@@ -101,25 +101,43 @@ pytest tests/ -v
 
 ## Project Structure
 
-| File / Directory | Description |
-|---|---|
-| `app.py` | Streamlit entry point |
-| `content/peptide_mirror.py` | Main page: 4-tab workflow (Setup, Search & Load, Explore, Export) |
-| `src/parquet_builder.py` | Converts PSMs and spectra to 4 Polars LazyFrames for openms_insight |
-| `src/peptide_search.py` | Searches idXML files for target peptides |
-| `src/spectrum_loader.py` | Streams spectra from mzML files |
-| `src/peak_annotation.py` | Annotates spectra with theoretical fragment ions |
-| `src/mirror_plot.py` | Plotly interactive and Matplotlib static mirror/single plots |
-| `src/spectrum_metrics.py` | 7 comparison metrics and formatting |
-| `src/summary_plots.py` | Dual-axis, ridgeline, and heatmap summary plots |
-| `src/koina_prediction.py` | Koina AI spectrum prediction (16 models) |
-| `src/parallel_processor.py` | Parallel plot generation and 17 ion match statistics |
-| `src/export.py` | Versioned export directories with fingerprinting |
-| `src/path_utils.py` | Path utility functions |
-| `src/common/` | Shared Streamlit utilities |
-| `utils/helpers.py` | Peptide list parsing, time formatting, nested dict access |
-| `settings.json` | Application configuration (ion types, tolerances, Koina, export) |
-| `tests/` | Unit, integration, and GUI tests |
+The project is split into three top-level packages so core functionality can be
+tested independently of the Streamlit UI and CLI runners:
+
+```
+MSpecViz/
+├── app.py                     # Streamlit entry point (navigation only)
+├── mspecviz/                  # Core package — pure Python, no Streamlit imports
+│   ├── peptide_search.py      # idXML search + PSM counting
+│   ├── spectrum_loader.py     # Stream spectra from mzML files
+│   ├── peak_annotation.py     # Theoretical fragment generation + annotation
+│   ├── insight_dataframes.py  # Polars LazyFrames for openms_insight
+│   ├── mirror_plot.py         # Plotly interactive + Matplotlib static plots
+│   ├── spectrum_metrics.py    # 7 comparison metrics + formatting
+│   ├── summary_plots.py       # Dual-axis, ridgeline, heatmap summary plots
+│   ├── koina_prediction.py    # Koina AI prediction (16 models)
+│   ├── plot_worker.py         # Parallel plot generation (ProcessPoolExecutor)
+│   ├── query_processing.py    # Shared CLI / Streamlit pipeline helpers
+│   ├── export_dirs.py         # Versioned export directories with fingerprinting
+│   ├── path_utils.py          # Path disambiguation helpers
+│   └── common/                # Pure helpers (ion colors, text utilities)
+├── streamlit_app/             # Streamlit UI
+│   ├── utils/state.py         # page_setup(), workspace management, sidebar
+│   └── views/                 # One module per page
+│       ├── setup.py           # Setup page
+│       ├── search_load.py     # Search & Load page
+│       ├── explore.py         # Explore page (3 sub-views)
+│       ├── export.py          # Export page
+│       └── page_state.py      # Session state helpers shared across views
+├── cli/                       # Terminal runner
+│   ├── main.py                # Pipeline orchestration, argparse, progress bars
+│   ├── __main__.py            # Enables `python -m cli`
+│   └── config/                # Example YAML configs (CLI-only)
+├── tests/                     # Unit + integration + GUI tests (pytest)
+├── docs/                      # Documentation
+├── settings.json              # App-wide settings (ion types, tolerances, Koina…)
+└── default-parameters.json    # Defaults applied to each new workspace
+```
 
 ---
 

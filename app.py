@@ -8,12 +8,13 @@ if "settings" not in st.session_state:
         st.session_state.settings = json.load(f)
 
 if __name__ == '__main__':
+    views = Path("streamlit_app") / "views"
     pages = {
         str(st.session_state.settings["app-name"]): [
-            st.Page(Path("content", "setup.py"), title="Setup", icon="⚙️"),
-            st.Page(Path("content", "search_load.py"), title="Search & Load", icon="🔍"),
-            st.Page(Path("content", "explore.py"), title="Explore", icon="🔬"),
-            st.Page(Path("content", "export.py"), title="Export", icon="📦"),
+            st.Page(views / "setup.py", title="Setup", icon="⚙️"),
+            st.Page(views / "search_load.py", title="Search & Load", icon="🔍"),
+            st.Page(views / "explore.py", title="Explore", icon="🔬"),
+            st.Page(views / "export.py", title="Export", icon="📦"),
         ],
     }
 

@@ -1,5 +1,5 @@
 """
-Unit tests for src/spectrum_metrics.py
+Unit tests for mspecviz/spectrum_metrics.py
 """
 import math
 
@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.spectrum_metrics import (
+from mspecviz.spectrum_metrics import (
     compute_all_metrics,
     compute_cosine_similarity,
     compute_r2_binned,
@@ -248,7 +248,7 @@ class TestMetricsWithRealAnnotation:
 
     def test_self_comparison_perfect(self):
         """A spectrum compared against itself should have high similarity."""
-        from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
+        from mspecviz.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
 
         # Use actual theoretical fragment m/z values so peaks get annotated
         frags = generate_theoretical_fragments("ASDDFDQASY", charge=1, ion_types=["b", "y"])

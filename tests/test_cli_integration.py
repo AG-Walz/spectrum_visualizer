@@ -4,31 +4,35 @@ import subprocess
 import sys
 from pathlib import Path
 
-CLI_PATH = Path(__file__).parent.parent / "cli.py"
+PROJECT_ROOT = Path(__file__).parent.parent
+CLI_ARGS = [sys.executable, "-m", "cli"]
 
 
 @pytest.mark.integration
 class TestCLI:
     def test_help_exits_zero(self):
-        result = subprocess.run([sys.executable, str(CLI_PATH), "--help"],
-                                capture_output=True, text=True, timeout=30)
+        result = subprocess.run(CLI_ARGS + ["--help"], cwd=PROJECT_ROOT,
+                                capture_output=True, text=True, timeout=30,
+                                encoding="utf-8", errors="replace")
         assert result.returncode == 0
         assert "MSInsight CLI" in result.stdout
 
     def test_missing_config_exits_two(self):
-        result = subprocess.run([sys.executable, str(CLI_PATH), "-c", "/nonexistent.yaml"],
-                                capture_output=True, text=True, timeout=30)
+        result = subprocess.run(CLI_ARGS + ["-c", "/nonexistent.yaml"], cwd=PROJECT_ROOT,
+                                capture_output=True, text=True, timeout=30,
+                                encoding="utf-8", errors="replace")
         assert result.returncode == 2
 
     def test_full_pipeline_with_test_data(self, tmp_path):
-        config = Path(__file__).parent.parent / "config" / "config_example.yaml"
+        config = PROJECT_ROOT / "cli" / "config" / "config_example.yaml"
         if not config.exists():
             pytest.skip("config_example.yaml not found")
 
         result = subprocess.run(
-            [sys.executable, str(CLI_PATH), "-c", str(config),
-             "--export-dir", str(tmp_path), "-q"],
+            CLI_ARGS + ["-c", str(config), "--export-dir", str(tmp_path), "-q"],
+            cwd=PROJECT_ROOT,
             capture_output=True, text=True, timeout=120,
+            encoding="utf-8", errors="replace",
         )
         assert result.returncode == 0, f"CLI failed: {result.stderr}"
 

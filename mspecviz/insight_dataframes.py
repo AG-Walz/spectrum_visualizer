@@ -14,8 +14,8 @@ import pandas as pd
 import polars as pl
 from psm_utils import Peptidoform
 
-from src.peptide_search import VariantGroup
-from src.spectrum_loader import LoadedSpectrum
+from mspecviz.peptide_search import VariantGroup
+from mspecviz.spectrum_loader import LoadedSpectrum
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,7 @@ def build_peaks_dataframe(
 
     Args:
         annotated_spectra: List of (psm_id, annotated_df) where annotated_df is
-            the output of src.peak_annotation.prepare_spectrum_for_plot().
+            the output of mspecviz.peak_annotation.prepare_spectrum_for_plot().
             Expected columns: mz, intensity, annotation, is_annotated, ion_type.
 
     Returns:

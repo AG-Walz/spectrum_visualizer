@@ -17,10 +17,10 @@ def launch(request):
 @pytest.mark.parametrize(
     "launch",
     (
-        "content/setup.py",
-        "content/search_load.py",
-        "content/explore.py",
-        "content/export.py",
+        "streamlit_app/views/setup.py",
+        "streamlit_app/views/search_load.py",
+        "streamlit_app/views/explore.py",
+        "streamlit_app/views/export.py",
     ),
     indirect=True,
 )

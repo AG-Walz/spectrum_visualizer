@@ -15,8 +15,8 @@ from typing import Dict, List, Optional, Tuple, Callable
 import numpy as np
 import pyopenms as oms
 
-from src.path_utils import disambiguate_paths
-from src.peptide_search import PeptideMatch, VariantGroup
+from mspecviz.path_utils import disambiguate_paths
+from mspecviz.peptide_search import PeptideMatch, VariantGroup
 
 logger = logging.getLogger(__name__)
 

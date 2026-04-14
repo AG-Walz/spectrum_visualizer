@@ -4,7 +4,7 @@ and summarize_search_results (returns pl.LazyFrame in MSInsight).
 import pytest
 import polars as pl
 
-from src.peptide_search import (
+from mspecviz.peptide_search import (
     abbreviate_mod,
     format_inline_sequence,
     MOD_ABBREVIATIONS,
@@ -146,7 +146,7 @@ class TestSearchWithRealData:
     @pytest.fixture(scope="class")
     def search_results(self, idxml_path, target_peptides):
         """Shared fixture: search once for all tests in this class."""
-        from src.peptide_search import search_peptides_in_idxmls
+        from mspecviz.peptide_search import search_peptides_in_idxmls
         return search_peptides_in_idxmls([idxml_path], target_peptides)
 
     def test_search_finds_expected_peptides(self, search_results):
@@ -163,7 +163,7 @@ class TestSearchWithRealData:
             assert match.charge > 0
 
     def test_get_unique_peptides(self, idxml_path):
-        from src.peptide_search import get_unique_peptides_from_idxmls
+        from mspecviz.peptide_search import get_unique_peptides_from_idxmls
         peptides = get_unique_peptides_from_idxmls([idxml_path])
         assert len(peptides) > 0
         assert isinstance(peptides, (list, set))

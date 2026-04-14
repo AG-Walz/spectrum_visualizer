@@ -1,5 +1,5 @@
 """
-Unit tests for src/summary_plots.py
+Unit tests for mspecviz/summary_plots.py
 
 MSInsight changes from MSpecViz:
 - Removed: plot_dumbbell, generate_peptide_detail_plots, _shorten_labels,
@@ -12,7 +12,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.summary_plots import (
+from mspecviz.summary_plots import (
     generate_all_summary_plots,
     prepare_summary_data,
 )

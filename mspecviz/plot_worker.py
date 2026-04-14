@@ -15,11 +15,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.mirror_plot import (
+from mspecviz.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     create_plotly_mirror_plot, create_plotly_single_plot,
 )
-from src.spectrum_metrics import compute_all_metrics, format_metrics_text
+from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text
 
 logger = logging.getLogger(__name__)
 

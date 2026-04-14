@@ -7,9 +7,9 @@ All inputs are provided via a YAML config file (with optional CLI argument
 overrides). Reuses the exact same backend functions as the Streamlit app.
 
 Usage:
-    python cli.py --config config.yaml
-    python cli.py --config config.yaml --peptides peptides.txt --verbose
-    python cli.py --config config.yaml --mz-tolerance 0.05 --no-plots --quiet
+    python -m cli --config config.yaml
+    python -m cli --config config.yaml --peptides peptides.txt --verbose
+    python -m cli --config config.yaml --mz-tolerance 0.05 --no-plots --quiet
 
 Exit codes:
     0 = success
@@ -34,24 +34,24 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import yaml
 
-PROJECT_ROOT = Path(__file__).resolve().parent
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from src.export_dirs import find_or_create_export_directory, commit_export_directory, sanitize_filename
-from src.mirror_plot import (
+from mspecviz.export_dirs import find_or_create_export_directory, commit_export_directory, sanitize_filename
+from mspecviz.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     figure_to_bytes, create_plotly_mirror_plot,
 )
-from src.insight_dataframes import (
+from mspecviz.insight_dataframes import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
-from src.peptide_search import search_peptides_in_idxmls, get_unique_peptides_from_idxmls
-from src.query_processing import process_query_result, build_plot_tasks
-from src.spectrum_loader import load_spectra_streaming
-from src.summary_plots import generate_all_summary_plots
-from src.common.text_utils import format_time, get_nested, parse_peptide_list
+from mspecviz.peptide_search import search_peptides_in_idxmls, get_unique_peptides_from_idxmls
+from mspecviz.query_processing import process_query_result, build_plot_tasks
+from mspecviz.spectrum_loader import load_spectra_streaming
+from mspecviz.summary_plots import generate_all_summary_plots
+from mspecviz.common.text_utils import format_time, get_nested, parse_peptide_list
 
 logger = logging.getLogger("msinsight.cli")
 
@@ -730,7 +730,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="msinsight-cli",
         description="MSInsight CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
-        epilog="Example: python cli.py --config config.yaml --verbose",
+        epilog="Example: python -m cli --config cli/config/config_example.yaml --verbose",
     )
 
     # Required

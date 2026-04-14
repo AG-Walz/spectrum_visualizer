@@ -1,12 +1,12 @@
 """
-Unit tests for src/export_dirs.py
+Unit tests for mspecviz/export_dirs.py
 """
 from pathlib import Path
 
 import pytest
 
-from src.common.text_utils import shorten_stem
-from src.export_dirs import (
+from mspecviz.common.text_utils import shorten_stem
+from mspecviz.export_dirs import (
     find_or_create_export_directory,
     commit_export_directory,
     sanitize_filename,

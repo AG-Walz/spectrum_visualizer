@@ -1,10 +1,10 @@
 """
-Unit and integration tests for src/koina_prediction.py
+Unit and integration tests for mspecviz/koina_prediction.py
 """
 import pandas as pd
 import pytest
 
-from src.koina_prediction import (
+from mspecviz.koina_prediction import (
     KOINA_AVAILABLE,
     KOINA_MODELS,
     INSTRUMENT_TYPES,
@@ -176,7 +176,7 @@ class TestPredictKoinaSpectrum:
 class TestKoinaPipelineIntegration:
     def test_predict_and_annotate_native(self):
         """Predict a spectrum via Koina and annotate using native Koina annotations."""
-        from src.peak_annotation import prepare_koina_spectrum_for_plot
+        from mspecviz.peak_annotation import prepare_koina_spectrum_for_plot
 
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
@@ -202,8 +202,8 @@ class TestKoinaPipelineIntegration:
         annotate query with PyOpenMS, then compute comparison metrics.
         """
         import numpy as np
-        from src.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
-        from src.spectrum_metrics import compute_all_metrics
+        from mspecviz.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+        from mspecviz.spectrum_metrics import compute_all_metrics
 
         # Simulate a query spectrum (synthetic peaks around known ASDDFDQASY fragments)
         query_mz = np.array([175.0, 290.0, 405.0, 520.0, 635.0, 750.0])

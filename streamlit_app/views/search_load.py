@@ -12,19 +12,19 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from src.common.streamlit_setup import page_setup, save_params
-from src.insight_dataframes import (
+from streamlit_app.utils.state import page_setup, save_params
+from mspecviz.insight_dataframes import (
     build_psm_table, build_peaks_dataframe,
     build_sequence_dataframe, build_heatmap_dataframe,
 )
-from src.peptide_search import search_peptides_in_idxmls, summarize_search_results
-from src.spectrum_loader import load_spectra_streaming
-from src.query_processing import process_query_result
-from content.page_state import (
+from mspecviz.peptide_search import search_peptides_in_idxmls, summarize_search_results
+from mspecviz.spectrum_loader import load_spectra_streaming
+from mspecviz.query_processing import process_query_result
+from streamlit_app.views.page_state import (
     STATE_PREFIX, get_state_key, get_param,
     restore_analysis_if_needed, save_analysis_cache, clear_analysis_cache,
 )
-from src.common.text_utils import format_time, parse_peptide_list
+from mspecviz.common.text_utils import format_time, parse_peptide_list
 
 params = page_setup()
 logger = logging.getLogger(__name__)

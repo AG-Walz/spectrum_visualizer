@@ -14,17 +14,17 @@ import streamlit as st
 import polars as pl
 from openms_insight import Table, LinePlot, SequenceView, Heatmap, StateManager
 
-from src.common.streamlit_setup import page_setup, save_params
-from src.mirror_plot import (
+from streamlit_app.utils.state import page_setup, save_params
+from mspecviz.mirror_plot import (
     create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
 )
-from src.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
-from src.summary_plots import (
+from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
+from mspecviz.summary_plots import (
     METRIC_COLUMNS, DEFAULT_METRIC,
     prepare_summary_data, plot_classic_dual_axis, plot_ridgeline,
 )
-from src.query_processing import build_psm_to_variant_mapping
-from content.page_state import (
+from mspecviz.query_processing import build_psm_to_variant_mapping
+from streamlit_app.views.page_state import (
     STATE_PREFIX, get_state_key, get_param, restore_analysis_if_needed,
 )
 

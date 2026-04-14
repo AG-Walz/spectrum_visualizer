@@ -8,6 +8,7 @@ from protein-level spectra_data metadata in merged idXML files.
 """
 import importlib
 import logging
+from collections import Counter
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -17,7 +18,7 @@ import numpy as np
 import polars as pl
 from psm_utils.io.idxml import IdXMLReader
 
-from src.path_utils import disambiguate_paths, resolve_mzml_path
+from mspecviz.path_utils import disambiguate_paths, resolve_mzml_path
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +112,7 @@ def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
 
 def _rebuild_peptide_match(*args):
     """Reconstruct PeptideMatch from pickled args (avoids Streamlit reload identity issues)."""
-    mod = importlib.import_module("src.peptide_search")
+    mod = importlib.import_module("mspecviz.peptide_search")
     return mod.PeptideMatch(*args)
 
 
@@ -341,6 +342,23 @@ def _search_single_idxml(
         errors.append(f"Error loading {Path(idxml_path).name}: {e}")
 
     return idxml_name, matches, errors
+
+
+def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
+    """Count PSMs per base peptide sequence in one idXML file.
+
+    Module-level so it can be submitted to a ProcessPoolExecutor.
+    Returns an empty dict on any parsing error.
+    """
+    counts: Counter = Counter()
+    try:
+        for psm in IdXMLReader(str(idxml_path)):
+            seq = psm.peptidoform.sequence.upper()
+            if seq:
+                counts[seq] += 1
+    except Exception:
+        pass
+    return dict(counts)
 
 
 def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:

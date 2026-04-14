@@ -1,8 +1,8 @@
 """
-Common utilities for MSpecViz Streamlit app.
+Streamlit state and page-setup helpers for MSpecViz.
 
-Adapted from the OpenMS streamlit-template src/common/common.py.
-Provides page_setup(), render_sidebar(), workspace management, and UI helpers.
+Adapted from the OpenMS streamlit-template. Provides page_setup(),
+render_sidebar(), workspace management, and UI helpers.
 """
 
 import os

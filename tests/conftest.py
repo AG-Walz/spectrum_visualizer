@@ -59,7 +59,7 @@ def make_peptide_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
                        spectrum_id="index=1", charge=2, score=0.95,
                        idxml_file="test.idXML", mzml_filename="test.mzML"):
     """Create a PeptideMatch for testing. Importable via ``from tests.conftest import ...``."""
-    from src.peptide_search import PeptideMatch
+    from mspecviz.peptide_search import PeptideMatch
     return PeptideMatch(
         peptidoform=peptidoform, base_sequence=base_seq,
         spectrum_id=spectrum_id, charge=charge, score=score,

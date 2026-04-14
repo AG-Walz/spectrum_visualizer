@@ -1,7 +1,7 @@
 """
 Shared ion-related utilities for MS/MS spectrum handling.
 
-Used by src.peak_annotation and src.mirror_plot.
+Used by mspecviz.peak_annotation and mspecviz.mirror_plot.
 """
 from typing import Dict
 

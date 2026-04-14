@@ -1,5 +1,5 @@
 """
-Unit tests for src/plot_worker.py
+Unit tests for mspecviz/plot_worker.py
 """
 from pathlib import Path
 
@@ -7,8 +7,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.plot_worker import ComparisonTask, process_single_task
-from src.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
+from mspecviz.plot_worker import ComparisonTask, process_single_task
+from mspecviz.peak_annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
 
 
 # ---------------------------------------------------------------------------

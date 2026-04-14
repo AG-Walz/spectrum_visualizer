@@ -8,8 +8,8 @@ class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
         """Shared fixture: search + stream spectra once for all tests in this class."""
-        from src.peptide_search import search_peptides_in_idxmls
-        from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
+        from mspecviz.peptide_search import search_peptides_in_idxmls
+        from mspecviz.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
 
         vgs = search_peptides_in_idxmls([idxml_path], target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]

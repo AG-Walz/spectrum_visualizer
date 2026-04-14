@@ -1,9 +1,9 @@
 """
-Unit tests for src/path_utils.py
+Unit tests for mspecviz/path_utils.py
 """
 import pytest
 
-from src.path_utils import deduplicate_paths, disambiguate_paths, resolve_mzml_path
+from mspecviz.path_utils import deduplicate_paths, disambiguate_paths, resolve_mzml_path
 
 
 # ---------------------------------------------------------------------------

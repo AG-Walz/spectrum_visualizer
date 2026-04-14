@@ -1,5 +1,5 @@
 """
-Unit tests for src/mirror_plot.py
+Unit tests for mspecviz/mirror_plot.py
 
 MSInsight changes from MSpecViz:
 - create_interactive_mirror_plot -> create_plotly_mirror_plot
@@ -16,7 +16,7 @@ import numpy as np
 import pytest
 from matplotlib.figure import Figure
 
-from src.mirror_plot import (
+from mspecviz.mirror_plot import (
     ION_COLORS,
     create_mirror_plot,
     create_single_spectrum_plot,
@@ -122,7 +122,7 @@ class TestMirrorPlotWithRealAnnotation:
     """Generate plots from annotated real-like spectra."""
 
     def test_plotly_mirror_with_annotation(self):
-        from src.peak_annotation import prepare_spectrum_for_plot
+        from mspecviz.peak_annotation import prepare_spectrum_for_plot
         import plotly.graph_objects as go
 
         mz = np.array([175.12, 290.14, 405.17, 520.20], dtype=np.float64)
@@ -145,8 +145,8 @@ class TestMirrorPlotWithRealAnnotation:
         assert len(fig.data) > 0
 
     def test_matplotlib_mirror_with_annotation(self, tmp_path):
-        from src.peak_annotation import prepare_spectrum_for_plot
-        from src.mirror_plot import figure_to_bytes
+        from mspecviz.peak_annotation import prepare_spectrum_for_plot
+        from mspecviz.mirror_plot import figure_to_bytes
 
         mz = np.array([175.12, 290.14, 405.17], dtype=np.float64)
         intensity = np.array([100, 200, 150], dtype=np.float64)

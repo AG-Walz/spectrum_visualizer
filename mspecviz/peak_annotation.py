@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
-from src.common.ion_utils import get_ion_type  # noqa: F401
+from mspecviz.common.ion_utils import get_ion_type  # noqa: F401
 
 logger = logging.getLogger(__name__)
 

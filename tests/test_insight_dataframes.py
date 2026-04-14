@@ -1,5 +1,5 @@
 """
-Unit tests for src/insight_dataframes.py.
+Unit tests for mspecviz/insight_dataframes.py.
 """
 from pathlib import Path
 
@@ -8,7 +8,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from src.insight_dataframes import (
+from mspecviz.insight_dataframes import (
     PSM_TABLE_SCHEMA,
     PEAKS_SCHEMA,
     SEQUENCE_SCHEMA,
@@ -21,8 +21,8 @@ from src.insight_dataframes import (
     build_heatmap_dataframe,
     save_to_parquet,
 )
-from src.peptide_search import VariantGroup
-from src.spectrum_loader import LoadedSpectrum
+from mspecviz.peptide_search import VariantGroup
+from mspecviz.spectrum_loader import LoadedSpectrum
 
 
 from tests.conftest import make_peptide_match
@@ -300,7 +300,7 @@ class TestBuildFromRealData:
 
     @pytest.fixture
     def variant_groups(self, idxml_path, target_peptides):
-        from src.peptide_search import search_peptides_in_idxmls
+        from mspecviz.peptide_search import search_peptides_in_idxmls
         return search_peptides_in_idxmls([idxml_path], target_peptides)
 
     def test_build_psm_table_real(self, variant_groups):
@@ -312,8 +312,8 @@ class TestBuildFromRealData:
 
     def test_build_all_dataframes_real(self, variant_groups, mzml_paths):
         """Full pipeline: search -> stream -> annotate -> build DataFrames."""
-        from src.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
-        from src.peak_annotation import prepare_spectrum_for_plot
+        from mspecviz.spectrum_loader import load_spectra_streaming, spectrum_lookup_key
+        from mspecviz.peak_annotation import prepare_spectrum_for_plot
 
         psm_lf, psm_lookup = build_psm_table(variant_groups)
         annotated = []

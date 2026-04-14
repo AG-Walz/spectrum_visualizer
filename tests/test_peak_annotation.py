@@ -1,12 +1,12 @@
 """
-Unit tests for src/peak_annotation.py
+Unit tests for mspecviz/peak_annotation.py
 """
 import numpy as np
 import pandas as pd
 import pytest
 import pyopenms as oms
 
-from src.peak_annotation import (
+from mspecviz.peak_annotation import (
     annotate_spectrum,
     generate_theoretical_fragments,
     peptidoform_to_aasequence,
