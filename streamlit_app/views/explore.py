@@ -26,7 +26,7 @@ from mspecviz.summary_plots import (
     METRIC_COLUMNS, DEFAULT_METRIC,
     prepare_summary_data, plot_classic_dual_axis, plot_ridgeline,
 )
-from mspecviz.query_processing import build_psm_to_variant_mapping
+from mspecviz.query_processing import build_psm_to_variant_mapping, format_spectrum_labels
 
 params = page_setup()
 logger = logging.getLogger(__name__)
@@ -177,9 +177,7 @@ def mirror_plots_fragment():
             metrics = compute_all_metrics(query_df, ref_df)
             metrics_text = format_metrics_text(metrics)
 
-            query_label = f"Query: {Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
-            ref_source = Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina"
-            ref_label = f"Ref: {ref_source} (RT: {ref_spec.rt:.1f})"
+            query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
             title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
 
             fig = create_plotly_mirror_plot(

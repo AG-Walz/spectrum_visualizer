@@ -1,9 +1,6 @@
 """
 Setup Page — File selection, peptide input, reference config, annotation settings.
 """
-import time as _time
-from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 
 import streamlit as st
@@ -11,11 +8,10 @@ import streamlit as st
 from streamlit_app.utils.state import (
     STATE_PREFIX, get_state_key, page_setup, save_params,
 )
-from streamlit_app.utils.page_state import (
-    list_files, list_subdirectories, restore_analysis_if_needed,
-)
-from mspecviz.peptide_search import count_psms_per_peptide
-from mspecviz.common.text_utils import get_nested as get_settings_value, parse_peptide_list
+from streamlit_app.utils.page_state import restore_analysis_if_needed
+from streamlit_app.views.widgets.file_browser import render_directory_browser
+from streamlit_app.views.widgets.peptide_input import render_peptide_input
+from mspecviz.common.text_utils import get_nested as get_settings_value
 
 try:
     from mspecviz.koina_prediction import (
@@ -39,142 +35,6 @@ except ImportError:
 params = page_setup()
 
 
-def render_directory_browser(key_prefix: str, extensions: list, state_key: str, default_dir: str = "/"):
-    """Render a directory browser with file selection."""
-    dir_key = f"{key_prefix}_dir"
-    nav_key = f"{key_prefix}_nav_to"
-    select_all_key = f"{key_prefix}_select_all"
-    recursive_key = f"{key_prefix}_recursive"
-
-    if state_key not in st.session_state:
-        st.session_state[state_key] = params.get(state_key, [])
-
-    if dir_key not in st.session_state:
-        st.session_state[dir_key] = default_dir
-
-    if nav_key in st.session_state and st.session_state[nav_key]:
-        st.session_state[dir_key] = st.session_state[nav_key]
-        st.session_state[nav_key] = None
-        if select_all_key in st.session_state:
-            del st.session_state[select_all_key]
-        if recursive_key in st.session_state:
-            del st.session_state[recursive_key]
-
-    current_dir = st.session_state[dir_key]
-
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        new_path = st.text_input(
-            "Path", value=current_dir,
-            key=f"{key_prefix}_path_input_{abs(hash(current_dir))}",
-            label_visibility="collapsed", placeholder="Enter path..."
-        )
-        if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
-            st.session_state[dir_key] = new_path
-            if select_all_key in st.session_state:
-                del st.session_state[select_all_key]
-            if recursive_key in st.session_state:
-                del st.session_state[recursive_key]
-            st.rerun()
-
-    with col2:
-        parent = str(Path(current_dir).parent)
-        if st.button("up", key=f"{key_prefix}_up_btn", help="Parent directory",
-                      disabled=(parent == current_dir)):
-            st.session_state[nav_key] = parent
-            st.rerun()
-
-    subdir_paths = list_subdirectories(current_dir)
-    subdirs = [Path(d) for d in subdir_paths]
-    if subdirs:
-        st.markdown(
-            "<style>.folder-nav button{font-size:0.8rem !important;"
-            "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
-            unsafe_allow_html=True,
-        )
-        cols_per_row = 4
-        max_folders = 16
-        for i in range(0, min(len(subdirs), max_folders), cols_per_row):
-            cols = st.columns(cols_per_row)
-            for j, col in enumerate(cols):
-                idx = i + j
-                if idx < len(subdirs) and idx < max_folders:
-                    folder = subdirs[idx]
-                    with col:
-                        if st.button(f"{folder.name}", key=f"{key_prefix}_folder_{idx}",
-                                     help=str(folder)):
-                            st.session_state[nav_key] = str(folder)
-                            st.rerun()
-        if len(subdirs) > max_folders:
-            st.caption(f"... and {len(subdirs) - max_folders} more folders")
-
-    recursive = st.checkbox("Include subdirectories", value=False,
-                            key=f"{key_prefix}_recursive",
-                            help="Scan all subdirectories for matching files")
-
-    all_files = [Path(f) for f in list_files(current_dir, tuple(extensions), recursive)]
-    current_path = Path(current_dir)
-    file_labels = ([str(f.relative_to(current_path)) for f in all_files]
-                   if recursive else [f.name for f in all_files])
-    label_to_path = {lbl: str(f) for lbl, f in zip(file_labels, all_files)}
-
-    filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
-                                placeholder="Type to filter filenames...")
-    if filter_text:
-        filter_lower = filter_text.lower()
-        filtered_labels = [lbl for lbl in file_labels if filter_lower in lbl.lower()]
-    else:
-        filtered_labels = file_labels
-
-    if filtered_labels:
-        all_selected_paths = set(st.session_state.get(state_key, []))
-        current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
-        if recursive:
-            other_dir_selections = [p for p in st.session_state.get(state_key, [])
-                                    if p not in current_scope_paths]
-        else:
-            other_dir_selections = [p for p in st.session_state.get(state_key, [])
-                                    if Path(p).parent != current_path]
-
-        valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
-        all_in_scope_selected = set(valid_defaults) == set(filtered_labels) and len(valid_defaults) > 0
-
-        select_all = st.checkbox(
-            f"Select all {len(filtered_labels)} files" +
-            (f" (filtered from {len(file_labels)})" if filter_text else ""),
-            value=all_in_scope_selected, key=select_all_key
-        )
-
-        if select_all:
-            selected_labels = filtered_labels
-        else:
-            selected_labels = st.multiselect(
-                "Select files" + (" (recursive):" if recursive else ":"),
-                options=filtered_labels,
-                default=valid_defaults if not all_in_scope_selected else [],
-                key=f"{key_prefix}_files"
-            )
-
-        current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
-        merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
-        st.session_state[state_key] = merged_selections
-
-    else:
-        if filter_text:
-            st.info(f"No files match filter '{filter_text}'")
-        else:
-            st.info(f"No {extensions[0]} files found")
-
-    all_selected = st.session_state.get(state_key, [])
-    if all_selected:
-        if st.button(f"Clear all selections ({len(all_selected)} files)",
-                     key=f"{key_prefix}_clear_all", width="stretch"):
-            st.session_state[state_key] = []
-            if select_all_key in st.session_state:
-                del st.session_state[select_all_key]
-            st.rerun()
-
-
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
     _settings = st.session_state.get("settings", {})
@@ -190,13 +50,13 @@ def file_selection_fragment():
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_idxml",
                                  extensions=['.idXML', '.idxml'],
                                  state_key='selected-idxmls',
-                                 default_dir=idxml_dir)
+                                 default_dir=idxml_dir, params=params)
     with col2:
         st.subheader("mzML Files (Spectra)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_mzml",
                                  extensions=['.mzML', '.mzml'],
                                  state_key='selected-mzmls',
-                                 default_dir=mzml_dir)
+                                 default_dir=mzml_dir, params=params)
 
     for dir_param, dir_ss_key, fallback in [
         ('idxml-browser-dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
@@ -209,154 +69,8 @@ def file_selection_fragment():
     save_params(params)
 
 
-def peptide_input_fragment():
-    """Peptide input fragment with paste and idXML picker tabs."""
-    _pending_key = "_pending_target_peptides"
-    _persisted_key = get_state_key('target_peptides_persisted')
-    if _pending_key in st.session_state:
-        st.session_state['target-peptides'] = st.session_state.pop(_pending_key)
-
-    st.subheader("Target Peptides")
-
-    idxmls = st.session_state.get('selected-idxmls', params.get('selected-idxmls', []))
-
-    # Resolve initial value: persisted session_state (survives page nav) > workspace params
-    initial_value = st.session_state.get(_persisted_key, params.get('target-peptides', ''))
-
-    paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
-
-    with paste_tab:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            peptide_text = st.text_area(
-                "Enter peptide sequences (one per line)",
-                value=initial_value,
-                height=150, key="target-peptides",
-                placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n..."
-            )
-        # Persist in a non-widget key that survives page navigation
-        st.session_state[_persisted_key] = peptide_text
-        with col2:
-            st.markdown("**Tips:**\n- One peptide per line\n"
-                         "- Without modifications\n"
-                         "- Case insensitive")
-            peptides = parse_peptide_list(peptide_text)
-            if peptides:
-                st.success(f"{len(peptides)} peptide(s) entered")
-
-    with pick_tab:
-        if not idxmls:
-            st.info("Select idXML files above first.")
-        else:
-            scan_key = '_idxml_psm_counts'
-            scan_files_key = '_idxml_scan_files'
-            psm_counts = st.session_state.get(scan_key, {})
-            scanned_files = st.session_state.get(scan_files_key)
-
-            if not psm_counts or scanned_files != idxmls:
-                n = len(idxmls)
-                st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
-                workers = params.get('workers', 4)
-                if st.button(f"Scan {n} files for peptides",
-                             key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-                    merged = Counter()
-                    errors = []
-                    with st.status(f"Scanning {n} idXML files ({workers} workers)...",
-                                   expanded=True) as status:
-                        progress = st.progress(0)
-                        info = st.empty()
-                        t0 = _time.time()
-
-                        with ProcessPoolExecutor(max_workers=min(workers, n)) as pool:
-                            futures = {
-                                pool.submit(count_psms_per_peptide, p): p for p in idxmls
-                            }
-                            done = 0
-                            for future in as_completed(futures):
-                                done += 1
-                                path = futures[future]
-                                try:
-                                    merged.update(future.result())
-                                except Exception as e:
-                                    errors.append(f"{Path(path).name}: {e}")
-                                elapsed = _time.time() - t0
-                                remaining = (elapsed / done) * (n - done) if done < n else 0
-                                progress.progress(done / n,
-                                    f"{done}/{n} files — {elapsed:.0f}s elapsed, ~{remaining:.0f}s remaining")
-                                info.caption(f"Scanned {Path(path).name}")
-
-                        progress.progress(1.0, f"Done — {len(merged)} peptides from {n} files in {_time.time()-t0:.1f}s")
-                        if errors:
-                            status.update(label=f"Completed with {len(errors)} errors", state="error")
-                            for e in errors[:5]:
-                                st.caption(e)
-                        else:
-                            status.update(label=f"{len(merged)} peptides from {n} files", state="complete")
-
-                    psm_counts = dict(sorted(merged.items()))
-                    st.session_state[scan_key] = psm_counts
-                    st.session_state[scan_files_key] = idxmls
-                    st.rerun()
-
-            if psm_counts:
-                st.caption(f"{len(psm_counts)} unique peptides found")
-
-                f_col1, f_col2 = st.columns([2, 1])
-                with f_col1:
-                    filter_text = st.text_input(
-                        "Filter", placeholder="Type to filter by substring...",
-                        key=f"{STATE_PREFIX}_pick_filter",
-                        label_visibility="collapsed",
-                    )
-                with f_col2:
-                    max_count = max(psm_counts.values())
-                    min_psm = st.number_input(
-                        "Min PSMs", min_value=1, max_value=max_count,
-                        value=1, step=1,
-                        key=f"{STATE_PREFIX}_pick_min_psm",
-                        help="Show only peptides with at least this many PSMs",
-                    )
-
-                shown_items = [
-                    (seq, cnt) for seq, cnt in psm_counts.items()
-                    if cnt >= min_psm
-                    and (not filter_text or filter_text.upper() in seq)
-                ]
-                labels = [f"{seq} ({cnt})" for seq, cnt in shown_items]
-                label_to_seq = {f"{seq} ({cnt})": seq for seq, cnt in shown_items}
-
-                current = set(parse_peptide_list(
-                    st.session_state.get('target-peptides', '')
-                ))
-                defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
-
-                selected_labels = st.multiselect(
-                    "Select peptides",
-                    options=labels,
-                    default=defaults,
-                    key=f"{STATE_PREFIX}_pick_multi",
-                )
-                selected = [label_to_seq[lbl] for lbl in selected_labels]
-
-                c1, c2 = st.columns(2)
-                with c1:
-                    if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
-                                 type="primary"):
-                        st.session_state[_pending_key] = "\n".join(selected)
-                        st.rerun()
-                with c2:
-                    if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
-                        merged = list(dict.fromkeys(
-                            parse_peptide_list(
-                                st.session_state.get('target-peptides', '')
-                            ) + selected
-                        ))
-                        st.session_state[_pending_key] = "\n".join(merged)
-                        st.rerun()
-
-
 def reference_selection_fragment():
-    """Reference substring configuration (not a fragment — must update when file selection changes)."""
+    """Reference substring configuration."""
     st.subheader("Reference Identification")
     mzmls = st.session_state.get('selected-mzmls', params.get('selected-mzmls', []))
     if not mzmls:
@@ -408,8 +122,8 @@ def settings_fragment():
         st.markdown("**Ion Types**")
         current_ions = params.get('ion-types', ['b', 'y'])
         st.multiselect("Select ion types", options=available_ions,
-                        default=[i for i in current_ions if i in available_ions],
-                        key="ion-types")
+                       default=[i for i in current_ions if i in available_ions],
+                       key="ion-types")
 
     with col2:
         st.markdown("**m/z Tolerance**")
@@ -419,17 +133,13 @@ def settings_fragment():
 
     st.markdown("**Annotation Settings**")
     ann_col1, ann_col2, ann_col3 = st.columns(3)
-
     with ann_col1:
         st.checkbox("Add neutral losses (H2O, NH3)",
-                    value=params.get('add-losses', False),
-                    key="add-losses")
-
+                    value=params.get('add-losses', False), key="add-losses")
     with ann_col2:
         st.checkbox("Add first prefix ion",
                     value=params.get('add-first-prefix-ion', True),
                     key="add-first-prefix-ion")
-
     with ann_col3:
         st.checkbox("Remove precursor peaks",
                     value=params.get('remove-precursor-peaks', False),
@@ -439,13 +149,11 @@ def settings_fragment():
              options=["Relative", "Raw"],
              captions=["Relative to the highest intensity", "Raw intensity"],
              index=0 if params.get('intensity-mode', 'Relative') == 'Relative' else 1,
-             horizontal=True, key="intensity-mode",
-             label_visibility="visible")
+             horizontal=True, key="intensity-mode", label_visibility="visible")
 
     st.markdown("**Performance**")
     st.slider("Parallel workers", min_value=1, max_value=32,
-              value=params.get('workers', 4),
-              key="workers",
+              value=params.get('workers', 4), key="workers",
               help="Number of parallel processes for plot generation (~30 MB per worker)")
 
     st.markdown("---")
@@ -494,7 +202,6 @@ def settings_fragment():
         with k_col3:
             current_inst = params.get("koina-instrument", koina_defaults["instrument_type"])
             inst_idx = INSTRUMENT_TYPES.index(current_inst) if current_inst in INSTRUMENT_TYPES else 0
-
             st.selectbox(
                 "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
                 key="koina-instrument",
@@ -510,7 +217,7 @@ def render():
 
     file_selection_fragment()
     st.markdown("---")
-    peptide_input_fragment()
+    render_peptide_input(params)
     st.markdown("---")
     reference_selection_fragment()
     st.markdown("---")

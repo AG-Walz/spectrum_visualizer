@@ -3,43 +3,37 @@ Peptide search functionality for identification files.
 
 Searches for target peptides using psm_utils PSM iteration; psm_utils resolves
 id_merge_index and spectra_data internally so the per-PSM loop is format-agnostic.
-PyOpenMS is used only in extract_spectra_data_map() for mzML path disambiguation
-from protein-level spectra_data metadata in merged idXML files.
+Parallel/sequential dispatch is delegated to ``mspecviz.common.parallel.run_tasks``;
+pyopenms/psm_utils metadata helpers live in ``mspecviz.idxml_parsing``.
 """
 import importlib
 import logging
 from collections import Counter
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple
 
-import numpy as np
 import polars as pl
 from psm_utils.io.idxml import IdXMLReader
 
+from mspecviz.common.parallel import run_tasks
+from mspecviz.idxml_parsing import (
+    MOD_ABBREVIATIONS,
+    abbreviate_mod,
+    extract_spectra_data_map,
+    mod_key_from_peptidoform,
+)
 from mspecviz.path_utils import disambiguate_paths, resolve_mzml_path
 
 logger = logging.getLogger(__name__)
 
-# Compact abbreviations for common post-translational modifications
-MOD_ABBREVIATIONS = {
-    "Oxidation": "Ox",
-    "Phospho": "Ph",
-    "Carbamidomethyl": "CAM",
-    "Acetyl": "Ac",
-    "Deamidated": "Deam",
-    "Methylation": "Me",
-    "Dimethyl": "DiMe",
-    "Ubiquitin": "GG",
-    "Pyro-carbamidomethyl": "Pyro-CAM",
-    "Pyro-glu": "Pyro",
-}
-
-
-def abbreviate_mod(name: str) -> str:
-    """Return short abbreviation for a modification, or the full name if unknown."""
-    return MOD_ABBREVIATIONS.get(name, name)
+# Re-exports for backwards-compat with callers that import from peptide_search
+__all__ = [
+    "MOD_ABBREVIATIONS", "abbreviate_mod", "format_inline_sequence",
+    "PeptideMatch", "VariantGroup",
+    "search_peptides_in_idxmls", "get_unique_peptides_from_idxmls",
+    "count_psms_per_peptide", "summarize_search_results",
+]
 
 
 def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
@@ -153,86 +147,6 @@ class VariantGroup:
     query_spectra: List = field(default_factory=list)
 
 
-def decode_metadata_value(value) -> str:
-    """Decode metadata value that might be bytes, list of bytes, or string."""
-    if isinstance(value, list) and len(value) > 0:
-        value = value[0]
-    if isinstance(value, bytes):
-        return value.decode("utf-8")
-    return str(value) if value else ""
-
-
-def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
-    """
-    Extract spectra_data mapping from ProteinIdentification objects.
-
-    Returns:
-        Tuple of:
-        - run_map: identifier -> list of mzML bare filenames
-        - run_map_full: identifier -> list of full metadata paths (as stored in idXML)
-    """
-    run_map = {}
-    run_map_full = {}
-
-    for protein_id in protein_ids:
-        identifier = protein_id.getIdentifier()
-        mzml_files = []
-        mzml_full_paths = []
-
-        # Try spectra_data first (standard for merged idXML)
-        if protein_id.metaValueExists("spectra_data"):
-            raw_val = protein_id.getMetaValue("spectra_data")
-            if isinstance(raw_val, list):
-                for v in raw_val:
-                    full = decode_metadata_value(v)
-                    mzml_full_paths.append(full)
-                    mzml_files.append(Path(full).name)
-            else:
-                full = decode_metadata_value(raw_val)
-                mzml_full_paths.append(full)
-                mzml_files.append(Path(full).name)
-
-        # Fallback to other metadata keys
-        if not mzml_files:
-            for key in ["CometAdapter:1:in", "mzML_file", "spectrum_reference"]:
-                if protein_id.metaValueExists(key):
-                    val = decode_metadata_value(protein_id.getMetaValue(key))
-                    if val:
-                        mzml_full_paths = [val]
-                        mzml_files = [Path(val).name]
-                        break
-
-        if mzml_files:
-            run_map[identifier] = mzml_files
-            run_map_full[identifier] = mzml_full_paths
-
-    return run_map, run_map_full
-
-
-def _mod_key_from_peptidoform(peptidoform_obj) -> str:
-    """
-    Build compact modification key from a psm_utils Peptidoform object.
-
-    Returns format like "M5[Ox]" or "NTerm[Ac]|M5[Ox]|S3[Ph]" for multiple mods.
-    Replaces the former pyopenms-based get_modification_string().
-    """
-    mods = []
-    # N-terminal modification
-    if peptidoform_obj.properties.get("n_term"):
-        for m in peptidoform_obj.properties["n_term"]:
-            mods.append(f"NTerm[{abbreviate_mod(m.name)}]")
-    # Per-residue modifications
-    for i, (aa, residue_mods) in enumerate(peptidoform_obj.parsed_sequence):
-        if residue_mods:
-            for m in residue_mods:
-                mods.append(f"{aa}{i + 1}[{abbreviate_mod(m.name)}]")
-    # C-terminal modification
-    if peptidoform_obj.properties.get("c_term"):
-        for m in peptidoform_obj.properties["c_term"]:
-            mods.append(f"CTerm[{abbreviate_mod(m.name)}]")
-    return "|".join(mods) if mods else ""
-
-
 def _search_single_idxml(
     idxml_path: str,
     idxml_name: str,
@@ -271,13 +185,10 @@ def _search_single_idxml(
                 if stem not in run_to_metadata:
                     run_to_metadata[stem] = full_path
 
-        # Use manual iteration so that a parse error inside psm_utils __iter__
-        # (e.g. float(None) on a missing rescoring feature) skips only that PSM
-        # instead of aborting the entire file.
-        # Use manual iteration so that a parse error inside psm_utils __iter__
-        # (e.g. float(None) on a missing rescoring feature) is reported clearly.
-        # Note: psm_utils uses a generator — once it raises, iteration stops.
-        # Affected files are typically unfiltered Percolator output (_pout.idXML).
+        # Manual iteration so a parse error inside psm_utils __iter__ (e.g. float(None) on a
+        # missing rescoring feature) is reported clearly. psm_utils uses a generator — once
+        # it raises, iteration stops. Affected files are typically unfiltered Percolator
+        # output (_pout.idXML).
         psm_iter = iter(_reader)
         psms_read = 0
         parse_error: Optional[str] = None
@@ -309,7 +220,7 @@ def _search_single_idxml(
                     if resolved:
                         resolved_path = resolved
 
-                mod_key = _mod_key_from_peptidoform(psm.peptidoform)
+                mod_key = mod_key_from_peptidoform(psm.peptidoform)
                 variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
 
                 match = PeptideMatch(
@@ -407,7 +318,6 @@ def search_peptides_in_idxmls(
     Returns:
         Dict mapping variant_key -> VariantGroup
     """
-    # Normalize target peptides to uppercase, strip whitespace
     target_set = {p.strip().upper() for p in target_peptides if p.strip()}
 
     if not target_set:
@@ -416,7 +326,6 @@ def search_peptides_in_idxmls(
         logger.warning("No valid target peptides provided")
         return {}
 
-    # Compute disambiguated names for idXML and mzML paths
     idxml_disambig = disambiguate_paths(idxml_paths)
     mzml_path_strs = [str(p) for p in mzml_paths] if mzml_paths else []
 
@@ -424,74 +333,50 @@ def search_peptides_in_idxmls(
     variant_groups: Dict[str, VariantGroup] = {}
     total_psms_found = 0
 
-    def _merge_worker_results(worker_matches, worker_errors):
-        """Merge worker results into variant_groups (main process)."""
-        nonlocal total_psms_found
-        for variant_key, match in worker_matches:
-            mod_key = ""
-            base_seq = match.base_sequence
-            if "|" in variant_key:
-                mod_key = variant_key.split("|", 1)[1]
+    tasks = [
+        (p, idxml_disambig.get(p, Path(p).name), target_set, mzml_path_strs)
+        for p in idxml_paths
+    ]
 
+    if workers > 1:
+        logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
+
+    def _on_result(task, result):
+        nonlocal total_psms_found
+        _, worker_matches, worker_errors = result
+        for variant_key, match in worker_matches:
+            mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
             if variant_key not in variant_groups:
-                display_label = format_inline_sequence(base_seq, mod_key)
                 variant_groups[variant_key] = VariantGroup(
-                    base_sequence=base_seq,
+                    base_sequence=match.base_sequence,
                     modification_key=mod_key,
-                    display_label=display_label
+                    display_label=format_inline_sequence(match.base_sequence, mod_key),
                 )
             variant_groups[variant_key].matches.append(match)
             total_psms_found += 1
-
         for err in worker_errors:
             if error_callback:
                 error_callback(err)
             logger.error(err)
 
-    workers = max(1, min(workers, total_files))
+    def _on_error(task, exc):
+        err = f"Worker crashed processing {Path(task[0]).name}: {exc}"
+        if error_callback:
+            error_callback(err)
+        logger.error(err)
 
-    if workers <= 1:
-        # Sequential path — process files one at a time
-        for idx, idxml_path in enumerate(idxml_paths):
-            if progress_callback:
-                progress_callback(idx, total_files, f"Searching {Path(idxml_path).name}")
+    def _on_progress(completed, total):
+        if progress_callback:
+            progress_callback(completed, total, "Searching idXML files")
 
-            idxml_name = idxml_disambig.get(idxml_path, Path(idxml_path).name)
-            _, worker_matches, worker_errors = _search_single_idxml(
-                idxml_path, idxml_name, target_set, mzml_path_strs
-            )
-            _merge_worker_results(worker_matches, worker_errors)
-
-    else:
-        # Parallel path — ProcessPoolExecutor with as_completed
-        logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
-
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            future_map = {}
-            for idxml_path in idxml_paths:
-                idxml_name = idxml_disambig.get(idxml_path, Path(idxml_path).name)
-                future = pool.submit(
-                    _search_single_idxml,
-                    idxml_path, idxml_name, target_set, mzml_path_strs
-                )
-                future_map[future] = idxml_path
-
-            completed = 0
-            for future in as_completed(future_map):
-                completed += 1
-                idxml_path = future_map[future]
-                try:
-                    _, worker_matches, worker_errors = future.result()
-                    _merge_worker_results(worker_matches, worker_errors)
-                except Exception as e:
-                    err = f"Worker crashed processing {Path(idxml_path).name}: {e}"
-                    if error_callback:
-                        error_callback(err)
-                    logger.error(err)
-
-                if progress_callback:
-                    progress_callback(completed, total_files,
-                                      f"Searched {Path(idxml_path).name}")
+    run_tasks(
+        tasks=tasks,
+        worker=_search_single_idxml,
+        workers=workers,
+        on_result=_on_result,
+        on_error=_on_error,
+        on_progress=_on_progress,
+    )
 
     if progress_callback:
         progress_callback(total_files, total_files, "Search complete")
@@ -521,48 +406,30 @@ def get_unique_peptides_from_idxmls(
     """
     unique_peptides: Set[str] = set()
     total_files = len(idxml_paths)
-    workers = max(1, min(workers, total_files))
 
-    if workers <= 1:
-        # Sequential path
-        for idx, idxml_path in enumerate(idxml_paths):
-            if progress_callback:
-                progress_callback(idx, total_files, f"Scanning {Path(idxml_path).name}")
-
-            if len(unique_peptides) >= limit:
-                break
-
-            _, file_peptides = _scan_single_idxml_peptides(idxml_path)
-            unique_peptides.update(file_peptides)
-
-    else:
-        # Parallel path
+    if workers > 1:
         logger.info(f"Parallel peptide scan: {total_files} files, {workers} workers")
 
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            futures = {
-                pool.submit(_scan_single_idxml_peptides, path): path
-                for path in idxml_paths
-            }
+    def _on_result(task, result):
+        _, file_peptides = result
+        unique_peptides.update(file_peptides)
 
-            completed = 0
-            for future in as_completed(futures):
-                completed += 1
-                try:
-                    _, file_peptides = future.result()
-                    unique_peptides.update(file_peptides)
-                except Exception as e:
-                    logger.warning(f"Worker error scanning peptides: {e}")
+    def _on_error(task, exc):
+        logger.warning(f"Worker error scanning peptides: {exc}")
 
-                if progress_callback:
-                    progress_callback(completed, total_files,
-                                      f"Scanned {Path(futures[future]).name}")
+    def _on_progress(completed, total):
+        if progress_callback:
+            progress_callback(completed, total, "Scanning idXML files")
 
-                # Cancel remaining futures if limit reached
-                if len(unique_peptides) >= limit:
-                    for f in futures:
-                        f.cancel()
-                    break
+    run_tasks(
+        tasks=idxml_paths,  # single-arg → auto-wrapped by run_tasks
+        worker=_scan_single_idxml_peptides,
+        workers=workers,
+        on_result=_on_result,
+        on_error=_on_error,
+        on_progress=_on_progress,
+        stop_when=lambda: len(unique_peptides) >= limit,
+    )
 
     if progress_callback:
         progress_callback(total_files, total_files, "Scan complete")

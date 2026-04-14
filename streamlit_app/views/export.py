@@ -28,7 +28,7 @@ from mspecviz.mirror_plot import (
     figure_to_bytes, create_plotly_mirror_plot,
 )
 from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text
-from mspecviz.query_processing import build_psm_to_variant_mapping
+from mspecviz.query_processing import build_psm_to_variant_mapping, format_spectrum_labels, get_source_label
 from mspecviz.summary_plots import sanitize_filename, generate_all_summary_plots
 
 params = page_setup()
@@ -81,12 +81,10 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
             for ref_spec, ref_df in refs:
                 try:
                     metrics = compute_all_metrics(query_df, ref_df)
-                    ref_source = Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina"
                     safe_name = sanitize_filename(
-                        f"{Path(query_spec.source_file).stem}_vs_{ref_source}"
+                        f"{get_source_label(query_spec)}_vs_{get_source_label(ref_spec)}"
                     )
-                    query_label = f"Query: {Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
-                    ref_label = f"Ref: {ref_source} (RT: {ref_spec.rt:.1f})"
+                    query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
                     metrics_text = format_metrics_text(metrics)
 
                     fig = create_mirror_plot(
