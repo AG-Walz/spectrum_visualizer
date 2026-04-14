@@ -1,4 +1,4 @@
-# MSInsight Quick Start Guide
+# MSpecViz Quick Start Guide
 
 This guide walks through the 4-tab workflow using test data. For metric
 definitions see [METRICS.md](METRICS.md); for export format details see
@@ -66,7 +66,7 @@ ASDDFDQASY
 RTEFNLNQY
 ```
 
-Enter **base sequences** (unmodified). MSInsight automatically finds all
+Enter **base sequences** (unmodified). MSpecViz automatically finds all
 modified variants during the search step. Sequences are case-insensitive.
 
 Use "Preview peptides in idXML" to see which peptides are present in your
@@ -78,7 +78,7 @@ Enter a **reference substring** that identifies your reference mzML files
 (for example: `Synpep`, `Standard`, `Ref`). Files whose names contain this
 substring are categorized as references; all others are queries.
 
-- With a reference substring set, MSInsight generates mirror plots (query on
+- With a reference substring set, MSpecViz generates mirror plots (query on
   top, reference on bottom) and computes comparison metrics.
 - Without a reference substring, each spectrum is plotted individually with
   annotations only (no mirror comparison).
@@ -122,7 +122,7 @@ This tab runs the analysis pipeline in two stages.
 ### Stage 1: Search Peptides
 
 Click **Search Peptides** to scan selected idXML files for target peptide
-sequences. MSInsight finds all PSMs, groups them by peptide variant (base
+sequences. MSpecViz finds all PSMs, groups them by peptide variant (base
 sequence plus modification state), and resolves which mzML file contains each
 spectrum.
 
@@ -244,9 +244,9 @@ See [EXPORT.md](EXPORT.md) for the full directory structure and file schemas.
   before searching. This shows a sample of peptides in your files and helps
   catch typos.
 - **Same-name files** -- If you select files with identical names from different
-  directories, MSInsight automatically disambiguates them using parent directory
+  directories, MSpecViz automatically disambiguates them using parent directory
   components.
-- **Re-runs with same settings** -- MSInsight detects matching export directories
+- **Re-runs with same settings** -- MSpecViz detects matching export directories
   by settings fingerprint. Existing plots are skipped, saving time on re-exports.
 - **Large datasets** -- Increase the worker count in Performance Settings to
   speed up export. Each worker runs in a separate process to avoid GIL

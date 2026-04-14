@@ -1,5 +1,5 @@
 """
-Shared fixtures and markers for MSInsight tests.
+Shared fixtures and markers for MSpecViz tests.
 """
 import json
 import sys

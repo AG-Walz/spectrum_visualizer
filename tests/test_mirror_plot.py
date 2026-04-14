@@ -1,11 +1,9 @@
 """
 Unit tests for mspecviz/mirror_plot.py
 
-MSInsight changes from MSpecViz:
-- create_interactive_mirror_plot -> create_plotly_mirror_plot
-- create_interactive_single_plot -> create_plotly_single_plot
-- Removed: create_legend_figure, add_color_column, figure_to_base64
-- Added: figure_to_bytes
+Covers:
+- create_plotly_mirror_plot / create_plotly_single_plot
+- figure_to_bytes
 """
 from io import BytesIO
 

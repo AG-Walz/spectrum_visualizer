@@ -1,5 +1,5 @@
 """
-Koina AI spectrum prediction for MSInsight.
+Koina AI spectrum prediction for MSpecViz.
 
 Generates predicted MS/MS fragment spectra using Koina deep-learning models
 (via koinapy). Unlike the PyOpenMS TheoreticalSpectrumGenerator which only

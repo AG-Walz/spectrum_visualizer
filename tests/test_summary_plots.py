@@ -1,10 +1,8 @@
 """
 Unit tests for mspecviz/summary_plots.py
 
-MSInsight changes from MSpecViz:
-- Removed: plot_dumbbell, generate_peptide_detail_plots, _shorten_labels,
-           prepare_peptide_detail_data
-- Added: sanitize_filename, shorten_stem (tested in test_export.py)
+Covers dual-axis, ridgeline, and heatmap summary plots plus the
+sanitize_filename / shorten_stem helpers (tested separately in test_export.py).
 """
 from pathlib import Path
 

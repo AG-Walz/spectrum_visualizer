@@ -1,12 +1,12 @@
-# MSInsight
+# MSpecViz
 
-MSInsight is a Streamlit application for interactive peptide-spectrum match (PSM)
+MSpecViz is a Streamlit application for interactive peptide-spectrum match (PSM)
 analysis and visualization. It combines the openms_insight library for linked
 interactive exploration with Plotly mirror plots, quantitative comparison metrics,
 and batch export capabilities.
 
-MSInsight replaces the earlier MSpecViz tool with a streamlined 4-tab workflow,
-Koina AI spectrum prediction, and parallel export.
+The current release introduces a streamlined 4-tab workflow, Koina AI spectrum
+prediction, and parallel export.
 
 ---
 

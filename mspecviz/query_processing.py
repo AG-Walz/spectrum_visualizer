@@ -1,5 +1,5 @@
 """
-Shared processing logic for the MSInsight pipeline.
+Shared processing logic for the MSpecViz pipeline.
 
 Used by both ``cli/main.py`` (terminal mode) and the Streamlit app in
 ``streamlit_app/views/`` (interactive mode).  Keeps all duplicated
@@ -17,7 +17,7 @@ from mspecviz.peak_annotation import prepare_spectrum_for_plot, prepare_koina_sp
 from mspecviz.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
 from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 
-logger = logging.getLogger("msinsight.pipeline")
+logger = logging.getLogger("mspecviz.pipeline")
 
 
 def get_source_label(spec) -> str:

@@ -1,9 +1,9 @@
 # Metrics Reference
 
-This document describes all quantitative metrics computed by MSInsight when
+This document describes all quantitative metrics computed by MSpecViz when
 comparing query and reference spectra. Implementations are in
-`src/spectrum_metrics.py` (7 comparison metrics) and
-`src/parallel_processor.py` (17 ion match statistics).
+`mspecviz/spectrum_metrics.py` (7 comparison metrics) and
+`mspecviz/plot_worker.py` (17 ion match statistics).
 
 ---
 
@@ -28,7 +28,7 @@ comparing query and reference spectra. Implementations are in
 ## Overview
 
 After annotating both query and reference spectra with theoretical fragment ions
-(b, y, etc.) within a configured m/z tolerance, MSInsight computes two categories
+(b, y, etc.) within a configured m/z tolerance, MSpecViz computes two categories
 of similarity metrics:
 
 **Annotated-peak metrics** consider only peaks matched to a theoretical ion.

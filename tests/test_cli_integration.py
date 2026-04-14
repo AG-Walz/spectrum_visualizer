@@ -15,7 +15,7 @@ class TestCLI:
                                 capture_output=True, text=True, timeout=30,
                                 encoding="utf-8", errors="replace")
         assert result.returncode == 0
-        assert "MSInsight CLI" in result.stdout
+        assert "MSpecViz CLI" in result.stdout
 
     def test_missing_config_exits_two(self):
         result = subprocess.run(CLI_ARGS + ["-c", "/nonexistent.yaml"], cwd=PROJECT_ROOT,

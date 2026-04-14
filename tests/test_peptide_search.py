@@ -1,5 +1,5 @@
 """Tests for peptide_search helper functions: abbreviate_mod, format_inline_sequence,
-and summarize_search_results (returns pl.LazyFrame in MSInsight).
+and summarize_search_results (returns pl.LazyFrame).
 """
 import pytest
 import polars as pl
@@ -72,7 +72,7 @@ class TestFormatInlineSequence:
 
 
 class TestSummarizeSearchResults:
-    """Tests for summarize_search_results() which returns pl.LazyFrame in MSInsight."""
+    """Tests for summarize_search_results() which returns pl.LazyFrame."""
 
     def test_returns_lazyframe(self):
         vg = VariantGroup(

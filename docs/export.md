@@ -1,7 +1,7 @@
 # Export Reference
 
 This document describes the export directory structure, file formats, and
-data schemas produced by MSInsight's Export tab.
+data schemas produced by MSpecViz's Export tab.
 
 ---
 
@@ -23,7 +23,7 @@ For example: `my_project_001_20260327/`
 
 ### Re-run Behavior
 
-MSInsight fingerprints the run settings (a SHA-256 hash of all parameters
+MSpecViz fingerprints the run settings (a SHA-256 hash of all parameters
 that affect output). When you re-run with identical settings:
 
 - The existing directory is reused (renamed to today's date if needed).

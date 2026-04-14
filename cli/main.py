@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-MSInsight CLI -- Terminal-based analysis pipeline.
+MSpecViz CLI -- Terminal-based analysis pipeline.
 
-Runs the full MSInsight analysis from the terminal without opening a browser.
+Runs the full MSpecViz analysis from the terminal without opening a browser.
 All inputs are provided via a YAML config file (with optional CLI argument
 overrides). Reuses the exact same backend functions as the Streamlit app.
 
@@ -53,7 +53,7 @@ from mspecviz.spectrum_loader import load_spectra_streaming
 from mspecviz.summary_plots import generate_all_summary_plots
 from mspecviz.common.text_utils import format_time, get_nested, parse_peptide_list
 
-logger = logging.getLogger("msinsight.cli")
+logger = logging.getLogger("mspecviz.cli")
 
 
 class TerminalProgress:
@@ -116,7 +116,7 @@ class CLIConfig:
 
     # Export
     export_dir: str = "./exports"
-    project_name: str = "MSInsight_analysis"
+    project_name: str = "MSpecViz_analysis"
     export_formats: List[str] = field(default_factory=lambda: ["png"])
     dpi: int = 300
     figsize: Tuple[int, int] = (12, 8)
@@ -225,7 +225,7 @@ def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
     cfg.add_first_prefix_ion = get_nested(defaults, "annotation", "add_first_prefix_ion", default=True)
     cfg.remove_precursor_peaks = get_nested(defaults, "annotation", "remove_precursor_peaks", default=False)
     cfg.export_dir = get_nested(defaults, "export", "default_directory", default="./exports")
-    cfg.project_name = get_nested(defaults, "export", "project_name", default="MSInsight_analysis")
+    cfg.project_name = get_nested(defaults, "export", "project_name", default="MSpecViz_analysis")
     cfg.export_formats = get_nested(defaults, "export", "formats", default=["png"])
     cfg.dpi = get_nested(defaults, "export", "dpi", default=300)
     figsize = get_nested(defaults, "export", "figsize", default=[12, 8])
@@ -303,7 +303,7 @@ def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
 
 def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     """
-    Execute the full MSInsight analysis pipeline.
+    Execute the full MSpecViz analysis pipeline.
 
     Returns exit code: 0 = success, 1 = failure.
     """
@@ -330,7 +330,7 @@ def run_pipeline(cfg: CLIConfig, quiet: bool = False) -> int:
     # ------------------------------------------------------------------
     if not quiet:
         print("\n" + "=" * 60)
-        print("  MSInsight CLI Pipeline")
+        print("  MSpecViz CLI Pipeline")
         print("=" * 60)
         print(f"  idXML files:    {len(cfg.idxml_files)}")
         for f in cfg.idxml_files:
@@ -728,8 +728,8 @@ def _export_mirror_plots(annotated_queries, reference_store, variant_groups,
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        prog="msinsight-cli",
-        description="MSInsight CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
+        prog="mspecviz-cli",
+        description="MSpecViz CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
         epilog="Example: python -m cli --config cli/config/config_example.yaml --verbose",
     )
 

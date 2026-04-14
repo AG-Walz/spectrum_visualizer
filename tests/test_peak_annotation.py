@@ -175,7 +175,7 @@ class TestPrepareSpectrumForPlot:
         assert len(df) == 0
 
     def test_result_has_ion_type_column(self):
-        """MSInsight adds an ion_type column to prepare_spectrum_for_plot output."""
+        """prepare_spectrum_for_plot output includes an ion_type column."""
         df = prepare_spectrum_for_plot(
             self.mz, self.intensity, "PEPTIDEK", charge=2
         )

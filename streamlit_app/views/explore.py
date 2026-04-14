@@ -50,9 +50,9 @@ def openms_insight_explorer_fragment():
     regeneration_key = get_state_key('cache_rendered_version')
     needs_regeneration = st.session_state.get(regeneration_key, -1) != cache_version
 
-    if 'msinsight_sm' not in st.session_state:
-        st.session_state['msinsight_sm'] = StateManager(session_key="msinsight_state")
-    state_manager = st.session_state['msinsight_sm']
+    if 'mspecviz_sm' not in st.session_state:
+        st.session_state['mspecviz_sm'] = StateManager(session_key="mspecviz_state")
+    state_manager = st.session_state['mspecviz_sm']
 
     psm_lf = st.session_state.get(get_state_key('psm_lf'))
     peaks_lf = st.session_state.get(get_state_key('peaks_lf'))
