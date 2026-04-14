@@ -207,6 +207,12 @@ def _render_workspace_switcher(params: dict) -> None:
 
     with st.expander("**Workspaces**"):
         def change_workspace():
+            # Flush any in-flight session state to the OUTGOING workspace's
+            # params.json BEFORE deleting keys. Without this, peptides the
+            # user typed in a text_area whose blur event races with the
+            # dropdown on_change can be lost on switch.
+            save_params(params)
+
             for key in params:
                 if key in st.session_state:
                     del st.session_state[key]
