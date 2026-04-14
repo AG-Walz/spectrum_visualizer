@@ -14,6 +14,7 @@ from psm_utils import Peptidoform
 
 from mspecviz.koina_prediction import predict_koina_spectrum, KOINA_AVAILABLE
 from mspecviz.peak_annotation import prepare_spectrum_for_plot, prepare_koina_spectrum_for_plot
+from mspecviz.plot_worker import ComparisonTask
 from mspecviz.spectrum_loader import spectrum_lookup_key, LoadedSpectrum
 from mspecviz.spectrum_metrics import compute_all_metrics, format_metrics_text, METRIC_SHORT_TO_DISPLAY
 
@@ -133,19 +134,10 @@ def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
     return row
 
 
-def process_query_result(result, psm_lookup, annotation_kwargs,
-                         reference_store, koina_enabled=False,
-                         koina_model="ms2pip_timsTOF2024",
-                         koina_ce=35, koina_instrument="TIMSTOF"):
-    """Annotate query, cache refs, compute metrics. Returns (psm_id, spec, df, rows) or None."""
-    key = spectrum_lookup_key(result.query_spectrum)
-    psm_id = psm_lookup.get(key)
-    if psm_id is None:
-        return None
-
-    # Annotate query
+def _annotate_query_spectrum(result, annotation_kwargs, psm_id):
+    """Phase 1 of ``process_query_result``: annotate the query spectrum."""
     try:
-        query_df = prepare_spectrum_for_plot(
+        return prepare_spectrum_for_plot(
             result.query_spectrum.mz,
             result.query_spectrum.intensity,
             result.query_spectrum.peptidoform,
@@ -156,117 +148,179 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
         logger.warning(f"Annotation failed psm_id={psm_id}: {e}")
         return None
 
-    # Annotate and cache references for this variant (once)
+
+def _cache_reference_spectra(result, reference_store, annotation_kwargs):
+    """Phase 2: annotate and cache references for this variant (once)."""
     variant_key = result.variant_key
-    if variant_key not in reference_store and result.reference_spectra:
-        ref_list = []
-        for ref_spec in result.reference_spectra:
-            try:
-                ref_df = prepare_spectrum_for_plot(
-                    ref_spec.mz, ref_spec.intensity,
-                    ref_spec.peptidoform, ref_spec.precursor_charge,
-                    **annotation_kwargs,
-                )
-                ref_list.append((ref_spec, ref_df))
-            except Exception as e:
-                logger.warning(f"Reference annotation failed: {e}")
-        reference_store[variant_key] = ref_list
+    if variant_key in reference_store or not result.reference_spectra:
+        return
+    ref_list = []
+    for ref_spec in result.reference_spectra:
+        try:
+            ref_df = prepare_spectrum_for_plot(
+                ref_spec.mz, ref_spec.intensity,
+                ref_spec.peptidoform, ref_spec.precursor_charge,
+                **annotation_kwargs,
+            )
+            ref_list.append((ref_spec, ref_df))
+        except Exception as e:
+            logger.warning(f"Reference annotation failed: {e}")
+    reference_store[variant_key] = ref_list
 
-    # Koina fallback
+
+def _try_koina_fallback(result, reference_store, annotation_kwargs,
+                        koina_model, koina_ce, koina_instrument):
+    """Phase 3: if no experimental refs, try a Koina AI prediction. Returns the ref list."""
+    variant_key = result.variant_key
     refs = reference_store.get(variant_key, [])
-    if not refs and koina_enabled:
-        koina_ref = get_koina_prediction(
-            result.query_spectrum.peptidoform,
-            result.query_spectrum.precursor_charge,
-            annotation_kwargs,
-            koina_model=koina_model,
-            koina_ce=koina_ce,
-            koina_instrument=koina_instrument,
-        )
-        if koina_ref is not None:
-            reference_store[variant_key] = [koina_ref]
-            refs = reference_store[variant_key]
+    if refs:
+        return refs
+    koina_ref = get_koina_prediction(
+        result.query_spectrum.peptidoform,
+        result.query_spectrum.precursor_charge,
+        annotation_kwargs,
+        koina_model=koina_model,
+        koina_ce=koina_ce,
+        koina_instrument=koina_instrument,
+    )
+    if koina_ref is not None:
+        reference_store[variant_key] = [koina_ref]
+        return reference_store[variant_key]
+    return refs
 
-    # Compute comparison metrics against each reference
-    comp_rows: List[Dict[str, Any]] = []
+
+def _build_metric_rows(psm_id, result, query_df, refs):
+    """Phase 4: compute metrics + build summary rows for each query/ref pair."""
+    rows: List[Dict[str, Any]] = []
     for ref_spec, ref_df in refs:
         try:
             metrics = compute_all_metrics(query_df, ref_df)
-            row = build_comparison_row(
+            rows.append(build_comparison_row(
                 psm_id, result, query_df, ref_spec, ref_df, metrics,
-            )
-            comp_rows.append(row)
+            ))
         except Exception as e:
             logger.warning(f"Metric computation failed: {e}")
+    return rows
 
+
+def process_query_result(result, psm_lookup, annotation_kwargs,
+                         reference_store, koina_enabled=False,
+                         koina_model="ms2pip_timsTOF2024",
+                         koina_ce=35, koina_instrument="TIMSTOF"):
+    """Annotate query, cache refs, compute metrics. Returns (psm_id, spec, df, rows) or None.
+
+    Orchestrates four phase helpers: ``_annotate_query_spectrum``,
+    ``_cache_reference_spectra``, ``_try_koina_fallback``, ``_build_metric_rows``.
+    """
+    psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
+    if psm_id is None:
+        return None
+
+    query_df = _annotate_query_spectrum(result, annotation_kwargs, psm_id)
+    if query_df is None:
+        return None
+
+    _cache_reference_spectra(result, reference_store, annotation_kwargs)
+
+    if koina_enabled:
+        refs = _try_koina_fallback(
+            result, reference_store, annotation_kwargs,
+            koina_model, koina_ce, koina_instrument,
+        )
+    else:
+        refs = reference_store.get(result.variant_key, [])
+
+    comp_rows = _build_metric_rows(psm_id, result, query_df, refs)
     return (psm_id, result.query_spectrum, query_df, comp_rows)
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                      normalize, sanitize_fn, fmt_dirs=None, figsize=(12, 8),
                      dpi=300, html_dir="", plot_unpaired=False):
-    """Build list of plot task dicts for parallel/sequential generation."""
+    """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
+
+    Metrics + ``metrics_text`` are pre-computed here (in the main process) so
+    workers can re-use them via :pyattr:`ComparisonTask.metrics_text` instead
+    of duplicating the work per task.
+    """
     if fmt_dirs is None:
         fmt_dirs = {}
+
+    export_formats = list(fmt_dirs.keys())
+    if html_dir:
+        export_formats = export_formats + ["html"]
 
     psm_id_to_variant_key = build_psm_to_variant_mapping(
         variant_groups, annotated_queries,
     )
 
-    tasks: List[dict] = []
+    tasks: List[ComparisonTask] = []
+    task_id = 0
     for psm_id, query_spec, query_df in sorted(annotated_queries, key=lambda x: x[0]):
         variant_key = psm_id_to_variant_key.get(psm_id)
         refs = reference_store.get(variant_key, []) if variant_key else []
         folder_name = sanitize_fn(query_spec.peptidoform)
+        plot_title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
 
         if refs:
             for ref_spec, ref_df in refs:
-                metrics = compute_all_metrics(query_df, ref_df)
-                metrics_text = format_metrics_text(metrics)
-
-                query_label, ref_label = format_spectrum_labels(
-                    query_spec, ref_spec,
-                )
-                safe_name = sanitize_fn(
+                metrics_text = format_metrics_text(compute_all_metrics(query_df, ref_df))
+                query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
+                safe_filename = sanitize_fn(
                     f"{get_source_label(query_spec)}_vs_{get_source_label(ref_spec)}"
                 )
-
-                task: Dict[str, Any] = {
-                    "type": "mirror",
-                    "query_df": query_df,
-                    "ref_df": ref_df,
-                    "title": f"{query_spec.peptidoform} +{query_spec.precursor_charge}",
-                    "query_label": query_label,
-                    "ref_label": ref_label,
-                    "metrics_text": metrics_text,
-                    "normalize": normalize,
-                    "folder_name": folder_name,
-                    "safe_name": safe_name,
-                    "figsize": figsize,
-                    "dpi": dpi,
-                    "html_dir": html_dir,
-                }
-                task.update({f"{f}_dir": d for f, d in fmt_dirs.items()})
-                tasks.append(task)
+                html_path = (
+                    str(Path(html_dir) / folder_name / f"{safe_filename}.html")
+                    if html_dir else ""
+                )
+                task_id += 1
+                tasks.append(ComparisonTask(
+                    task_id=task_id,
+                    task_type="mirror",
+                    query_df=query_df,
+                    ref_df=ref_df,
+                    query_label=query_label,
+                    ref_label=ref_label,
+                    plot_title=plot_title,
+                    folder_name=folder_name,
+                    safe_filename=safe_filename,
+                    png_dir=fmt_dirs.get("png", ""),
+                    svg_dir=fmt_dirs.get("svg", ""),
+                    pdf_dir=fmt_dirs.get("pdf", ""),
+                    export_formats=export_formats,
+                    figsize=figsize,
+                    dpi=dpi,
+                    normalize=normalize,
+                    html_plot_path=html_path,
+                    metrics_text=metrics_text,
+                    peptide=query_spec.peptidoform,
+                    charge=query_spec.precursor_charge,
+                ))
         elif plot_unpaired:
-            safe_name = sanitize_fn(get_source_label(query_spec))
+            safe_filename = sanitize_fn(get_source_label(query_spec))
             query_label = f"{get_source_label(query_spec)} (RT: {query_spec.rt:.1f})"
-            task = {
-                "type": "single",
-                "query_df": query_df,
-                "ref_df": None,
-                "title": f"{query_spec.peptidoform} +{query_spec.precursor_charge}",
-                "query_label": query_label,
-                "ref_label": "",
-                "metrics_text": "",
-                "normalize": normalize,
-                "folder_name": folder_name,
-                "safe_name": safe_name,
-                "figsize": figsize,
-                "dpi": dpi,
-                "html_dir": "",
-            }
-            task.update({f"{f}_dir": d for f, d in fmt_dirs.items()})
-            tasks.append(task)
+            # Unpaired/single plots never emit HTML (cli used to enforce this).
+            single_formats = [f for f in export_formats if f != "html"]
+            task_id += 1
+            tasks.append(ComparisonTask(
+                task_id=task_id,
+                task_type="single",
+                query_df=query_df,
+                ref_df=None,
+                query_label=query_label,
+                ref_label="",
+                plot_title=plot_title,
+                folder_name=folder_name,
+                safe_filename=safe_filename,
+                png_dir=fmt_dirs.get("png", ""),
+                svg_dir=fmt_dirs.get("svg", ""),
+                pdf_dir=fmt_dirs.get("pdf", ""),
+                export_formats=single_formats,
+                figsize=figsize,
+                dpi=dpi,
+                normalize=normalize,
+                peptide=query_spec.peptidoform,
+                charge=query_spec.precursor_charge,
+            ))
 
     return tasks

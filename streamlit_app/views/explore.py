@@ -18,6 +18,7 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
+from mspecviz.common.constants import DEFAULTS
 from mspecviz.mirror_plot import (
     create_plotly_mirror_plot, create_plotly_single_plot, ION_COLORS,
 )
@@ -39,16 +40,32 @@ def _create_component(cls, cache_id, cache_path, needs_regeneration, **kwargs):
     return cls(cache_id=cache_id, cache_path=cache_path)
 
 
+def _needs_cache_regen():
+    """Compare this fragment's last-rendered cache version against the current one.
+
+    Returns ``(needs_regen, mark_rendered)``. Call ``mark_rendered()`` after a
+    successful render so the next rerun can short-circuit. Centralising this
+    here keeps the ``cache_version`` / ``cache_rendered_version`` session-state
+    key pair in one place.
+    """
+    cache_version = st.session_state.get(get_state_key('cache_version'), 0)
+    reg_key = get_state_key('cache_rendered_version')
+    needs = st.session_state.get(reg_key, -1) != cache_version
+
+    def mark_rendered():
+        st.session_state[reg_key] = cache_version
+
+    return needs, mark_rendered
+
+
 @st.fragment
 def openms_insight_explorer_fragment():
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    export_dir = get_param(params, 'export-dir', '')
+    export_dir = get_param(params, 'export-dir', DEFAULTS['export-dir'])
     CACHE_PATH = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
-    cache_version = st.session_state.get(get_state_key('cache_version'), 0)
-    regeneration_key = get_state_key('cache_rendered_version')
-    needs_regeneration = st.session_state.get(regeneration_key, -1) != cache_version
+    needs_regeneration, mark_rendered = _needs_cache_regen()
 
     if 'mspecviz_sm' not in st.session_state:
         st.session_state['mspecviz_sm'] = StateManager(session_key="mspecviz_state")
@@ -97,8 +114,8 @@ def openms_insight_explorer_fragment():
         sequence_data=seq_lf, peaks_data=peaks_for_sv,
         filters={"selected_psm": "psm_id"},
         annotation_config={
-            "ion_types": get_param(params, 'ion-types', ['b', 'y']),
-            "tolerance": get_param(params, 'mz-tolerance', 0.02),
+            "ion_types": get_param(params, 'ion-types', DEFAULTS['ion-types']),
+            "tolerance": get_param(params, 'mz-tolerance', DEFAULTS['mz-tolerance']),
             "tolerance_ppm": False,
         },
         height=350,
@@ -126,7 +143,7 @@ def openms_insight_explorer_fragment():
     heatmap_comp(key="rt_heatmap", state_manager=state_manager)
 
     if needs_regeneration:
-        st.session_state[regeneration_key] = cache_version
+        mark_rendered()
 
 
 @st.fragment
@@ -170,7 +187,7 @@ def mirror_plots_fragment():
     variant_key = psm_id_to_variant_key.get(selected_psm_id)
     refs = reference_store.get(variant_key, []) if variant_key else []
 
-    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param(params, 'intensity-mode', DEFAULTS['intensity-mode']) == 'Relative'
 
     if refs:
         for ref_spec, ref_df in refs:

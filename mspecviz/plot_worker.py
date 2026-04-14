@@ -59,6 +59,12 @@ class ComparisonTask:
     # Skip plot generation (metrics only -- plot already exists on disk)
     skip_plot: bool = False
 
+    # Pre-formatted metrics box text. When non-empty, the worker uses this
+    # directly instead of recomputing via ``format_metrics_text`` — lets the
+    # caller (e.g. the CLI) compute metrics once in the main process and
+    # avoid re-doing the work per worker.
+    metrics_text: str = ""
+
     # Summary metadata (for CSV row)
     query_file: str = ""
     ref_file: str = ""
@@ -122,7 +128,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
             if not task.skip_plot:
                 # --- Full mirror plot (Matplotlib, batch export) ---
-                metrics_text = format_metrics_text(metrics)
+                metrics_text = task.metrics_text or format_metrics_text(metrics)
                 fig = create_mirror_plot(
                     upper_spectrum=task.query_df,
                     lower_spectrum=task.ref_df,

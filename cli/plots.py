@@ -1,9 +1,9 @@
 """
-CLI plot generation — mirror / single-spectrum worker plus parallel orchestration.
+CLI plot generation — thin orchestration over :mod:`mspecviz.plot_worker`.
 
-``_generate_single_plot`` is module-level so it can be submitted to
-``ProcessPoolExecutor`` through ``run_tasks``. ``export_mirror_plots`` handles
-fmt-dir selection + HTML routing and returns the total file count.
+``build_plot_tasks`` emits :class:`ComparisonTask` instances; this module
+just selects the fmt dirs, dispatches via :func:`run_tasks`, and tallies
+how many files hit disk.
 """
 import logging
 from pathlib import Path
@@ -11,76 +11,31 @@ from typing import Dict
 
 import matplotlib
 matplotlib.use("Agg")
-import matplotlib.pyplot as plt
 
 from mspecviz.common.parallel import run_tasks
 from mspecviz.export_dirs import sanitize_filename
-from mspecviz.mirror_plot import (
-    create_mirror_plot, create_plotly_mirror_plot,
-    create_single_spectrum_plot, figure_to_bytes,
-)
+from mspecviz.plot_worker import ComparisonResult, ComparisonTask, process_single_task
 from mspecviz.query_processing import build_plot_tasks
 
 logger = logging.getLogger("mspecviz.cli")
 
 
-def _generate_single_plot(task: dict) -> int:
-    """Worker: generate one mirror/single plot, write all requested formats."""
-    count = 0
+def _count_written(result: ComparisonResult) -> int:
+    """Count how many output files a worker actually wrote."""
+    return sum(
+        1 for p in (result.png_path, result.svg_path, result.pdf_path, result.html_path)
+        if p
+    )
 
-    if task["type"] == "mirror":
-        fig = create_mirror_plot(
-            upper_spectrum=task["query_df"],
-            lower_spectrum=task["ref_df"],
-            title=task["title"],
-            upper_label=task["query_label"],
-            lower_label=task["ref_label"],
-            metrics_text=task["metrics_text"],
-            normalize=task["normalize"],
-            figsize=task.get("figsize", (12, 8)),
-            dpi=task.get("dpi", 300),
-        )
-    else:
-        fig = create_single_spectrum_plot(
-            spectrum=task["query_df"],
-            title=task["title"],
-            label=task.get("query_label", ""),
-            normalize=task["normalize"],
-            figsize=task.get("figsize", (12, 8)),
-            dpi=task.get("dpi", 300),
-        )
 
-    for fmt_dir_key, fmt in [("png_dir", "png"), ("svg_dir", "svg"), ("pdf_dir", "pdf")]:
-        fmt_dir = task.get(fmt_dir_key, "")
-        if not fmt_dir:
-            continue
-        out_dir = Path(fmt_dir) / task["folder_name"]
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_file = out_dir / f"{task['safe_name']}.{fmt}"
-        out_file.write_bytes(figure_to_bytes(fig, format=fmt))
-        count += 1
-
-    plt.close(fig)
-
-    if task.get("html_dir") and task["type"] == "mirror":
-        plotly_fig = create_plotly_mirror_plot(
-            upper_spectrum=task["query_df"],
-            lower_spectrum=task["ref_df"],
-            title=task["title"],
-            upper_label=task["query_label"],
-            lower_label=task["ref_label"],
-            metrics_text=task["metrics_text"],
-            normalize=task["normalize"],
-        )
-        html_out_dir = Path(task["html_dir"]) / task["folder_name"]
-        html_out_dir.mkdir(parents=True, exist_ok=True)
-        plotly_fig.write_html(
-            str(html_out_dir / f"{task['safe_name']}.html"),
-            include_plotlyjs="cdn",
-        )
-        count += 1
-
-    return count
+def _generate_single_plot(task: ComparisonTask) -> int:
+    """Worker: run the shared ``process_single_task`` and tally written files."""
+    result = process_single_task(task)
+    if not result.success:
+        # run_tasks' on_error handler expects an exception to surface via the
+        # worker — raise so it can be logged there.
+        raise RuntimeError(result.error or "plot generation failed")
+    return _count_written(result)
 
 
 def export_mirror_plots(
@@ -124,7 +79,7 @@ def export_mirror_plots(
         progress.update(completed)
 
     run_tasks(
-        tasks=tasks,  # each task is a dict → run_tasks auto-wraps to (dict,)
+        tasks=tasks,
         worker=_generate_single_plot,
         workers=cfg.workers,
         on_result=_on_result,

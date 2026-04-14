@@ -14,17 +14,11 @@ from matplotlib.figure import Figure as MplFigure
 import pandas as pd
 import plotly.graph_objects as go
 
+from mspecviz.common.constants import ANN_OFFSET, MZ_WINDOW_PADDING
 from mspecviz.common.ion_utils import ION_COLORS, get_ion_color  # noqa: F401
+from mspecviz.common.normalization import normalize_intensities
 
 logger = logging.getLogger(__name__)
-
-
-def _normalize_intensities(df: pd.DataFrame) -> pd.DataFrame:
-    """Normalize df['intensity'] to [0, 1] in-place and return df."""
-    max_int = df["intensity"].max()
-    if max_int > 0:
-        df["intensity"] = df["intensity"] / max_int
-    return df
 
 
 def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
@@ -40,7 +34,7 @@ def _prepare_spectrum_data(df: pd.DataFrame, normalize: bool = True,
     """Prepare spectrum DataFrame for plotting (shared by Plotly and Matplotlib)."""
     df = _ensure_annotation_col(df.copy())
     if normalize:
-        df = _normalize_intensities(df)
+        df = normalize_intensities(df)
     if color_map is None:
         color_map = ION_COLORS
     df["_color"] = df["annotation"].map(lambda a: get_ion_color(a, color_map))
@@ -96,7 +90,7 @@ def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float,
 def _add_matplotlib_spectrum(ax, df: pd.DataFrame, y_multiplier: float,
                              show_annotations: bool = True,
                              annotation_fontsize: int = 7,
-                             ann_offset: float = 0.03):
+                             ann_offset: float = ANN_OFFSET):
     """Add matplotlib vlines and annotation text for one spectrum.
 
     Args:
@@ -184,8 +178,8 @@ def create_plotly_mirror_plot(
         all_mz.extend(lower_spectrum["mz"].tolist())
 
     if all_mz:
-        mz_min = min(all_mz) - 50
-        mz_max = max(all_mz) + 50
+        mz_min = min(all_mz) - MZ_WINDOW_PADDING
+        mz_max = max(all_mz) + MZ_WINDOW_PADDING
         fig.add_shape(type="line", x0=mz_min, x1=mz_max, y0=0, y1=0,
                       line=dict(color="black", width=1, dash="solid"))
 
@@ -296,11 +290,11 @@ def create_mirror_plot(
     ax = fig.add_subplot(111)
 
     if normalize:
-        ann_offset = 0.03
+        ann_offset = ANN_OFFSET
     else:
         upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
         lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
-        ann_offset = max(upper_max, lower_max) * 0.03
+        ann_offset = max(upper_max, lower_max) * ANN_OFFSET
 
     if not upper_spectrum.empty:
         upper_df = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
@@ -324,7 +318,7 @@ def create_mirror_plot(
         all_mz.extend(lower_spectrum["mz"].tolist())
 
     if all_mz:
-        ax.set_xlim(min(all_mz) - 50, max(all_mz) + 50)
+        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
 
     if normalize:
         ax.set_ylim(-1.2, 1.2)
@@ -387,9 +381,9 @@ def create_single_spectrum_plot(
     if not spectrum.empty:
         df = _prepare_spectrum_data(spectrum, normalize=normalize, color_map=color_map)
         if normalize:
-            ann_offset = 0.03
+            ann_offset = ANN_OFFSET
         else:
-            ann_offset = df["intensity"].max() * 0.03 if len(df) > 0 else 1
+            ann_offset = df["intensity"].max() * ANN_OFFSET if len(df) > 0 else 1
         _add_matplotlib_spectrum(ax, df, y_multiplier=1.0,
                                 show_annotations=show_annotations,
                                 annotation_fontsize=annotation_fontsize,
@@ -397,7 +391,7 @@ def create_single_spectrum_plot(
 
     if not spectrum.empty:
         all_mz = spectrum["mz"].tolist()
-        ax.set_xlim(min(all_mz) - 50, max(all_mz) + 50)
+        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
 
     if normalize:
         ax.set_ylim(0, 1.15)

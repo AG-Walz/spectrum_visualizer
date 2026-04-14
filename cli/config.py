@@ -154,6 +154,32 @@ def load_peptides(
     return peps, "inline"
 
 
+def _as_tuple(val):
+    """Cast list → tuple; pass tuples through unchanged."""
+    return tuple(val) if isinstance(val, list) else val
+
+
+# --- settings.json → CLIConfig mapping table (layer 1 defaults) ------------
+# Each entry: (cfg_attr, (settings_key_path), default_value, optional_cast)
+_SETTINGS_DEFAULTS = [
+    ("ion_types", ("ion_types", "default"), ["b", "y"], None),
+    ("mz_tolerance", ("mz_tolerance", "default"), 0.02, None),
+    ("add_losses", ("annotation", "add_losses"), False, None),
+    ("add_first_prefix_ion", ("annotation", "add_first_prefix_ion"), True, None),
+    ("remove_precursor_peaks", ("annotation", "remove_precursor_peaks"), False, None),
+    ("export_dir", ("export", "default_directory"), "./exports", None),
+    ("project_name", ("export", "project_name"), "MSpecViz_analysis", None),
+    ("export_formats", ("export", "formats"), ["png"], None),
+    ("dpi", ("export", "dpi"), 300, None),
+    ("figsize", ("export", "figsize"), (12, 8), _as_tuple),
+    ("workers", ("performance", "workers"), 4, None),
+    ("koina_enabled", ("koina", "enabled"), True, None),
+    ("koina_model", ("koina", "model"), "ms2pip_timsTOF2024", None),
+    ("koina_ce", ("koina", "collision_energy"), 35, None),
+    ("koina_instrument", ("koina", "instrument_type"), "TIMSTOF", None),
+]
+
+
 # --- YAML → CLIConfig mapping tables ---------------------------------------
 # Each entry: (yaml_section, yaml_key, cfg_attr, optional_cast)
 _YAML_OVERRIDES = [
@@ -195,23 +221,14 @@ _CLI_OVERRIDES = [
 
 
 def _apply_settings_defaults(cfg: CLIConfig, defaults: dict) -> None:
-    """Populate cfg from settings.json (layer 1)."""
-    cfg.ion_types = get_nested(defaults, "ion_types", "default", default=["b", "y"])
-    cfg.mz_tolerance = get_nested(defaults, "mz_tolerance", "default", default=0.02)
-    cfg.add_losses = get_nested(defaults, "annotation", "add_losses", default=False)
-    cfg.add_first_prefix_ion = get_nested(defaults, "annotation", "add_first_prefix_ion", default=True)
-    cfg.remove_precursor_peaks = get_nested(defaults, "annotation", "remove_precursor_peaks", default=False)
-    cfg.export_dir = get_nested(defaults, "export", "default_directory", default="./exports")
-    cfg.project_name = get_nested(defaults, "export", "project_name", default="MSpecViz_analysis")
-    cfg.export_formats = get_nested(defaults, "export", "formats", default=["png"])
-    cfg.dpi = get_nested(defaults, "export", "dpi", default=300)
-    figsize = get_nested(defaults, "export", "figsize", default=[12, 8])
-    cfg.figsize = tuple(figsize) if isinstance(figsize, list) else (12, 8)
-    cfg.workers = get_nested(defaults, "performance", "workers", default=4)
-    cfg.koina_enabled = get_nested(defaults, "koina", "enabled", default=True)
-    cfg.koina_model = get_nested(defaults, "koina", "model", default="ms2pip_timsTOF2024")
-    cfg.koina_ce = get_nested(defaults, "koina", "collision_energy", default=35)
-    cfg.koina_instrument = get_nested(defaults, "koina", "instrument_type", default="TIMSTOF")
+    """Populate cfg from settings.json (layer 1).
+
+    Driven by :data:`_SETTINGS_DEFAULTS` — add a new parameter there rather
+    than extending this function.
+    """
+    for attr, path, default, cast in _SETTINGS_DEFAULTS:
+        val = get_nested(defaults, *path, default=default)
+        setattr(cfg, attr, cast(val) if cast else val)
 
 
 def _apply_yaml_overrides(cfg: CLIConfig, yaml_cfg: dict) -> None:

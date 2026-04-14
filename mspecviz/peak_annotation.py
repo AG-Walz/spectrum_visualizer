@@ -12,6 +12,7 @@ import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
 from mspecviz.common.ion_utils import get_ion_type  # noqa: F401
+from mspecviz.common.normalization import normalize_intensities
 
 logger = logging.getLogger(__name__)
 
@@ -254,10 +255,8 @@ def _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_pea
         )
         annotated = annotated[~precursor_mask].reset_index(drop=True)
 
-    if normalize and len(annotated) > 0:
-        max_int = annotated["intensity"].max()
-        if max_int > 0:
-            annotated["intensity"] = annotated["intensity"] / max_int
+    if normalize:
+        annotated = normalize_intensities(annotated)
 
     return annotated
 

@@ -15,6 +15,7 @@ import streamlit as st
 from typing import Any
 from pathlib import Path
 
+from mspecviz.common.constants import DEFAULTS, STATE_PREFIX  # noqa: F401
 
 OS_PLATFORM = sys.platform
 
@@ -23,10 +24,6 @@ OS_PLATFORM = sys.platform
 # anchored here so that the app behaves identically regardless of the
 # directory from which ``streamlit run`` is invoked.
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-
-# Namespace for session state keys owned by this app. Keeps our keys from
-# colliding with widget keys that Streamlit or third-party components manage.
-STATE_PREFIX = "peptide_mirror"
 
 
 def get_state_key(key: str) -> str:
@@ -214,8 +211,7 @@ def _render_workspace_switcher(params: dict) -> None:
             save_params(params)
 
             for key in params:
-                if key in st.session_state:
-                    del st.session_state[key]
+                st.session_state.pop(key, None)
             # Clear page-namespaced keys so stale analysis state from
             # the previous workspace is not shown in the new one.
             stale_keys = [
@@ -223,7 +219,7 @@ def _render_workspace_switcher(params: dict) -> None:
                 if k.startswith(STATE_PREFIX)
             ]
             for key in stale_keys:
-                del st.session_state[key]
+                st.session_state.pop(key, None)
             st.query_params.workspace = st.session_state["chosen-workspace"]
 
         workspaces_dir.mkdir(parents=True, exist_ok=True)
@@ -265,11 +261,11 @@ def _render_workspace_switcher(params: dict) -> None:
                             shutil.rmtree(ws_path)
                         st.session_state.workspace = Path(workspaces_dir, "default")
                         st.query_params.workspace = "default"
-                        del st.session_state[confirm_key]
+                        st.session_state.pop(confirm_key, None)
                         st.rerun()
                 with no_col:
                     if st.button("Cancel", key="ws-confirm-no"):
-                        del st.session_state[confirm_key]
+                        st.session_state.pop(confirm_key, None)
                         st.rerun()
             else:
                 if st.button("Delete this workspace"):

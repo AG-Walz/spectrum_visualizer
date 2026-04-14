@@ -20,13 +20,27 @@ import pyopenms as oms
 
 logger = logging.getLogger(__name__)
 
+# --- Native-ID tag constants ------------------------------------------------
+# mzML converters emit spectrum IDs in a handful of formats. Listing the tags
+# here (and reusing them in regex + substring checks) means adding a new
+# dialect touches a single location.
+SCAN_TAG = "scan="
+INDEX_TAG = "index="
+SPECTRUM_TAG = "spectrum="
+NATIVE_ID_TAGS = (SCAN_TAG, INDEX_TAG, SPECTRUM_TAG)
+
+# Regex matching a ``(scan|index|spectrum)=N`` fragment inside a native ID.
+NATIVE_ID_NUM_RE = re.compile(r'(?:scan|index|spectrum)=(\d+)')
+# Fallback regex: any digit run.
+ANY_DIGITS_RE = re.compile(r'(\d+)')
+
 
 def _extract_id_number(native_id: str) -> Optional[int]:
     """Extract the numeric value from a native ID string."""
-    m = re.search(r'(?:scan|index|spectrum)=(\d+)', native_id)
+    m = NATIVE_ID_NUM_RE.search(native_id)
     if m:
         return int(m.group(1))
-    m = re.search(r'(\d+)', native_id)
+    m = ANY_DIGITS_RE.search(native_id)
     if m:
         return int(m.group(1))
     return None
@@ -47,7 +61,7 @@ def clean_spectrum_id(spectrum_id: str) -> str:
         return clean_id
 
     # For simple scan=N format, ensure clean extraction
-    for tag in ["scan=", "index=", "spectrum="]:
+    for tag in NATIVE_ID_TAGS:
         if tag in clean_id:
             idx = clean_id.find(tag)
             rest = clean_id[idx:]
@@ -89,15 +103,15 @@ def open_indexed_mzml_fast(
     index_offset = 0
     if n_spectra > 0:
         first_id = indexed_exp.getSpectrum(0).getNativeID()
-        if "index=" in first_id:
+        if INDEX_TAG in first_id:
             id_format = "index"
             # Detect 0-based vs 1-based indexing
             first_num = _extract_id_number(first_id)
             if first_num is not None:
                 index_offset = first_num  # 0 for 0-based, 1 for 1-based
-        elif "scan=" in first_id:
+        elif SCAN_TAG in first_id:
             id_format = "scan"
-        elif "spectrum=" in first_id:
+        elif SPECTRUM_TAG in first_id:
             id_format = "spectrum"
 
     id_to_index["__format__"] = id_format
@@ -179,7 +193,7 @@ def open_indexed_mzml_fast(
             spec = indexed_exp.getSpectrum(i)
             native_id = spec.getNativeID()
             id_to_index[native_id] = i
-            num_match = re.search(r'(\d+)', native_id)
+            num_match = ANY_DIGITS_RE.search(native_id)
             if num_match:
                 id_to_index[f"_num_{num_match.group(1)}"] = i
         except Exception:
@@ -213,7 +227,7 @@ def find_spectrum_index(
         return id_to_index[clean_id]
 
     # Strategy 2: structured ID with (scan|index|spectrum)=N
-    scan_match = re.search(r'(?:scan|index|spectrum)=(\d+)', clean_id)
+    scan_match = NATIVE_ID_NUM_RE.search(clean_id)
     if scan_match:
         num = int(scan_match.group(1))
 
@@ -227,7 +241,7 @@ def find_spectrum_index(
             return id_to_index[num_key]
 
     # Strategy 3: bare number fallback
-    num_match = re.search(r'(\d+)', clean_id)
+    num_match = ANY_DIGITS_RE.search(clean_id)
     if num_match:
         num = int(num_match.group(1))
         num_key = f"_num_{num}"

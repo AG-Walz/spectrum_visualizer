@@ -23,6 +23,7 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import (
     apply_run_settings, build_run_settings, restore_analysis_if_needed,
 )
+from mspecviz.common.constants import DEFAULTS
 from mspecviz.mirror_plot import (
     create_mirror_plot, create_single_spectrum_plot,
     figure_to_bytes, create_plotly_mirror_plot,
@@ -61,7 +62,7 @@ def _export_spectrum_plots(export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = get_param(params, 'intensity-mode', 'Relative') == 'Relative'
+    normalize = get_param(params, 'intensity-mode', DEFAULTS['intensity-mode']) == 'Relative'
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None
@@ -343,11 +344,11 @@ def export_history_fragment(export_dir: str):
                     with c1:
                         if st.button("Yes, delete", key=f"yes_del_{run_dir.name}", type="primary"):
                             shutil.rmtree(run_dir)
-                            del st.session_state[confirm_key]
+                            st.session_state.pop(confirm_key, None)
                             st.rerun()
                     with c2:
                         if st.button("Cancel", key=f"cancel_del_{run_dir.name}"):
-                            del st.session_state[confirm_key]
+                            st.session_state.pop(confirm_key, None)
                             st.rerun()
                 else:
                     if st.button("Delete run", key=f"delete_{run_dir.name}"):
@@ -408,7 +409,7 @@ def export_controls_fragment():
                                      key=f"{STATE_PREFIX}_exp_summary")
 
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
-        _run_export(get_param(params, 'export-dir', '') or export_fallback,
+        _run_export(get_param(params, 'export-dir', DEFAULTS['export-dir']) or export_fallback,
                     export_parquet, export_csv, export_mirror,
                     export_summary, export_html)
 
@@ -422,7 +423,7 @@ def render():
 
     workspace = st.session_state.get('workspace', None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
-    export_dir = get_param(params, 'export-dir', '') or export_fallback
+    export_dir = get_param(params, 'export-dir', DEFAULTS['export-dir']) or export_fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)

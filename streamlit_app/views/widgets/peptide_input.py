@@ -143,18 +143,24 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
     )
     selected = [label_to_seq[lbl] for lbl in selected_labels]
 
+    def _set_pending(mode: str) -> None:
+        """mode='replace' sets the paste box to *selected*; 'append' merges with existing."""
+        if mode == "append":
+            existing = parse_peptide_list(st.session_state.get('target-peptides', ''))
+            peps = list(dict.fromkeys(existing + selected))
+        else:
+            peps = selected
+        st.session_state[pending_key] = "\n".join(peps)
+        st.rerun()
+
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
                      type="primary"):
-            st.session_state[pending_key] = "\n".join(selected)
-            st.rerun()
+            _set_pending("replace")
     with c2:
         if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
-            existing = parse_peptide_list(st.session_state.get('target-peptides', ''))
-            merged = list(dict.fromkeys(existing + selected))
-            st.session_state[pending_key] = "\n".join(merged)
-            st.rerun()
+            _set_pending("append")
 
 
 def render_peptide_input(params: dict) -> None:

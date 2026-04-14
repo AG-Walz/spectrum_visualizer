@@ -147,6 +147,57 @@ class VariantGroup:
     query_spectra: List = field(default_factory=list)
 
 
+def _build_run_to_metadata_map(protein_ids) -> Dict[str, str]:
+    """Return {run_stem: full_path} for mzML disambiguation."""
+    _, run_map_full = extract_spectra_data_map(protein_ids)
+    run_to_metadata: Dict[str, str] = {}
+    for full_paths in run_map_full.values():
+        for full_path in full_paths:
+            stem = Path(full_path).stem
+            if stem not in run_to_metadata:
+                run_to_metadata[stem] = full_path
+    return run_to_metadata
+
+
+def _build_match_from_psm(
+    psm,
+    idxml_path: str,
+    idxml_name: str,
+    run_to_metadata: Dict[str, str],
+    mzml_path_strs: List[str],
+) -> Optional[Tuple[str, PeptideMatch]]:
+    """Build a (variant_key, PeptideMatch) from a psm_utils PSM, or None."""
+    base_seq = psm.peptidoform.sequence.upper()
+
+    mzml_filename = (psm.run + ".mzML") if psm.run else ""
+    metadata_path = run_to_metadata.get(psm.run, "") if psm.run else ""
+
+    resolved_path = ""
+    if mzml_path_strs and mzml_filename:
+        resolved = resolve_mzml_path(
+            mzml_filename, metadata_path, mzml_path_strs, idxml_path,
+        )
+        if resolved:
+            resolved_path = resolved
+
+    mod_key = mod_key_from_peptidoform(psm.peptidoform)
+    variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
+
+    match = PeptideMatch(
+        peptidoform=psm.peptidoform.proforma.split("/")[0],
+        base_sequence=base_seq,
+        spectrum_id=psm.spectrum_id or "",
+        charge=psm.get_precursor_charge() or 0,
+        score=psm.score or 0.0,
+        idxml_file=idxml_name,
+        mzml_filename=mzml_filename,
+        id_merge_index=-1,
+        mzml_resolved_path=resolved_path,
+        idxml_resolved_path=idxml_path,
+    )
+    return variant_key, match
+
+
 def _search_single_idxml(
     idxml_path: str,
     idxml_name: str,
@@ -174,16 +225,7 @@ def _search_single_idxml(
             errors.append(f"No peptide identifications in {idxml_name}: {_load_err}")
             return idxml_name, matches, errors
 
-        # Build run-stem → metadata full path for mzML disambiguation.
-        # extract_spectra_data_map still uses the raw protein_ids exposed by
-        # the reader; psm_utils handles id_merge_index resolution internally.
-        _, run_map_full = extract_spectra_data_map(_reader.protein_ids)
-        run_to_metadata: Dict[str, str] = {}
-        for full_paths in run_map_full.values():
-            for full_path in full_paths:
-                stem = Path(full_path).stem
-                if stem not in run_to_metadata:
-                    run_to_metadata[stem] = full_path
+        run_to_metadata = _build_run_to_metadata_map(_reader.protein_ids)
 
         # Manual iteration so a parse error inside psm_utils __iter__ (e.g. float(None) on a
         # missing rescoring feature) is reported clearly. psm_utils uses a generator — once
@@ -204,39 +246,13 @@ def _search_single_idxml(
                 break  # generator is dead — no point continuing
 
             try:
-                base_seq = psm.peptidoform.sequence.upper()
-                if base_seq not in target_set:
+                if psm.peptidoform.sequence.upper() not in target_set:
                     continue
-
-                # psm_utils resolves spectra_data + id_merge_index → run name
-                mzml_filename = (psm.run + ".mzML") if psm.run else ""
-                metadata_path = run_to_metadata.get(psm.run, "") if psm.run else ""
-
-                resolved_path = ""
-                if mzml_path_strs and mzml_filename:
-                    resolved = resolve_mzml_path(
-                        mzml_filename, metadata_path, mzml_path_strs, idxml_path
-                    )
-                    if resolved:
-                        resolved_path = resolved
-
-                mod_key = mod_key_from_peptidoform(psm.peptidoform)
-                variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
-
-                match = PeptideMatch(
-                    peptidoform=psm.peptidoform.proforma.split("/")[0],
-                    base_sequence=base_seq,
-                    spectrum_id=psm.spectrum_id or "",
-                    charge=psm.get_precursor_charge() or 0,
-                    score=psm.score or 0.0,
-                    idxml_file=idxml_name,
-                    mzml_filename=mzml_filename,
-                    id_merge_index=-1,
-                    mzml_resolved_path=resolved_path,
-                    idxml_resolved_path=idxml_path,
+                built = _build_match_from_psm(
+                    psm, idxml_path, idxml_name, run_to_metadata, mzml_path_strs,
                 )
-                matches.append((variant_key, match))
-
+                if built is not None:
+                    matches.append(built)
             except Exception as e:
                 logger.debug(f"Error processing PSM: {e}")
                 continue

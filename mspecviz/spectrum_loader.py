@@ -50,6 +50,22 @@ class StreamingResult:
     total_queries: int
 
 
+@dataclass
+class LoadResult:
+    """Per-file output from ``_load_spectra_from_mzml``.
+
+    Replaces an anonymous 6-tuple. *loaded* is a list of
+    ``(variant_key, LoadedSpectrum)`` pairs so the caller can bucket spectra
+    by variant without re-scanning.
+    """
+    display_name: str
+    is_reference: bool
+    loaded: List[Tuple[str, LoadedSpectrum]]
+    loaded_count: int
+    not_found_count: int
+    errors: List[str]
+
+
 def build_mzml_to_matches_map(
     variant_groups: Dict[str, VariantGroup],
     available_mzml_paths: Dict[str, Path],
@@ -103,7 +119,7 @@ def _load_spectra_from_mzml(
     display_name: str,
     matches_for_file: List[Tuple["PeptideMatch", str]],
     is_reference: bool,
-) -> Tuple[str, bool, List[Tuple[str, "LoadedSpectrum"]], int, int, List[str]]:
+) -> LoadResult:
     """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
     loaded: List[Tuple[str, LoadedSpectrum]] = []
     errors: List[str] = []
@@ -156,7 +172,14 @@ def _load_spectra_from_mzml(
     except Exception as e:
         errors.append(f"Error opening {display_name}: {e}")
 
-    return display_name, is_reference, loaded, loaded_count, not_found_count, errors
+    return LoadResult(
+        display_name=display_name,
+        is_reference=is_reference,
+        loaded=loaded,
+        loaded_count=loaded_count,
+        not_found_count=not_found_count,
+        errors=errors,
+    )
 
 
 def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map, mzml_disambig):
@@ -172,11 +195,8 @@ def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map, mzml_disambig):
 
 
 def _execute_load_tasks(file_tasks, is_reference, workers,
-                        on_file_start, on_file_complete, error_callback):
-    """Load spectra from mzML files, sequentially or in parallel.
-
-    Returns list of (display_name, loaded_list, loaded_count, not_found_count).
-    """
+                        on_file_start, on_file_complete, error_callback) -> List[LoadResult]:
+    """Load spectra from mzML files, sequentially or in parallel."""
     kind = "reference" if is_reference else "query"
     if not file_tasks:
         return []
@@ -186,20 +206,19 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
 
     # Tack the fixed is_reference onto each task tuple
     tasks = [(p, d, m, is_reference) for p, d, m in file_tasks]
-    all_results: List[Tuple[str, list, int, int]] = []
+    all_results: List[LoadResult] = []
 
     def _on_start(task):
         if on_file_start:
             on_file_start(task[1], is_reference)  # task[1] = display_name
 
-    def _on_result(task, result):
-        display_name, _, loaded_list, loaded_count, not_found_count, errs = result
+    def _on_result(task, result: LoadResult):
         if error_callback:
-            for err in errs:
+            for err in result.errors:
                 error_callback(err)
-        all_results.append((display_name, loaded_list, loaded_count, not_found_count))
+        all_results.append(result)
         if on_file_complete:
-            on_file_complete(display_name, loaded_count, not_found_count)
+            on_file_complete(result.display_name, result.loaded_count, result.not_found_count)
 
     def _on_error(task, exc):
         display_name = task[1]
@@ -289,8 +308,8 @@ def load_spectra_streaming(
     ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map, mzml_disambig)
     ref_results = _execute_load_tasks(ref_tasks, True, effective_workers,
                                       on_file_start, on_file_complete, error_callback)
-    for _, loaded_list, _, _ in ref_results:
-        for variant_key, spec in loaded_list:
+    for res in ref_results:
+        for variant_key, spec in res.loaded:
             reference_spectra[variant_key].append(spec)
 
     if on_reference_loaded:
@@ -306,8 +325,8 @@ def load_spectra_streaming(
                                         on_file_start, on_file_complete, error_callback)
 
     query_indices: Dict[str, int] = {k: 0 for k in variant_groups}
-    for _, loaded_list, _, _ in query_results:
-        for variant_key, loaded in loaded_list:
+    for res in query_results:
+        for variant_key, loaded in res.loaded:
             if on_query_ready:
                 variant_group = variant_groups[variant_key]
                 on_query_ready(StreamingResult(

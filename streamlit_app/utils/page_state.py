@@ -28,6 +28,7 @@ from streamlit_app.utils.state import (
     get_state_key,
     load_params,
 )
+from mspecviz.common.constants import DEFAULTS
 from mspecviz.common.text_utils import parse_peptide_list
 
 logger = logging.getLogger(__name__)
@@ -193,20 +194,21 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 # run_settings.json serialization
 # ---------------------------------------------------------------------------
 # Single source of truth for which params land in run_settings.json.
-# Each entry: (run_settings_key, param_key, default_value).
+# Each entry: (run_settings_key, param_key). Defaults resolve via
+# ``DEFAULTS[param_key]`` (see ``mspecviz.common.constants``).
 # ``target-peptides`` needs a list<->newline-joined-string conversion, so it
 # is handled separately below.
-RUN_SETTINGS_FIELDS: list[tuple[str, str, object]] = [
-    ("idxml_files",            "selected-idxmls",        []),
-    ("mzml_files",             "selected-mzmls",         []),
-    ("reference_substring",    "reference-substring",    ""),
-    ("ion_types",              "ion-types",              ["b", "y"]),
-    ("mz_tolerance",           "mz-tolerance",           0.02),
-    ("add_losses",             "add-losses",             False),
-    ("add_first_prefix_ion",   "add-first-prefix-ion",   True),
-    ("remove_precursor_peaks", "remove-precursor-peaks", False),
-    ("intensity_mode",         "intensity-mode",         "Relative"),
-    ("koina_enabled",          "koina-enabled",          False),
+RUN_SETTINGS_FIELDS: list[tuple[str, str]] = [
+    ("idxml_files",            "selected-idxmls"),
+    ("mzml_files",             "selected-mzmls"),
+    ("reference_substring",    "reference-substring"),
+    ("ion_types",              "ion-types"),
+    ("mz_tolerance",           "mz-tolerance"),
+    ("add_losses",             "add-losses"),
+    ("add_first_prefix_ion",   "add-first-prefix-ion"),
+    ("remove_precursor_peaks", "remove-precursor-peaks"),
+    ("intensity_mode",         "intensity-mode"),
+    ("koina_enabled",          "koina-enabled"),
 ]
 
 
@@ -214,10 +216,10 @@ def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
     p = load_params()
     cfg: dict = {
-        rs_key: get_param(p, param_key, default)
-        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
+        rs_key: get_param(p, param_key, DEFAULTS.get(param_key))
+        for rs_key, param_key in RUN_SETTINGS_FIELDS
     }
-    cfg["peptides"] = parse_peptide_list(get_param(p, "target-peptides", ""))
+    cfg["peptides"] = parse_peptide_list(get_param(p, "target-peptides", DEFAULTS["target-peptides"]))
     now = datetime.now().isoformat()
     cfg["_created_at"] = now
     cfg["_last_run"] = now
@@ -231,8 +233,8 @@ def apply_run_settings(run_cfg: dict):
     page navigation even after Streamlit reaps the owning widget.
     """
     updates: list[tuple[str, object]] = [
-        (param_key, run_cfg.get(rs_key, default))
-        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
+        (param_key, run_cfg.get(rs_key, DEFAULTS.get(param_key)))
+        for rs_key, param_key in RUN_SETTINGS_FIELDS
     ]
     updates.append(
         ("target-peptides", "\n".join(run_cfg.get("peptides", [])))

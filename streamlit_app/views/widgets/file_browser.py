@@ -50,9 +50,17 @@ def render_directory_browser(
     # --- Path bar + up button ---
     col1, col2 = st.columns([6, 1])
     with col1:
+        # Stable widget key: sync session_state to current_dir when the
+        # directory was just changed by Up/folder-button navigation so the
+        # input reflects it. The old key included ``hash(current_dir)`` which
+        # forced Streamlit to drop and recreate the widget on every nav click —
+        # costly on large workspaces and surprising when interacting with
+        # focus/caret state.
+        path_input_key = f"{key_prefix}_path_input"
+        if st.session_state.get(path_input_key) != current_dir:
+            st.session_state[path_input_key] = current_dir
         new_path = st.text_input(
-            "Path", value=current_dir,
-            key=f"{key_prefix}_path_input_{abs(hash(current_dir))}",
+            "Path", key=path_input_key,
             label_visibility="collapsed", placeholder="Enter path...",
         )
         if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
