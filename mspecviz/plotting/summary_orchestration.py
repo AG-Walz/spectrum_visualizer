@@ -2,8 +2,8 @@
 
 Loads the comparison CSV, aggregates per-peptidoform statistics, and delegates
 to the per-plot-type modules (``summary_dual_axis``, ``summary_ridgeline``).
-Shared constants (metric list, colour palette, plot-type registry) live here
-so both renderers stay in sync.
+Shared constants (metric list, colour palette, plot-type registry) live in
+``_summary_shared`` so both renderers stay in sync.
 """
 import logging
 from pathlib import Path
@@ -13,34 +13,27 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from mspecviz.plotting._summary_shared import (
+    DEFAULT_METRIC,
+    MAX_SCATTER_PER_GROUP,
+    METRIC_COLUMNS,
+    PLOT_TYPES,
+    SUMMARY_COLORS,
+    _auto_height,
+    _metric_label,
+    _style_ax,
+    _subsample_group,
+)
+from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
+from mspecviz.plotting.summary_ridgeline import plot_ridgeline
 from mspecviz.search.models import format_inline_sequence
 
 logger = logging.getLogger(__name__)
 
-
-METRIC_COLUMNS = [
-    "R\u00b2 match",
-    "R\u00b2 binned",
-    "Cosine",
-    "Entropy",
-    "Dice",
-    "Jaccard",
-    "SharedRatio",
-]
-
-DEFAULT_METRIC = "R\u00b2 binned"
-
-SUMMARY_COLORS = {
-    "bar": "#E8945A",
-    "bar_edge": "#D07030",
-    "box": "#2C3E50",
-    "box_fill": "#BDC3C7",
-    "scatter": "#2C3E50",
+_PLOT_REGISTRY = {
+    "dual_axis": plot_classic_dual_axis,
+    "ridgeline": plot_ridgeline,
 }
-
-PLOT_TYPES = ["dual_axis", "ridgeline"]
-
-MAX_SCATTER_PER_GROUP = 200
 
 
 def prepare_summary_data(
@@ -91,38 +84,6 @@ def prepare_summary_data(
     return raw_df, agg
 
 
-def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
-    return max(minimum, per_row * n)
-
-
-def _style_ax(ax, remove_top=True, remove_right=True):
-    if remove_top:
-        ax.spines["top"].set_visible(False)
-    if remove_right:
-        ax.spines["right"].set_visible(False)
-
-
-def _subsample_group(group_df, metric, max_n=MAX_SCATTER_PER_GROUP, seed=42):
-    vals = group_df[metric].values
-    if len(vals) <= max_n:
-        return vals
-    rng = np.random.RandomState(seed)
-    return rng.choice(vals, size=max_n, replace=False)
-
-
-def _metric_label(metric: str) -> str:
-    labels = {
-        "R\u00b2 match": "R\u00b2 (match)",
-        "R\u00b2 binned": "R\u00b2 (binned)",
-        "Cosine": "Cosine similarity",
-        "Entropy": "Spectral entropy similarity",
-        "Dice": "Dice coefficient",
-        "Jaccard": "Jaccard index",
-        "SharedRatio": "Shared peak ratio",
-    }
-    return labels.get(metric, metric)
-
-
 def generate_all_summary_plots(
     source: Union[str, Path, pd.DataFrame],
     output_dir: Union[str, Path],
@@ -136,16 +97,6 @@ def generate_all_summary_plots(
 
     Returns ``{plot_type: {format: file_path}}``.
     """
-    # Imported here to avoid a circular import — the per-plot modules depend
-    # on helpers defined above.
-    from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
-    from mspecviz.plotting.summary_ridgeline import plot_ridgeline
-
-    _PLOT_REGISTRY = {
-        "dual_axis": plot_classic_dual_axis,
-        "ridgeline": plot_ridgeline,
-    }
-
     if plot_types is None:
         plot_types = list(PLOT_TYPES)
     if formats is None:

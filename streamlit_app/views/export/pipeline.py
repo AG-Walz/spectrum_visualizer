@@ -19,6 +19,7 @@ import streamlit as st
 
 from streamlit_app.utils.state import get_param, get_state_key
 from streamlit_app.utils.page_state import build_run_settings
+from streamlit_app.views.export.gallery import _render_plot_gallery
 from mspecviz.annotation import compute_all_metrics, format_metrics_text
 from mspecviz.common.constants import DEFAULTS
 from mspecviz.common.text_utils import sanitize_filename
@@ -141,9 +142,6 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
     Returns the path of the newly created export root so the caller can then
     render the plot gallery for it.
     """
-    # Local import avoids a circular reference (pipeline -> gallery -> page).
-    from streamlit_app.views.export.gallery import _render_plot_gallery
-
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     export_root = Path(export_dir) / f"export_{timestamp}"
     export_root.mkdir(parents=True, exist_ok=True)

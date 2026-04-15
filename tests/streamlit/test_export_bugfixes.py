@@ -6,13 +6,14 @@ export-pipeline tests live in ``test_export_pipeline.py``.
 """
 import inspect
 
+from streamlit_app.views.export.page import export_controls_fragment
+
 
 class TestExportControlsBugFix:
     """Verify the NameError fix: export_dir is no longer referenced as undefined."""
 
     def test_export_controls_no_name_error(self):
         """The function source should reference get_param for export-dir, not bare export_dir."""
-        from streamlit_app.views.export.page import export_controls_fragment
         source = inspect.getsource(export_controls_fragment)
         # The bug was: _run_export(export_dir, ...) where export_dir was undefined.
         # The fix uses get_param(params, 'export-dir', '') or export_fallback.

@@ -49,7 +49,6 @@ def comparison_metrics_fragment():
     # Summary statistics per peptidoform
     st.markdown("---")
     st.subheader("Summary Statistics")
-    import pandas as pd  # noqa: F401 — reserved for future formatting tweaks
     metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_df.columns]
     if metric_cols:
         summary = comparison_df.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(

@@ -15,7 +15,9 @@ from typing import Callable, List, Optional, Tuple
 
 import yaml
 
+from cli.output import TerminalProgress
 from mspecviz.common.text_utils import parse_peptide_list
+from mspecviz.search import get_unique_peptides_from_idxmls
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -79,7 +81,7 @@ def load_yaml_config(path: str) -> dict:
     if not config_path.exists():
         print(f"Error: config file not found: {path}", file=sys.stderr)
         sys.exit(2)
-    with open(config_path) as f:
+    with open(config_path, encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     if not isinstance(cfg, dict):
         print(f"Error: config file is not a valid YAML mapping: {path}", file=sys.stderr)
@@ -125,10 +127,8 @@ def load_peptides(
     peptide_spec = str(peptide_spec).strip()
 
     if peptide_spec.lower() == "all":
-        # Lazy import to avoid CLI output module churn on bare config loads
-        from mspecviz.search import get_unique_peptides_from_idxmls
         if progress_factory is None:
-            from cli.output import TerminalProgress as progress_factory  # noqa: N813
+            progress_factory = TerminalProgress
 
         if not quiet:
             print("  Extracting all peptides from idXML files...")

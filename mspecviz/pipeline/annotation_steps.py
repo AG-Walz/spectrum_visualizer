@@ -5,12 +5,13 @@ Koina fallback, build metric rows. Extracted so ``orchestration.py`` stays
 readable and each phase can be unit-tested independently.
 """
 import logging
+from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
 from psm_utils import Peptidoform
 
-from mspecviz.annotation.metrics_set import compute_all_metrics
+from mspecviz.annotation.metrics_set import METRIC_SHORT_TO_DISPLAY, compute_all_metrics
 from mspecviz.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
@@ -119,14 +120,34 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
     return refs
 
 
-def _build_metric_rows(psm_id, result, query_df, refs):
-    """Phase 4: compute metrics + build summary rows for each query/ref pair.
+def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
+    """Build a single comparison row dict from query/reference pair.
 
-    Imports ``build_comparison_row`` lazily to avoid a circular import with the
-    orchestration module.
+    *result* is a ``QueryResult`` from ``load_spectra_streaming``.
+    *metrics* is the dict returned by ``compute_all_metrics``.
     """
-    from mspecviz.pipeline.orchestration import build_comparison_row
+    row: Dict[str, Any] = {
+        "psm_id": psm_id,
+        "Peptide": result.base_sequence,
+        "Modification": result.modification_key,
+        "Charge": result.query_spectrum.precursor_charge,
+        "Query": Path(result.query_spectrum.source_file).stem,
+        "Reference": Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
+        "query_spectrum_id": result.query_spectrum.spectrum_id,
+        "ref_spectrum_id": ref_spec.spectrum_id,
+        "query_rt": result.query_spectrum.rt,
+        "ref_rt": ref_spec.rt,
+    }
+    for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
+        row[display_name] = metrics.get(short_key, float("nan"))
+    for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
+        row[count_key] = metrics.get(count_key, 0)
 
+    return row
+
+
+def _build_metric_rows(psm_id, result, query_df, refs):
+    """Phase 4: compute metrics + build summary rows for each query/ref pair."""
     rows: List[Dict[str, Any]] = []
     for ref_spec, ref_df in refs:
         try:

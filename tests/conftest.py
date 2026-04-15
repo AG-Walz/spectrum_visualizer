@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from mspecviz.search import PeptideMatch
+
 # Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
@@ -59,7 +61,6 @@ def make_peptide_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
                        spectrum_id="index=1", charge=2, score=0.95,
                        idxml_file="test.idXML", mzml_filename="test.mzML"):
     """Create a PeptideMatch for testing. Importable via ``from tests.conftest import ...``."""
-    from mspecviz.search import PeptideMatch
     return PeptideMatch(
         peptidoform=peptidoform, base_sequence=base_seq,
         spectrum_id=spectrum_id, charge=charge, score=score,

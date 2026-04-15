@@ -17,6 +17,7 @@ import pytest
 from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
 from mspecviz.search import PeptideMatch, VariantGroup
 from mspecviz.spectra import LoadedSpectrum
+from streamlit_app.views.export.pipeline import _run_export
 
 
 def _make_loaded_spectrum(peptidoform="PEPTIDEK/2", base_seq="PEPTIDEK",
@@ -163,7 +164,6 @@ class TestRunExport:
             yield mock_st, tmp_path
 
     def _run(self, tmp_path, **flags):
-        from streamlit_app.views.export.pipeline import _run_export
         export_dir = str(tmp_path / "exports")
         defaults = dict(do_parquet=False, do_csv=False, do_mirror=False,
                         do_summary=False, do_html=False)

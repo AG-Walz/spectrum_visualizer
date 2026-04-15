@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from mspecviz.annotation.metrics_set import (
-    METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     format_metrics_text,
 )
@@ -18,6 +17,7 @@ from mspecviz.pipeline.annotation_steps import (
     _build_metric_rows,
     _cache_reference_spectra,
     _try_koina_fallback,
+    build_comparison_row,
 )
 from mspecviz.plotting.worker_tasks import ComparisonTask
 from mspecviz.spectra.loader_models import spectrum_lookup_key
@@ -67,32 +67,6 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
                     psm_id_to_variant_key[psm_id] = variant_key
                     break
     return psm_id_to_variant_key
-
-
-def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
-    """Build a single comparison row dict from query/reference pair.
-
-    *result* is a ``QueryResult`` from ``load_spectra_streaming``.
-    *metrics* is the dict returned by ``compute_all_metrics``.
-    """
-    row: Dict[str, Any] = {
-        "psm_id": psm_id,
-        "Peptide": result.base_sequence,
-        "Modification": result.modification_key,
-        "Charge": result.query_spectrum.precursor_charge,
-        "Query": Path(result.query_spectrum.source_file).stem,
-        "Reference": Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
-        "query_spectrum_id": result.query_spectrum.spectrum_id,
-        "ref_spectrum_id": ref_spec.spectrum_id,
-        "query_rt": result.query_spectrum.rt,
-        "ref_rt": ref_spec.rt,
-    }
-    for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
-        row[display_name] = metrics.get(short_key, float("nan"))
-    for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
-        row[count_key] = metrics.get(count_key, 0)
-
-    return row
 
 
 def process_query_result(result, psm_lookup, annotation_kwargs,

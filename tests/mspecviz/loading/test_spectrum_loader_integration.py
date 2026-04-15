@@ -2,15 +2,15 @@
 import pytest
 from pathlib import Path
 
+from mspecviz.search import search_peptides_in_idxmls
+from mspecviz.spectra import load_spectra_streaming, spectrum_lookup_key
+
 
 @pytest.mark.integration
 class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
         """Shared fixture: search + stream spectra once for all tests in this class."""
-        from mspecviz.search import search_peptides_in_idxmls
-        from mspecviz.spectra import load_spectra_streaming, spectrum_lookup_key
-
         vgs = search_peptides_in_idxmls([idxml_path], target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]
 

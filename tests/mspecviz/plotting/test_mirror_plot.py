@@ -11,15 +11,18 @@ import matplotlib
 matplotlib.use("Agg")  # Must be before importing mirror_plot
 
 import numpy as np
+import plotly.graph_objects as go
 import pytest
 from matplotlib.figure import Figure
 
+from mspecviz.annotation import prepare_spectrum_for_plot
 from mspecviz.plotting import (
     ION_COLORS,
     create_mirror_plot,
-    create_single_spectrum_plot,
     create_plotly_mirror_plot,
     create_plotly_single_plot,
+    create_single_spectrum_plot,
+    figure_to_bytes,
     get_ion_color,
 )
 
@@ -56,7 +59,6 @@ class TestPlotCreation:
         (create_plotly_single_plot, False),
     ])
     def test_returns_correct_figure_type(self, spectrum_df, plot_fn, is_mirror):
-        import plotly.graph_objects as go
         if is_mirror:
             fig = plot_fn(spectrum_df, spectrum_df.copy())
         else:
@@ -70,7 +72,6 @@ class TestPlotCreation:
         (create_plotly_single_plot, False),
     ])
     def test_empty_df_does_not_crash(self, empty_spectrum_df, plot_fn, is_mirror):
-        import plotly.graph_objects as go
         if is_mirror:
             fig = plot_fn(empty_spectrum_df, empty_spectrum_df.copy())
         else:
@@ -120,9 +121,6 @@ class TestMirrorPlotWithRealAnnotation:
     """Generate plots from annotated real-like spectra."""
 
     def test_plotly_mirror_with_annotation(self):
-        from mspecviz.annotation import prepare_spectrum_for_plot
-        import plotly.graph_objects as go
-
         mz = np.array([175.12, 290.14, 405.17, 520.20], dtype=np.float64)
         intensity = np.array([100, 200, 150, 300], dtype=np.float64)
 
@@ -143,9 +141,6 @@ class TestMirrorPlotWithRealAnnotation:
         assert len(fig.data) > 0
 
     def test_matplotlib_mirror_with_annotation(self, tmp_path):
-        from mspecviz.annotation import prepare_spectrum_for_plot
-        from mspecviz.plotting import figure_to_bytes
-
         mz = np.array([175.12, 290.14, 405.17], dtype=np.float64)
         intensity = np.array([100, 200, 150], dtype=np.float64)
 

@@ -12,6 +12,7 @@ from typing import Dict
 import matplotlib
 matplotlib.use("Agg")
 
+from cli.output import TerminalProgress
 from mspecviz.common.parallel import run_tasks
 from mspecviz.export_dirs import sanitize_filename
 from mspecviz.plotting import ComparisonResult, ComparisonTask, process_single_task
@@ -44,7 +45,6 @@ def export_mirror_plots(
     normalize: bool, quiet: bool,
 ) -> int:
     """Build plot tasks then dispatch via ``run_tasks`` (sequential or parallel)."""
-    from cli.output import TerminalProgress
     fmt_dirs: Dict[str, str] = {
         fmt: str(d)
         for fmt, d in [("png", png_dir), ("svg", svg_dir), ("pdf", pdf_dir)]

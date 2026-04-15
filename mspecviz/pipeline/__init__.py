@@ -9,10 +9,10 @@ from mspecviz.pipeline.annotation_steps import (
     _build_metric_rows,
     _cache_reference_spectra,
     _try_koina_fallback,
+    build_comparison_row,
     get_koina_prediction,
 )
 from mspecviz.pipeline.orchestration import (
-    build_comparison_row,
     build_plot_tasks,
     build_psm_to_variant_mapping,
     format_spectrum_labels,

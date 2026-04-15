@@ -9,7 +9,7 @@ import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from scipy.stats import gaussian_kde  # noqa: E402
 
-from mspecviz.plotting.summary_orchestration import (
+from mspecviz.plotting._summary_shared import (
     DEFAULT_METRIC,
     SUMMARY_COLORS,
     _auto_height,
