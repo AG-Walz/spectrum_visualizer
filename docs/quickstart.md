@@ -1,8 +1,14 @@
 # MSpecViz Quick Start Guide
 
-This guide walks through the 4-tab workflow using test data. For metric
-definitions see [METRICS.md](METRICS.md); for export format details see
-[EXPORT.md](EXPORT.md).
+This guide walks through the 4-tab Streamlit workflow using test data, and
+shows the equivalent CLI invocation. For deeper references see:
+
+- [architecture.md](architecture.md) — how the codebase is organised.
+- [settings.md](settings.md) — every configuration key explained.
+- [cli.md](cli.md) — full CLI surface.
+- [metrics.md](metrics.md) — formulas and ranges for the 7 comparison
+  metrics and 17 ion match statistics.
+- [export.md](export.md) — output directory layout and file formats.
 
 ---
 
@@ -207,7 +213,7 @@ Displays the full comparison data in tabular form:
 - **Summary statistics** -- Aggregate statistics (mean, median, std) across
   all comparisons.
 
-See [METRICS.md](METRICS.md) for detailed definitions and interpretation.
+See [metrics.md](metrics.md) for detailed definitions and interpretation.
 
 ---
 
@@ -245,7 +251,8 @@ Browse past export runs, view their settings, and:
 Browse exported plots organized by peptide and reference. Download individual
 plots without needing to navigate the filesystem.
 
-See [EXPORT.md](EXPORT.md) for the full directory structure and file schemas.
+See [export.md](export.md) for the full directory structure and file
+schemas.
 
 ---
 
@@ -280,3 +287,5 @@ See [EXPORT.md](EXPORT.md) for the full directory structure and file schemas.
 | Koina prediction returns no results | Check network connectivity (Koina uses a remote API). Some models only support specific peptide lengths or charge states. |
 | Slow first run | Normal for large mzML files. Subsequent runs with the same settings reuse existing export directories. |
 | Export fails with permission error | Verify write permissions to the export directory. Check available disk space. |
+| Worker processes crash silently | Re-run with `--workers 1` (CLI) or set the workers slider to 1 in the Setup tab to surface the underlying traceback. |
+| Stale results after fixing a bug | Delete `<workspace>/.mspecviz_cache/`. The app does not invalidate its own Parquet cache automatically. See [settings.md#cache](settings.md#cache). |

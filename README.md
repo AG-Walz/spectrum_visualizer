@@ -3,8 +3,9 @@
 MSpecViz is a peptide-spectrum match (PSM) analysis and visualization toolkit.
 The core pipeline is pure Python and ships with two interchangeable front ends:
 
-- **Streamlit UI** — interactive 4-tab workflow built on the openms_insight
-  library with Plotly mirror plots and quantitative comparison metrics.
+- **Streamlit UI** — interactive 4-tab workflow built on the
+  [openms_insight](https://pypi.org/project/openms-insight/) library with
+  Plotly mirror plots and quantitative comparison metrics.
 - **CLI** — headless pipeline driven by a YAML config, suitable for batch jobs
   and servers without a browser.
 
@@ -13,25 +14,75 @@ export). Pick the interface that fits your workflow; neither is required.
 
 ---
 
+## Table of Contents
+
+### Reading guides (in `docs/`)
+
+Start with the **Quick Start** for an end-to-end walkthrough; the other
+guides are reference material organised by topic, with each file kept under
+~200 lines for easy skimming.
+
+**Getting started**
+- [Quick Start](docs/quickstart.md) — 4-tab Streamlit walkthrough + the `python -m cli` equivalent
+
+**Architecture**
+- [Overview](docs/architecture/overview.md) — 3-layer layout, pipeline flow, house rules
+- [Core package](docs/architecture/core.md) — tour of every `mspecviz/` subpackage
+- [Front-ends](docs/architecture/frontends.md) — `streamlit_app/`, `cli/`, `tests/`
+
+**Settings**
+- [Overview](docs/settings/overview.md) — precedence rules + quick-lookup table
+- [`settings.json`](docs/settings/app.md) — every app-wide key explained
+- [Workspace + session state](docs/settings/workspace.md) — `default-parameters.json`, `params.json`, `peptide_mirror.*` keys
+- [CLI YAML + flags](docs/settings/cli.md) — every CLI field and command-line flag
+
+**CLI**
+- [Usage](docs/cli/usage.md) — invocation, minimum config, exit codes, output
+- [Recipes & debugging](docs/cli/recipes.md) — peptide spec, common recipes, troubleshooting
+
+**Metrics**
+- [7 comparison metrics](docs/metrics/comparison.md) — R2m, R2b, Cos, Ent, Dice, Jacc, ShR with formulas
+- [17 ion match statistics](docs/metrics/ion-match-stats.md) — `ims_*` columns
+- [Choosing and interpreting](docs/metrics/interpretation.md) — decision guide + common patterns
+
+**Export**
+- [Directory layout](docs/export/layout.md) — versioned dirs + `run_settings.json`
+- [Data file formats](docs/export/formats.md) — Parquet schemas + CSV/XLSX columns
+- [Plots, gallery, history](docs/export/plots.md) — mirror + summary plots, Streamlit browsers
+
+### Jump to a README section
+
+- [Key Features](#key-features)
+- [Prerequisites](#prerequisites)
+- [Installation](#installation)
+- [Quick Start](#quick-start)
+- [Project Structure](#project-structure)
+- [Configuration at a glance](#configuration-at-a-glance)
+- [Running Tests](#running-tests)
+- [Troubleshooting](#troubleshooting)
+
+---
+
 ## Key Features
 
-- **Interactive Explorer** -- openms_insight Table, LinePlot, SequenceView, and
+- **Interactive Explorer** — openms_insight Table, LinePlot, SequenceView, and
   Heatmap components linked through a shared state manager. Click a PSM row to
   instantly view its annotated spectrum and sequence coverage.
-- **Mirror Plots** -- Plotly interactive and Matplotlib static mirror plots
+- **Mirror Plots** — Plotly interactive and Matplotlib static mirror plots
   comparing query spectra against experimental or AI-predicted references.
-- **7 Comparison Metrics** -- R-squared (matching and binned), cosine similarity,
-  spectral entropy similarity, Dice coefficient, Jaccard index, and shared peak
-  ratio.
-- **17 Ion Match Statistics** -- PyOpenMS SpectrumAnnotator metrics including
-  coverage, annotated ion fraction, fragment mass errors, and series analysis.
-- **Koina AI Prediction** -- 16 deep-learning models (MS2PIP, Prosit, AlphaPept,
-  UniSpec, PredFull) for generating predicted reference spectra when no
-  experimental reference is available.
-- **Parallel Export** -- ProcessPoolExecutor-based batch generation of PNG, SVG,
-  PDF, and HTML plots with versioned export directories and ZIP download.
-- **Summary Plots** -- Dual-axis, ridgeline, and heatmap visualizations of
-  metric distributions across peptidoforms.
+- **7 Comparison Metrics** — R² matching, R² binned, cosine similarity,
+  spectral entropy similarity, Dice coefficient, Jaccard index, and shared
+  peak ratio. See [docs/metrics/comparison.md](docs/metrics/comparison.md).
+- **17 Ion Match Statistics** — PyOpenMS `SpectrumAnnotator` metrics including
+  coverage, annotated-ion fraction, fragment mass errors, and series analysis.
+- **Koina AI Prediction** — 14+ deep-learning models (MS2PIP, Prosit,
+  AlphaPept, UniSpec, PredFull) for generating predicted reference spectra
+  when no experimental reference is available.
+- **Parallel Export** — `ProcessPoolExecutor`-based batch generation of PNG,
+  SVG, PDF, and HTML plots with versioned export directories and ZIP
+  download.
+- **Summary Plots** — Dual-axis bar/box, ridgeline KDE, and multi-metric
+  heatmap visualizations of metric distributions across peptidoforms.
 
 ---
 
@@ -41,9 +92,14 @@ export). Pick the interface that fits your workflow; neither is required.
 - Conda (Miniconda or Anaconda)
 - The `mspecviz` conda environment
 
+Key dependencies (installed in the environment):
+
+`streamlit >= 1.48`, `openms_insight 0.1.11`, `pyopenms`, `polars`, `plotly`,
+`matplotlib`, `ms_entropy`, `koinapy`, `psm_utils`, `scipy`, `PyYAML`.
+
 ---
 
-## Installation and Setup
+## Installation
 
 Clone or copy the project, then activate the conda environment:
 
@@ -53,24 +109,17 @@ conda activate mspecviz
 
 The environment is located at `/mnt/volume/bin/miniconda/envs/mspecviz/`.
 
-Key dependencies (installed in the environment):
+To recreate it from scratch:
 
-- streamlit
-- openms_insight 0.1.11
-- pyopenms
-- polars
-- plotly
-- matplotlib
-- ms_entropy
-- koinapy
-- psm_utils
-- scipy
+```bash
+conda env create -f environment.yml
+```
 
 ---
 
 ## Quick Start
 
-MSpecViz has two interfaces — pick whichever fits your workflow:
+MSpecViz has two interfaces — pick whichever fits your workflow.
 
 ### Streamlit (interactive UI)
 
@@ -107,84 +156,129 @@ Run from the project root:
 python -m cli -c cli/config/config_example.yaml
 ```
 
-See [docs/QUICKSTART.md](docs/QUICKSTART.md) for a walkthrough of the 4-tab
-workflow with test data.
+See [docs/quickstart.md](docs/quickstart.md) for a walkthrough with test data,
+and [docs/cli/usage.md](docs/cli/usage.md) for the full CLI reference.
+
+---
+
+## Project Structure
+
+Three top-level packages keep core logic separable from the UI runners:
+
+```
+MSpecViz/
+├── mspecviz/                    # Core package — pure Python, no Streamlit imports
+│   ├── search/                  # idXML parsing + peptide search
+│   ├── spectra/                 # mzML streaming + Koina AI prediction
+│   ├── annotation/              # Theoretical fragments + 7 comparison metrics
+│   ├── dataframes/              # Polars LazyFrames for openms_insight
+│   ├── plotting/                # Plotly + Matplotlib mirror/summary plots
+│   ├── pipeline/                # Shared CLI/Streamlit orchestration
+│   ├── common/                  # Ion colors, text helpers, parallel runner
+│   ├── path_utils.py            # Filename disambiguation
+│   └── export_dirs.py           # Versioned export dirs with fingerprinting
+├── streamlit_app/               # Streamlit UI (imports mspecviz.*)
+│   ├── app.py                   # st.navigation entry point
+│   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)
+│   ├── config/
+│   │   ├── settings.json        # App-wide defaults
+│   │   └── default-parameters.json  # Per-workspace initial values
+│   ├── utils/
+│   │   ├── state/               # page_setup, workspaces, param I/O
+│   │   └── page_state.py        # Session-state namespace helpers
+│   └── views/
+│       ├── setup.py             # Tab 1 — Setup
+│       ├── search_load/         # Tab 2 — Search & Load
+│       ├── explore/             # Tab 3 — Explore (3 sub-views)
+│       ├── export/              # Tab 4 — Export
+│       └── widgets/             # File browser, peptide input widget
+├── cli/                         # Headless runner (imports mspecviz.*)
+│   ├── main.py                  # Entry point
+│   ├── pipeline.py              # Stage orchestration
+│   ├── config.py                # CLIConfig dataclass + loaders
+│   ├── config_builder.py        # 3-layer precedence merger + argparse
+│   ├── exports.py               # DataFrame + plot export
+│   └── config/                  # Example YAML configs
+├── tests/                       # Unit + integration + GUI tests (pytest)
+│   ├── cli/                     # CLI integration tests
+│   ├── mspecviz/                # Core package tests (grouped by subpackage)
+│   └── streamlit/               # GUI + export-pipeline tests
+└── docs/                        # Reading guides (this README points into them)
+```
+
+**Rules the codebase follows:**
+
+- `mspecviz/` must never import from `streamlit_app/` or `cli/` — the core
+  stays testable and reusable.
+- Both `streamlit_app/` and `cli/` depend on `mspecviz/`; anything shared
+  between the two goes into `mspecviz/` (usually `mspecviz/pipeline/` for
+  orchestration or `mspecviz/common/` for pure helpers).
+- No `.py` file exceeds 250 lines; no folder contains more than 10 scripts.
+  When a module grows past either cap, split it into a subpackage with a
+  re-exporting `__init__.py`.
+
+A per-subpackage tour lives in [docs/architecture/core.md](docs/architecture/core.md).
+
+---
+
+## Configuration at a glance
+
+MSpecViz reads configuration from three sources. Full reference with every
+key documented is in [docs/settings/overview.md](docs/settings/overview.md);
+here is the map:
+
+| File | Scope | What it controls |
+|---|---|---|
+| `streamlit_app/config/settings.json` | App-wide, rarely changed | Koina model catalogue, allowed ion types, default data directory, performance tuning, ion color palette, export format defaults |
+| `streamlit_app/config/default-parameters.json` | Per-workspace initial values | Per-run parameters a user typically tweaks (target peptides, tolerances, export dir, intensity mode, Koina flags) |
+| `workspaces/<name>/params.json` | One per workspace | Materialized copy of `default-parameters.json` plus any UI overrides; written automatically by `page_setup()` |
+| `cli/config/*.yaml` | One per CLI run | YAML config combining input files, peptides, annotation, export, and Koina sections |
+| Command-line flags | Single invocation | Override any YAML field on a single run (`--workers`, `--mz-tolerance`, …) |
+
+**Precedence for CLI runs:** `settings.json` < YAML < CLI flags.
+
+**Precedence for Streamlit runs:** `settings.json` < workspace `params.json` <
+live widget state in session.
 
 ---
 
 ## Running Tests
 
 ```bash
-pytest tests/ -v
+conda run -n mspecviz python -m pytest tests/ -v
+```
+
+Test groups, mirroring the source layout:
+
+- `tests/mspecviz/` — unit + integration tests for the core (grouped into
+  `loading/`, `annotation/`, `dataframes/`, `plotting/` subfolders)
+- `tests/cli/` — CLI integration tests (invoke `python -m cli` as a
+  subprocess)
+- `tests/streamlit/` — GUI smoke tests (via `streamlit.testing.v1.AppTest`)
+  plus export-pipeline unit tests
+
+Marker-driven selection:
+
+```bash
+pytest tests/ -v -m "not integration"    # skip the slower end-to-end tests
+pytest tests/mspecviz/annotation/ -v     # just the annotation subpackage
 ```
 
 ---
 
-## Project Structure
+## Troubleshooting
 
-The project is split into three top-level packages so core functionality can be
-tested independently of the Streamlit UI and CLI runners:
+See the "Troubleshooting" section of
+[docs/quickstart.md](docs/quickstart.md#troubleshooting) for the common
+failure modes (missing files, empty peptide matches, Koina connectivity,
+permission errors on export).
 
-```
-MSpecViz/
-├── mspecviz/                  # Core package — pure Python, no Streamlit imports
-│   ├── peptide_search.py      # idXML search + PSM counting
-│   ├── spectrum_loader.py     # Stream spectra from mzML files
-│   ├── peak_annotation.py     # Theoretical fragment generation + annotation
-│   ├── insight_dataframes.py  # Polars LazyFrames for openms_insight
-│   ├── mirror_plot.py         # Plotly interactive + Matplotlib static plots
-│   ├── spectrum_metrics.py    # 7 comparison metrics + formatting
-│   ├── summary_plots.py       # Dual-axis, ridgeline, heatmap summary plots
-│   ├── koina_prediction.py    # Koina AI prediction (16 models)
-│   ├── plot_worker.py         # Parallel plot generation (ProcessPoolExecutor)
-│   ├── query_processing.py    # Shared CLI / Streamlit pipeline helpers
-│   ├── export_dirs.py         # Versioned export directories with fingerprinting
-│   ├── path_utils.py          # Path disambiguation helpers
-│   └── common/                # Pure helpers (ion colors, text utilities)
-├── streamlit_app/             # Streamlit UI (self-contained)
-│   ├── app.py                 # Streamlit entry point (navigation only)
-│   ├── .streamlit/            # Streamlit server config (CWD-relative)
-│   │   └── config.toml
-│   ├── config/                # App-wide Streamlit config
-│   │   ├── settings.json      # App-wide settings (ion types, tolerances, Koina…)
-│   │   └── default-parameters.json  # Defaults applied to each new workspace
-│   ├── utils/state.py         # page_setup(), workspace management, sidebar
-│   └── views/                 # One module per page
-│       ├── setup.py           # Setup page
-│       ├── search_load.py     # Search & Load page
-│       ├── explore.py         # Explore page (3 sub-views)
-│       ├── export.py          # Export page
-│       └── page_state.py      # Session state helpers shared across views
-├── cli/                       # Terminal runner
-│   ├── main.py                # Pipeline orchestration, argparse, progress bars
-│   ├── __main__.py            # Enables `python -m cli`
-│   └── config/                # Example YAML configs (CLI-only)
-├── tests/                     # Unit + integration + GUI tests (pytest)
-└── docs/                      # Documentation
-```
+For deeper issues:
 
----
-
-## Configuration
-
-Application defaults are defined in `streamlit_app/config/settings.json`:
-
-- **ion_types** -- Default fragment ion types for annotation (default: b, y)
-- **mz_tolerance** -- m/z matching tolerance in Da (default: 0.02)
-- **annotation** -- Neutral losses, first prefix ion, precursor peak removal
-- **koina** -- Default AI prediction model, collision energy, instrument type
-- **performance** -- Worker count, cache size, chunk size
-- **export** -- Default output directory, image formats, DPI, figure size
-- **ion_colors** -- Color assignments for each ion type in plots
-
-All settings can be overridden through the Setup tab in the UI.
-
----
-
-## Documentation
-
-| Guide | Description |
-|---|---|
-| [Quick Start](docs/QUICKSTART.md) | 4-tab workflow walkthrough with test data |
-| [Metrics Reference](docs/METRICS.md) | All 7 comparison metrics and 17 IMS statistics with formulas |
-| [Export Reference](docs/EXPORT.md) | Export directory structure, file formats, and schemas |
+- Streamlit components render blank → confirm `openms_insight 0.1.11` is
+  installed (`pip show openms_insight`) and restart the server.
+- Stale cache after fixing a loading bug → delete the workspace's
+  `.mspecviz_cache/` directory. The app never invalidates its own Parquet
+  cache automatically.
+- Worker processes crash silently → re-run with `--workers 1` (CLI) or set
+  the workers slider to 1 in the Setup tab to surface the real error.
