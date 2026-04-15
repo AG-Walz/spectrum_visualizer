@@ -14,7 +14,7 @@ import streamlit as st
 
 from mspecviz.common.parallel import run_tasks
 from mspecviz.common.text_utils import parse_peptide_list
-from mspecviz.peptide_search import count_psms_per_peptide
+from mspecviz.search import count_psms_per_peptide
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 

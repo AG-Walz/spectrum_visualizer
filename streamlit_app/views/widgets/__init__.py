@@ -1,0 +1,1 @@
+"""Reusable Streamlit widgets shared across views (file browser, peptide input)."""

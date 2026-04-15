@@ -1,0 +1,98 @@
+"""Classic dual-axis summary plot: horizontal count bars + metric boxplots."""
+from typing import Tuple
+
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt  # noqa: E402
+from matplotlib.figure import Figure  # noqa: E402
+from matplotlib.lines import Line2D  # noqa: E402
+from matplotlib.patches import Patch  # noqa: E402
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
+
+from mspecviz.plotting.summary_orchestration import (
+    DEFAULT_METRIC,
+    SUMMARY_COLORS,
+    _auto_height,
+    _metric_label,
+    _style_ax,
+    _subsample_group,
+)
+
+
+def plot_classic_dual_axis(
+    raw_df: pd.DataFrame,
+    agg_df: pd.DataFrame,
+    metric: str = DEFAULT_METRIC,
+    figsize: Tuple[float, float] = None,
+    dpi: int = 300,
+    title: str = None,
+) -> Figure:
+    """Horizontal count bars + metric boxplots."""
+    agg_df = agg_df.sort_values("count", ascending=False).reset_index(drop=True)
+
+    n = len(agg_df)
+    if figsize is None:
+        figsize = (14, _auto_height(n))
+
+    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    y_pos = np.arange(n)
+    labels = agg_df["peptidoform"].values
+
+    ax.barh(y_pos, agg_df["count"].values, height=0.65, color=SUMMARY_COLORS["bar"],
+            alpha=0.55, edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5, zorder=1)
+    ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
+    ax.invert_yaxis()
+    _style_ax(ax, remove_top=False)
+
+    ax2 = ax.twiny()
+    for i, pf in enumerate(labels):
+        vals = _subsample_group(raw_df[raw_df["peptidoform"] == pf], metric)
+        if len(vals) < 2:
+            ax2.scatter(vals, [i] * len(vals), s=15, color=SUMMARY_COLORS["scatter"],
+                        alpha=0.8, zorder=4)
+            continue
+
+        q1, med, q3 = np.percentile(vals, [25, 50, 75])
+        iqr = q3 - q1
+        wlo = max(vals.min(), q1 - 1.5 * iqr)
+        whi = min(vals.max(), q3 + 1.5 * iqr)
+        outliers = vals[(vals < wlo) | (vals > whi)]
+
+        ax2.bxp(
+            [dict(med=med, q1=q1, q3=q3, whislo=wlo, whishi=whi, fliers=outliers)],
+            positions=[i], vert=False, widths=0.35, patch_artist=True, showfliers=True,
+            boxprops=dict(facecolor=SUMMARY_COLORS["box_fill"], edgecolor=SUMMARY_COLORS["box"],
+                          linewidth=0.8, alpha=0.85),
+            whiskerprops=dict(color=SUMMARY_COLORS["box"], linewidth=0.8),
+            capprops=dict(color=SUMMARY_COLORS["box"], linewidth=0.8),
+            medianprops=dict(color=SUMMARY_COLORS["box"], linewidth=1.5),
+            flierprops=dict(marker=".", markersize=3, markerfacecolor=SUMMARY_COLORS["scatter"],
+                            markeredgecolor="none", alpha=0.4),
+        )
+
+    if not title:
+        ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
+    ax2.set_xlim(-0.05, 1.05)
+    ax2.spines["bottom"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    ax.set_yticks(y_pos)
+    ax.set_yticklabels(labels, fontsize=8)
+
+    legend_elements = [
+        Patch(facecolor=SUMMARY_COLORS["bar"], alpha=0.55, edgecolor=SUMMARY_COLORS["bar_edge"],
+              label="Peptide Count"),
+        Line2D([0], [0], color=SUMMARY_COLORS["box"], marker="s", markersize=6,
+               markerfacecolor=SUMMARY_COLORS["box_fill"], linestyle="-", linewidth=0.8,
+               label=f"{_metric_label(metric)}"),
+    ]
+    ax.legend(handles=legend_elements, loc="upper left", bbox_to_anchor=(0.0, -0.04),
+              fontsize=9, framealpha=0.9, ncol=2)
+
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
+        fig.subplots_adjust(left=0.22, top=0.92)
+    else:
+        fig.subplots_adjust(left=0.22, top=0.96)
+    return fig

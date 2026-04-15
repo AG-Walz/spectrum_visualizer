@@ -1,5 +1,5 @@
 """
-CLI plot generation — thin orchestration over :mod:`mspecviz.plot_worker`.
+CLI plot generation — thin orchestration over :mod:`mspecviz.plotting`.
 
 ``build_plot_tasks`` emits :class:`ComparisonTask` instances; this module
 just selects the fmt dirs, dispatches via :func:`run_tasks`, and tallies
@@ -14,8 +14,8 @@ matplotlib.use("Agg")
 
 from mspecviz.common.parallel import run_tasks
 from mspecviz.export_dirs import sanitize_filename
-from mspecviz.plot_worker import ComparisonResult, ComparisonTask, process_single_task
-from mspecviz.query_processing import build_plot_tasks
+from mspecviz.plotting import ComparisonResult, ComparisonTask, process_single_task
+from mspecviz.pipeline import build_plot_tasks
 
 logger = logging.getLogger("mspecviz.cli")
 

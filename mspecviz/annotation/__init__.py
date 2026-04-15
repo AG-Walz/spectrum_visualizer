@@ -1,0 +1,58 @@
+"""Peak annotation and spectrum comparison metrics.
+
+Re-exports the public API of the four submodules so callers can keep using
+``from mspecviz.annotation import ...`` without caring which file a name lives in.
+"""
+from mspecviz.annotation.peak_theory import (
+    ALL_ION_TYPES,
+    DEFAULT_ION_TYPES,
+    generate_theoretical_fragments,
+    peptidoform_to_aasequence,
+)
+from mspecviz.annotation.peak_matching import (
+    annotate_spectrum,
+    calculate_annotation_stats,
+    prepare_koina_spectrum_for_plot,
+    prepare_spectrum_for_plot,
+)
+from mspecviz.annotation.metrics_intensity import (
+    compute_cosine_similarity,
+    compute_r2_binned,
+    compute_r2_matching,
+)
+from mspecviz.annotation.metrics_set import (
+    METRIC_SHORT_TO_DISPLAY,
+    compute_all_metrics,
+    compute_shared_peak_dice,
+    compute_shared_peak_jaccard,
+    compute_shared_peak_ratio,
+    compute_spectral_entropy_similarity,
+    format_metrics_text,
+    shorten_filenames,
+)
+
+__all__ = [
+    # peak_theory
+    "ALL_ION_TYPES",
+    "DEFAULT_ION_TYPES",
+    "generate_theoretical_fragments",
+    "peptidoform_to_aasequence",
+    # peak_matching
+    "annotate_spectrum",
+    "calculate_annotation_stats",
+    "prepare_koina_spectrum_for_plot",
+    "prepare_spectrum_for_plot",
+    # metrics_intensity
+    "compute_cosine_similarity",
+    "compute_r2_binned",
+    "compute_r2_matching",
+    # metrics_set
+    "METRIC_SHORT_TO_DISPLAY",
+    "compute_all_metrics",
+    "compute_shared_peak_dice",
+    "compute_shared_peak_jaccard",
+    "compute_shared_peak_ratio",
+    "compute_spectral_entropy_similarity",
+    "format_metrics_text",
+    "shorten_filenames",
+]

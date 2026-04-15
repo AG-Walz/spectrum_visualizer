@@ -1,7 +1,7 @@
 """
 Intensity normalization helpers.
 
-Both ``mspecviz.mirror_plot`` and ``mspecviz.peak_annotation`` need the same
+Both ``mspecviz.plotting`` and ``mspecviz.annotation`` need the same
 "divide intensity by its max, unless max is zero" pattern. Centralising the
 check means a fix to the degenerate-input case (empty df / all-zero) lands in
 one place rather than drifting between modules.

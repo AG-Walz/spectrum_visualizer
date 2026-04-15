@@ -1,0 +1,1 @@
+"""Unit, integration, and GUI tests for MSpecViz (run with pytest)."""

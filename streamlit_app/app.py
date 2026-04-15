@@ -20,9 +20,9 @@ if __name__ == '__main__':
     pages = {
         str(st.session_state.settings["app-name"]): [
             st.Page(views / "setup.py", title="Setup", icon="⚙️"),
-            st.Page(views / "search_load.py", title="Search & Load", icon="🔍"),
-            st.Page(views / "explore.py", title="Explore", icon="🔬"),
-            st.Page(views / "export.py", title="Export", icon="📦"),
+            st.Page(views / "search_load" / "page.py", title="Search & Load", icon="🔍"),
+            st.Page(views / "explore" / "page.py", title="Explore", icon="🔬"),
+            st.Page(views / "export" / "page.py", title="Export", icon="📦"),
         ],
     }
 

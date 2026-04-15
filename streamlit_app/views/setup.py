@@ -14,7 +14,7 @@ from streamlit_app.views.widgets.peptide_input import render_peptide_input
 from mspecviz.common.text_utils import get_nested as get_settings_value
 
 try:
-    from mspecviz.koina_prediction import (
+    from mspecviz.spectra import (
         KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
         DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
         get_koina_settings,
