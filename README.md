@@ -150,14 +150,29 @@ reshuffling data directories.
 
 ### CLI (headless pipeline)
 
-Run from the project root:
+1. Copy the bundled example to a run-specific file and edit the paths at
+   the top (inputs, peptides, reference substring, export directory):
 
-```bash
-python -m cli -c cli/config/config_example.yaml
-```
+   ```bash
+   cp cli/config/config_example.yaml cli/config/my_run.yaml
+   ```
 
-See [docs/quickstart.md](docs/quickstart.md) for a walkthrough with test data,
-and [docs/cli/usage.md](docs/cli/usage.md) for the full CLI reference.
+   The example lists **every** field the CLI understands, grouped by how
+   often you need to touch it (required inputs first, sensible defaults in
+   the middle, Koina / advanced knobs at the bottom). Most runs only need
+   the first block.
+
+2. Run from the project root:
+
+   ```bash
+   python -m cli -c cli/config/my_run.yaml
+   ```
+
+Any field can be overridden on a single invocation with a flag — for
+example `--workers 8 --mz-tolerance 0.05`. See the comment block at the
+bottom of the example YAML, or [docs/cli/usage.md](docs/cli/usage.md) for
+the full CLI reference. See [docs/quickstart.md](docs/quickstart.md) for a
+walkthrough with the bundled test data.
 
 ---
 

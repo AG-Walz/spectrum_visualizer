@@ -1,0 +1,141 @@
+# =============================================================================
+# MSpecViz CLI — Example Configuration
+# =============================================================================
+#
+# Every field the CLI understands is listed below. The layout mirrors the
+# precedence order: settings.json (defaults) < this YAML < command-line flags.
+#
+# The top block ("You almost always edit these") holds the per-run knobs a
+# typical user changes; the lower blocks ("Sensible defaults" and "Advanced")
+# rarely need to be touched. Commented-out fields fall back to the built-in
+# defaults shown after the `#` on the same line.
+#
+# Run:
+#   python -m cli -c cli/config/config_example.yaml
+#   python -m cli -c cli/config/config_example.yaml --workers 8 --verbose
+#   python -m cli -c cli/config/config_example.yaml --mz-tolerance 0.05
+#
+# Full reference: docs/cli/usage.md and docs/settings/cli.md
+# =============================================================================
+
+
+# =============================================================================
+#  1. You almost always edit these
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Input files
+# -----------------------------------------------------------------------------
+# Glob patterns are supported (`*`, `**`, `?`). Paths can be absolute or
+# relative to the current working directory.
+input:
+  idxml_files:
+    - /mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML
+  mzml_files:
+    - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
+
+# -----------------------------------------------------------------------------
+# Target peptides — three ways to specify
+# -----------------------------------------------------------------------------
+#   "all"                          extract every unique peptide from the idXMLs
+#   "/path/to/peptides.txt"        file with one peptide per line
+#   [PEPTIDE1, PEPTIDE2, ...]      inline YAML list
+peptides: /mnt/volume/nacho/data/peptide_lists/peptides.txt
+
+# -----------------------------------------------------------------------------
+# Reference identification
+# -----------------------------------------------------------------------------
+# Substring used to pick which mzML files are references. The rest become
+# queries. Leave empty to skip mirror plots and run in single-spectrum mode
+# (Koina still produces references if enabled).
+reference:
+  substring: ""
+
+# -----------------------------------------------------------------------------
+# Export — where the results land
+# -----------------------------------------------------------------------------
+export:
+  directory: ./exports                 # base path for versioned run dirs
+  project_name: MSpecViz_analysis      # prefix of the run dir name
+  formats: [png]                       # any of: png, svg, pdf, html
+  dpi: 300                             # raster resolution for png/pdf
+  figsize: [12, 8]                     # [width, height] in inches
+  plot_unpaired: false                 # also render queries with no reference
+  # summary_metric: R² binned          # metric for summary plots
+  # summary_plot_types: [dual_axis, ridgeline]
+
+
+# =============================================================================
+#  2. Sensible defaults (edit when you need to)
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Annotation
+# -----------------------------------------------------------------------------
+annotation:
+  ion_types: [b, y]                    # available: a, b, c, x, y, z, precursor, immonium
+  mz_tolerance: 0.02                   # Da
+  add_losses: false                    # neutral losses (H2O, NH3)
+  add_first_prefix_ion: true           # include the a1/b1/c1 ion
+  remove_precursor_peaks: false        # mask peaks near the precursor m/z
+  intensity_mode: Relative             # "Relative" (0–1, base-peak normalised) or "Raw"
+
+# -----------------------------------------------------------------------------
+# Performance
+# -----------------------------------------------------------------------------
+performance:
+  workers: 4                           # 1 = sequential (easier debugging)
+
+
+# =============================================================================
+#  3. Advanced / optional
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# Koina AI prediction
+# -----------------------------------------------------------------------------
+# When enabled, Koina generates a predicted reference for every query that
+# lacks an experimental one. Requires network access to koina.wilhelmlab.org.
+koina:
+  enabled: true
+  model: ms2pip_timsTOF2024
+  collision_energy: 35
+  instrument_type: TIMSTOF
+  #
+  # Available models (see streamlit_app/config/settings.json → "models"):
+  #   ms2pip_timsTOF2024, ms2pip_HCD2021, ms2pip_Immuno_HCD, ms2pip_TTOF5600,
+  #   ms2pip_CID_TMT, ms2pip_iTRAQphospho,
+  #   Prosit_2019_intensity, Prosit_2020_intensity_HCD, Prosit_2020_intensity_CID,
+  #   Prosit_2020_intensity_TMT, Prosit_2023_intensity_timsTOF,
+  #   AlphaPept_ms2_generic, UniSpec, PredFull
+  #
+  # Common instrument_type values: TIMSTOF, QE, LUMOS, ELITE.
+  # Collision energies are model-specific — 30–40 works well for timsTOF /
+  # Orbitrap HCD workflows.
+
+
+# =============================================================================
+#  Command-line overrides (reference)
+# =============================================================================
+#
+# Any YAML field above can be overridden on a single run with a flag:
+#
+#   --idxml PATTERN [PATTERN ...]     override input.idxml_files
+#   --mzml PATTERN [PATTERN ...]      override input.mzml_files
+#   --peptides PATH_OR_ALL            override peptides
+#   --reference-substring STR         override reference.substring
+#   --ion-types ION [ION ...]         override annotation.ion_types
+#   --mz-tolerance DA                 override annotation.mz_tolerance
+#   --export-dir DIR                  override export.directory
+#   --project-name NAME               override export.project_name
+#   --formats FMT [FMT ...]           override export.formats
+#   --workers N                       override performance.workers
+#   --koina-model ID                  override koina.model
+#   --koina-ce EV                     override koina.collision_energy
+#   --koina-instrument TYPE           override koina.instrument_type
+#   --no-plots                        skip plot generation (CSV/Parquet only)
+#   --no-koina                        disable Koina AI fallback
+#   -v / --verbose                    DEBUG logging
+#   -q / --quiet                      suppress non-error output
+#
+# See docs/cli/usage.md for the full CLI reference.

@@ -33,6 +33,10 @@ tools/
 
 # User-specific configs (contain local paths)
 config/
+# …but keep the CLI example config committed so the README can reference it
+!cli/config/
+cli/config/*
+!cli/config/config_example.yaml
 
 # IDE
 .vscode/
