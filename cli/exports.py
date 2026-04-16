@@ -67,13 +67,17 @@ def _build_run_settings(cfg: CLIConfig) -> dict:
         "idxml_files": cfg.idxml_files, "mzml_files": cfg.mzml_files,
         "peptides": cfg.peptides, "reference_substring": cfg.reference_substring,
         "ion_types": cfg.ion_types, "mz_tolerance": cfg.mz_tolerance,
-        "add_losses": cfg.add_losses, "add_first_prefix_ion": cfg.add_first_prefix_ion,
+        "add_neutral_losses": cfg.add_neutral_losses,
+        "add_first_prefix_ion": cfg.add_first_prefix_ion,
         "remove_precursor_peaks": cfg.remove_precursor_peaks,
         "intensity_mode": cfg.intensity_mode,
         "koina_enabled": cfg.koina_enabled, "koina_model": cfg.koina_model,
-        "koina_ce": cfg.koina_ce, "koina_instrument": cfg.koina_instrument,
-        "export_formats": cfg.export_formats, "dpi": cfg.dpi,
-        "figsize": list(cfg.figsize),
+        "koina_collision_energy": cfg.koina_collision_energy,
+        "koina_instrument_type": cfg.koina_instrument_type,
+        "export_formats": cfg.export_formats, "export_dpi": cfg.export_dpi,
+        "figure_size": list(cfg.figure_size),
+        "summary_metric": cfg.summary_metric,
+        "summary_plot_types": list(cfg.summary_plot_types),
     }
 
 
@@ -81,7 +85,7 @@ def prepare_export_dir(cfg: CLIConfig):
     """Phase 3: resolve/create the versioned export directory + fmt subfolders."""
     run_settings = _build_run_settings(cfg)
     root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
-        cfg.export_dir, cfg.project_name, run_settings,
+        cfg.export_directory, cfg.project_name, run_settings,
     )
     commit_export_directory(root_dir, run_settings)
     for fmt in cfg.export_formats:

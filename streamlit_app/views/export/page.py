@@ -18,7 +18,7 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import apply_run_settings, restore_analysis_if_needed
-from mspecviz.common.constants import DEFAULTS
+from mspecviz.common.defaults import DEFAULTS
 
 from streamlit_app.views.export.gallery import _render_plot_gallery
 from streamlit_app.views.export.pipeline import _run_export
@@ -139,11 +139,11 @@ def export_controls_fragment():
 
     workspace = st.session_state.get("workspace", None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
-    export_default = params.get("export-dir", "") or export_fallback
+    export_default = params.get("export_directory", "") or export_fallback
     st.text_input(
         "Export Directory",
         value=export_default,
-        key="export-dir",
+        key="export_directory",
     )
 
     export_col1, export_col2 = st.columns(2)
@@ -163,7 +163,7 @@ def export_controls_fragment():
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
         _run_export(
             params,
-            get_param(params, "export-dir", DEFAULTS["export-dir"]) or export_fallback,
+            get_param(params, "export_directory", "") or export_fallback,
             export_parquet, export_csv, export_mirror,
             export_summary, export_html,
         )
@@ -178,7 +178,7 @@ def render():
 
     workspace = st.session_state.get("workspace", None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
-    export_dir = get_param(params, "export-dir", DEFAULTS["export-dir"]) or export_fallback
+    export_dir = get_param(params, "export_directory", "") or export_fallback
 
     st.markdown("---")
     export_history_fragment(export_dir)

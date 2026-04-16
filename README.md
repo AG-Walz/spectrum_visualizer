@@ -33,7 +33,7 @@ guides are reference material organised by topic, with each file kept under
 **Settings**
 - [Overview](docs/settings/overview.md) — precedence rules + quick-lookup table
 - [`settings.json`](docs/settings/app.md) — every app-wide key explained
-- [Workspace + session state](docs/settings/workspace.md) — `default-parameters.json`, `params.json`, `peptide_mirror.*` keys
+- [Workspace + session state](docs/settings/workspace.md) — `params.json`, `peptide_mirror.*` keys, `DEFAULTS` fallbacks
 - [CLI YAML + flags](docs/settings/cli.md) — every CLI field and command-line flag
 
 **CLI**
@@ -196,8 +196,7 @@ MSpecViz/
 │   ├── app.py                   # st.navigation entry point
 │   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)
 │   ├── config/
-│   │   ├── settings.json        # App-wide defaults
-│   │   └── default-parameters.json  # Per-workspace initial values
+│   │   └── settings.json        # App-wide env config & enumerations
 │   ├── utils/
 │   │   ├── state/               # page_setup, workspaces, param I/O
 │   │   └── page_state.py        # Session-state namespace helpers
@@ -238,22 +237,24 @@ A per-subpackage tour lives in [docs/architecture/core.md](docs/architecture/cor
 
 ## Configuration at a glance
 
-MSpecViz reads configuration from three sources. Full reference with every
-key documented is in [docs/settings/overview.md](docs/settings/overview.md);
-here is the map:
+MSpecViz reads configuration from a small set of sources. Full reference
+with every key documented is in
+[docs/settings/overview.md](docs/settings/overview.md); here is the map:
 
 | File | Scope | What it controls |
 |---|---|---|
-| `streamlit_app/config/settings.json` | App-wide, rarely changed | Koina model catalogue, allowed ion types, default data directory, performance tuning, ion color palette, export format defaults |
-| `streamlit_app/config/default-parameters.json` | Per-workspace initial values | Per-run parameters a user typically tweaks (target peptides, tolerances, export dir, intensity mode, Koina flags) |
-| `workspaces/<name>/params.json` | One per workspace | Materialized copy of `default-parameters.json` plus any UI overrides; written automatically by `page_setup()` |
+| `mspecviz/common/defaults.py` (`DEFAULTS`) | Single source of truth for tunable defaults | Every parameter's fallback value (ion types, tolerances, export DPI, Koina settings, …) |
+| `streamlit_app/config/settings.json` | App-wide environmental config | Koina model catalogue, allowed ion types, data directory, performance tuning, ion color palette |
+| `workspaces/<name>/params.json` | One per workspace | Sparse record of user-edited widget values; missing keys fall back to `DEFAULTS` |
 | `cli/config/*.yaml` | One per CLI run | YAML config combining input files, peptides, annotation, export, and Koina sections |
 | Command-line flags | Single invocation | Override any YAML field on a single run (`--workers`, `--mz-tolerance`, …) |
 
-**Precedence for CLI runs:** `settings.json` < YAML < CLI flags.
+**Precedence for CLI runs:** `DEFAULTS` < YAML < CLI flags.
 
-**Precedence for Streamlit runs:** `settings.json` < workspace `params.json` <
-live widget state in session.
+**Precedence for Streamlit runs:** `DEFAULTS` < workspace `params.json`
+< live widget state in session. (`settings.json` is read in parallel for
+environmental config and enumerations; it does not supply tunable
+defaults.)
 
 ---
 

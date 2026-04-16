@@ -18,7 +18,7 @@ from mspecviz.annotation import (
     compute_all_metrics,
     format_metrics_text,
 )
-from mspecviz.common.constants import DEFAULTS
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.pipeline import build_psm_to_variant_mapping, format_spectrum_labels
 from mspecviz.plotting import create_plotly_mirror_plot, create_plotly_single_plot
 
@@ -64,7 +64,7 @@ def mirror_plots_fragment(params: dict):
     variant_key = psm_id_to_variant_key.get(selected_psm_id)
     refs = reference_store.get(variant_key, []) if variant_key else []
 
-    normalize = get_param(params, "intensity-mode", DEFAULTS["intensity-mode"]) == "Relative"
+    normalize = get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative"
 
     if refs:
         for ref_spec, ref_df in refs:

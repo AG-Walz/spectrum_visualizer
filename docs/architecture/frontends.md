@@ -11,8 +11,7 @@ streamlit_app/
 ├── app.py                      # st.navigation + st.Page entry point
 ├── .streamlit/config.toml      # server config (picked up from CWD)
 ├── config/
-│   ├── settings.json           # app-wide defaults
-│   └── default-parameters.json # initial values for new workspaces
+│   └── settings.json           # app-wide env config & enumerations
 ├── utils/
 │   ├── page_state.py           # session-state namespace helpers
 │   └── state/                  # page_setup, workspace mgmt, sidebar
@@ -47,9 +46,10 @@ list of public keys: [../settings/workspace.md#session-state-keys](../settings/w
 list. Everything else in the folder is a support module.
 
 **Workspaces.** Managed by `utils/state/workspace.py`. Each workspace is a
-directory under `workspaces/` with its own `params.json` — a materialized
-copy of `default-parameters.json` merged with any user edits. The active
-workspace lives in `st.session_state["workspace"]`.
+directory under `workspaces/` with its own `params.json` — a sparse
+record of user-edited widget values. Missing keys fall back to
+`mspecviz.common.defaults.DEFAULTS`. The active workspace lives in
+`st.session_state["workspace"]`.
 
 ---
 

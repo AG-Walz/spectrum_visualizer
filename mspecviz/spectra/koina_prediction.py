@@ -14,6 +14,11 @@ from typing import Dict, Optional
 import pandas as pd
 
 from mspecviz.annotation.peak_theory import peptidoform_to_aasequence
+from mspecviz.common.defaults import (
+    DEFAULT_KOINA_COLLISION_ENERGY,
+    DEFAULT_KOINA_INSTRUMENT_TYPE,
+    DEFAULT_KOINA_MODEL,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +51,11 @@ KOINA_MODELS: Dict[str, str] = {
 
 INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
-DEFAULT_MODEL = "ms2pip_timsTOF2024"
-DEFAULT_COLLISION_ENERGY = 35
-DEFAULT_INSTRUMENT_TYPE = "TIMSTOF"
+# Re-export for back-compat with call sites that imported DEFAULT_* from here.
+# The canonical source is ``mspecviz.common.defaults``.
+DEFAULT_MODEL = DEFAULT_KOINA_MODEL
+DEFAULT_COLLISION_ENERGY = DEFAULT_KOINA_COLLISION_ENERGY
+DEFAULT_INSTRUMENT_TYPE = DEFAULT_KOINA_INSTRUMENT_TYPE
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:

@@ -12,7 +12,8 @@ from typing import Any
 
 import streamlit as st
 
-from mspecviz.common.constants import DEFAULTS, STATE_PREFIX  # noqa: F401
+from mspecviz.common.constants import STATE_PREFIX  # noqa: F401
+from mspecviz.common.defaults import DEFAULTS  # noqa: F401  (re-exported for views)
 
 OS_PLATFORM = sys.platform
 
@@ -31,12 +32,12 @@ def get_state_key(key: str) -> str:
 def _persisted_key(key: str) -> str:
     """Non-widget backup key that survives page navigation.
 
-    Widget keys (``'ion-types'``) get garbage-collected by Streamlit when the
-    owning page unmounts. Fragments mirror the value into a second key that
-    replaces hyphens with underscores and adds a ``_persisted`` suffix; this
-    helper builds that key so the convention lives in exactly one place.
+    Widget keys (``'ion_types'``) get garbage-collected by Streamlit when the
+    owning page unmounts. Fragments mirror the value into a second key with a
+    ``_persisted`` suffix; this helper builds that key so the convention lives
+    in exactly one place.
     """
-    return get_state_key(key.replace("-", "_") + "_persisted")
+    return get_state_key(key + "_persisted")
 
 
 def get_param(params: dict, key: str, default: Any = None) -> Any:

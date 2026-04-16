@@ -16,7 +16,7 @@ import polars as pl
 from openms_insight import Heatmap, LinePlot, SequenceView, StateManager, Table
 
 from streamlit_app.utils.state import get_param, get_state_key
-from mspecviz.common.constants import DEFAULTS
+from mspecviz.common.defaults import DEFAULTS
 
 
 def _create_component(cls, cache_id, cache_path, needs_regeneration, **kwargs):
@@ -47,7 +47,7 @@ def _needs_cache_regen():
 @st.fragment
 def openms_insight_explorer_fragment(params: dict):
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    export_dir = get_param(params, "export-dir", DEFAULTS["export-dir"])
+    export_dir = get_param(params, "export_directory", "")
     CACHE_PATH = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(CACHE_PATH, exist_ok=True)
 
@@ -100,8 +100,8 @@ def openms_insight_explorer_fragment(params: dict):
         sequence_data=seq_lf, peaks_data=peaks_for_sv,
         filters={"selected_psm": "psm_id"},
         annotation_config={
-            "ion_types": get_param(params, "ion-types", DEFAULTS["ion-types"]),
-            "tolerance": get_param(params, "mz-tolerance", DEFAULTS["mz-tolerance"]),
+            "ion_types": get_param(params, "ion_types", DEFAULTS.ion_types),
+            "tolerance": get_param(params, "mz_tolerance", DEFAULTS.mz_tolerance),
             "tolerance_ppm": False,
         },
         height=350,

@@ -81,7 +81,7 @@ def _run_load(cfg: CLIConfig, vg_copy, psm_lookup, total_psms: int, quiet: bool)
         ion_types=cfg.ion_types,
         mz_tolerance=cfg.mz_tolerance,
         normalize=normalize,
-        add_losses=cfg.add_losses,
+        add_neutral_losses=cfg.add_neutral_losses,
         add_first_prefix_ion=cfg.add_first_prefix_ion,
         remove_precursor_peaks=cfg.remove_precursor_peaks,
     )
@@ -98,8 +98,8 @@ def _run_load(cfg: CLIConfig, vg_copy, psm_lookup, total_psms: int, quiet: bool)
             result, psm_lookup, annotation_kwargs, reference_store,
             koina_enabled=cfg.koina_enabled,
             koina_model=cfg.koina_model,
-            koina_ce=cfg.koina_ce,
-            koina_instrument=cfg.koina_instrument,
+            koina_collision_energy=cfg.koina_collision_energy,
+            koina_instrument_type=cfg.koina_instrument_type,
         )
         if processed is None:
             return

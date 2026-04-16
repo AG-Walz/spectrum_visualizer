@@ -99,17 +99,17 @@ runs).
 | `reference_substring` | Reference file substring filter |
 | `ion_types` | Fragment ion types used for annotation |
 | `mz_tolerance` | m/z matching tolerance in Da |
-| `add_losses` | Whether neutral losses were included |
+| `add_neutral_losses` | Whether neutral losses were included |
 | `add_first_prefix_ion` | Whether first prefix ions were included |
 | `remove_precursor_peaks` | Whether precursor peaks were removed |
 | `intensity_mode` | "Relative" or "Raw" |
 | `koina_enabled` | Whether Koina AI prediction was active |
 | `koina_model` | Koina model ID (if enabled) |
-| `koina_ce` | Collision energy (if enabled) |
-| `koina_instrument` | Instrument type (if enabled) |
+| `koina_collision_energy` | Collision energy (if enabled) |
+| `koina_instrument_type` | Instrument type (if enabled) |
 | `export_formats` | List of output formats (e.g., `["png", "svg"]`) |
-| `dpi` | Image resolution |
-| `figsize` | Figure dimensions `[width, height]` |
+| `export_dpi` | Image resolution |
+| `figure_size` | Figure dimensions `[width, height]` |
 
 The file is human-readable JSON — safe to edit by hand, though the
 `_fingerprint` will no longer match after you do.

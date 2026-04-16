@@ -86,7 +86,7 @@ python -m cli -c my_config.yaml --no-koina
 ```
 
 Any query with no experimental reference is skipped (or emitted as a
-single-spectrum plot when `export.plot_unpaired: true`).
+single-spectrum plot when `export.plot_unpaired_queries: true`).
 
 ### Headless validation on CI
 

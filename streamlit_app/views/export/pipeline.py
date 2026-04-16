@@ -21,7 +21,7 @@ from streamlit_app.utils.state import get_param, get_state_key
 from streamlit_app.utils.page_state import build_run_settings
 from streamlit_app.views.export.gallery import _render_plot_gallery
 from mspecviz.annotation import compute_all_metrics, format_metrics_text
-from mspecviz.common.constants import DEFAULTS
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.text_utils import sanitize_filename
 from mspecviz.pipeline import (
     build_psm_to_variant_mapping,
@@ -65,7 +65,7 @@ def _export_spectrum_plots(params: dict, export_root: Path, do_html: bool):
 
     st.caption(f"  {len(annotated_queries)} annotated spectra in session")
 
-    normalize = get_param(params, "intensity-mode", DEFAULTS["intensity-mode"]) == "Relative"
+    normalize = get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative"
     png_dir = export_root / "png"
     svg_dir = export_root / "svg"
     html_dir = export_root / "html" if do_html else None

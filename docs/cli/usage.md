@@ -40,7 +40,7 @@ python -m cli -c my_config.yaml --no-plots
 python -m cli -c my_config.yaml --no-koina
 
 # Custom output directory
-python -m cli -c my_config.yaml --export-dir /tmp/my_exports
+python -m cli -c my_config.yaml --export-directory /tmp/my_exports
 ```
 
 ---

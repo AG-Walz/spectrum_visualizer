@@ -12,9 +12,10 @@ import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
 
+from mspecviz.common.defaults import DEFAULT_ION_TYPES
+
 logger = logging.getLogger(__name__)
 
-DEFAULT_ION_TYPES = ["b", "y"]
 ALL_ION_TYPES = ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
 
 
@@ -60,7 +61,7 @@ def _generate_fragments_impl(
     charge: int,
     ion_types: tuple,          # tuple (hashable) — converted from list by caller
     max_fragment_charge: int,
-    add_losses: bool,
+    add_neutral_losses: bool,
     add_first_prefix_ion: bool,
 ) -> pd.DataFrame:
     """
@@ -84,7 +85,9 @@ def _generate_fragments_impl(
         params.setValue(f"add_{ion}_ions", "true" if ion in ion_types_list else "false")
 
     params.setValue("add_metainfo", "true")
-    params.setValue("add_losses", "true" if add_losses else "false")
+    # PyOpenMS param name is "add_losses" (their API); we pass our
+    # ``add_neutral_losses`` flag into it.
+    params.setValue("add_losses", "true" if add_neutral_losses else "false")
     params.setValue("add_precursor_peaks", "true")
     params.setValue("add_all_precursor_charges", "true")
     params.setValue("add_first_prefix_ion", "true" if add_first_prefix_ion else "false")
@@ -132,13 +135,13 @@ def generate_theoretical_fragments(
     charge: int = 2,
     ion_types: List[str] = None,
     max_fragment_charge: int = 2,
-    add_losses: bool = False,
+    add_neutral_losses: bool = False,
     add_first_prefix_ion: bool = True,
 ) -> pd.DataFrame:
     """
     Generate theoretical fragment ions for a peptide.
 
-    Results are cached by (peptidoform, charge, ion_types, add_losses,
+    Results are cached by (peptidoform, charge, ion_types, add_neutral_losses,
     add_first_prefix_ion) using functools.lru_cache — identical calls within
     the same process (e.g. many query spectra for the same peptidoform) pay
     the PyOpenMS cost only once.
@@ -148,7 +151,7 @@ def generate_theoretical_fragments(
         charge: Precursor charge state
         ion_types: List of ion types to generate (default: ["b", "y"])
         max_fragment_charge: Maximum charge for fragment ions
-        add_losses: Whether to add neutral loss peaks (H2O, NH3)
+        add_neutral_losses: Whether to add neutral loss peaks (H2O, NH3)
         add_first_prefix_ion: Whether to add first prefix ion (a1, b1)
 
     Returns:
@@ -163,6 +166,6 @@ def generate_theoretical_fragments(
         charge,
         tuple(ion_types),
         max_fragment_charge,
-        add_losses,
+        add_neutral_losses,
         add_first_prefix_ion,
     )

@@ -1,8 +1,12 @@
 """
-Workspace ``params.json`` I/O — load defaults, save widget state.
+Workspace ``params.json`` I/O — load and save widget state per workspace.
 
 Pure I/O only: no Streamlit widgets. The sidebar / page-setup helpers that
 surface these values live in :mod:`streamlit_app.utils.state.sidebar`.
+
+Tunable defaults are owned by :data:`mspecviz.common.defaults.DEFAULTS`.
+When a key is missing from ``params.json``, callers should fall back to
+``DEFAULTS.<key>`` at the call site (see ``get_param``).
 """
 from __future__ import annotations
 
@@ -13,52 +17,25 @@ from typing import Any
 
 import streamlit as st
 
-from streamlit_app.utils.state.core import PROJECT_ROOT, _persisted_key
+from streamlit_app.utils.state.core import _persisted_key
 
 
 def load_params(default: bool = False) -> dict[str, Any]:
-    """Load default-parameters.json, then overlay workspace params.json on top."""
-    default_path = PROJECT_ROOT / "streamlit_app" / "config" / "default-parameters.json"
-    with open(default_path, "r", encoding="utf-8") as f:
-        params = json.load(f)
+    """Load the workspace's ``params.json`` — or an empty dict if none exists.
 
+    Missing keys are not populated here; callers resolve them via
+    ``get_param(params, key, DEFAULTS.<key>)`` so there is exactly one
+    source of truth for default values (``mspecviz.common.defaults``).
+    """
     if default or not st.session_state.settings.get("enable_workspaces", False):
-        return params
+        return {}
 
     path = Path(st.session_state.workspace, "params.json")
-    if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            saved = json.load(f)
+    if not path.exists():
+        return {}
 
-        # Migrate old format: peptide_mirror.X_y -> x-y
-        migrated = False
-        if "peptide_mirror" in saved and isinstance(saved["peptide_mirror"], dict):
-            old = saved["peptide_mirror"]
-            for old_key, value in old.items():
-                short = old_key.replace("peptide_mirror.", "")
-                new_key = short.replace("_", "-")
-                # Prefer old-format value when the flat key is still at its default
-                if new_key in params and saved.get(new_key) == params[new_key]:
-                    saved[new_key] = value
-            # Remove the old dict once migrated
-            del saved["peptide_mirror"]
-            migrated = True
-
-        # Persist migration so it only runs once
-        if migrated:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(saved, f, indent=4)
-
-        # Overlay saved values onto defaults
-        for key in params:
-            if key in saved:
-                params[key] = saved[key]
-        # Also restore any extra keys the workspace had (e.g. browser dirs)
-        for key in saved:
-            if key not in params:
-                params[key] = saved[key]
-
-    return params
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
 
 
 def save_params(params: dict[str, Any]) -> None:

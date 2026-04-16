@@ -85,7 +85,7 @@ class TestPlotCreation:
 
 class TestMirrorPlotExtras:
     def test_figsize_respected(self, spectrum_df):
-        fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), figsize=(10, 6))
+        fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), figure_size=(10, 6))
         size = fig.get_size_inches()
         assert abs(size[0] - 10.0) < 0.1
         assert abs(size[1] - 6.0) < 0.1

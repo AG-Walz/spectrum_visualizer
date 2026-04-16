@@ -57,10 +57,10 @@ def export_mirror_plots(
         normalize=normalize,
         sanitize_fn=sanitize_filename,
         fmt_dirs=fmt_dirs,
-        figsize=cfg.figsize,
-        dpi=cfg.dpi,
+        figure_size=cfg.figure_size,
+        export_dpi=cfg.export_dpi,
         html_dir=html_dir,
-        plot_unpaired=cfg.plot_unpaired,
+        plot_unpaired_queries=cfg.plot_unpaired_queries,
     )
     if not tasks:
         return 0

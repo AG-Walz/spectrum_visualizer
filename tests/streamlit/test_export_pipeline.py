@@ -122,8 +122,8 @@ def _build_session_state(tmp_path):
         "peptide_mirror.cache_version": 1,
         "workspace": tmp_path,
         "settings": {"enable_workspaces": True},
-        "export-dir": str(tmp_path / "exports"),
-        "intensity-mode": "Relative",
+        "export_directory": str(tmp_path / "exports"),
+        "intensity_mode": "Relative",
     }
 
 

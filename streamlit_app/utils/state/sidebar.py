@@ -14,6 +14,8 @@ from typing import Any
 
 import streamlit as st
 
+from mspecviz.common.defaults import DEFAULTS
+
 from streamlit_app.utils.state.core import PROJECT_ROOT, STATE_PREFIX
 from streamlit_app.utils.state.params import load_params, save_params
 from streamlit_app.utils.state.workspace import (
@@ -106,7 +108,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
     logo_path = PROJECT_ROOT / "assets" / "openms_transparent_bg_logo.svg"
     st.set_page_config(
-        page_title=st.session_state.settings.get("app-name", "MSpecViz"),
+        page_title=st.session_state.settings.get("app_name", "MSpecViz"),
         page_icon=str(logo_path) if logo_path.exists() else None,
         layout="wide",
         initial_sidebar_state="auto",
@@ -157,18 +159,18 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
 
         with st.expander("**Settings**"):
             img_formats = ["svg", "png", "jpeg", "webp"]
-            default_format = params.get("image-format", "png")
+            default_format = params.get("image_format", DEFAULTS.image_format)
             if default_format not in img_formats:
-                default_format = "png"
+                default_format = DEFAULTS.image_format
             st.selectbox(
                 "image export format",
                 img_formats,
                 img_formats.index(default_format),
-                key="image-format",
+                key="image_format",
             )
 
         version_info = st.session_state.settings.get("version", "0.1.0")
-        app_name = st.session_state.settings.get("app-name", "MSpecViz")
+        app_name = st.session_state.settings.get("app_name", "MSpecViz")
         st.markdown(
             '<style>.version-box{border:1px solid #a4a5ad;padding:10px;'
             'border-radius:.5rem;text-align:center;display:flex;'

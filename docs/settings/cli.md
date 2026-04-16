@@ -5,17 +5,16 @@ The two configuration surfaces specific to `python -m cli`:
 - a YAML config file (one per run, passed via `-c`)
 - argparse command-line flags (single-invocation overrides)
 
-See [overview.md](overview.md) for how these interact with
-`settings.json`. For invocation recipes and debugging tips, see
-[../cli/usage.md](../cli/usage.md).
+See [overview.md](overview.md) for the precedence order. Defaults come
+from `mspecviz.common.defaults.DEFAULTS`. For invocation recipes and
+debugging tips, see [../cli/usage.md](../cli/usage.md).
 
 ---
 
 ## YAML config structure
 
 Full key list with defaults. Every key is optional except `input.*` and
-`peptides:`. Defaults come from `streamlit_app/config/settings.json`
-unless noted otherwise.
+`peptides:`. Defaults reference `DEFAULTS.<field>`.
 
 ```yaml
 input:
@@ -30,7 +29,7 @@ reference:
 annotation:
   ion_types: [b, y]                # any of: a b c x y z precursor immonium
   mz_tolerance: 0.02               # Da
-  add_losses: false                # H2O + NH3 losses
+  add_neutral_losses: false        # H2O + NH3 losses
   add_first_prefix_ion: true       # include a1/b1/c1
   remove_precursor_peaks: false    # strip precursor before annotating
   intensity_mode: Relative         # "Relative" or "Raw"
@@ -39,15 +38,19 @@ export:
   directory: ./exports             # base output dir
   project_name: MSpecViz_analysis  # subdir prefix
   formats: [png]                   # png svg pdf html (any combo)
-  dpi: 300                         # raster DPI
-  figsize: [12, 8]                 # inches [width, height]
-  plot_unpaired: false             # emit single-spectrum plots when no ref
+  export_dpi: 300                  # raster DPI
+  figure_size: [12, 8]             # inches [width, height]
+  plot_unpaired_queries: false     # emit single-spectrum plots when no ref
 
 performance:
   workers: 4                       # 1 = sequential fallback
 
+summary:
+  metric: "R² binned"              # default summary-plot metric
+  plot_types: [dual_axis, ridgeline]  # any subset of dual_axis, ridgeline, heatmap
+
 koina:
-  enabled: true                    # master switch for AI prediction
+  enabled: false                   # master switch for AI prediction
   model: ms2pip_timsTOF2024        # any model in settings.json > models.available
   collision_energy: 35             # NCE
   instrument_type: TIMSTOF         # QE | LUMOS | TIMSTOF | SCIEXTOF
@@ -85,16 +88,14 @@ the search.
 
 ### `annotation:`
 
-Mirrors `settings.json > annotation` plus two extras that are YAML-only:
-
 | Key | Default | Description |
 |---|---|---|
 | `annotation.ion_types` | `[b, y]` | Fragment ion series. |
 | `annotation.mz_tolerance` | `0.02` | Da. |
-| `annotation.add_losses` | `false` | Neutral losses (H₂O, NH₃). |
+| `annotation.add_neutral_losses` | `false` | Neutral losses (H₂O, NH₃). |
 | `annotation.add_first_prefix_ion` | `true` | Include a1/b1/c1. |
 | `annotation.remove_precursor_peaks` | `false` | Strip precursor peaks before annotation. |
-| `annotation.intensity_mode` | `"Relative"` | `"Relative"` or `"Raw"`. CLI-only key. |
+| `annotation.intensity_mode` | `"Relative"` | `"Relative"` or `"Raw"`. |
 
 ### `export:`
 
@@ -103,21 +104,28 @@ Mirrors `settings.json > annotation` plus two extras that are YAML-only:
 | `export.directory` | `"./exports"` | Base export dir. |
 | `export.project_name` | `"MSpecViz_analysis"` | Directory prefix. |
 | `export.formats` | `[png]` | Any of `png`, `svg`, `pdf`, `html`. Multiple formats can be combined. |
-| `export.dpi` | `300` | Raster DPI. |
-| `export.figsize` | `[12, 8]` | Inches [width, height]. |
-| `export.plot_unpaired` | `false` | When `true`, single-spectrum plots are generated for queries with no reference. When `false`, those queries are skipped. |
+| `export.export_dpi` | `300` | Raster DPI. |
+| `export.figure_size` | `[12, 8]` | Inches [width, height]. |
+| `export.plot_unpaired_queries` | `false` | When `true`, single-spectrum plots are generated for queries with no reference. When `false`, those queries are skipped. |
 
 ### `performance:`
 
 | Key | Default | Description |
 |---|---|---|
-| `performance.workers` | `4` | Parallel workers. Same knob as `settings.json > performance.workers`. |
+| `performance.workers` | `4` | Parallel workers. `1` forces the sequential fallback (useful for debugging). |
+
+### `summary:`
+
+| Key | Default | Description |
+|---|---|---|
+| `summary.metric` | `"R² binned"` | Metric used to colour/sort summary plots. Must be one of the keys in `METRIC_COLUMNS`. |
+| `summary.plot_types` | `[dual_axis, ridgeline]` | Subset of `{dual_axis, ridgeline, heatmap}` to render. |
 
 ### `koina:`
 
 | Key | Default | Description |
 |---|---|---|
-| `koina.enabled` | `true` | Master switch. `--no-koina` flips it off. |
+| `koina.enabled` | `false` | Master switch. `--no-koina` flips it off. |
 | `koina.model` | `"ms2pip_timsTOF2024"` | Model ID. |
 | `koina.collision_energy` | `35` | NCE. |
 | `koina.instrument_type` | `"TIMSTOF"` | Instrument hint. |
@@ -137,15 +145,17 @@ Every flag overrides the corresponding YAML key for a single invocation.
 | `--reference-substring` | STR | `reference.substring` |
 | `--ion-types` | ION… | `annotation.ion_types` |
 | `--mz-tolerance` | DA | `annotation.mz_tolerance` |
-| `--export-dir` | DIR | `export.directory` |
+| `--export-directory` | DIR | `export.directory` |
 | `--project-name` | NAME | `export.project_name` |
 | `--formats` | FMT… | `export.formats` (choices: png svg pdf html) |
 | `--workers` | N | `performance.workers` |
+| `--summary-metric` | NAME | `summary.metric` |
+| `--summary-plot-types` | TYPE… | `summary.plot_types` (choices: dual_axis ridgeline heatmap) |
 | `--no-plots` | *(flag)* | Skip plot generation; export CSV/Parquet only |
 | `--no-koina` | *(flag)* | Disable Koina regardless of YAML |
 | `--koina-model` | ID | `koina.model` |
-| `--koina-ce` | EV | `koina.collision_energy` |
-| `--koina-instrument` | TYPE | `koina.instrument_type` |
+| `--koina-collision-energy` | EV | `koina.collision_energy` |
+| `--koina-instrument-type` | TYPE | `koina.instrument_type` |
 | `-v`, `--verbose` | *(flag)* | Enable DEBUG logging |
 | `-q`, `--quiet` | *(flag)* | Suppress non-error output |
 
@@ -154,5 +164,5 @@ Every flag overrides the corresponding YAML key for a single invocation.
 ## See also
 
 - [../cli/usage.md](../cli/usage.md) — invocation, exit codes, recipes.
-- [app.md](app.md) — the `settings.json` layer that seeds CLI defaults.
-- [overview.md](overview.md) — three-layer precedence rules.
+- [app.md](app.md) — the `settings.json` layer (Streamlit-only).
+- [overview.md](overview.md) — precedence rules.

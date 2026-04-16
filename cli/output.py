@@ -72,7 +72,7 @@ def print_config_summary(cfg, quiet: bool) -> None:
     print(f"  m/z tolerance:  {cfg.mz_tolerance} Da")
     print(f"  Koina:          {'enabled (' + cfg.koina_model + ')' if cfg.koina_enabled else 'disabled'}")
     print(f"  Workers:        {cfg.workers}")
-    print(f"  Export dir:     {cfg.export_dir}")
+    print(f"  Export dir:     {cfg.export_directory}")
     print(f"  Formats:        {', '.join(cfg.export_formats)}")
     print(f"  Plots:          {'skip' if cfg.no_plots else 'generate'}")
     print("=" * 60)

@@ -121,7 +121,7 @@ def prepare_spectrum_for_plot(
     ion_types: List[str] = None,
     mz_tolerance: float = 0.02,
     normalize: bool = True,
-    add_losses: bool = False,
+    add_neutral_losses: bool = False,
     add_first_prefix_ion: bool = True,
     remove_precursor_peaks: bool = False
 ) -> pd.DataFrame:
@@ -131,7 +131,7 @@ def prepare_spectrum_for_plot(
 
     theo_frags = generate_theoretical_fragments(
         peptidoform, charge=charge, ion_types=ion_types,
-        add_losses=add_losses, add_first_prefix_ion=add_first_prefix_ion,
+        add_neutral_losses=add_neutral_losses, add_first_prefix_ion=add_first_prefix_ion,
     )
     annotated = annotate_spectrum(mz, intensity, theo_frags, mz_tolerance=mz_tolerance)
     return _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_peaks)

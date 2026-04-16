@@ -1,12 +1,12 @@
 """
 CLI configuration — dataclass + loaders.
 
-Holds only the simple "read from disk" and glob helpers; the three-layer
-precedence merge (settings.json < YAML < CLI) and argparse surface live in
-``cli.config_builder`` so this file stays focused on I/O.
+Holds only the simple "read from disk" and glob helpers; the two-layer
+precedence merge (YAML < CLI flags, seeded by ``defaults.DEFAULTS``) and
+argparse surface live in ``cli.config_builder`` so this file stays focused
+on I/O.
 """
 import glob as globmod
-import json
 import logging
 import sys
 from dataclasses import dataclass, field
@@ -16,6 +16,7 @@ from typing import Callable, List, Optional, Tuple
 import yaml
 
 from cli.output import TerminalProgress
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.text_utils import parse_peptide_list
 from mspecviz.search import get_unique_peptides_from_idxmls
 
@@ -26,7 +27,12 @@ logger = logging.getLogger("mspecviz.cli")
 
 @dataclass
 class CLIConfig:
-    """All pipeline parameters merged from settings.json, YAML, and CLI args."""
+    """All pipeline parameters merged from settings.json, YAML, and CLI args.
+
+    Field defaults come from :data:`mspecviz.common.defaults.DEFAULTS` — the
+    single source of truth. Do not duplicate default values here; edit
+    ``defaults.py`` instead.
+    """
 
     # Input files (resolved absolute paths after glob expansion)
     idxml_files: List[str] = field(default_factory=list)
@@ -40,39 +46,36 @@ class CLIConfig:
     reference_substring: str = ""
 
     # Annotation
-    ion_types: List[str] = field(default_factory=lambda: ["b", "y"])
-    mz_tolerance: float = 0.02
-    add_losses: bool = False
-    add_first_prefix_ion: bool = True
-    remove_precursor_peaks: bool = False
-    intensity_mode: str = "Relative"
+    ion_types: List[str] = field(default_factory=lambda: list(DEFAULTS.ion_types))
+    mz_tolerance: float = DEFAULTS.mz_tolerance
+    add_neutral_losses: bool = DEFAULTS.add_neutral_losses
+    add_first_prefix_ion: bool = DEFAULTS.add_first_prefix_ion
+    remove_precursor_peaks: bool = DEFAULTS.remove_precursor_peaks
+    intensity_mode: str = DEFAULTS.intensity_mode
 
     # Export
-    export_dir: str = "./exports"
-    project_name: str = "MSpecViz_analysis"
-    export_formats: List[str] = field(default_factory=lambda: ["png"])
-    dpi: int = 300
-    figsize: Tuple[int, int] = (12, 8)
-    plot_unpaired: bool = False
+    export_directory: str = DEFAULTS.export_directory
+    project_name: str = DEFAULTS.project_name
+    export_formats: List[str] = field(default_factory=lambda: list(DEFAULTS.export_formats))
+    export_dpi: int = DEFAULTS.export_dpi
+    figure_size: Tuple[int, int] = DEFAULTS.figure_size
+    plot_unpaired_queries: bool = DEFAULTS.plot_unpaired_queries
     no_plots: bool = False
 
+    # Summary plots
+    summary_metric: str = DEFAULTS.summary_metric
+    summary_plot_types: List[str] = field(
+        default_factory=lambda: list(DEFAULTS.summary_plot_types)
+    )
+
     # Performance
-    workers: int = 4
+    workers: int = DEFAULTS.workers
 
     # Koina
-    koina_enabled: bool = True
-    koina_model: str = "ms2pip_timsTOF2024"
-    koina_ce: int = 35
-    koina_instrument: str = "TIMSTOF"
-
-
-def load_settings_defaults() -> dict:
-    """Load defaults from settings.json."""
-    settings_path = PROJECT_ROOT / "settings.json"
-    if settings_path.exists():
-        with open(settings_path) as f:
-            return json.load(f)
-    return {}
+    koina_enabled: bool = DEFAULTS.koina_enabled
+    koina_model: str = DEFAULTS.koina_model
+    koina_collision_energy: int = DEFAULTS.koina_collision_energy
+    koina_instrument_type: str = DEFAULTS.koina_instrument_type
 
 
 def load_yaml_config(path: str) -> dict:

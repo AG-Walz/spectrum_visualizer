@@ -1,5 +1,9 @@
+# Wires Claude Code into this repository.
+# Two jobs: `claude` handles interactive @-mentions in issues/PRs/reviews;
+# `review` runs automatically on every PR open or update.
 name: Claude Code
 
+# Triggers: issue comments, PR review comments, issue open/assign, PR review submit, PR open/sync.
 on:
   issue_comment:
     types: [created]
@@ -13,13 +17,17 @@ on:
     types: [opened, synchronize]
 
 jobs:
+  # Interactive @-mention handler: runs when a human writes "@claude ..." anywhere in a PR/issue.
   claude:
+    # Each clause checks a different event shape because the mention lives in a different field
+    # (comment.body, review.body, issue.body, or issue.title) depending on the event type.
     if: |
       (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
       (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
       (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.title, '@claude')))
     runs-on: ubuntu-latest
+    # Broad write permissions so Claude can commit code, open PRs, and close issues on request.
     permissions:
       contents: write
       pull-requests: write
@@ -34,6 +42,7 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
+  # Automatic /review on every PR open or update — no @claude mention required.
   review:
     if: |
       github.event_name == 'pull_request'
@@ -51,4 +60,5 @@ jobs:
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: "/review"
+          # 5-turn cap keeps per-PR review cost predictable.
           claude_args: "--max-turns 5"

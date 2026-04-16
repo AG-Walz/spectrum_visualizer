@@ -36,8 +36,8 @@ class ComparisonTask:
 
     # Plot/export parameters
     export_formats: List[str] = field(default_factory=lambda: ["png"])
-    figsize: Tuple[int, int] = (12, 8)
-    dpi: int = 300
+    figure_size: Tuple[int, int] = (12, 8)
+    export_dpi: int = 300
     normalize: bool = True
 
     # Output path for interactive Plotly HTML (empty string = skip HTML output)

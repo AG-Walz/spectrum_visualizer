@@ -24,7 +24,7 @@ logger = logging.getLogger("mspecviz.pipeline")
 
 def get_koina_prediction(peptidoform, charge, annotation_kwargs,
                          koina_model="ms2pip_timsTOF2024",
-                         koina_ce=35, koina_instrument="TIMSTOF"):
+                         koina_collision_energy=35, koina_instrument_type="TIMSTOF"):
     """Get Koina AI prediction and annotate as reference spectrum.
 
     Returns ``(LoadedSpectrum, annotated_df)`` tuple or ``None``.
@@ -36,8 +36,8 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
         peptidoform_str=peptidoform,
         charge=charge,
         model_id=koina_model,
-        collision_energy=koina_ce,
-        instrument_type=koina_instrument,
+        collision_energy=koina_collision_energy,
+        instrument_type=koina_instrument_type,
     )
     if pred_df is None or pred_df.empty:
         return None
@@ -100,7 +100,7 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
 
 
 def _try_koina_fallback(result, reference_store, annotation_kwargs,
-                        koina_model, koina_ce, koina_instrument):
+                        koina_model, koina_collision_energy, koina_instrument_type):
     """Phase 3: if no experimental refs, try a Koina AI prediction. Returns the ref list."""
     variant_key = result.variant_key
     refs = reference_store.get(variant_key, [])
@@ -111,8 +111,8 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
         result.query_spectrum.precursor_charge,
         annotation_kwargs,
         koina_model=koina_model,
-        koina_ce=koina_ce,
-        koina_instrument=koina_instrument,
+        koina_collision_energy=koina_collision_energy,
+        koina_instrument_type=koina_instrument_type,
     )
     if koina_ref is not None:
         reference_store[variant_key] = [koina_ref]

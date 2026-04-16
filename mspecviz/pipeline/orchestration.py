@@ -72,7 +72,7 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
 def process_query_result(result, psm_lookup, annotation_kwargs,
                          reference_store, koina_enabled=False,
                          koina_model="ms2pip_timsTOF2024",
-                         koina_ce=35, koina_instrument="TIMSTOF"):
+                         koina_collision_energy=35, koina_instrument_type="TIMSTOF"):
     """Annotate query, cache refs, compute metrics. Returns (psm_id, spec, df, rows) or None.
 
     Orchestrates four phase helpers: ``_annotate_query_spectrum``,
@@ -91,7 +91,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     if koina_enabled:
         refs = _try_koina_fallback(
             result, reference_store, annotation_kwargs,
-            koina_model, koina_ce, koina_instrument,
+            koina_model, koina_collision_energy, koina_instrument_type,
         )
     else:
         refs = reference_store.get(result.variant_key, [])
@@ -101,8 +101,8 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
-                     normalize, sanitize_fn, fmt_dirs=None, figsize=(12, 8),
-                     dpi=300, html_dir="", plot_unpaired=False):
+                     normalize, sanitize_fn, fmt_dirs=None, figure_size=(12, 8),
+                     export_dpi=300, html_dir="", plot_unpaired_queries=False):
     """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
 
     Metrics + ``metrics_text`` are pre-computed here (in the main process) so
@@ -154,15 +154,15 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     svg_dir=fmt_dirs.get("svg", ""),
                     pdf_dir=fmt_dirs.get("pdf", ""),
                     export_formats=export_formats,
-                    figsize=figsize,
-                    dpi=dpi,
+                    figure_size=figure_size,
+                    export_dpi=export_dpi,
                     normalize=normalize,
                     html_plot_path=html_path,
                     metrics_text=metrics_text,
                     peptide=query_spec.peptidoform,
                     charge=query_spec.precursor_charge,
                 ))
-        elif plot_unpaired:
+        elif plot_unpaired_queries:
             safe_filename = sanitize_fn(get_source_label(query_spec))
             query_label = f"{get_source_label(query_spec)} (RT: {query_spec.rt:.1f})"
             # Unpaired/single plots never emit HTML (cli used to enforce this).
@@ -182,8 +182,8 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 svg_dir=fmt_dirs.get("svg", ""),
                 pdf_dir=fmt_dirs.get("pdf", ""),
                 export_formats=single_formats,
-                figsize=figsize,
-                dpi=dpi,
+                figure_size=figure_size,
+                export_dpi=export_dpi,
                 normalize=normalize,
                 peptide=query_spec.peptidoform,
                 charge=query_spec.precursor_charge,

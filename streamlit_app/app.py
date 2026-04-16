@@ -18,7 +18,7 @@ if "settings" not in st.session_state:
 if __name__ == '__main__':
     views = Path(__file__).parent / "views"
     pages = {
-        str(st.session_state.settings["app-name"]): [
+        str(st.session_state.settings["app_name"]): [
             st.Page(views / "setup.py", title="Setup", icon="⚙️"),
             st.Page(views / "search_load" / "page.py", title="Search & Load", icon="🔍"),
             st.Page(views / "explore" / "page.py", title="Explore", icon="🔬"),

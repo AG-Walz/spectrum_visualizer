@@ -12,6 +12,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.parallel import run_tasks
 from mspecviz.common.text_utils import parse_peptide_list
 from mspecviz.search import count_psms_per_peptide
@@ -73,7 +74,7 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
     with col1:
         peptide_text = st.text_area(
             "Enter peptide sequences (one per line)",
-            value=initial_value, height=150, key="target-peptides",
+            value=initial_value, height=150, key="target_peptides",
             placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n...",
         )
     # Persist in a non-widget key that survives page navigation
@@ -134,7 +135,7 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
     labels = [f"{seq} ({cnt})" for seq, cnt in shown_items]
     label_to_seq = dict(zip(labels, (seq for seq, _ in shown_items)))
 
-    current = set(parse_peptide_list(st.session_state.get('target-peptides', '')))
+    current = set(parse_peptide_list(st.session_state.get('target_peptides', '')))
     defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
 
     selected_labels = st.multiselect(
@@ -146,7 +147,7 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
     def _set_pending(mode: str) -> None:
         """mode='replace' sets the paste box to *selected*; 'append' merges with existing."""
         if mode == "append":
-            existing = parse_peptide_list(st.session_state.get('target-peptides', ''))
+            existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
             peps = list(dict.fromkeys(existing + selected))
         else:
             peps = selected
@@ -168,17 +169,17 @@ def render_peptide_input(params: dict) -> None:
     pending_key = "_pending_target_peptides"
     persisted_key = get_state_key('target_peptides_persisted')
     if pending_key in st.session_state:
-        st.session_state['target-peptides'] = st.session_state.pop(pending_key)
+        st.session_state['target_peptides'] = st.session_state.pop(pending_key)
 
     st.subheader("Target Peptides")
 
-    idxmls = st.session_state.get('selected-idxmls', params.get('selected-idxmls', []))
+    idxmls = st.session_state.get('selected_idxmls', params.get('selected_idxmls', []))
 
     # Initial value: persisted session_state (survives page nav) > workspace params
-    initial_value = st.session_state.get(persisted_key, params.get('target-peptides', ''))
+    initial_value = st.session_state.get(persisted_key, params.get('target_peptides', ''))
 
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
     with paste_tab:
         _render_paste_tab(initial_value, persisted_key)
     with pick_tab:
-        _render_pick_tab(idxmls, params.get('workers', 4), pending_key)
+        _render_pick_tab(idxmls, params.get('workers', DEFAULTS.workers), pending_key)

@@ -29,7 +29,7 @@ class TestCLI:
             pytest.skip("config_example.yaml not found")
 
         result = subprocess.run(
-            CLI_ARGS + ["-c", str(config), "--export-dir", str(tmp_path), "-q"],
+            CLI_ARGS + ["-c", str(config), "--export-directory", str(tmp_path), "-q"],
             cwd=PROJECT_ROOT,
             capture_output=True, text=True, timeout=120,
             encoding="utf-8", errors="replace",

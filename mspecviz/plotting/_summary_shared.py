@@ -6,6 +6,11 @@ import from this module without creating a circular dependency with
 """
 import numpy as np
 
+from mspecviz.common.defaults import (
+    DEFAULT_SUMMARY_METRIC,
+    DEFAULT_SUMMARY_PLOT_TYPES,
+)
+
 METRIC_COLUMNS = [
     "R\u00b2 match",
     "R\u00b2 binned",
@@ -16,7 +21,9 @@ METRIC_COLUMNS = [
     "SharedRatio",
 ]
 
-DEFAULT_METRIC = "R\u00b2 binned"
+# Back-compat aliases — canonical names live in mspecviz.common.defaults.
+DEFAULT_METRIC = DEFAULT_SUMMARY_METRIC
+PLOT_TYPES = list(DEFAULT_SUMMARY_PLOT_TYPES)
 
 SUMMARY_COLORS = {
     "bar": "#E8945A",
@@ -25,8 +32,6 @@ SUMMARY_COLORS = {
     "box_fill": "#BDC3C7",
     "scatter": "#2C3E50",
 }
-
-PLOT_TYPES = ["dual_axis", "ridgeline"]
 
 MAX_SCATTER_PER_GROUP = 200
 

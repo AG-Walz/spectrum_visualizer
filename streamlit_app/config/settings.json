@@ -1,18 +1,16 @@
 {
-  "app-name": "MSpecViz",
+  "app_name": "MSpecViz",
   "version": "0.1.0",
-  "repository-name": "MSpecViz",
+  "repository_name": "MSpecViz",
   "online_deployment": false,
   "enable_workspaces": true,
   "workspaces_dir": "workspaces",
   "test": false,
-  "image-format": "png",
   "data_directories": {
     "default": "/mnt/volume",
     "_comment": "Starting directory for the file browser. Set this to the root of your local data storage on the server where the app is running."
   },
   "models": {
-    "default": "ms2pip_timsTOF2024",
     "available": [
       "ms2pip_timsTOF2024", "ms2pip_HCD2021", "ms2pip_Immuno_HCD", "ms2pip_TTOF5600",
       "ms2pip_CID_TMT", "ms2pip_iTRAQphospho",
@@ -22,40 +20,19 @@
       "UniSpec", "PredFull"
     ]
   },
-  "koina": {
-    "enabled": true,
-    "model": "ms2pip_timsTOF2024",
-    "collision_energy": 35,
-    "instrument_type": "TIMSTOF"
-  },
   "ion_types": {
-    "default": ["b", "y"],
     "available": ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
   },
   "mz_tolerance": {
-    "default": 0.02,
     "unit": "Da"
-  },
-  "annotation": {
-    "add_losses": false,
-    "add_first_prefix_ion": true,
-    "remove_precursor_peaks": false
   },
   "performance": {
     "cache_size_mb": 500,
     "max_file_size_gb": 3,
     "chunk_size": 5000,
-    "workers": 4,
     "tmpfs_staging": true,
     "tmpfs_path": "/dev/shm",
     "tmpfs_ram_fraction": 0.40
-  },
-  "export": {
-    "default_directory": "./exports",
-    "project_name": "MSpecViz_analysis",
-    "formats": ["png"],
-    "dpi": 300,
-    "figsize": [12, 8]
   },
   "cache": {
     "enabled": true,

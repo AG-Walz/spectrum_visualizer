@@ -11,6 +11,7 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from streamlit_app.views.widgets.file_browser import render_directory_browser
 from streamlit_app.views.widgets.peptide_input import render_peptide_input
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.text_utils import get_nested as get_settings_value
 
 try:
@@ -40,8 +41,8 @@ def file_selection_fragment():
     _settings = st.session_state.get("settings", {})
     data_dir_default = get_settings_value(_settings, "data_directories", "default", default="/")
 
-    idxml_dir = params.get('idxml-browser-dir', data_dir_default)
-    mzml_dir = params.get('mzml-browser-dir', data_dir_default)
+    idxml_dir = params.get('idxml_browser_dir', data_dir_default)
+    mzml_dir = params.get('mzml_browser_dir', data_dir_default)
 
     st.header("File Selection")
     col1, col2 = st.columns(2)
@@ -49,18 +50,18 @@ def file_selection_fragment():
         st.subheader("idXML Files (Identifications)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_idxml",
                                  extensions=['.idXML', '.idxml'],
-                                 state_key='selected-idxmls',
+                                 state_key='selected_idxmls',
                                  default_dir=idxml_dir, params=params)
     with col2:
         st.subheader("mzML Files (Spectra)")
         render_directory_browser(key_prefix=f"{STATE_PREFIX}_mzml",
                                  extensions=['.mzML', '.mzml'],
-                                 state_key='selected-mzmls',
+                                 state_key='selected_mzmls',
                                  default_dir=mzml_dir, params=params)
 
     for dir_param, dir_ss_key, fallback in [
-        ('idxml-browser-dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
-        ('mzml-browser-dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
+        ('idxml_browser_dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
+        ('mzml_browser_dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
     ]:
         val = st.session_state.get(dir_ss_key, fallback)
         params[dir_param] = val
@@ -72,7 +73,7 @@ def file_selection_fragment():
 def reference_selection_fragment():
     """Reference substring configuration."""
     st.subheader("Reference Identification")
-    mzmls = st.session_state.get('selected-mzmls', params.get('selected-mzmls', []))
+    mzmls = st.session_state.get('selected_mzmls', params.get('selected_mzmls', []))
     if not mzmls:
         st.warning("Please select mzML files first")
         return
@@ -80,8 +81,8 @@ def reference_selection_fragment():
     st.markdown("Enter a substring to identify reference mzML files (e.g., 'Synpep', 'Standard', 'Ref')")
     ref_substring = st.text_input(
         "Reference identifier (Optional)",
-        value=params.get('reference-substring', ''),
-        key="reference-substring", placeholder="e.g., Synpep"
+        value=params.get('reference_substring', ''),
+        key="reference_substring", placeholder="e.g., Synpep"
     )
 
     if ref_substring:
@@ -120,40 +121,41 @@ def settings_fragment():
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Ion Types**")
-        current_ions = params.get('ion-types', ['b', 'y'])
+        current_ions = params.get('ion_types', ['b', 'y'])
         st.multiselect("Select ion types", options=available_ions,
                        default=[i for i in current_ions if i in available_ions],
-                       key="ion-types")
+                       key="ion_types")
 
     with col2:
         st.markdown("**m/z Tolerance**")
         st.number_input("Tolerance (Da)", min_value=0.001, max_value=1.0,
-                        value=float(params.get('mz-tolerance', 0.02)),
-                        step=0.005, format="%.3f", key="mz-tolerance")
+                        value=float(params.get('mz_tolerance', DEFAULTS.mz_tolerance)),
+                        step=0.005, format="%.3f", key="mz_tolerance")
 
     st.markdown("**Annotation Settings**")
     ann_col1, ann_col2, ann_col3 = st.columns(3)
     with ann_col1:
         st.checkbox("Add neutral losses (H2O, NH3)",
-                    value=params.get('add-losses', False), key="add-losses")
+                    value=params.get('add_neutral_losses', DEFAULTS.add_neutral_losses),
+                    key="add_neutral_losses")
     with ann_col2:
         st.checkbox("Add first prefix ion",
-                    value=params.get('add-first-prefix-ion', True),
-                    key="add-first-prefix-ion")
+                    value=params.get('add_first_prefix_ion', DEFAULTS.add_first_prefix_ion),
+                    key="add_first_prefix_ion")
     with ann_col3:
         st.checkbox("Remove precursor peaks",
-                    value=params.get('remove-precursor-peaks', False),
-                    key="remove-precursor-peaks")
+                    value=params.get('remove_precursor_peaks', DEFAULTS.remove_precursor_peaks),
+                    key="remove_precursor_peaks")
 
     st.radio("**Intensity Display Mode**",
              options=["Relative", "Raw"],
              captions=["Relative to the highest intensity", "Raw intensity"],
-             index=0 if params.get('intensity-mode', 'Relative') == 'Relative' else 1,
-             horizontal=True, key="intensity-mode", label_visibility="visible")
+             index=0 if params.get('intensity_mode', DEFAULTS.intensity_mode) == 'Relative' else 1,
+             horizontal=True, key="intensity_mode", label_visibility="visible")
 
     st.markdown("**Performance**")
     st.slider("Parallel workers", min_value=1, max_value=32,
-              value=params.get('workers', 4), key="workers",
+              value=params.get('workers', DEFAULTS.workers), key="workers",
               help="Number of parallel processes for plot generation (~30 MB per worker)")
 
     st.markdown("---")
@@ -167,8 +169,8 @@ def settings_fragment():
 
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",
-        value=params.get("koina-enabled", koina_defaults["enabled"]),
-        key="koina-enabled",
+        value=params.get("koina_enabled", koina_defaults["enabled"]),
+        key="koina_enabled",
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
         disabled=not KOINA_AVAILABLE,
     )
@@ -182,7 +184,7 @@ def settings_fragment():
         with k_col1:
             model_names = list(KOINA_MODELS.keys())
             model_ids = list(KOINA_MODELS.values())
-            current_model_id = params.get("koina-model", koina_defaults["model"])
+            current_model_id = params.get("koina_model", koina_defaults["model"])
             default_idx = model_ids.index(current_model_id) if current_model_id in model_ids else 0
 
             selected_model_name = st.selectbox(
@@ -190,21 +192,21 @@ def settings_fragment():
                 key=f"{STATE_PREFIX}_koina_model_select",
                 help="Deep-learning model for fragment ion prediction",
             )
-            st.session_state["koina-model"] = KOINA_MODELS[selected_model_name]
+            st.session_state["koina_model"] = KOINA_MODELS[selected_model_name]
 
         with k_col2:
             st.number_input(
                 "Collision Energy (eV)", min_value=1, max_value=100,
-                value=params.get("koina-ce", koina_defaults["collision_energy"]),
-                key="koina-ce",
+                value=params.get("koina_collision_energy", koina_defaults["collision_energy"]),
+                key="koina_collision_energy",
             )
 
         with k_col3:
-            current_inst = params.get("koina-instrument", koina_defaults["instrument_type"])
+            current_inst = params.get("koina_instrument_type", koina_defaults["instrument_type"])
             inst_idx = INSTRUMENT_TYPES.index(current_inst) if current_inst in INSTRUMENT_TYPES else 0
             st.selectbox(
                 "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
-                key="koina-instrument",
+                key="koina_instrument_type",
             )
 
     save_params(params)

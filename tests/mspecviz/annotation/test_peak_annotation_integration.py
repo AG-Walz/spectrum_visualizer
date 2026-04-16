@@ -103,6 +103,6 @@ class TestAnnotateRealSpectrum:
         result = prepare_spectrum_for_plot(
             mz, intensity, "RTEFNLNQY", charge=2,
             ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
-            add_losses=True,
+            add_neutral_losses=True,
         )
         assert len(result) == len(mz)

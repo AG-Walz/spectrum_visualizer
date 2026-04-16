@@ -17,7 +17,7 @@ import streamlit as st
 
 from streamlit_app.utils.state import get_param, get_state_key, save_params
 from streamlit_app.utils.page_state import clear_analysis_cache, save_analysis_cache
-from mspecviz.common.constants import DEFAULTS
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.text_utils import format_time
 from mspecviz.dataframes import (
     build_heatmap_dataframe,
@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
     """Execute peptide search."""
-    mzmls = get_param(params, "selected-mzmls", DEFAULTS["selected-mzmls"])
+    mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
     with st.status("Searching peptides...", expanded=True) as status:
@@ -59,7 +59,7 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
         def error_callback(error_msg: str):
             error_messages.append(error_msg)
 
-        workers = get_param(params, "workers", DEFAULTS["workers"])
+        workers = get_param(params, "workers", DEFAULTS.workers)
         results = search_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
             progress_callback=progress_callback, error_callback=error_callback,
@@ -94,12 +94,12 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
 def _build_annotation_kwargs(params: dict) -> dict:
     """Collect annotation settings from params into a kwargs dict."""
     return dict(
-        ion_types=get_param(params, "ion-types", DEFAULTS["ion-types"]),
-        mz_tolerance=get_param(params, "mz-tolerance", DEFAULTS["mz-tolerance"]),
-        normalize=get_param(params, "intensity-mode", DEFAULTS["intensity-mode"]) == "Relative",
-        add_losses=get_param(params, "add-losses", DEFAULTS["add-losses"]),
-        add_first_prefix_ion=get_param(params, "add-first-prefix-ion", DEFAULTS["add-first-prefix-ion"]),
-        remove_precursor_peaks=get_param(params, "remove-precursor-peaks", DEFAULTS["remove-precursor-peaks"]),
+        ion_types=get_param(params, "ion_types", DEFAULTS.ion_types),
+        mz_tolerance=get_param(params, "mz_tolerance", DEFAULTS.mz_tolerance),
+        normalize=get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative",
+        add_neutral_losses=get_param(params, "add_neutral_losses", DEFAULTS.add_neutral_losses),
+        add_first_prefix_ion=get_param(params, "add_first_prefix_ion", DEFAULTS.add_first_prefix_ion),
+        remove_precursor_peaks=get_param(params, "remove_precursor_peaks", DEFAULTS.remove_precursor_peaks),
     )
 
 
@@ -140,7 +140,7 @@ def run_search_and_load(params: dict) -> None:
         st.error("No search results. Run peptide search first.")
         return
 
-    mzmls = get_param(params, "selected-mzmls", DEFAULTS["selected-mzmls"])
+    mzmls = get_param(params, "selected_mzmls", [])
     if not mzmls:
         st.error("No mzML files selected.")
         return
@@ -163,10 +163,10 @@ def run_search_and_load(params: dict) -> None:
         def on_query_ready(result):
             processed = process_query_result(
                 result, psm_lookup, annotation_kwargs, reference_store,
-                koina_enabled=get_param(params, "koina-enabled", DEFAULTS["koina-enabled"]),
-                koina_model=get_param(params, "koina-model", DEFAULTS["koina-model"]),
-                koina_ce=get_param(params, "koina-ce", DEFAULTS["koina-ce"]),
-                koina_instrument=get_param(params, "koina-instrument", DEFAULTS["koina-instrument"]),
+                koina_enabled=get_param(params, "koina_enabled", DEFAULTS.koina_enabled),
+                koina_model=get_param(params, "koina_model", DEFAULTS.koina_model),
+                koina_collision_energy=get_param(params, "koina_collision_energy", DEFAULTS.koina_collision_energy),
+                koina_instrument_type=get_param(params, "koina_instrument_type", DEFAULTS.koina_instrument_type),
             )
             if processed is None:
                 return
@@ -191,7 +191,7 @@ def run_search_and_load(params: dict) -> None:
         load_spectra_streaming(
             variant_groups=vg_copy,
             mzml_paths=[Path(m) for m in mzmls],
-            reference_substring=get_param(params, "reference-substring", DEFAULTS["reference-substring"]),
+            reference_substring=get_param(params, "reference_substring", ""),
             on_reference_loaded=lambda vk, c: None,
             on_query_ready=on_query_ready,
             on_file_start=on_file_start,
@@ -199,7 +199,7 @@ def run_search_and_load(params: dict) -> None:
                 f"Completed {Path(p).name}: {loaded}/{total}"
             ),
             error_callback=lambda e: logger.error(f"Streaming error: {e}"),
-            workers=get_param(params, "workers", DEFAULTS["workers"]),
+            workers=get_param(params, "workers", DEFAULTS.workers),
         )
 
         progress_bar.progress(1.0)

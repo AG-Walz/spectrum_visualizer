@@ -24,18 +24,18 @@ def plot_classic_dual_axis(
     raw_df: pd.DataFrame,
     agg_df: pd.DataFrame,
     metric: str = DEFAULT_METRIC,
-    figsize: Tuple[float, float] = None,
-    dpi: int = 300,
+    figure_size: Tuple[float, float] = None,
+    export_dpi: int = 300,
     title: str = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
     agg_df = agg_df.sort_values("count", ascending=False).reset_index(drop=True)
 
     n = len(agg_df)
-    if figsize is None:
-        figsize = (14, _auto_height(n))
+    if figure_size is None:
+        figure_size = (14, _auto_height(n))
 
-    fig, ax = plt.subplots(figsize=figsize, dpi=dpi)
+    fig, ax = plt.subplots(figsize=figure_size, dpi=export_dpi)
     y_pos = np.arange(n)
     labels = agg_df["peptidoform"].values
 
