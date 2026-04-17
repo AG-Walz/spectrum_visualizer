@@ -90,7 +90,7 @@ def generate_all_summary_plots(
     metric: str = DEFAULT_METRIC,
     plot_types: Optional[List[str]] = None,
     formats: Optional[List[str]] = None,
-    export_dpi: int = 300,
+    export_resolution: int = 300,
     title_prefix: str = "",
 ) -> Dict[str, Dict[str, str]]:
     """Generate all (or selected) summary plots and save them.
@@ -121,7 +121,7 @@ def generate_all_summary_plots(
                       if title_prefix else None)
 
         try:
-            fig = func(raw_df, agg_df, metric=metric, export_dpi=export_dpi, title=plot_title)
+            fig = func(raw_df, agg_df, metric=metric, export_resolution=export_resolution, title=plot_title)
         except Exception as exc:
             logger.error("Failed to create %s plot: %s", pt, exc)
             continue
@@ -131,7 +131,7 @@ def generate_all_summary_plots(
         for fmt in formats:
             out_path = summary_dir / f"{filename}.{fmt}"
             try:
-                fig.savefig(str(out_path), format=fmt, dpi=export_dpi,
+                fig.savefig(str(out_path), format=fmt, dpi=export_resolution,
                             bbox_inches="tight", facecolor="white")
                 paths[fmt] = str(out_path)
             except Exception as exc:

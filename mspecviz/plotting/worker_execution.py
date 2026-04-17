@@ -61,7 +61,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                     title=task.plot_title,
                     metrics_text=metrics_text,
                     figure_size=task.figure_size,
-                    export_dpi=task.export_dpi,
+                    export_resolution=task.export_resolution,
                     normalize=task.normalize,
                 )
                 png_path, svg_path, pdf_path = _save_task_figure(fig, task)
@@ -79,7 +79,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 title=task.plot_title,
                 label=task.query_label,
                 figure_size=task.figure_size,
-                export_dpi=task.export_dpi,
+                export_resolution=task.export_resolution,
                 normalize=task.normalize,
             )
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
@@ -131,7 +131,7 @@ def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
         out = variant_dir / f"{task.safe_filename}.{fmt}"
         save_kwargs = {"bbox_inches": "tight", "facecolor": "white", **_FORMAT_SAVE_KWARGS[fmt]}
         if fmt == "png":
-            save_kwargs["dpi"] = task.export_dpi
+            save_kwargs["dpi"] = task.export_resolution
         fig.savefig(str(out), **save_kwargs)
         paths[fmt] = str(out)
 

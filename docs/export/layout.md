@@ -24,7 +24,7 @@ base path. The naming convention is:
 For example: `my_project_001_20260327/`
 
 - `{project_name}` is the sanitized project name from the Export tab or
-  the `export.project_name` config key.
+  the `project_name` config key.
 - `{NNN}` is a zero-padded sequence number, incrementing with each new
   configuration.
 - `{YYYYMMDD}` is the date of the export run.
@@ -108,7 +108,7 @@ runs).
 | `koina_collision_energy` | Collision energy (if enabled) |
 | `koina_instrument_type` | Instrument type (if enabled) |
 | `export_formats` | List of output formats (e.g., `["png", "svg"]`) |
-| `export_dpi` | Image resolution |
+| `export_resolution` | Raster resolution in DPI (dots per inch) |
 | `figure_size` | Figure dimensions `[width, height]` |
 
 The file is human-readable JSON — safe to edit by hand, though the

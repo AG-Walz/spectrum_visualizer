@@ -62,7 +62,7 @@ def create_mirror_plot(
     lower_label: str = "Reference",
     color_map: Dict[str, str] = None,
     figure_size: Tuple[int, int] = (12, 8),
-    export_dpi: int = 300,
+    export_resolution: int = 300,
     show_annotations: bool = True,
     annotation_fontsize: int = 7,
     metrics_text: Optional[str] = None,
@@ -72,7 +72,7 @@ def create_mirror_plot(
     if color_map is None:
         color_map = ION_COLORS
 
-    fig = MplFigure(figsize=figure_size, dpi=export_dpi)
+    fig = MplFigure(figsize=figure_size, dpi=export_resolution)
     ax = fig.add_subplot(111)
 
     if normalize:
@@ -152,7 +152,7 @@ def create_single_spectrum_plot(
     label: str = "",
     color_map: Dict[str, str] = None,
     figure_size: Tuple[int, int] = (12, 8),
-    export_dpi: int = 300,
+    export_resolution: int = 300,
     show_annotations: bool = True,
     annotation_fontsize: int = 7,
     normalize: bool = True,
@@ -161,7 +161,7 @@ def create_single_spectrum_plot(
     if color_map is None:
         color_map = ION_COLORS
 
-    fig = MplFigure(figsize=figure_size, dpi=export_dpi)
+    fig = MplFigure(figsize=figure_size, dpi=export_resolution)
     ax = fig.add_subplot(111)
 
     if not spectrum.empty:
@@ -205,7 +205,7 @@ def create_single_spectrum_plot(
 
 def figure_to_bytes(fig, format: str = "png") -> bytes:
     """Convert a matplotlib figure to bytes."""
-    buf = BytesIO()
-    fig.savefig(buf, format=format, bbox_inches="tight", facecolor="white")
-    buf.seek(0)
-    return buf.read()
+    buffer = BytesIO()
+    fig.savefig(buffer, format=format, bbox_inches="tight", facecolor="white")
+    buffer.seek(0)
+    return buffer.read()

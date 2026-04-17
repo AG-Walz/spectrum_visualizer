@@ -1,53 +1,51 @@
 # MSpecViz CLI config — run: python -m cli -c cli/config/config_example.yaml
 # Full reference: docs/cli/usage.md  |  CLI flags: python -m cli --help
+#
+# Every key name below matches a field on CLIConfig (see cli/config.py) and a
+# default in mspecviz/common/defaults.py. Flat snake_case, one name per
+# concept — no translation layer.
 
 # --- 1. Almost always edit these ---
 
-input:
-  idxml_files:
-    - /mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML
-  mzml_files:
-    - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
+idxml_files:
+  - /mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML
+mzml_files:
+  - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
 
 # "all" | "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
-peptides: /mnt/volume/nacho/data/peptide_lists/peptides.txt
+peptide_source: /mnt/volume/nacho/data/peptide_lists/peptides.txt
 
-# Substring that marks reference mzMLs; leave empty for single-spectrum mode or prediction only.
-reference:
-  substring: ""
+# Substring that marks reference mzMLs; leave empty for single-spectrum mode
+# or prediction only.
+reference_substring: ""
 
-export:
-  directory: ./exports                 # base path for versioned run dirs
-  project_name: MSpecViz_analysis      # prefix of the run dir name
-  formats: [png]                       # png, svg, pdf, html
-  export_dpi: 300                      # raster resolution
-  figure_size: [12, 8]                 # [width, height] in inches
-  plot_unpaired_queries: false         # also render queries with no reference
+export_directory: ./exports           # base path for versioned run dirs
+project_name: MSpecViz_analysis       # prefix of the run dir name
+export_formats: [png]                 # png, svg, pdf, html
+export_resolution: 300                       # raster resolution
+figure_size: [12, 8]                  # [width, height] in inches
+plot_unpaired_queries: false          # also render queries with no reference
 
 # --- 2. Sensible defaults ---
 
-annotation:
-  ion_types: [b, y]                    # a, b, c, x, y, z, precursor, immonium
-  mz_tolerance: 0.02                   # Da
-  add_neutral_losses: false            # H2O, NH3 losses
-  add_first_prefix_ion: true           # include the a1/b1/c1 ion
-  remove_precursor_peaks: false        # mask peaks near the precursor m/z
-  intensity_mode: Relative             # Relative (base-peak normalised) or Raw
+ion_types: [b, y]                     # a, b, c, x, y, z, precursor, immonium
+mz_tolerance: 0.02                    # Da
+add_neutral_losses: false             # H2O, NH3 losses
+add_first_prefix_ion: true            # include the a1/b1/c1 ion
+remove_precursor_peaks: false         # mask peaks near the precursor m/z
+intensity_mode: Relative              # Relative (base-peak normalised) or Raw
 
-performance:
-  workers: 4                           # 1 = sequential (easier debugging)
+workers: 4                            # 1 = sequential (easier debugging)
 
-summary:
-  # metric: R² binned                  # default metric for summary plots
-  # plot_types: [dual_axis, ridgeline] # any of: dual_axis, ridgeline, heatmap
+# summary_metric: R² binned                    # default metric for summary plots
+# summary_plot_types: [dual_axis, ridgeline]   # any of: dual_axis, ridgeline, heatmap
 
 # --- 3. Advanced / optional ---
 
 # Koina generates a predicted reference when no experimental one exists.
 # Requires network access to koina.wilhelmlab.org.
 # Full model list: streamlit_app/config/settings.json → "models"
-koina:
-  enabled: false
-  model: ms2pip_timsTOF2024
-  collision_energy: 35
-  instrument_type: TIMSTOF             # TIMSTOF, QE, LUMOS, ELITE
+koina_enabled: false
+koina_model: ms2pip_timsTOF2024
+koina_collision_energy: 35
+koina_instrument_type: TIMSTOF        # TIMSTOF, QE, LUMOS, ELITE

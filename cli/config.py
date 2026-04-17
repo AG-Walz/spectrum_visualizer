@@ -6,13 +6,13 @@ precedence merge (YAML < CLI flags, seeded by ``defaults.DEFAULTS``) and
 argparse surface live in ``cli.config_builder`` so this file stays focused
 on I/O.
 """
+
 import glob as globmod
 import logging
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, List, Optional, Tuple
-
+from typing import Callable, List, Optional, Tuple, Union
 import yaml
 
 from cli.output import TerminalProgress
@@ -29,18 +29,20 @@ logger = logging.getLogger("mspecviz.cli")
 class CLIConfig:
     """All pipeline parameters merged from settings.json, YAML, and CLI args.
 
-    Field defaults come from :data:`mspecviz.common.defaults.DEFAULTS` — the
-    single source of truth. Do not duplicate default values here; edit
-    ``defaults.py`` instead.
+    Field defaults come from :data:`mspecviz.common.defaults.DEFAULTS`.
+    Do not duplicate default values here; edit ``defaults.py`` instead.
     """
 
     # Input files (resolved absolute paths after glob expansion)
     idxml_files: List[str] = field(default_factory=list)
     mzml_files: List[str] = field(default_factory=list)
 
-    # Peptides
+    # Peptides — can come from ``peptide_source`` (can be a path to a 
+    # peptides.txt, or an inline list in YAML).
+    # ``load_peptides`` resolves it into the ``peptides`` list at runtime.
+    peptide_source: Union[str, List[str]] = ""
     peptides: List[str] = field(default_factory=list)
-    peptides_mode: str = ""  # "all", "file", or "inline"
+    peptides_mode: str = ""                            # "all", "file", or "inline"
 
     # Reference
     reference_substring: str = ""
@@ -57,7 +59,7 @@ class CLIConfig:
     export_directory: str = DEFAULTS.export_directory
     project_name: str = DEFAULTS.project_name
     export_formats: List[str] = field(default_factory=lambda: list(DEFAULTS.export_formats))
-    export_dpi: int = DEFAULTS.export_dpi
+    export_resolution: int = DEFAULTS.export_resolution
     figure_size: Tuple[int, int] = DEFAULTS.figure_size
     plot_unpaired_queries: bool = DEFAULTS.plot_unpaired_queries
     no_plots: bool = False
@@ -85,15 +87,22 @@ def load_yaml_config(path: str) -> dict:
         print(f"Error: config file not found: {path}", file=sys.stderr)
         sys.exit(2)
     with open(config_path, encoding="utf-8") as f:
-        cfg = yaml.safe_load(f)
-    if not isinstance(cfg, dict):
+        loaded = yaml.safe_load(f)
+    if not isinstance(loaded, dict):
         print(f"Error: config file is not a valid YAML mapping: {path}", file=sys.stderr)
         sys.exit(2)
-    return cfg
+    return loaded
 
 
 def expand_globs(patterns: List[str]) -> List[str]:
-    """Expand glob patterns to a sorted list of unique absolute paths."""
+    """Expand shell-style glob patterns into a flat list of absolute file paths.
+
+    Used to normalise the ``idxml_files`` and ``mzml_files`` entries before
+    they land on :class:`CLIConfig`. Accepts literal paths, simple wildcards,
+    and recursive ``**`` globs; every pattern is fed through
+    :func:`glob.glob(recursive=True) <glob.glob>` so ``**/*.mzML`` walks
+    subdirectories.
+    """
     result: List[str] = []
     seen = set()
     for pattern in patterns:
@@ -109,27 +118,29 @@ def expand_globs(patterns: List[str]) -> List[str]:
 
 
 def load_peptides(
-    peptide_spec,
+    peptide_source,
     idxml_files: List[str],
     workers: int,
     quiet: bool,
     progress_factory: Optional[Callable] = None,
 ) -> Tuple[List[str], str]:
+    """Resolve a raw peptide source into a concrete, upper-cased sequence list.
+
+    Called by ``cli/main.py`` after :func:`build_config` has populated
+    :attr:`CLIConfig.peptide_source` from either the YAML ``peptide_source:``
+    key or the ``--peptides`` CLI flag.  The returned *mode* string is stored
+    on :attr:`CLIConfig.peptides_mode` and written to ``run_settings.json``
+    so every export run is reproducible.
     """
-    Resolve peptides from spec (inline list, path, or "all").
+    # --- Branch 1: YAML already gave us a Python list (flow-style [...]) ---
+    if isinstance(peptide_source, list):
+        peptides = [str(p).strip().upper() for p in peptide_source if str(p).strip()]
+        return peptides, "inline"
 
-    ``progress_factory(label, total, quiet)`` returns a progress indicator when
-    scanning idXMLs; defaults to ``cli.output.TerminalProgress`` when None.
+    peptide_source = str(peptide_source).strip()
 
-    Returns (peptide_list, mode_string).
-    """
-    if isinstance(peptide_spec, list):
-        peps = [str(p).strip().upper() for p in peptide_spec if str(p).strip()]
-        return peps, "inline"
-
-    peptide_spec = str(peptide_spec).strip()
-
-    if peptide_spec.lower() == "all":
+    # --- Branch 2: keyword "all" — scan every idXML for unique peptides ---
+    if peptide_source.lower() == "all":
         if progress_factory is None:
             progress_factory = TerminalProgress
 
@@ -137,20 +148,21 @@ def load_peptides(
             print("  Extracting all peptides from idXML files...")
         progress = progress_factory("Scanning", len(idxml_files), quiet)
 
-        def on_progress(current, total, msg):
-            progress.update(current, msg)
+        def on_progress(current, total, message):
+            progress.update(current, message)
 
-        peps = get_unique_peptides_from_idxmls(
+        peptides = get_unique_peptides_from_idxmls(
             idxml_files, limit=10000,
             progress_callback=on_progress, workers=workers,
         )
-        progress.finish(f"{len(peps)} unique peptides")
-        return peps, "all"
+        progress.finish(f"{len(peptides)} unique peptides")
+        return peptides, "all"
 
-    pep_path = Path(peptide_spec)
-    if pep_path.exists() and pep_path.is_file():
-        return parse_peptide_list(pep_path.read_text()), "file"
+    # --- Branch 3: a text file with comma/newline-separated sequences ---
+    peptide_path = Path(peptide_source)
+    if peptide_path.exists() and peptide_path.is_file():
+        return parse_peptide_list(peptide_path.read_text()), "file"
 
-    # Comma/newline-separated inline list
-    peps = [p.strip().upper() for p in peptide_spec.replace(",", "\n").split("\n") if p.strip()]
-    return peps, "inline"
+    # --- Branch 4: bare inline string, e.g. "PEPTIDE, SAMPLE" from YAML scalar ---
+    peptides = [p.strip().upper() for p in peptide_source.replace(",", "\n").split("\n") if p.strip()]
+    return peptides, "inline"

@@ -41,21 +41,20 @@ def main():
         datefmt="%H:%M:%S",
     )
 
-    yaml_cfg = load_yaml_config(args.config)
-    cfg = build_config(yaml_cfg, args)
+    yaml_config = load_yaml_config(args.config)
+    config = build_config(yaml_config, args)
 
-    peptide_spec = args.peptides if args.peptides else yaml_cfg.get("peptides", [])
-    if not peptide_spec:
-        print("Error: No peptides specified. Use 'peptides' in config or --peptides.", file=sys.stderr)
+    if not config.peptide_source:
+        print("Error: No peptides specified. Use 'peptide_source' in config or --peptides.", file=sys.stderr)
         sys.exit(2)
-    cfg.peptides, cfg.peptides_mode = load_peptides(
-        peptide_spec, cfg.idxml_files, cfg.workers, args.quiet,
+    config.peptides, config.peptides_mode = load_peptides(
+        config.peptide_source, config.idxml_files, config.workers, args.quiet,
     )
-    if not cfg.peptides:
+    if not config.peptides:
         print("Error: Peptide list is empty.", file=sys.stderr)
         sys.exit(2)
 
-    sys.exit(run_pipeline(cfg, quiet=args.quiet))
+    sys.exit(run_pipeline(config, quiet=args.quiet))
 
 
 if __name__ == "__main__":

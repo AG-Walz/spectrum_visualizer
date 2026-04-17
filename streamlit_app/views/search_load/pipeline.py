@@ -44,11 +44,11 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
 
         def progress_callback(current, total, message):
             if total > 0:
-                frac = current / total
-                progress_bar.progress(frac, message)
+                fraction = current / total
+                progress_bar.progress(fraction, message)
                 elapsed = _time.time() - _search_start
-                if frac > 0 and current < total:
-                    remaining = (elapsed / frac) - elapsed
+                if fraction > 0 and current < total:
+                    remaining = (elapsed / fraction) - elapsed
                     status_text.caption(
                         f"{current}/{total} files  "
                         f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)"
@@ -56,8 +56,8 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
                 elif current >= total:
                     status_text.caption(f"Done in {format_time(elapsed)}")
 
-        def error_callback(error_msg: str):
-            error_messages.append(error_msg)
+        def error_callback(error_message: str):
+            error_messages.append(error_message)
 
         workers = get_param(params, "workers", DEFAULTS.workers)
         results = search_peptides_in_idxmls(
@@ -85,8 +85,8 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
                 st.warning(f"{unresolved} PSMs could not be mapped to mzML files")
             if error_messages:
                 with st.expander(f"{len(error_messages)} warnings", expanded=False):
-                    for msg in error_messages[:10]:
-                        st.caption(msg)
+                    for message in error_messages[:10]:
+                        st.caption(message)
         else:
             status.update(label="No matches found", state="error")
 
@@ -106,8 +106,8 @@ def _build_annotation_kwargs(params: dict) -> dict:
 def _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
                             reference_store, comparison_rows) -> None:
     """Persist all analysis results to session state and disk cache."""
-    peaks_lf = build_peaks_dataframe([(pid, df) for pid, _, df in annotated_queries])
-    seq_lf = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated_queries])
+    peaks_lf = build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries])
+    seq_lf = build_sequence_dataframe([(psm_id, s) for psm_id, s, _ in annotated_queries])
     heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
 
     st.session_state[get_state_key("psm_lf")] = psm_lf
@@ -117,7 +117,7 @@ def _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
     st.session_state[get_state_key("heatmap_lf")] = heatmap_lf
 
     st.session_state[get_state_key("annotated_queries")] = {
-        pid: (spec, df) for pid, spec, df in annotated_queries
+        psm_id: (spec, df) for psm_id, spec, df in annotated_queries
     }
     st.session_state[get_state_key("reference_store")] = reference_store
     st.session_state[get_state_key("comparison_df")] = (
@@ -145,14 +145,14 @@ def run_search_and_load(params: dict) -> None:
         st.error("No mzML files selected.")
         return
 
-    vg_copy = copy.deepcopy(variant_groups)
-    psm_lf, psm_lookup = build_psm_table(vg_copy)
+    variant_groups_copy = copy.deepcopy(variant_groups)
+    psm_lf, psm_lookup = build_psm_table(variant_groups_copy)
     annotation_kwargs = _build_annotation_kwargs(params)
 
     annotated_queries: list = []
     reference_store: dict = {}
     comparison_rows: list = []
-    total_psms = sum(len(vg.matches) for vg in vg_copy.values())
+    total_psms = sum(len(group.matches) for group in variant_groups_copy.values())
 
     with st.status(f"Loading {total_psms} spectra...", expanded=True) as status:
         progress_bar = st.progress(0)
@@ -170,15 +170,15 @@ def run_search_and_load(params: dict) -> None:
             )
             if processed is None:
                 return
-            psm_id, query_spec, query_df, comp_rows = processed
+            psm_id, query_spec, query_df, comparison_rows_for_psm = processed
             annotated_queries.append((psm_id, query_spec, query_df))
-            comparison_rows.extend(comp_rows)
+            comparison_rows.extend(comparison_rows_for_psm)
 
             loaded_count[0] += 1
             if loaded_count[0] % 10 == 0 or loaded_count[0] == total_psms:
-                frac = min(loaded_count[0] / max(total_psms, 1), 1.0)
+                fraction = min(loaded_count[0] / max(total_psms, 1), 1.0)
                 elapsed = _time.time() - _load_start
-                progress_bar.progress(frac)
+                progress_bar.progress(fraction)
                 status_text.caption(
                     f"{loaded_count[0]}/{total_psms} spectra "
                     f"({format_time(elapsed)} elapsed)"
@@ -189,7 +189,7 @@ def run_search_and_load(params: dict) -> None:
             status_text.caption(f"Processing {kind}: {Path(path).name}")
 
         load_spectra_streaming(
-            variant_groups=vg_copy,
+            variant_groups=variant_groups_copy,
             mzml_paths=[Path(m) for m in mzmls],
             reference_substring=get_param(params, "reference_substring", ""),
             on_reference_loaded=lambda vk, c: None,

@@ -102,7 +102,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                      normalize, sanitize_fn, fmt_dirs=None, figure_size=(12, 8),
-                     export_dpi=300, html_dir="", plot_unpaired_queries=False):
+                     export_resolution=300, html_dir="", plot_unpaired_queries=False):
     """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
 
     Metrics + ``metrics_text`` are pre-computed here (in the main process) so
@@ -155,7 +155,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     pdf_dir=fmt_dirs.get("pdf", ""),
                     export_formats=export_formats,
                     figure_size=figure_size,
-                    export_dpi=export_dpi,
+                    export_resolution=export_resolution,
                     normalize=normalize,
                     html_plot_path=html_path,
                     metrics_text=metrics_text,
@@ -183,7 +183,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 pdf_dir=fmt_dirs.get("pdf", ""),
                 export_formats=single_formats,
                 figure_size=figure_size,
-                export_dpi=export_dpi,
+                export_resolution=export_resolution,
                 normalize=normalize,
                 peptide=query_spec.peptidoform,
                 charge=query_spec.precursor_charge,

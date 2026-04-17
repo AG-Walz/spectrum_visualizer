@@ -215,30 +215,30 @@ RUN_SETTINGS_FIELDS: list[tuple[str, str, object]] = [
 
 def build_run_settings() -> dict:
     """Capture current settings for run_settings.json."""
-    p = load_params()
-    cfg: dict = {
-        rs_key: get_param(p, param_key, default)
+    params = load_params()
+    run_settings: dict = {
+        rs_key: get_param(params, param_key, default)
         for rs_key, param_key, default in RUN_SETTINGS_FIELDS
     }
-    cfg["peptides"] = parse_peptide_list(get_param(p, "target_peptides", ""))
+    run_settings["peptides"] = parse_peptide_list(get_param(params, "target_peptides", ""))
     now = datetime.now().isoformat()
-    cfg["_created_at"] = now
-    cfg["_last_run"] = now
-    return cfg
+    run_settings["_created_at"] = now
+    run_settings["_last_run"] = now
+    return run_settings
 
 
-def apply_run_settings(run_cfg: dict):
+def apply_run_settings(run_settings: dict):
     """Load a run_settings.json dict back into session state.
 
     Writes both the widget key and its ``_persisted`` backup so values survive
     page navigation even after Streamlit reaps the owning widget.
     """
     updates: list[tuple[str, object]] = [
-        (param_key, run_cfg.get(rs_key, default))
+        (param_key, run_settings.get(rs_key, default))
         for rs_key, param_key, default in RUN_SETTINGS_FIELDS
     ]
     updates.append(
-        ("target_peptides", "\n".join(run_cfg.get("peptides", [])))
+        ("target_peptides", "\n".join(run_settings.get("peptides", [])))
     )
 
     for param_key, value in updates:

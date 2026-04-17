@@ -23,7 +23,7 @@ def plot_ridgeline(
     agg_df: pd.DataFrame,
     metric: str = DEFAULT_METRIC,
     figure_size: Tuple[float, float] = None,
-    export_dpi: int = 300,
+    export_resolution: int = 300,
     title: str = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
@@ -33,7 +33,7 @@ def plot_ridgeline(
         figure_size = (14, _auto_height(n, per_row=0.5))
 
     fig, (ax_ridge, ax_bar) = plt.subplots(
-        1, 2, figsize=figure_size, dpi=export_dpi,
+        1, 2, figsize=figure_size, dpi=export_resolution,
         gridspec_kw={"width_ratios": [4, 1], "wspace": 0.05}, sharey=True,
     )
 

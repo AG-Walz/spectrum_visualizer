@@ -41,26 +41,26 @@ def _generate_single_plot(task: ComparisonTask) -> int:
 
 def export_mirror_plots(
     annotated_queries, reference_store, variant_groups,
-    cfg, root_dir: Path, png_dir: Path, svg_dir: Path, pdf_dir: Path,
+    config, root_dir: Path, png_dir: Path, svg_dir: Path, pdf_dir: Path,
     normalize: bool, quiet: bool,
 ) -> int:
     """Build plot tasks then dispatch via ``run_tasks`` (sequential or parallel)."""
     fmt_dirs: Dict[str, str] = {
         fmt: str(d)
         for fmt, d in [("png", png_dir), ("svg", svg_dir), ("pdf", pdf_dir)]
-        if fmt in cfg.export_formats
+        if fmt in config.export_formats
     }
-    html_dir = str(root_dir / "html") if "html" in cfg.export_formats else ""
+    html_dir = str(root_dir / "html") if "html" in config.export_formats else ""
 
     tasks = build_plot_tasks(
         annotated_queries, reference_store, variant_groups,
         normalize=normalize,
         sanitize_fn=sanitize_filename,
         fmt_dirs=fmt_dirs,
-        figure_size=cfg.figure_size,
-        export_dpi=cfg.export_dpi,
+        figure_size=config.figure_size,
+        export_resolution=config.export_resolution,
         html_dir=html_dir,
-        plot_unpaired_queries=cfg.plot_unpaired_queries,
+        plot_unpaired_queries=config.plot_unpaired_queries,
     )
     if not tasks:
         return 0
@@ -81,7 +81,7 @@ def export_mirror_plots(
     run_tasks(
         tasks=tasks,
         worker=_generate_single_plot,
-        workers=cfg.workers,
+        workers=config.workers,
         on_result=_on_result,
         on_error=_on_error,
         on_progress=_on_progress,

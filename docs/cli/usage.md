@@ -47,20 +47,15 @@ python -m cli -c my_config.yaml --export-directory /tmp/my_exports
 
 ## Minimum viable config
 
-Smallest YAML that will run (everything else inherits defaults from
-`settings.json`):
+Smallest YAML that will run (everything else inherits from `DEFAULTS`):
 
 ```yaml
-input:
-  idxml_files:
-    - /path/to/results.idXML
-  mzml_files:
-    - /path/to/raw/*.mzML
+idxml_files:
+  - /path/to/results.idXML
+mzml_files:
+  - /path/to/raw/*.mzML
 
-peptides: /path/to/peptides.txt
-
-reference:
-  substring: ""
+peptide_source: /path/to/peptides.txt
 ```
 
 The sample at `cli/config/config_example.yaml` is a fully-annotated
@@ -68,20 +63,20 @@ template — copy it and edit the paths.
 
 ---
 
-## Precedence: `settings.json` < YAML < flags
+## Precedence: `DEFAULTS` < YAML < flags
 
-Three layers, merged by `cli/config_builder.py`:
+Two override layers, merged by `cli/config_builder.py`:
 
-1. **`streamlit_app/config/settings.json`** seeds the `CLIConfig`
-   dataclass with app-wide defaults.
+1. **`mspecviz/common/defaults.py`** seeds `CLIConfig` with every
+   default.
 2. **YAML file** overrides any seeded value.
 3. **Command-line flags** override both above.
 
-To permanently change a value for all CLI runs, edit `settings.json`. To
-change it per run, use YAML. To change it for one invocation, use a flag.
-Each of the three is a small table in `config_builder.py` — adding a new
-parameter is a one-row edit in each relevant table, not three scattered
-branches.
+YAML keys and argparse `dest=` names match `CLIConfig` field names
+exactly, so the merge is a direct name-for-name copy — no translation
+table. To change a default for all CLI runs, edit `defaults.py`. To
+change it per run, use YAML. To change it for one invocation, use a
+flag. Adding a new parameter is a one-field edit on `CLIConfig`.
 
 ---
 

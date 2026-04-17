@@ -67,35 +67,17 @@ destinations internally.
 
 ---
 
-## Quick lookup: one setting, two places
+## Key naming
 
-The same conceptual setting appears in the workspace `params.json` and
-the CLI YAML under slightly different shapes. The underlying default for
-both comes from `DEFAULTS`.
+Every setting has one name that is identical across all layers — the
+`DEFAULTS` field, the `CLIConfig` attribute, the YAML key, the argparse
+`dest`, the workspace `params.json` key, and the Streamlit session-state
+key. No translation, no aliases.
 
-| Concept | `DEFAULTS` field | Workspace `params.json` key | CLI YAML |
-|---|---|---|---|
-| Fragment ion types | `ion_types` | `ion_types` | `annotation.ion_types` |
-| m/z tolerance | `mz_tolerance` | `mz_tolerance` | `annotation.mz_tolerance` |
-| Neutral losses | `add_neutral_losses` | `add_neutral_losses` | `annotation.add_neutral_losses` |
-| First prefix ion | `add_first_prefix_ion` | `add_first_prefix_ion` | `annotation.add_first_prefix_ion` |
-| Remove precursor | `remove_precursor_peaks` | `remove_precursor_peaks` | `annotation.remove_precursor_peaks` |
-| Intensity mode | `intensity_mode` | `intensity_mode` | `annotation.intensity_mode` |
-| Workers | `workers` | `workers` | `performance.workers` |
-| Export base dir | `export_directory` | `export_directory` | `export.directory` |
-| Export formats | `export_formats` | *(not persisted)* | `export.formats` |
-| Export DPI | `export_dpi` | *(not persisted)* | `export.export_dpi` |
-| Figure size | `figure_size` | *(not persisted)* | `export.figure_size` |
-| Plot unpaired queries | `plot_unpaired_queries` | *(not persisted)* | `export.plot_unpaired_queries` |
-| Koina enabled | `koina_enabled` | `koina_enabled` | `koina.enabled` |
-| Koina model | `koina_model` | `koina_model` | `koina.model` |
-| Koina collision energy | `koina_collision_energy` | `koina_collision_energy` | `koina.collision_energy` |
-| Koina instrument type | `koina_instrument_type` | `koina_instrument_type` | `koina.instrument_type` |
-| Summary metric | `summary_metric` | *(not persisted)* | `summary.metric` |
-| Summary plot types | `summary_plot_types` | *(not persisted)* | `summary.plot_types` |
+Examples: `ion_types`, `mz_tolerance`, `add_neutral_losses`,
+`export_directory`, `koina_enabled`, `koina_collision_energy`,
+`figure_size`, `plot_unpaired_queries`, `summary_plot_types`.
 
-The CLI YAML → `CLIConfig` mapping is encoded in
-`cli/config_builder.py::_YAML_OVERRIDES`. The Streamlit workspace schema
-is implicit: any key written by a widget is persisted; unknown keys are
-preserved on reload. Missing keys always fall back to
-`DEFAULTS.<field>`.
+See [cli.md](cli.md) for the full YAML schema and CLI flag table, and
+`mspecviz/common/defaults.py` for the field list with default values.
+Missing keys always fall back to `DEFAULTS.<field>`.

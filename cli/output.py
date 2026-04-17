@@ -45,7 +45,7 @@ class TerminalProgress:
                   f"100.0%  ({format_time(elapsed)} elapsed){extra}")
 
 
-def print_config_summary(cfg, quiet: bool) -> None:
+def print_config_summary(config, quiet: bool) -> None:
     """Print the pre-run configuration banner."""
     if quiet:
         return
@@ -53,28 +53,28 @@ def print_config_summary(cfg, quiet: bool) -> None:
     print("\n" + "=" * 60)
     print("  MSpecViz CLI Pipeline")
     print("=" * 60)
-    print(f"  idXML files:    {len(cfg.idxml_files)}")
-    for f in cfg.idxml_files:
+    print(f"  idXML files:    {len(config.idxml_files)}")
+    for f in config.idxml_files:
         print(f"                  {Path(f).name}")
-    print(f"  mzML files:     {len(cfg.mzml_files)}")
-    for f in cfg.mzml_files:
+    print(f"  mzML files:     {len(config.mzml_files)}")
+    for f in config.mzml_files:
         print(f"                  {Path(f).name}")
-    print(f"  Peptides:       {len(cfg.peptides)} ({cfg.peptides_mode})")
-    if len(cfg.peptides) <= 10:
-        for p in cfg.peptides:
+    print(f"  Peptides:       {len(config.peptides)} ({config.peptides_mode})")
+    if len(config.peptides) <= 10:
+        for p in config.peptides:
             print(f"                  {p}")
     else:
-        for p in cfg.peptides[:5]:
+        for p in config.peptides[:5]:
             print(f"                  {p}")
-        print(f"                  ... and {len(cfg.peptides) - 5} more")
-    print(f"  Reference:      {cfg.reference_substring or '(none)'}")
-    print(f"  Ion types:      {', '.join(cfg.ion_types)}")
-    print(f"  m/z tolerance:  {cfg.mz_tolerance} Da")
-    print(f"  Koina:          {'enabled (' + cfg.koina_model + ')' if cfg.koina_enabled else 'disabled'}")
-    print(f"  Workers:        {cfg.workers}")
-    print(f"  Export dir:     {cfg.export_directory}")
-    print(f"  Formats:        {', '.join(cfg.export_formats)}")
-    print(f"  Plots:          {'skip' if cfg.no_plots else 'generate'}")
+        print(f"                  ... and {len(config.peptides) - 5} more")
+    print(f"  Reference:      {config.reference_substring or '(none)'}")
+    print(f"  Ion types:      {', '.join(config.ion_types)}")
+    print(f"  m/z tolerance:  {config.mz_tolerance} Da")
+    print(f"  Koina:          {'enabled (' + config.koina_model + ')' if config.koina_enabled else 'disabled'}")
+    print(f"  Workers:        {config.workers}")
+    print(f"  Export dir:     {config.export_directory}")
+    print(f"  Formats:        {', '.join(config.export_formats)}")
+    print(f"  Plots:          {'skip' if config.no_plots else 'generate'}")
     print("=" * 60)
     print()
 

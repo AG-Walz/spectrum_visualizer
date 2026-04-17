@@ -25,7 +25,7 @@ def plot_classic_dual_axis(
     agg_df: pd.DataFrame,
     metric: str = DEFAULT_METRIC,
     figure_size: Tuple[float, float] = None,
-    export_dpi: int = 300,
+    export_resolution: int = 300,
     title: str = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
@@ -35,7 +35,7 @@ def plot_classic_dual_axis(
     if figure_size is None:
         figure_size = (14, _auto_height(n))
 
-    fig, ax = plt.subplots(figsize=figure_size, dpi=export_dpi)
+    fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
     y_pos = np.arange(n)
     labels = agg_df["peptidoform"].values
 

@@ -1,104 +1,49 @@
 """
-Two-layer CLI config merger: YAML < argparse.
+Two-layer CLI config merger: defaults < YAML < argparse.
 
-Defaults come from :data:`mspecviz.common.defaults.DEFAULTS` (baked into
-:class:`CLIConfig`'s field defaults). YAML config and CLI flags override,
-in that order. ``build_config`` runs the layers; ``build_parser`` is the
-companion argparse surface.
+Default parameter values are defined in
+:data:`mspecviz.common.defaults.DEFAULTS` and can be
+overwritten by the YAML keys, which can in
+turn be overwritten by the argparse ``dest=``.
 """
+
 import argparse
-
-from mspecviz.common.text_utils import get_nested
-
+from dataclasses import fields
 from cli.config import CLIConfig, expand_globs
 
 
-def _as_tuple(val):
-    """Cast list → tuple; pass tuples through unchanged."""
-    return tuple(val) if isinstance(val, list) else val
+def _copy_into_config(config: CLIConfig, source: dict) -> None:
+    """Copy every ``source`` entry whose key matches a CLIConfig field.
 
-
-# --- YAML → CLIConfig mapping table ---------------------------------------
-# Each entry: (yaml_section, yaml_key, cfg_attr, optional_cast).
-# YAML uses snake_case throughout.
-_YAML_OVERRIDES = [
-    ("annotation", "ion_types", "ion_types", None),
-    ("annotation", "mz_tolerance", "mz_tolerance", float),
-    ("annotation", "add_neutral_losses", "add_neutral_losses", bool),
-    ("annotation", "add_first_prefix_ion", "add_first_prefix_ion", bool),
-    ("annotation", "remove_precursor_peaks", "remove_precursor_peaks", bool),
-    ("annotation", "intensity_mode", "intensity_mode", None),
-    ("export", "directory", "export_directory", None),
-    ("export", "project_name", "project_name", None),
-    ("export", "formats", "export_formats", None),
-    ("export", "export_dpi", "export_dpi", int),
-    ("export", "figure_size", "figure_size", _as_tuple),
-    ("export", "plot_unpaired_queries", "plot_unpaired_queries", bool),
-    ("summary", "metric", "summary_metric", None),
-    ("summary", "plot_types", "summary_plot_types", None),
-    ("performance", "workers", "workers", int),
-    ("koina", "enabled", "koina_enabled", bool),
-    ("koina", "model", "koina_model", None),
-    ("koina", "collision_energy", "koina_collision_energy", int),
-    ("koina", "instrument_type", "koina_instrument_type", None),
-]
-
-# --- argparse → CLIConfig mapping table -----------------------------------
-# Each entry: (argparse_dest, cfg_attr, optional_transform).
-# Transforms run only when the attr has a meaningful value (not None / falsy).
-_CLI_OVERRIDES = [
-    ("idxml", "idxml_files", expand_globs),
-    ("mzml", "mzml_files", expand_globs),
-    ("reference_substring", "reference_substring", None),
-    ("ion_types", "ion_types", None),
-    ("mz_tolerance", "mz_tolerance", None),
-    ("export_directory", "export_directory", None),
-    ("project_name", "project_name", None),
-    ("formats", "export_formats", None),
-    ("workers", "workers", None),
-    ("koina_model", "koina_model", None),
-    ("koina_collision_energy", "koina_collision_energy", None),
-    ("koina_instrument_type", "koina_instrument_type", None),
-    ("summary_metric", "summary_metric", None),
-    ("summary_plot_types", "summary_plot_types", None),
-]
-
-
-def _apply_yaml_overrides(cfg: CLIConfig, yaml_cfg: dict) -> None:
-    """Apply YAML config overrides."""
-    cfg.idxml_files = expand_globs(get_nested(yaml_cfg, "input", "idxml_files", default=[]))
-    cfg.mzml_files = expand_globs(get_nested(yaml_cfg, "input", "mzml_files", default=[]))
-    cfg.reference_substring = get_nested(yaml_cfg, "reference", "substring", default="")
-
-    for section_name, yaml_key, attr, cast in _YAML_OVERRIDES:
-        # A YAML key with no value parses to None, not {} — coerce to empty dict.
-        section = yaml_cfg.get(section_name) or {}
-        if yaml_key in section:
-            val = cast(section[yaml_key]) if cast else section[yaml_key]
-            setattr(cfg, attr, val)
-
-
-def _apply_cli_overrides(cfg: CLIConfig, args: argparse.Namespace) -> None:
-    """Apply argparse CLI overrides (highest priority)."""
-    for arg_attr, cfg_attr, transform in _CLI_OVERRIDES:
-        val = getattr(args, arg_attr, None)
-        if val is None or val == []:
+    ``None`` and empty-list values mean "layer did not supply this key" and are
+    skipped (left as default) so they can't overwrite a lower-precedence value.
+    """
+    config_fields = {f.name for f in fields(config)}
+    for field_name, field_value in source.items():
+        if field_name not in config_fields:
             continue
-        setattr(cfg, cfg_attr, transform(val) if transform else val)
+        if field_value is None or field_value == []:
+            continue
+        # ``figure_size`` is typed as Tuple but YAML/argparse deliver a list.
+        if field_name == "figure_size" and isinstance(field_value, list):
+            field_value = tuple(field_value)
+        if field_name in ("idxml_files", "mzml_files"):
+            field_value = expand_globs(field_value)
+        setattr(config, field_name, field_value)
 
-    # Boolean flags with non-uniform semantics
-    if args.no_plots:
-        cfg.no_plots = True
-    if args.no_koina:
-        cfg.koina_enabled = False
 
-
-def build_config(yaml_cfg: dict, args: argparse.Namespace) -> CLIConfig:
+def build_config(yaml_config: dict, args: argparse.Namespace) -> CLIConfig:
     """Merge defaults, YAML config, and CLI overrides into a CLIConfig."""
-    cfg = CLIConfig()
-    _apply_yaml_overrides(cfg, yaml_cfg)
-    _apply_cli_overrides(cfg, args)
-    return cfg
+    config = CLIConfig()
+    _copy_into_config(config, yaml_config)
+    _copy_into_config(config, vars(args))
+
+    # --no-koina is a negated toggle with no matching CLIConfig field; it flips
+    # ``koina_enabled`` only when the user passed the flag (None = absent).
+    if args.no_koina:
+        config.koina_enabled = False
+
+    return config
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -111,11 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("-c", "--config", required=True,
                         help="Path to YAML config file")
 
-    parser.add_argument("--idxml", nargs="+", metavar="PATTERN",
+    # ``dest=`` is set whenever argparse's default name doesn't match the
+    # target CLIConfig field.
+    parser.add_argument("--idxml", dest="idxml_files", nargs="+", metavar="PATTERN",
                         help="idXML file paths or glob patterns (overrides config)")
-    parser.add_argument("--mzml", nargs="+", metavar="PATTERN",
+    parser.add_argument("--mzml", dest="mzml_files", nargs="+", metavar="PATTERN",
                         help="mzML file paths or glob patterns (overrides config)")
-    parser.add_argument("--peptides", metavar="PATH_OR_ALL",
+    parser.add_argument("--peptides", dest="peptide_source", metavar="PATH_OR_ALL",
                         help='Path to peptides.txt or "all" (overrides config)')
     parser.add_argument("--reference-substring", metavar="STR",
                         help="Reference file substring (overrides config)")
@@ -129,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Export directory (overrides config)")
     parser.add_argument("--project-name", metavar="NAME",
                         help="Project name (overrides config)")
-    parser.add_argument("--formats", nargs="+", metavar="FMT",
+    parser.add_argument("--formats", dest="export_formats", nargs="+", metavar="FMT",
                         choices=["png", "svg", "pdf", "html"],
                         help="Export formats: png svg pdf html (overrides config)")
     parser.add_argument("--workers", type=int, metavar="N",
@@ -141,9 +88,12 @@ def build_parser() -> argparse.ArgumentParser:
                         choices=["dual_axis", "ridgeline", "heatmap"],
                         help="Summary plot types to render (overrides config)")
 
-    parser.add_argument("--no-plots", action="store_true",
+    # ``default=None`` turns argparse's usual False into "not supplied" so the
+    # copy loop's None-filter lets a YAML-set ``no_plots: true`` survive when
+    # the flag is absent. Present → True → overrides; absent → None → skipped.
+    parser.add_argument("--no-plots", action="store_true", default=None,
                         help="Skip plot generation, export CSV/Parquet only")
-    parser.add_argument("--no-koina", action="store_true",
+    parser.add_argument("--no-koina", action="store_true", default=None,
                         help="Disable Koina AI fallback predictions")
 
     parser.add_argument("--koina-model", metavar="ID",

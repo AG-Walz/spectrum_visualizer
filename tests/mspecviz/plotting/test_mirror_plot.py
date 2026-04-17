@@ -103,10 +103,10 @@ class TestMirrorPlotExtras:
 class TestFigureSaveable:
     def test_save_as_png(self, spectrum_df):
         fig = create_mirror_plot(spectrum_df, spectrum_df.copy())
-        buf = BytesIO()
-        fig.savefig(buf, format="png")
-        buf.seek(0)
-        content = buf.read()
+        buffer = BytesIO()
+        fig.savefig(buffer, format="png")
+        buffer.seek(0)
+        content = buffer.read()
         assert len(content) > 0
         # PNG files start with the PNG magic bytes
         assert content[:4] == b"\x89PNG"

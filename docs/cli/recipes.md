@@ -8,13 +8,13 @@ For the full flag reference, see [../settings/cli.md](../settings/cli.md).
 
 ## Peptide specification
 
-The `peptides:` YAML key (or `--peptides` flag) accepts three forms:
+The `peptide_source:` YAML key (or `--peptides` flag) accepts three forms:
 
 | Form | Example | Behaviour |
 |---|---|---|
-| Keyword | `peptides: all` | Scan every idXML and use every unique peptide found, capped at 10 000. Progress bar appears during the scan. |
-| File path | `peptides: /data/list.txt` | Read from disk. Comma- or newline-separated. Case is folded to uppercase. |
-| Inline list | `peptides: [ASDDFDQASY, RTEFNLNQY]` | YAML flow-style list. |
+| Keyword | `peptide_source: all` | Scan every idXML and use every unique peptide found, capped at 10 000. Progress bar appears during the scan. |
+| File path | `peptide_source: /data/list.txt` | Read from disk. Comma- or newline-separated. Case is folded to uppercase. |
+| Inline list | `peptide_source: [ASDDFDQASY, RTEFNLNQY]` | YAML flow-style list. |
 
 All three route through `cli.config.load_peptides()`. The resolved list
 and mode are recorded in `run_settings.json` for reproducibility.
@@ -23,7 +23,7 @@ and mode are recorded in `run_settings.json` for reproducibility.
 
 ## Reference substring and single-spectrum mode
 
-The `reference.substring` value splits your selected mzML files into two
+The `reference_substring` value splits your selected mzML files into two
 groups:
 
 - **Reference files** — name contains the substring. Used to build the
@@ -66,11 +66,10 @@ done
 
 ### Regenerate HTML plots from an already-processed dataset
 
-Make a copy of the config, change `export.formats` to `[html]`, and re-run:
+Make a copy of the config, change `export_formats` to `[html]`, and re-run:
 
 ```yaml
-export:
-  formats: [html]
+export_formats: [html]
 ```
 
 ```bash
@@ -86,7 +85,7 @@ python -m cli -c my_config.yaml --no-koina
 ```
 
 Any query with no experimental reference is skipped (or emitted as a
-single-spectrum plot when `export.plot_unpaired_queries: true`).
+single-spectrum plot when `plot_unpaired_queries: true`).
 
 ### Headless validation on CI
 

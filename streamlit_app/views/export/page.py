@@ -41,8 +41,8 @@ def export_history_fragment(export_dir: str):
     for settings_file in sorted(export_path.glob("*/run_settings.json"), reverse=True):
         try:
             with open(settings_file) as f:
-                run_cfg = json.load(f)
-            runs.append((settings_file.parent, run_cfg))
+                run_settings = json.load(f)
+            runs.append((settings_file.parent, run_settings))
         except Exception:
             continue
 
@@ -52,11 +52,11 @@ def export_history_fragment(export_dir: str):
 
     st.caption(f"{len(runs)} run(s) in `{export_dir}`")
 
-    for run_dir, run_cfg in runs:
-        peptides = run_cfg.get("peptides", [])
-        idxml_count = len(run_cfg.get("idxml_files", []))
-        mzml_count = len(run_cfg.get("mzml_files", []))
-        created = (run_cfg.get("_created_at") or "")[:10]
+    for run_dir, run_settings in runs:
+        peptides = run_settings.get("peptides", [])
+        idxml_count = len(run_settings.get("idxml_files", []))
+        mzml_count = len(run_settings.get("mzml_files", []))
+        created = (run_settings.get("_created_at") or "")[:10]
 
         pep_preview = ", ".join(peptides[:3])
         if len(peptides) > 3:
@@ -75,17 +75,17 @@ def export_history_fragment(export_dir: str):
             with col_meta:
                 st.markdown(f"**Peptides:** {pep_preview or '--'}")
                 st.markdown(f"**Files:** {idxml_count} idXML, {mzml_count} mzML")
-                ref_sub = run_cfg.get("reference_substring") or "--"
+                ref_sub = run_settings.get("reference_substring") or "--"
                 st.markdown(f"**Reference substring:** `{ref_sub}`")
-                st.markdown(f"**Ion types:** {', '.join(run_cfg.get('ion_types', []))}")
-                st.markdown(f"**m/z tolerance:** {run_cfg.get('mz_tolerance', '--')} Da")
-                created_full = (run_cfg.get("_created_at") or "--")[:19]
-                last_run_full = (run_cfg.get("_last_run") or "--")[:19]
+                st.markdown(f"**Ion types:** {', '.join(run_settings.get('ion_types', []))}")
+                st.markdown(f"**m/z tolerance:** {run_settings.get('mz_tolerance', '--')} Da")
+                created_full = (run_settings.get("_created_at") or "--")[:19]
+                last_run_full = (run_settings.get("_last_run") or "--")[:19]
                 st.caption(f"Created: {created_full}  |  Last run: {last_run_full}")
 
             with col_actions:
                 if st.button("Reload settings", key=f"reload_{run_dir.name}"):
-                    apply_run_settings(run_cfg)
+                    apply_run_settings(run_settings)
                     st.success("Settings loaded -- switch to Setup page to review.")
                     st.rerun()
 
@@ -114,13 +114,13 @@ def export_history_fragment(export_dir: str):
 def zip_download_fragment(export_root: Path) -> None:
     """Deferred zip download of the export directory."""
     def _make_zip() -> bytes:
-        buf = io.BytesIO()
-        with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        buffer = io.BytesIO()
+        with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
             for file in export_root.rglob("*"):
                 if not file.is_file():
                     continue
-                zf.write(file, file.relative_to(export_root.parent))
-        return buf.getvalue()
+                zip_file.write(file, file.relative_to(export_root.parent))
+        return buffer.getvalue()
 
     st.download_button(
         label="Download Export as ZIP",

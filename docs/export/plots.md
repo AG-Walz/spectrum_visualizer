@@ -102,7 +102,7 @@ a new plot type means adding:
 3. The string name into `PLOT_TYPES`.
 
 The registry keeps renderer contracts consistent — every plot consumes the
-same `(raw_df, agg_df, metric, figure_size, export_dpi, title)` signature.
+same `(raw_df, agg_df, metric, figure_size, export_resolution, title)` signature.
 
 ### Customizing
 
@@ -110,7 +110,7 @@ same `(raw_df, agg_df, metric, figure_size, export_dpi, title)` signature.
   `Jaccard`, `SharedRatio` (see `METRIC_COLUMNS`).
 - `plot_types` — subset of `PLOT_TYPES` to render (default: all).
 - `formats` — list like `["png", "svg"]` (default: PNG only).
-- `export_dpi` — passed through to Matplotlib (default: 300).
+- `export_resolution` — passed through to Matplotlib (default: 300).
 
 Summary plots are rendered on the main process only; there is no parallel
 speed-up to gain because each call is O(total comparisons) and fast.
