@@ -74,10 +74,10 @@ def save_analysis_cache() -> None:
 
     # 4. Complex objects -> pickle
     for key in _PICKLE_KEYS:
-        obj = st.session_state.get(get_state_key(key))
-        if obj is not None:
+        cached_value = st.session_state.get(get_state_key(key))
+        if cached_value is not None:
             with open(cache_dir / f"{key}.pkl", "wb") as f:
-                pickle.dump(obj, f, protocol=pickle.HIGHEST_PROTOCOL)
+                pickle.dump(cached_value, f, protocol=pickle.HIGHEST_PROTOCOL)
 
     # 5. Metadata marker
     meta = {

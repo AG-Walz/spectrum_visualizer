@@ -98,10 +98,10 @@ def find_or_create_export_directory(
         for entry in sorted(base.iterdir()):
             if not entry.is_dir():
                 continue
-            m = pattern.match(entry.name)
-            if not m:
+            name_match = pattern.match(entry.name)
+            if not name_match:
                 continue
-            num = int(m.group(1))
+            num = int(name_match.group(1))
             max_num = max(max_num, num)
 
             # Check settings match

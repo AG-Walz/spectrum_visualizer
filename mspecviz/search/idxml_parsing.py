@@ -55,21 +55,21 @@ def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], D
 
         # Standard path: spectra_data (merged idXML)
         if protein_id.metaValueExists("spectra_data"):
-            raw_val = protein_id.getMetaValue("spectra_data")
-            raw_list = raw_val if isinstance(raw_val, list) else [raw_val]
-            for v in raw_list:
-                full = decode_metadata_value(v)
-                mzml_full_paths.append(full)
-                mzml_files.append(Path(full).name)
+            raw_value = protein_id.getMetaValue("spectra_data")
+            raw_list = raw_value if isinstance(raw_value, list) else [raw_value]
+            for entry in raw_list:
+                full_path = decode_metadata_value(entry)
+                mzml_full_paths.append(full_path)
+                mzml_files.append(Path(full_path).name)
 
         # Fallback metadata keys (single-file idXMLs, older exporters)
         if not mzml_files:
             for key in ("CometAdapter:1:in", "mzML_file", "spectrum_reference"):
                 if protein_id.metaValueExists(key):
-                    val = decode_metadata_value(protein_id.getMetaValue(key))
-                    if val:
-                        mzml_full_paths = [val]
-                        mzml_files = [Path(val).name]
+                    decoded = decode_metadata_value(protein_id.getMetaValue(key))
+                    if decoded:
+                        mzml_full_paths = [decoded]
+                        mzml_files = [Path(decoded).name]
                         break
 
         if mzml_files:
@@ -87,13 +87,13 @@ def mod_key_from_peptidoform(peptidoform_obj) -> str:
     """
     mods = []
     if peptidoform_obj.properties.get("n_term"):
-        for m in peptidoform_obj.properties["n_term"]:
-            mods.append(f"NTerm[{abbreviate_mod(m.name)}]")
-    for i, (aa, residue_mods) in enumerate(peptidoform_obj.parsed_sequence):
+        for mod in peptidoform_obj.properties["n_term"]:
+            mods.append(f"NTerm[{abbreviate_mod(mod.name)}]")
+    for position, (amino_acid, residue_mods) in enumerate(peptidoform_obj.parsed_sequence):
         if residue_mods:
-            for m in residue_mods:
-                mods.append(f"{aa}{i + 1}[{abbreviate_mod(m.name)}]")
+            for mod in residue_mods:
+                mods.append(f"{amino_acid}{position + 1}[{abbreviate_mod(mod.name)}]")
     if peptidoform_obj.properties.get("c_term"):
-        for m in peptidoform_obj.properties["c_term"]:
-            mods.append(f"CTerm[{abbreviate_mod(m.name)}]")
+        for mod in peptidoform_obj.properties["c_term"]:
+            mods.append(f"CTerm[{abbreviate_mod(mod.name)}]")
     return "|".join(mods) if mods else ""

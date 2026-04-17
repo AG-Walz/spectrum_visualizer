@@ -33,16 +33,16 @@ def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
     # Rebuild in OpenMS parenthesis notation from the parsed representation
     parts = []
     if peptidoform_obj.properties.get("n_term"):
-        for m in peptidoform_obj.properties["n_term"]:
-            parts.append(f".({m.name})")
-    for aa, residue_mods in peptidoform_obj.parsed_sequence:
-        parts.append(aa)
+        for mod in peptidoform_obj.properties["n_term"]:
+            parts.append(f".({mod.name})")
+    for amino_acid, residue_mods in peptidoform_obj.parsed_sequence:
+        parts.append(amino_acid)
         if residue_mods:
-            for m in residue_mods:
-                parts.append(f"({m.name})")
+            for mod in residue_mods:
+                parts.append(f"({mod.name})")
     if peptidoform_obj.properties.get("c_term"):
-        for m in peptidoform_obj.properties["c_term"]:
-            parts.append(f".({m.name})")
+        for mod in peptidoform_obj.properties["c_term"]:
+            parts.append(f".({mod.name})")
     oms_str = "".join(parts)
 
     try:
@@ -113,7 +113,7 @@ def _generate_fragments_impl(
     int_arrays = theo_spec.getIntegerDataArrays()
 
     if string_arrays:
-        annotations = [n.decode() if isinstance(n, bytes) else str(n) for n in string_arrays[0]]
+        annotations = [item.decode() if isinstance(item, bytes) else str(item) for item in string_arrays[0]]
     else:
         annotations = [""] * theo_spec.size()
 

@@ -63,16 +63,16 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
 
     parts = []
     if peptidoform_obj.properties.get("n_term"):
-        for m in peptidoform_obj.properties["n_term"]:
-            parts.append(f".({m.name})")
-    for aa, residue_mods in peptidoform_obj.parsed_sequence:
-        parts.append(aa)
+        for mod in peptidoform_obj.properties["n_term"]:
+            parts.append(f".({mod.name})")
+    for amino_acid, residue_mods in peptidoform_obj.parsed_sequence:
+        parts.append(amino_acid)
         if residue_mods:
-            for m in residue_mods:
-                parts.append(f"({m.name})")
+            for mod in residue_mods:
+                parts.append(f"({mod.name})")
     if peptidoform_obj.properties.get("c_term"):
-        for m in peptidoform_obj.properties["c_term"]:
-            parts.append(f".({m.name})")
+        for mod in peptidoform_obj.properties["c_term"]:
+            parts.append(f".({mod.name})")
     return "".join(parts)
 
 
@@ -101,22 +101,22 @@ def build_peaks_dataframe(
     for psm_id, annotated_frame in annotated_spectra:
         if annotated_frame is None or len(annotated_frame) == 0:
             continue
-        n = len(annotated_frame)
+        peak_count = len(annotated_frame)
 
         is_annotated = (
             annotated_frame["is_annotated"].values.astype("int32")
             if "is_annotated" in annotated_frame.columns
-            else np.zeros(n, dtype="int32")
+            else np.zeros(peak_count, dtype="int32")
         )
         annotations = (
             annotated_frame["annotation"].tolist()
             if "annotation" in annotated_frame.columns
-            else ["unannotated"] * n
+            else ["unannotated"] * peak_count
         )
         ion_types = (
             annotated_frame["ion_type"].tolist()
             if "ion_type" in annotated_frame.columns
-            else ["unannotated"] * n
+            else ["unannotated"] * peak_count
         )
 
         chunk = pl.DataFrame({
@@ -125,7 +125,7 @@ def build_peaks_dataframe(
             "highlight": is_annotated,
             "annotation": annotations,
             "ion_type": ion_types,
-            "psm_id": np.full(n, psm_id, dtype="int32"),
+            "psm_id": np.full(peak_count, psm_id, dtype="int32"),
         })
         chunks.append(chunk)
 
@@ -162,16 +162,16 @@ def build_sequence_dataframe(
 
     rows = [
         {
-            "sequence": _proforma_to_openms_str(spec.peptidoform),
-            "precursor_charge": int(spec.precursor_charge),
+            "sequence": _proforma_to_openms_str(spectrum.peptidoform),
+            "precursor_charge": int(spectrum.precursor_charge),
             "psm_id": psm_id,
         }
-        for psm_id, spec in psm_spectra
+        for psm_id, spectrum in psm_spectra
     ]
 
-    df = _enforce_schema(pl.DataFrame(rows), SEQUENCE_SCHEMA)
+    sequence_frame = _enforce_schema(pl.DataFrame(rows), SEQUENCE_SCHEMA)
     logger.info(f"Sequence DataFrame: {len(rows)} entries")
-    return df.lazy()
+    return sequence_frame.lazy()
 
 
 def build_heatmap_dataframe(
@@ -196,14 +196,14 @@ def build_heatmap_dataframe(
         component downsamples internally via multi-resolution streaming.
     """
     chunks: List[pl.DataFrame] = []
-    for spec in spectra:
-        if spec.rt < min_rt or len(spec.mz) == 0:
+    for spectrum in spectra:
+        if spectrum.rt < min_rt or len(spectrum.mz) == 0:
             continue
-        n = len(spec.mz)
+        peak_count = len(spectrum.mz)
         chunk = pl.DataFrame({
-            "x": np.full(n, spec.rt, dtype="float32"),
-            "y": spec.mz.astype("float32"),
-            "intensity": spec.intensity.astype("float32"),
+            "x": np.full(peak_count, spectrum.rt, dtype="float32"),
+            "y": spectrum.mz.astype("float32"),
+            "intensity": spectrum.intensity.astype("float32"),
         })
         chunks.append(chunk)
 

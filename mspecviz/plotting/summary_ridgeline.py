@@ -27,10 +27,10 @@ def plot_ridgeline(
     title: str = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
-    n = len(aggregated_frame)
+    variant_count = len(aggregated_frame)
     overlap = 0.65
     if figure_size is None:
-        figure_size = (14, _auto_height(n, per_row=0.5))
+        figure_size = (14, _auto_height(variant_count, per_row=0.5))
 
     fig, (ax_ridge, ax_bar) = plt.subplots(
         1, 2, figsize=figure_size, dpi=export_resolution,
@@ -43,9 +43,9 @@ def plot_ridgeline(
     medians = aggregated_frame["median"].values
     cmap = plt.cm.RdYlGn
     norm = plt.Normalize(vmin=0.0, vmax=1.0)
-    y_offsets = np.arange(n) * overlap
+    y_offsets = np.arange(variant_count) * overlap
 
-    for i in range(n - 1, -1, -1):
+    for i in range(variant_count - 1, -1, -1):
         peptidoform = labels[i]
         values = raw_frame.loc[raw_frame["peptidoform"] == peptidoform, metric].dropna().values
         y_base = y_offsets[i]
@@ -67,11 +67,11 @@ def plot_ridgeline(
             continue
 
         ax_ridge.fill_between(x_grid, y_base, y_base + density,
-                              color=color, alpha=0.75, zorder=n - i)
+                              color=color, alpha=0.75, zorder=variant_count - i)
         median = medians[i]
         kde_at_median = density[np.argmin(np.abs(x_grid - median))]
         ax_ridge.vlines(median, y_base, y_base + kde_at_median, color="#2C3E50",
-                        linewidth=0.8, linestyle="--", alpha=0.6, zorder=n - i + 2)
+                        linewidth=0.8, linestyle="--", alpha=0.6, zorder=variant_count - i + 2)
 
     ax_ridge.set_yticks(y_offsets)
     ax_ridge.set_yticklabels(labels, fontsize=8)

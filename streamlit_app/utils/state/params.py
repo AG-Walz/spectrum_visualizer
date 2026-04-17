@@ -72,8 +72,8 @@ def save_params(params: dict[str, Any]) -> None:
 
     # Atomic write: a Streamlit rerun mid-write must never leave a 0-byte file
     # that breaks load_params() on the next page load.
-    path = Path(st.session_state.workspace, "params.json")
-    tmp = path.with_suffix(".json.tmp")
-    with open(tmp, "w", encoding="utf-8") as outfile:
+    params_path = Path(st.session_state.workspace, "params.json")
+    staging_path = params_path.with_suffix(".json.tmp")
+    with open(staging_path, "w", encoding="utf-8") as outfile:
         json.dump(params, outfile, indent=4)
-    os.replace(tmp, path)
+    os.replace(staging_path, params_path)

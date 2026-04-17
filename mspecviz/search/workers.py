@@ -95,18 +95,18 @@ def _search_single_idxml(
 
     try:
         try:
-            _reader = IdXMLReader(str(idxml_path))
-        except Exception as _load_err:
-            errors.append(f"No peptide identifications in {idxml_name}: {_load_err}")
+            reader = IdXMLReader(str(idxml_path))
+        except Exception as load_error:
+            errors.append(f"No peptide identifications in {idxml_name}: {load_error}")
             return idxml_name, matches, errors
 
-        run_to_metadata = _build_run_to_metadata_map(_reader.protein_ids)
+        run_to_metadata = _build_run_to_metadata_map(reader.protein_ids)
 
         # Manual iteration so a parse error inside psm_utils __iter__ (e.g. float(None) on a
         # missing rescoring feature) is reported clearly. psm_utils uses a generator — once
         # it raises, iteration stops. Affected files are typically unfiltered Percolator
         # output (_pout.idXML).
-        psm_iter = iter(_reader)
+        psm_iter = iter(reader)
         psms_read = 0
         parse_error: Optional[str] = None
         while True:
@@ -174,11 +174,11 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
     """
     peptides: Set[str] = set()
     try:
-        _reader = IdXMLReader(str(idxml_path))
-        for _psm in _reader:
-            _base_seq = _psm.peptidoform.sequence.upper()
-            if _base_seq:
-                peptides.add(_base_seq)
+        reader = IdXMLReader(str(idxml_path))
+        for psm in reader:
+            base_sequence = psm.peptidoform.sequence.upper()
+            if base_sequence:
+                peptides.add(base_sequence)
     except Exception as e:
         logger.warning(f"_scan_single_idxml_peptides failed for {Path(idxml_path).name}: {e}")
 

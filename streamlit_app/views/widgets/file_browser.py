@@ -77,7 +77,7 @@ def render_directory_browser(
             st.rerun()
 
     # --- Subfolder navigation grid ---
-    subdirs = [Path(d) for d in list_subdirectories(current_dir)]
+    subdirs = [Path(path) for path in list_subdirectories(current_dir)]
     if subdirs:
         st.markdown(
             "<style>.folder-nav button{font-size:0.8rem !important;"
@@ -86,14 +86,14 @@ def render_directory_browser(
         )
         cols_per_row = 4
         max_folders = 16
-        for i in range(0, min(len(subdirs), max_folders), cols_per_row):
+        for row_start in range(0, min(len(subdirs), max_folders), cols_per_row):
             cols = st.columns(cols_per_row)
-            for j, col in enumerate(cols):
-                idx = i + j
-                if idx < len(subdirs) and idx < max_folders:
-                    folder = subdirs[idx]
+            for col_offset, col in enumerate(cols):
+                folder_index = row_start + col_offset
+                if folder_index < len(subdirs) and folder_index < max_folders:
+                    folder = subdirs[folder_index]
                     with col:
-                        if st.button(folder.name, key=f"{key_prefix}_folder_{idx}",
+                        if st.button(folder.name, key=f"{key_prefix}_folder_{folder_index}",
                                      help=str(folder)):
                             st.session_state[nav_key] = str(folder)
                             st.rerun()
@@ -105,7 +105,7 @@ def render_directory_browser(
                             key=recursive_key,
                             help="Scan all subdirectories for matching files")
 
-    all_files = [Path(f) for f in list_files(current_dir, tuple(extensions), recursive)]
+    all_files = [Path(path) for path in list_files(current_dir, tuple(extensions), recursive)]
     current_path = Path(current_dir)
     file_labels = ([str(f.relative_to(current_path)) for f in all_files]
                    if recursive else [f.name for f in all_files])

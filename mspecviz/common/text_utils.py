@@ -57,12 +57,12 @@ def format_time(seconds: float) -> str:
         return f"{hours}h {mins}m"
 
 
-def get_nested(d: dict, *keys, default=None):
+def get_nested(source: dict, *keys, default=None):
     """Safely traverse nested dicts: ``get_nested(d, 'a', 'b')`` -> ``d['a']['b']``."""
-    val = d
-    for k in keys:
-        if isinstance(val, dict):
-            val = val.get(k)
+    current = source
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
         else:
             return default
-    return val if val is not None else default
+    return current if current is not None else default

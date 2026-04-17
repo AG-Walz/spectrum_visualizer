@@ -63,9 +63,9 @@ def file_selection_fragment():
         ('idxml_browser_dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
         ('mzml_browser_dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
     ]:
-        val = st.session_state.get(dir_ss_key, fallback)
-        params[dir_param] = val
-        st.session_state[dir_param] = val
+        selected_directory = st.session_state.get(dir_ss_key, fallback)
+        params[dir_param] = selected_directory
+        st.session_state[dir_param] = selected_directory
 
     save_params(params)
 

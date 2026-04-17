@@ -31,12 +31,12 @@ def plot_classic_dual_axis(
     """Horizontal count bars + metric boxplots."""
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
 
-    n = len(aggregated_frame)
+    variant_count = len(aggregated_frame)
     if figure_size is None:
-        figure_size = (14, _auto_height(n))
+        figure_size = (14, _auto_height(variant_count))
 
     fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
-    y_pos = np.arange(n)
+    y_pos = np.arange(variant_count)
     labels = aggregated_frame["peptidoform"].values
 
     ax.barh(y_pos, aggregated_frame["count"].values, height=0.65, color=SUMMARY_COLORS["bar"],

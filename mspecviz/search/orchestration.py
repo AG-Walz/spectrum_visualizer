@@ -81,16 +81,16 @@ def search_peptides_in_idxmls(
                 )
             variant_groups[variant_key].matches.append(match)
             total_psms_found += 1
-        for err in worker_errors:
+        for error_message in worker_errors:
             if error_callback:
-                error_callback(err)
-            logger.error(err)
+                error_callback(error_message)
+            logger.error(error_message)
 
     def _on_error(task, exc):
-        err = f"Worker crashed processing {Path(task[0]).name}: {exc}"
+        error_message = f"Worker crashed processing {Path(task[0]).name}: {exc}"
         if error_callback:
-            error_callback(err)
-        logger.error(err)
+            error_callback(error_message)
+        logger.error(error_message)
 
     def _on_progress(completed, total):
         if progress_callback:

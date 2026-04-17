@@ -24,12 +24,12 @@ ANY_DIGITS_RE = re.compile(r'(\d+)')
 
 def _extract_id_number(native_id: str) -> Optional[int]:
     """Extract the numeric value from a native ID string."""
-    m = NATIVE_ID_NUM_RE.search(native_id)
-    if m:
-        return int(m.group(1))
-    m = ANY_DIGITS_RE.search(native_id)
-    if m:
-        return int(m.group(1))
+    keyed_match = NATIVE_ID_NUM_RE.search(native_id)
+    if keyed_match:
+        return int(keyed_match.group(1))
+    digit_match = ANY_DIGITS_RE.search(native_id)
+    if digit_match:
+        return int(digit_match.group(1))
     return None
 
 
