@@ -19,12 +19,12 @@ class ComparisonTask:
     task_type: str  # "mirror" or "single"
 
     # Annotated spectrum DataFrames (picklable)
-    query_df: pd.DataFrame
-    ref_df: Optional[pd.DataFrame] = None
+    query_frame: pd.DataFrame
+    reference_frame: Optional[pd.DataFrame] = None
 
     # Labels for the plot
     query_label: str = ""
-    ref_label: str = ""
+    reference_label: str = ""
     plot_title: str = ""
 
     # Export paths (strings -- workers create subdirs as needed)
@@ -54,7 +54,7 @@ class ComparisonTask:
 
     # Summary metadata (for CSV row)
     query_file: str = ""
-    ref_file: str = ""
+    reference_file: str = ""
     peptide: str = ""
     modification: str = ""
     charge: int = 0

@@ -120,7 +120,7 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
         psm_id: (spec, df) for psm_id, spec, df in annotated_queries
     }
     st.session_state[get_state_key("reference_store")] = reference_store
-    st.session_state[get_state_key("comparison_df")] = (
+    st.session_state[get_state_key("comparison_frame")] = (
         pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
     )
 
@@ -170,8 +170,8 @@ def run_search_and_load(params: dict) -> None:
             )
             if processed is None:
                 return
-            psm_id, query_spec, query_df, comparison_rows_for_psm = processed
-            annotated_queries.append((psm_id, query_spec, query_df))
+            psm_id, query_spectrum, query_frame, comparison_rows_for_psm = processed
+            annotated_queries.append((psm_id, query_spectrum, query_frame))
             comparison_rows.extend(comparison_rows_for_psm)
 
             loaded_count[0] += 1

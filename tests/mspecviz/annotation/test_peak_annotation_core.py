@@ -130,16 +130,16 @@ class TestParseKoinaCharge:
 
 class TestPrepareKoinaSpectrumForPlot:
     @pytest.fixture
-    def koina_df(self):
+    def koina_frame(self):
         return pd.DataFrame({
             "mz": [175.12, 290.14, 405.17, 520.0],
             "intensity": [500.0, 1000.0, 300.0, 800.0],
             "annotation": ["y3+1", "b5+1", "y7+2", "b2+1"],
         })
 
-    def test_annotations_ion_types_and_charges(self, koina_df):
+    def test_annotations_ion_types_and_charges(self, koina_frame):
         """Verify Koina native annotations are preserved with correct ion types and charges."""
-        result = prepare_koina_spectrum_for_plot(koina_df)
+        result = prepare_koina_spectrum_for_plot(koina_frame)
         # Required columns present
         for col in ("mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"):
             assert col in result.columns
@@ -157,12 +157,12 @@ class TestPrepareKoinaSpectrumForPlot:
         (True, 1.0),
         (False, 1000.0),
     ])
-    def test_normalization(self, koina_df, normalize, expected_max):
-        result = prepare_koina_spectrum_for_plot(koina_df, normalize=normalize)
+    def test_normalization(self, koina_frame, normalize, expected_max):
+        result = prepare_koina_spectrum_for_plot(koina_frame, normalize=normalize)
         assert result["intensity"].max() == pytest.approx(expected_max)
 
-    def test_ion_type_filtering(self, koina_df):
-        result = prepare_koina_spectrum_for_plot(koina_df, ion_types=["y"])
+    def test_ion_type_filtering(self, koina_frame):
+        result = prepare_koina_spectrum_for_plot(koina_frame, ion_types=["y"])
         b_rows = result[result["annotation"].isin(["b5+1", "b2+1"])]
         assert (b_rows["ion_type"] == "unannotated").all()
         y_rows = result[result["annotation"].isin(["y3+1", "y7+2"])]

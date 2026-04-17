@@ -30,15 +30,15 @@ from tests.conftest import make_peptide_match
 
 def _make_variant_groups():
     """Build a simple dict of variant groups for testing."""
-    vg = VariantGroup(
+    variant_group = VariantGroup(
         base_sequence="PEPTIDEK", modification_key="", display_label="PEPTIDEK",
         matches=[make_peptide_match(spectrum_id="index=1"),
                  make_peptide_match(spectrum_id="index=2")],
     )
-    return {"PEPTIDEK": vg}
+    return {"PEPTIDEK": variant_group}
 
 
-def _make_annotated_df(n_peaks=5):
+def _make_annotated_frame(n_peaks=5):
     """Build a mock annotated DataFrame (prepare_spectrum_for_plot output)."""
     return pd.DataFrame({
         "mz": np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
@@ -64,8 +64,8 @@ def _make_loaded_spectrum(spectrum_id="index=1", peptidoform="PEPTIDEK",
 class TestBuildPsmTable:
     def test_basic_build(self):
         """Build PSM table from standard variant groups: type, schema, row count, lookup keys."""
-        vgs = _make_variant_groups()
-        frame, lookup = build_psm_table(vgs)
+        variant_groups = _make_variant_groups()
+        frame, lookup = build_psm_table(variant_groups)
         assert isinstance(frame, pl.LazyFrame)
         assert isinstance(lookup, dict)
         assert validate_dataframe(frame, PSM_TABLE_SCHEMA, "PSM table")
@@ -98,7 +98,7 @@ class TestBuildPsmTable:
 class TestBuildPeaksDataframe:
     def test_basic_build(self):
         """Build peaks DF: type, schema, peak count, highlight column."""
-        annotated = [(0, _make_annotated_df(n_peaks=5))]
+        annotated = [(0, _make_annotated_frame(n_peaks=5))]
         frame = build_peaks_dataframe(annotated)
         assert isinstance(frame, pl.LazyFrame)
         assert validate_dataframe(frame, PEAKS_SCHEMA, "Peaks")
@@ -113,8 +113,8 @@ class TestBuildPeaksDataframe:
 
     def test_multiple_spectra(self):
         annotated = [
-            (0, _make_annotated_df(n_peaks=3)),
-            (1, _make_annotated_df(n_peaks=4)),
+            (0, _make_annotated_frame(n_peaks=3)),
+            (1, _make_annotated_frame(n_peaks=4)),
         ]
         df = build_peaks_dataframe(annotated).collect()
         assert len(df) == 7
@@ -173,7 +173,7 @@ class TestSaveToParquet:
     @pytest.mark.parametrize("build_fn", ["peaks", "psm"], ids=["peaks", "psm_table"])
     def test_round_trip(self, tmp_path, build_fn):
         if build_fn == "peaks":
-            frame = build_peaks_dataframe([(0, _make_annotated_df())])
+            frame = build_peaks_dataframe([(0, _make_annotated_frame())])
         else:
             frame, _ = build_psm_table(_make_variant_groups())
         parquet_path = str(tmp_path / f"{build_fn}.parquet")
@@ -217,15 +217,15 @@ class TestBuildFromRealData:
 
         def on_query(result):
             key = spectrum_lookup_key(result.query_spectrum)
-            pid = psm_lookup.get(key)
-            if pid is None:
+            psm_id = psm_lookup.get(key)
+            if psm_id is None:
                 return
-            df = prepare_spectrum_for_plot(
+            frame = prepare_spectrum_for_plot(
                 result.query_spectrum.mz, result.query_spectrum.intensity,
                 result.query_spectrum.peptidoform, result.query_spectrum.precursor_charge,
                 ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
             )
-            annotated.append((pid, result.query_spectrum, df))
+            annotated.append((psm_id, result.query_spectrum, frame))
 
         mzml_path_list = [Path(p) for p in mzml_paths]
         load_spectra_streaming(
@@ -237,14 +237,14 @@ class TestBuildFromRealData:
 
         assert len(annotated) == 2
 
-        peaks_frame = build_peaks_dataframe([(pid, df) for pid, _, df in annotated])
-        sequence_frame = build_sequence_dataframe([(pid, s) for pid, s, _ in annotated])
-        heatmap_frame = build_heatmap_dataframe([s for _, s, _ in annotated])
+        peaks_frame = build_peaks_dataframe([(psm_id, frame) for psm_id, _, frame in annotated])
+        sequence_frame = build_sequence_dataframe([(psm_id, spectrum) for psm_id, spectrum, _ in annotated])
+        heatmap_frame = build_heatmap_dataframe([spectrum for _, spectrum, _ in annotated])
 
         assert validate_dataframe(peaks_frame, PEAKS_SCHEMA, "peaks")
         assert validate_dataframe(sequence_frame, SEQUENCE_SCHEMA, "sequence")
         assert validate_dataframe(heatmap_frame, HEATMAP_SCHEMA, "heatmap")
 
-        peaks_df = peaks_frame.collect()
-        assert len(peaks_df) == 373
-        assert peaks_df["psm_id"].n_unique() == 2
+        peaks_collected = peaks_frame.collect()
+        assert len(peaks_collected) == 373
+        assert peaks_collected["psm_id"].n_unique() == 2

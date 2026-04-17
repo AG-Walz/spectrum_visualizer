@@ -27,27 +27,27 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
                          koina_collision_energy=35, koina_instrument_type="TIMSTOF"):
     """Get Koina AI prediction and annotate as reference spectrum.
 
-    Returns ``(LoadedSpectrum, annotated_df)`` tuple or ``None``.
+    Returns ``(LoadedSpectrum, annotated_frame)`` tuple or ``None``.
     """
     if not KOINA_AVAILABLE:
         return None
 
-    pred_df = predict_koina_spectrum(
+    predicted_frame = predict_koina_spectrum(
         peptidoform_str=peptidoform,
         charge=charge,
         model_id=koina_model,
         collision_energy=koina_collision_energy,
         instrument_type=koina_instrument_type,
     )
-    if pred_df is None or pred_df.empty:
+    if predicted_frame is None or predicted_frame.empty:
         return None
 
-    mz_arr = pred_df["mz"].values.astype(np.float64)
-    int_arr = pred_df["intensity"].values.astype(np.float64)
+    mz_arr = predicted_frame["mz"].values.astype(np.float64)
+    int_arr = predicted_frame["intensity"].values.astype(np.float64)
 
     base_seq = Peptidoform(peptidoform.split("/")[0]).sequence
 
-    ref_spec = LoadedSpectrum(
+    reference_spectrum = LoadedSpectrum(
         spectrum_id="koina_prediction",
         mz=mz_arr,
         intensity=int_arr,
@@ -61,8 +61,8 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     )
 
     # Use Koina's native AI-predicted annotations directly
-    ref_df = prepare_koina_spectrum_for_plot(pred_df, **annotation_kwargs)
-    return (ref_spec, ref_df)
+    reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
+    return (reference_spectrum, reference_frame)
 
 
 def _annotate_query_spectrum(result, annotation_kwargs, psm_id):
@@ -86,14 +86,14 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
     if variant_key in reference_store or not result.reference_spectra:
         return
     ref_list = []
-    for ref_spec in result.reference_spectra:
+    for reference_spectrum in result.reference_spectra:
         try:
-            ref_df = prepare_spectrum_for_plot(
-                ref_spec.mz, ref_spec.intensity,
-                ref_spec.peptidoform, ref_spec.precursor_charge,
+            reference_frame = prepare_spectrum_for_plot(
+                reference_spectrum.mz, reference_spectrum.intensity,
+                reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
                 **annotation_kwargs,
             )
-            ref_list.append((ref_spec, ref_df))
+            ref_list.append((reference_spectrum, reference_frame))
         except Exception as e:
             logger.warning(f"Reference annotation failed: {e}")
     reference_store[variant_key] = ref_list
@@ -101,11 +101,11 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
 
 def _try_koina_fallback(result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
-    """Phase 3: if no experimental refs, try a Koina AI prediction. Returns the ref list."""
+    """Phase 3: if no experimental references, try a Koina AI prediction. Returns the ref list."""
     variant_key = result.variant_key
-    refs = reference_store.get(variant_key, [])
-    if refs:
-        return refs
+    references = reference_store.get(variant_key, [])
+    if references:
+        return references
     koina_ref = get_koina_prediction(
         result.query_spectrum.peptidoform,
         result.query_spectrum.precursor_charge,
@@ -117,10 +117,10 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
     if koina_ref is not None:
         reference_store[variant_key] = [koina_ref]
         return reference_store[variant_key]
-    return refs
+    return references
 
 
-def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
+def build_comparison_row(psm_id, result, query_frame, reference_spectrum, reference_frame, metrics):
     """Build a single comparison row dict from query/reference pair.
 
     *result* is a ``QueryResult`` from ``load_spectra_streaming``.
@@ -132,11 +132,11 @@ def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
         "Modification": result.modification_key,
         "Charge": result.query_spectrum.precursor_charge,
         "Query": Path(result.query_spectrum.source_file).stem,
-        "Reference": Path(ref_spec.source_file).stem if ref_spec.source_file else "Koina",
+        "Reference": Path(reference_spectrum.source_file).stem if reference_spectrum.source_file else "Koina",
         "query_spectrum_id": result.query_spectrum.spectrum_id,
-        "ref_spectrum_id": ref_spec.spectrum_id,
+        "ref_spectrum_id": reference_spectrum.spectrum_id,
         "query_rt": result.query_spectrum.rt,
-        "ref_rt": ref_spec.rt,
+        "ref_rt": reference_spectrum.rt,
     }
     for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
         row[display_name] = metrics.get(short_key, float("nan"))
@@ -146,14 +146,14 @@ def build_comparison_row(psm_id, result, query_df, ref_spec, ref_df, metrics):
     return row
 
 
-def _build_metric_rows(psm_id, result, query_df, refs):
+def _build_metric_rows(psm_id, result, query_frame, references):
     """Phase 4: compute metrics + build summary rows for each query/ref pair."""
     rows: List[Dict[str, Any]] = []
-    for ref_spec, ref_df in refs:
+    for reference_spectrum, reference_frame in references:
         try:
-            metrics = compute_all_metrics(query_df, ref_df)
+            metrics = compute_all_metrics(query_frame, reference_frame)
             rows.append(build_comparison_row(
-                psm_id, result, query_df, ref_spec, ref_df, metrics,
+                psm_id, result, query_frame, reference_spectrum, reference_frame, metrics,
             ))
         except Exception as e:
             logger.warning(f"Metric computation failed: {e}")

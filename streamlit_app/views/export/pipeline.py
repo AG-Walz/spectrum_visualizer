@@ -75,24 +75,24 @@ def _export_spectrum_plots(params: dict, export_root: Path, do_html: bool):
     saved_files: list[str] = []
     errors: list[str] = []
 
-    for psm_id, (query_spec, query_df) in sorted(annotated_queries.items()):
+    for psm_id, (query_spectrum, query_frame) in sorted(annotated_queries.items()):
         variant_key = psm_id_to_variant_key.get(psm_id)
-        refs = reference_store.get(variant_key, []) if variant_key else []
-        folder_name = sanitize_filename(query_spec.peptidoform)
-        title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
+        references = reference_store.get(variant_key, []) if variant_key else []
+        folder_name = sanitize_filename(query_spectrum.peptidoform)
+        title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
 
-        if refs:
-            for ref_spec, ref_df in refs:
+        if references:
+            for reference_spectrum, reference_frame in references:
                 try:
-                    metrics = compute_all_metrics(query_df, ref_df)
+                    metrics = compute_all_metrics(query_frame, reference_frame)
                     safe_name = sanitize_filename(
-                        f"{get_source_label(query_spec)}_vs_{get_source_label(ref_spec)}"
+                        f"{get_source_label(query_spectrum)}_vs_{get_source_label(reference_spectrum)}"
                     )
-                    query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
+                    query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
                     metrics_text = format_metrics_text(metrics)
 
                     fig = create_mirror_plot(
-                        upper_spectrum=query_df, lower_spectrum=ref_df,
+                        upper_spectrum=query_frame, lower_spectrum=reference_frame,
                         title=title, upper_label=query_label, lower_label=ref_label,
                         metrics_text=metrics_text, normalize=normalize,
                     )
@@ -100,7 +100,7 @@ def _export_spectrum_plots(params: dict, export_root: Path, do_html: bool):
 
                     if do_html and html_dir:
                         plotly_fig = create_plotly_mirror_plot(
-                            upper_spectrum=query_df, lower_spectrum=ref_df,
+                            upper_spectrum=query_frame, lower_spectrum=reference_frame,
                             title=title, upper_label=query_label,
                             lower_label=ref_label, metrics_text=metrics_text,
                             normalize=normalize,
@@ -116,10 +116,10 @@ def _export_spectrum_plots(params: dict, export_root: Path, do_html: bool):
                     logger.error(f"Mirror plot failed for PSM {psm_id}: {e}")
         else:
             try:
-                safe_name = sanitize_filename(Path(query_spec.source_file).stem)
-                label = f"{Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
+                safe_name = sanitize_filename(Path(query_spectrum.source_file).stem)
+                label = f"{Path(query_spectrum.source_file).stem} (RT: {query_spectrum.rt:.1f})"
                 fig = create_single_spectrum_plot(
-                    spectrum=query_df, title=title, label=label, normalize=normalize,
+                    spectrum=query_frame, title=title, label=label, normalize=normalize,
                 )
                 _save_figure(fig, png_dir, svg_dir, folder_name, safe_name, saved_files)
 
@@ -165,16 +165,16 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
                     saved_files.append(str(out_file))
 
         if do_csv:
-            comparison_df = st.session_state.get(get_state_key("comparison_df"))
-            if comparison_df is not None and not comparison_df.empty:
+            comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+            if comparison_frame is not None and not comparison_frame.empty:
                 st.caption("Saving comparison summary...")
                 csv_path = export_root / "comparison_summary.csv"
-                comparison_df.to_csv(csv_path, index=False)
+                comparison_frame.to_csv(csv_path, index=False)
                 saved_files.append(str(csv_path))
 
                 try:
                     xlsx_path = export_root / "comparison_summary.xlsx"
-                    comparison_df.to_excel(xlsx_path, index=False, engine="openpyxl")
+                    comparison_frame.to_excel(xlsx_path, index=False, engine="openpyxl")
                     saved_files.append(str(xlsx_path))
                 except ImportError:
                     logger.warning("openpyxl not installed -- skipping XLSX export")
@@ -190,11 +190,11 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
             st.caption("Mirror plots: skipped (unchecked)")
 
         if do_summary:
-            comparison_df = st.session_state.get(get_state_key("comparison_df"))
-            if comparison_df is not None and not comparison_df.empty:
+            comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+            if comparison_frame is not None and not comparison_frame.empty:
                 st.caption("Generating summary plots...")
                 results = generate_all_summary_plots(
-                    source=comparison_df,
+                    source=comparison_frame,
                     output_dir=str(export_root),
                     formats=["png", "svg"],
                 )

@@ -15,7 +15,7 @@ from mspecviz.annotation import prepare_spectrum_for_plot, generate_theoretical_
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_annotated_df(peptidoform="PEPTIDEK", charge=2):
+def _make_annotated_frame(peptidoform="PEPTIDEK", charge=2):
     """Build a real annotated DataFrame using prepare_spectrum_for_plot."""
     frags = generate_theoretical_fragments(peptidoform, charge=charge, ion_types=["b", "y"])
     b2_mz = float(frags[frags["annotation"] == "b2+"]["mz"].values[0])
@@ -32,7 +32,7 @@ def _make_single_task(tmp_path, skip_plot=False):
     return ComparisonTask(
         task_id=1,
         task_type="single",
-        query_df=_make_annotated_df(),
+        query_frame=_make_annotated_frame(),
         query_label="Test Query",
         plot_title="PEPTIDEK",
         folder_name="PEPTIDEK",
@@ -49,16 +49,16 @@ def _make_single_task(tmp_path, skip_plot=False):
 
 
 def _make_mirror_task(tmp_path, skip_plot=False):
-    """Create a mirror ComparisonTask with both query and reference DFs."""
+    """Create a mirror ComparisonTask with both query and reference frames."""
     png_dir = str(tmp_path / "png")
     (tmp_path / "png").mkdir(parents=True, exist_ok=True)
     return ComparisonTask(
         task_id=2,
         task_type="mirror",
-        query_df=_make_annotated_df(),
-        ref_df=_make_annotated_df(),
+        query_frame=_make_annotated_frame(),
+        reference_frame=_make_annotated_frame(),
         query_label="Query",
-        ref_label="Reference",
+        reference_label="Reference",
         plot_title="PEPTIDEK",
         folder_name="PEPTIDEK",
         safe_filename="test_mirror",
@@ -71,7 +71,7 @@ def _make_mirror_task(tmp_path, skip_plot=False):
         normalize=True,
         skip_plot=skip_plot,
         query_file="query.mzML",
-        ref_file="ref.mzML",
+        reference_file="ref.mzML",
         peptide="PEPTIDEK",
         modification="",
         charge=2,
@@ -87,7 +87,7 @@ class TestOutputsExist:
         task = ComparisonTask(
             task_id=0,
             task_type="single",
-            query_df=pd.DataFrame(),
+            query_frame=pd.DataFrame(),
             folder_name="PEPTIDEK",
             safe_filename="test_file",
             png_dir=str(tmp_path / "png"),
@@ -106,7 +106,7 @@ class TestOutputsExist:
         task = ComparisonTask(
             task_id=0,
             task_type="single",
-            query_df=pd.DataFrame(),
+            query_frame=pd.DataFrame(),
             folder_name="PEPTIDEK",
             safe_filename="test_file",
             png_dir=str(tmp_path / "png"),
@@ -123,7 +123,7 @@ class TestOutputsExist:
         task = ComparisonTask(
             task_id=0,
             task_type="single",
-            query_df=pd.DataFrame(),
+            query_frame=pd.DataFrame(),
             folder_name="PEPTIDEK",
             safe_filename="test_file",
             png_dir="",

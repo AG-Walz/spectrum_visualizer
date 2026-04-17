@@ -106,7 +106,7 @@ Typical successful run:
 Stage 1/3: Search peptides
   Searching 1 idXML file... done (2 variants)
 Stage 2/3: Load spectra
-  Streaming 8 mzML files... done (2 queries, 0 refs, 2 Koina fallbacks)
+  Streaming 8 mzML files... done (2 queries, 0 references, 2 Koina fallbacks)
 Stage 3/3: Build DataFrames + export
   PSM table: 2 rows
   Peaks: 373 rows

@@ -30,17 +30,17 @@ def get_source_label(spec) -> str:
     return Path(spec.source_file).stem if spec.source_file else "Koina"
 
 
-def format_spectrum_labels(query_spec, ref_spec=None):
+def format_spectrum_labels(query_spectrum, reference_spectrum=None):
     """Format query/reference spectrum labels with RT.
 
-    Returns ``(query_label, ref_label)`` tuple.  *ref_label* is ``""``
-    when *ref_spec* is ``None``.
+    Returns ``(query_label, reference_label)`` tuple.  *reference_label* is ``""``
+    when *reference_spectrum* is ``None``.
     """
-    query_label = f"Query: {get_source_label(query_spec)} (RT: {query_spec.rt:.1f})"
-    if ref_spec is None:
+    query_label = f"Query: {get_source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
+    if reference_spectrum is None:
         return query_label, ""
-    ref_label = f"Ref: {get_source_label(ref_spec)} (RT: {ref_spec.rt:.1f})"
-    return query_label, ref_label
+    reference_label = f"Ref: {get_source_label(reference_spectrum)} (RT: {reference_spectrum.rt:.1f})"
+    return query_label, reference_label
 
 
 def build_psm_to_variant_mapping(variant_groups, annotated_queries):
@@ -73,7 +73,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
                          reference_store, koina_enabled=False,
                          koina_model="ms2pip_timsTOF2024",
                          koina_collision_energy=35, koina_instrument_type="TIMSTOF"):
-    """Annotate query, cache refs, compute metrics. Returns (psm_id, spec, df, rows) or None.
+    """Annotate query, cache references, compute metrics. Returns (psm_id, spec, df, rows) or None.
 
     Orchestrates four phase helpers: ``_annotate_query_spectrum``,
     ``_cache_reference_spectra``, ``_try_koina_fallback``, ``_build_metric_rows``.
@@ -82,22 +82,22 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     if psm_id is None:
         return None
 
-    query_df = _annotate_query_spectrum(result, annotation_kwargs, psm_id)
-    if query_df is None:
+    query_frame = _annotate_query_spectrum(result, annotation_kwargs, psm_id)
+    if query_frame is None:
         return None
 
     _cache_reference_spectra(result, reference_store, annotation_kwargs)
 
     if koina_enabled:
-        refs = _try_koina_fallback(
+        references = _try_koina_fallback(
             result, reference_store, annotation_kwargs,
             koina_model, koina_collision_energy, koina_instrument_type,
         )
     else:
-        refs = reference_store.get(result.variant_key, [])
+        references = reference_store.get(result.variant_key, [])
 
-    comp_rows = _build_metric_rows(psm_id, result, query_df, refs)
-    return (psm_id, result.query_spectrum, query_df, comp_rows)
+    comparison_rows = _build_metric_rows(psm_id, result, query_frame, references)
+    return (psm_id, result.query_spectrum, query_frame, comparison_rows)
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
@@ -122,18 +122,18 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
 
     tasks: List[ComparisonTask] = []
     task_id = 0
-    for psm_id, query_spec, query_df in sorted(annotated_queries, key=lambda x: x[0]):
+    for psm_id, query_spectrum, query_frame in sorted(annotated_queries, key=lambda x: x[0]):
         variant_key = psm_id_to_variant_key.get(psm_id)
-        refs = reference_store.get(variant_key, []) if variant_key else []
-        folder_name = sanitize_fn(query_spec.peptidoform)
-        plot_title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
+        references = reference_store.get(variant_key, []) if variant_key else []
+        folder_name = sanitize_fn(query_spectrum.peptidoform)
+        plot_title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
 
-        if refs:
-            for ref_spec, ref_df in refs:
-                metrics_text = format_metrics_text(compute_all_metrics(query_df, ref_df))
-                query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
+        if references:
+            for reference_spectrum, reference_frame in references:
+                metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
+                query_label, reference_label = format_spectrum_labels(query_spectrum, reference_spectrum)
                 safe_filename = sanitize_fn(
-                    f"{get_source_label(query_spec)}_vs_{get_source_label(ref_spec)}"
+                    f"{get_source_label(query_spectrum)}_vs_{get_source_label(reference_spectrum)}"
                 )
                 html_path = (
                     str(Path(html_dir) / folder_name / f"{safe_filename}.html")
@@ -143,10 +143,10 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 tasks.append(ComparisonTask(
                     task_id=task_id,
                     task_type="mirror",
-                    query_df=query_df,
-                    ref_df=ref_df,
+                    query_frame=query_frame,
+                    reference_frame=reference_frame,
                     query_label=query_label,
-                    ref_label=ref_label,
+                    reference_label=reference_label,
                     plot_title=plot_title,
                     folder_name=folder_name,
                     safe_filename=safe_filename,
@@ -159,22 +159,22 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     normalize=normalize,
                     html_plot_path=html_path,
                     metrics_text=metrics_text,
-                    peptide=query_spec.peptidoform,
-                    charge=query_spec.precursor_charge,
+                    peptide=query_spectrum.peptidoform,
+                    charge=query_spectrum.precursor_charge,
                 ))
         elif plot_unpaired_queries:
-            safe_filename = sanitize_fn(get_source_label(query_spec))
-            query_label = f"{get_source_label(query_spec)} (RT: {query_spec.rt:.1f})"
+            safe_filename = sanitize_fn(get_source_label(query_spectrum))
+            query_label = f"{get_source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
             # Unpaired/single plots never emit HTML (cli used to enforce this).
             single_formats = [f for f in export_formats if f != "html"]
             task_id += 1
             tasks.append(ComparisonTask(
                 task_id=task_id,
                 task_type="single",
-                query_df=query_df,
-                ref_df=None,
+                query_frame=query_frame,
+                reference_frame=None,
                 query_label=query_label,
-                ref_label="",
+                reference_label="",
                 plot_title=plot_title,
                 folder_name=folder_name,
                 safe_filename=safe_filename,
@@ -185,8 +185,8 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 figure_size=figure_size,
                 export_resolution=export_resolution,
                 normalize=normalize,
-                peptide=query_spec.peptidoform,
-                charge=query_spec.precursor_charge,
+                peptide=query_spectrum.peptidoform,
+                charge=query_spectrum.precursor_charge,
             ))
 
     return tasks

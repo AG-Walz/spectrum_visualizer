@@ -97,12 +97,12 @@ Plot types are registered in `summary_orchestration._PLOT_REGISTRY`. Adding
 a new plot type means adding:
 
 1. A new module under `mspecviz/plotting/summary_<name>.py` exporting a
-   `plot_<name>(raw_df, agg_df, metric, …) -> Figure` function.
+   `plot_<name>(raw_frame, aggregated_frame, metric, …) -> Figure` function.
 2. An entry in `_PLOT_REGISTRY` inside `generate_all_summary_plots`.
 3. The string name into `PLOT_TYPES`.
 
 The registry keeps renderer contracts consistent — every plot consumes the
-same `(raw_df, agg_df, metric, figure_size, export_resolution, title)` signature.
+same `(raw_frame, aggregated_frame, metric, figure_size, export_resolution, title)` signature.
 
 ### Customizing
 

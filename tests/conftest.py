@@ -70,7 +70,7 @@ def make_peptide_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
 
 
 @pytest.fixture
-def spectrum_df():
+def spectrum_frame():
     """Standard annotated spectrum DataFrame for testing."""
     return pd.DataFrame({
         "mz": [100.0, 200.0, 300.0, 400.0, 500.0],
@@ -81,6 +81,6 @@ def spectrum_df():
 
 
 @pytest.fixture
-def empty_spectrum_df():
+def empty_spectrum_frame():
     """Empty spectrum DataFrame."""
     return pd.DataFrame({"mz": [], "intensity": [], "annotation": [], "is_annotated": []})

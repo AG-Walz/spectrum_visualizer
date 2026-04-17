@@ -37,13 +37,13 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         pdf_path = ""
         html_path = ""
 
-        if task.task_type == "mirror" and task.ref_df is not None:
+        if task.task_type == "mirror" and task.reference_frame is not None:
             # --- Metrics (always computed for summary CSV) ---
-            metrics = compute_all_metrics(task.query_df, task.ref_df)
+            metrics = compute_all_metrics(task.query_frame, task.reference_frame)
 
             summary_row = {
                 "query_file": task.query_file,
-                "ref_file": task.ref_file,
+                "ref_file": task.reference_file,
                 "peptide": task.peptide,
                 "modification": task.modification,
                 "charge": task.charge,
@@ -54,10 +54,10 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 # --- Full mirror plot (Matplotlib, batch export) ---
                 metrics_text = task.metrics_text or format_metrics_text(metrics)
                 fig = create_mirror_plot(
-                    upper_spectrum=task.query_df,
-                    lower_spectrum=task.ref_df,
+                    upper_spectrum=task.query_frame,
+                    lower_spectrum=task.reference_frame,
                     upper_label=task.query_label,
-                    lower_label=task.ref_label,
+                    lower_label=task.reference_label,
                     title=task.plot_title,
                     metrics_text=metrics_text,
                     figure_size=task.figure_size,
@@ -75,7 +75,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         elif not task.skip_plot:
             # --- Single spectrum plot (no metrics) ---
             fig = create_single_spectrum_plot(
-                spectrum=task.query_df,
+                spectrum=task.query_frame,
                 title=task.plot_title,
                 label=task.query_label,
                 figure_size=task.figure_size,
@@ -147,16 +147,16 @@ def _save_task_html(task: ComparisonTask) -> str:
         out = Path(task.html_plot_path)
         out.parent.mkdir(parents=True, exist_ok=True)
 
-        if task.task_type == "mirror" and task.ref_df is not None:
+        if task.task_type == "mirror" and task.reference_frame is not None:
             fig = create_plotly_mirror_plot(
-                upper_spectrum=task.query_df,
-                lower_spectrum=task.ref_df,
+                upper_spectrum=task.query_frame,
+                lower_spectrum=task.reference_frame,
                 title=task.plot_title,
                 normalize=task.normalize,
             )
         else:
             fig = create_plotly_single_plot(
-                spectrum=task.query_df,
+                spectrum=task.query_frame,
                 title=task.plot_title,
                 normalize=task.normalize,
             )

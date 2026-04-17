@@ -157,7 +157,7 @@ def _parse_koina_charge(annotation: str) -> int:
 
 
 def prepare_koina_spectrum_for_plot(
-    koina_df: pd.DataFrame,
+    koina_frame: pd.DataFrame,
     ion_types: List[str] = None,
     normalize: bool = True,
     remove_precursor_peaks: bool = False,
@@ -168,27 +168,27 @@ def prepare_koina_spectrum_for_plot(
         ion_types = DEFAULT_ION_TYPES
 
     annotated = pd.DataFrame({
-        "mz": koina_df["mz"].values,
-        "intensity": koina_df["intensity"].values.astype(float),
-        "annotation": koina_df["annotation"].values,
-        "charge": koina_df["annotation"].apply(_parse_koina_charge).values,
+        "mz": koina_frame["mz"].values,
+        "intensity": koina_frame["intensity"].values.astype(float),
+        "annotation": koina_frame["annotation"].values,
+        "charge": koina_frame["annotation"].apply(_parse_koina_charge).values,
         "is_annotated": True,
     })
     return _postprocess_annotated(annotated, ion_types, normalize, remove_precursor_peaks)
 
 
-def calculate_annotation_stats(annotated_df: pd.DataFrame) -> Dict:
+def calculate_annotation_stats(annotated_frame: pd.DataFrame) -> Dict:
     """
     Calculate annotation statistics for a spectrum.
 
     Returns dict with: total_peaks, annotated_peaks, coverage, ion_type_counts
     """
-    total = len(annotated_df)
-    annotated = annotated_df["is_annotated"].sum() if "is_annotated" in annotated_df else 0
+    total = len(annotated_frame)
+    annotated = annotated_frame["is_annotated"].sum() if "is_annotated" in annotated_frame else 0
 
     ion_counts = {}
-    if "ion_type" in annotated_df:
-        counts = annotated_df[annotated_df["ion_type"] != "unannotated"]["ion_type"].value_counts()
+    if "ion_type" in annotated_frame:
+        counts = annotated_frame[annotated_frame["ion_type"] != "unannotated"]["ion_type"].value_counts()
         ion_counts = counts.to_dict()
 
     return {

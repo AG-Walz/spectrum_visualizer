@@ -19,15 +19,15 @@ from mspecviz.plotting._summary_shared import (
 
 
 def plot_ridgeline(
-    raw_df: pd.DataFrame,
-    agg_df: pd.DataFrame,
+    raw_frame: pd.DataFrame,
+    aggregated_frame: pd.DataFrame,
     metric: str = DEFAULT_METRIC,
     figure_size: Tuple[float, float] = None,
     export_resolution: int = 300,
     title: str = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
-    n = len(agg_df)
+    n = len(aggregated_frame)
     overlap = 0.65
     if figure_size is None:
         figure_size = (14, _auto_height(n, per_row=0.5))
@@ -37,22 +37,22 @@ def plot_ridgeline(
         gridspec_kw={"width_ratios": [4, 1], "wspace": 0.05}, sharey=True,
     )
 
-    labels = agg_df["peptidoform"].values
-    counts = agg_df["count"].values
+    labels = aggregated_frame["peptidoform"].values
+    counts = aggregated_frame["count"].values
     x_grid = np.linspace(0, 1, 300)
-    medians = agg_df["median"].values
+    medians = aggregated_frame["median"].values
     cmap = plt.cm.RdYlGn
     norm = plt.Normalize(vmin=0.0, vmax=1.0)
     y_offsets = np.arange(n) * overlap
 
     for i in range(n - 1, -1, -1):
-        pf = labels[i]
-        vals = raw_df.loc[raw_df["peptidoform"] == pf, metric].dropna().values
+        peptidoform = labels[i]
+        values = raw_frame.loc[raw_frame["peptidoform"] == peptidoform, metric].dropna().values
         y_base = y_offsets[i]
         color = cmap(norm(medians[i]))
 
-        if len(vals) < 5:
-            counts_h, edges = np.histogram(vals, bins=20, range=(0, 1))
+        if len(values) < 5:
+            counts_h, edges = np.histogram(values, bins=20, range=(0, 1))
             density = counts_h / (counts_h.max() + 1e-9) * 0.4
             centers = (edges[:-1] + edges[1:]) / 2
             ax_ridge.bar(centers, density, bottom=y_base, width=edges[1] - edges[0],
@@ -60,7 +60,7 @@ def plot_ridgeline(
             continue
 
         try:
-            kde = gaussian_kde(vals, bw_method="scott")
+            kde = gaussian_kde(values, bw_method="scott")
             density = kde(x_grid)
             density = density / density.max() * 0.55
         except Exception:
@@ -68,9 +68,9 @@ def plot_ridgeline(
 
         ax_ridge.fill_between(x_grid, y_base, y_base + density,
                               color=color, alpha=0.75, zorder=n - i)
-        med = medians[i]
-        kde_at_med = density[np.argmin(np.abs(x_grid - med))]
-        ax_ridge.vlines(med, y_base, y_base + kde_at_med, color="#2C3E50",
+        median = medians[i]
+        kde_at_median = density[np.argmin(np.abs(x_grid - median))]
+        ax_ridge.vlines(median, y_base, y_base + kde_at_median, color="#2C3E50",
                         linewidth=0.8, linestyle="--", alpha=0.6, zorder=n - i + 2)
 
     ax_ridge.set_yticks(y_offsets)

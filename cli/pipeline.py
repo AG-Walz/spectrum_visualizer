@@ -86,8 +86,8 @@ def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: in
         remove_precursor_peaks=config.remove_precursor_peaks,
     )
 
-    annotated_queries = []   # (psm_id, LoadedSpectrum, annotated_df)
-    reference_store = {}     # variant_key -> [(LoadedSpectrum, annotated_df)]
+    annotated_queries = []   # (psm_id, LoadedSpectrum, annotated_frame)
+    reference_store = {}     # variant_key -> [(LoadedSpectrum, annotated_frame)]
     comparison_rows = []
 
     progress = TerminalProgress("Loading", total_psms, quiet)
@@ -103,8 +103,8 @@ def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: in
         )
         if processed is None:
             return
-        psm_id, query_spec, query_df, comparison_rows_for_psm = processed
-        annotated_queries.append((psm_id, query_spec, query_df))
+        psm_id, query_spectrum, query_frame, comparison_rows_for_psm = processed
+        annotated_queries.append((psm_id, query_spectrum, query_frame))
         comparison_rows.extend(comparison_rows_for_psm)
         loaded_count[0] += 1
         progress.update(loaded_count[0])
@@ -162,13 +162,13 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
     if not quiet:
         print("Step 4: Exporting results...")
 
-    _, _, _, comparison_df = export_dataframes(
+    _, _, _, comparison_frame = export_dataframes(
         annotated_queries, comparison_rows, psm_frame, root_dir, quiet,
     )
 
     if not config.no_plots:
         export_plots(config, annotated_queries, reference_store, variant_groups_copy,
-                     comparison_df, root_dir, png_dir, svg_dir, pdf_dir,
+                     comparison_frame, root_dir, png_dir, svg_dir, pdf_dir,
                      normalize, quiet)
 
     print_completion_summary(

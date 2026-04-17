@@ -92,14 +92,14 @@ def create_plotly_mirror_plot(
 
     # --- Upper spectrum (query, positive) ---
     if not upper_spectrum.empty:
-        upper_df = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
-        _add_plotly_spectrum_traces(fig, upper_df, y_multiplier=1.0,
+        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        _add_plotly_spectrum_traces(fig, upper_frame, y_multiplier=1.0,
                                    label=upper_label, show_annotations=True)
 
     # --- Lower spectrum (reference, negative) ---
     if not lower_spectrum.empty:
-        lower_df = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
-        _add_plotly_spectrum_traces(fig, lower_df, y_multiplier=-1.0,
+        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
+        _add_plotly_spectrum_traces(fig, lower_frame, y_multiplier=-1.0,
                                    label=lower_label, show_annotations=True)
 
     # Center line

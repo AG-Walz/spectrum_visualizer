@@ -42,33 +42,33 @@ def prepare_summary_data(
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load and aggregate comparison data into per-peptidoform statistics.
 
-    Returns (raw_df, agg_df).
+    Returns (raw_frame, aggregated_frame).
     """
     if isinstance(source, (str, Path)):
-        raw_df = pd.read_csv(source, low_memory=False)
+        raw_frame = pd.read_csv(source, low_memory=False)
     else:
-        raw_df = source.copy()
+        raw_frame = source.copy()
 
-    if metric not in raw_df.columns:
+    if metric not in raw_frame.columns:
         raise ValueError(
             f"Metric '{metric}' not found. Available: "
-            f"{[c for c in raw_df.columns if c in METRIC_COLUMNS]}"
+            f"{[c for c in raw_frame.columns if c in METRIC_COLUMNS]}"
         )
 
     # Build peptidoform label
-    mod = raw_df["Modification"].fillna("").astype(str)
-    raw_df["peptidoform"] = (
-        raw_df.apply(
-            lambda row: format_inline_sequence(row["Peptide"], mod[row.name]),
+    modification = raw_frame["Modification"].fillna("").astype(str)
+    raw_frame["peptidoform"] = (
+        raw_frame.apply(
+            lambda row: format_inline_sequence(row["Peptide"], modification[row.name]),
             axis=1,
         )
         + "/"
-        + raw_df["Charge"].astype(str)
+        + raw_frame["Charge"].astype(str)
     )
 
-    raw_df = raw_df.dropna(subset=[metric]).copy()
+    raw_frame = raw_frame.dropna(subset=[metric]).copy()
 
-    grouped = raw_df.groupby("peptidoform", sort=False)
+    grouped = raw_frame.groupby("peptidoform", sort=False)
     agg = grouped[metric].agg(["count", "median", "mean", "std"])
     agg.columns = ["count", "median", "mean", "std"]
     agg["q25"] = grouped[metric].quantile(0.25)
@@ -81,7 +81,7 @@ def prepare_summary_data(
     agg["charge"] = charge_mode
 
     agg = agg.reset_index().sort_values("count", ascending=True).reset_index(drop=True)
-    return raw_df, agg
+    return raw_frame, agg
 
 
 def generate_all_summary_plots(
@@ -105,9 +105,9 @@ def generate_all_summary_plots(
     summary_dir = Path(output_dir) / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
 
-    raw_df, agg_df = prepare_summary_data(source, metric=metric)
+    raw_frame, aggregated_frame = prepare_summary_data(source, metric=metric)
     logger.info("Summary data: %d peptidoforms, %d rows, metric=%s",
-                len(agg_df), len(raw_df), metric)
+                len(aggregated_frame), len(raw_frame), metric)
 
     results: Dict[str, Dict[str, str]] = {}
 
@@ -121,7 +121,7 @@ def generate_all_summary_plots(
                       if title_prefix else None)
 
         try:
-            fig = func(raw_df, agg_df, metric=metric, export_resolution=export_resolution, title=plot_title)
+            fig = func(raw_frame, aggregated_frame, metric=metric, export_resolution=export_resolution, title=plot_title)
         except Exception as exc:
             logger.error("Failed to create %s plot: %s", pt, exc)
             continue

@@ -106,7 +106,7 @@ tests/
 ```
 
 Shared fixtures (defined in `tests/conftest.py`): `idxml_path`, `mzml_paths`,
-`target_peptides`, `app_settings`, `spectrum_df`, `make_peptide_match`.
+`target_peptides`, `app_settings`, `spectrum_frame`, `make_peptide_match`.
 Subfolder tests inherit them automatically; pytest walks the directory tree
 upwards looking for `conftest.py`.
 

@@ -11,7 +11,7 @@ class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
         """Shared fixture: search + stream spectra once for all tests in this class."""
-        vgs = search_peptides_in_idxmls([idxml_path], target_peptides)
+        variant_groups = search_peptides_in_idxmls([idxml_path], target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]
 
         spectra = []
@@ -25,7 +25,7 @@ class TestLoadRealSpectra:
             total_peaks += len(result.query_spectrum.mz)
 
         load_spectra_streaming(
-            variant_groups=vgs, mzml_paths=mzml_path_list,
+            variant_groups=variant_groups, mzml_paths=mzml_path_list,
             reference_substring="", on_query_ready=on_query,
         )
         return {"spectra": spectra, "keys": keys, "total_peaks": total_peaks}

@@ -77,30 +77,30 @@ class TestSummarizeSearchResults:
     """Tests for summarize_search_results() which returns pl.LazyFrame."""
 
     def test_returns_lazyframe(self):
-        vg = VariantGroup(
+        variant_group = VariantGroup(
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
             matches=[make_peptide_match()],
         )
-        result = summarize_search_results({"PEPTIDEK": vg})
+        result = summarize_search_results({"PEPTIDEK": variant_group})
         assert isinstance(result, pl.LazyFrame)
 
     def test_expected_columns(self):
-        vg = VariantGroup(
+        variant_group = VariantGroup(
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
             matches=[make_peptide_match()],
         )
-        result = summarize_search_results({"PEPTIDEK": vg})
+        result = summarize_search_results({"PEPTIDEK": variant_group})
         df = result.collect()
         expected_cols = {"id", "base_sequence", "modification", "display_label",
                          "psm_count", "idxml_files", "mzml_resolved", "unresolved"}
         assert expected_cols.issubset(set(df.columns))
 
     def test_psm_count(self):
-        vg = VariantGroup(
+        variant_group = VariantGroup(
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
@@ -109,7 +109,7 @@ class TestSummarizeSearchResults:
                 make_peptide_match(spectrum_id="index=2"),
             ],
         )
-        result = summarize_search_results({"PEPTIDEK": vg})
+        result = summarize_search_results({"PEPTIDEK": variant_group})
         df = result.collect()
         assert df["psm_count"][0] == 2
 
@@ -120,19 +120,19 @@ class TestSummarizeSearchResults:
         assert len(df) == 0
 
     def test_multiple_variants(self):
-        vg1 = VariantGroup(
+        variant_group1 = VariantGroup(
             base_sequence="PEPTIDEK",
             modification_key="",
             display_label="PEPTIDEK",
             matches=[make_peptide_match()],
         )
-        vg2 = VariantGroup(
+        variant_group2 = VariantGroup(
             base_sequence="AAAVAAAK",
             modification_key="",
             display_label="AAAVAAAK",
             matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK")],
         )
-        result = summarize_search_results({"PEPTIDEK": vg1, "AAAVAAAK": vg2})
+        result = summarize_search_results({"PEPTIDEK": variant_group1, "AAAVAAAK": variant_group2})
         df = result.collect()
         assert len(df) == 2
 
@@ -156,9 +156,9 @@ class TestSearchWithRealData:
         assert "RTEFNLNQY" in search_results
 
     def test_each_variant_has_one_psm_with_valid_fields(self, search_results):
-        for key, vg in search_results.items():
-            assert len(vg.matches) == 1
-            match = vg.matches[0]
+        for key, variant_group in search_results.items():
+            assert len(variant_group.matches) == 1
+            match = variant_group.matches[0]
             assert match.peptidoform is not None
             assert match.spectrum_id is not None
             assert match.charge > 0

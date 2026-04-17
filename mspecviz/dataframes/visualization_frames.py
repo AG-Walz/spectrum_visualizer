@@ -85,7 +85,7 @@ def build_peaks_dataframe(
     Build a peaks LazyFrame for openms_insight LinePlot and SequenceView.
 
     Args:
-        annotated_spectra: List of (psm_id, annotated_df) where annotated_df is
+        annotated_spectra: List of (psm_id, annotated_frame) where annotated_frame is
             the output of mspecviz.annotation.prepare_spectrum_for_plot().
             Expected columns: mz, intensity, annotation, is_annotated, ion_type.
 
@@ -100,30 +100,30 @@ def build_peaks_dataframe(
         return pl.DataFrame(schema=PEAKS_SCHEMA).lazy()
 
     chunks: List[pl.DataFrame] = []
-    for psm_id, annotated_df in annotated_spectra:
-        if annotated_df is None or len(annotated_df) == 0:
+    for psm_id, annotated_frame in annotated_spectra:
+        if annotated_frame is None or len(annotated_frame) == 0:
             continue
-        n = len(annotated_df)
+        n = len(annotated_frame)
 
         is_annotated = (
-            annotated_df["is_annotated"].values.astype("int32")
-            if "is_annotated" in annotated_df.columns
+            annotated_frame["is_annotated"].values.astype("int32")
+            if "is_annotated" in annotated_frame.columns
             else np.zeros(n, dtype="int32")
         )
         annotations = (
-            annotated_df["annotation"].tolist()
-            if "annotation" in annotated_df.columns
+            annotated_frame["annotation"].tolist()
+            if "annotation" in annotated_frame.columns
             else ["unannotated"] * n
         )
         ion_types = (
-            annotated_df["ion_type"].tolist()
-            if "ion_type" in annotated_df.columns
+            annotated_frame["ion_type"].tolist()
+            if "ion_type" in annotated_frame.columns
             else ["unannotated"] * n
         )
 
         chunk = pl.DataFrame({
-            "x": annotated_df["mz"].values.astype("float32"),
-            "y": annotated_df["intensity"].values.astype("float32"),
+            "x": annotated_frame["mz"].values.astype("float32"),
+            "y": annotated_frame["intensity"].values.astype("float32"),
             "highlight": is_annotated,
             "annotation": annotations,
             "ion_type": ion_types,

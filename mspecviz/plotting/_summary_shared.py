@@ -47,8 +47,8 @@ def _style_ax(ax, remove_top=True, remove_right=True):
         ax.spines["right"].set_visible(False)
 
 
-def _subsample_group(group_df, metric, max_n=MAX_SCATTER_PER_GROUP, seed=42):
-    vals = group_df[metric].values
+def _subsample_group(group_frame, metric, max_n=MAX_SCATTER_PER_GROUP, seed=42):
+    vals = group_frame[metric].values
     if len(vals) <= max_n:
         return vals
     rng = np.random.RandomState(seed)

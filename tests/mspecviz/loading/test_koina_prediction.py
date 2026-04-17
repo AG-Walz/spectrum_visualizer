@@ -209,7 +209,7 @@ class TestKoinaPipelineIntegration:
         query_mz = np.array([175.0, 290.0, 405.0, 520.0, 635.0, 750.0])
         query_intensity = np.array([500.0, 800.0, 1000.0, 600.0, 300.0, 200.0])
 
-        query_df = prepare_spectrum_for_plot(
+        query_frame = prepare_spectrum_for_plot(
             query_mz, query_intensity, "ASDDFDQASY", charge=1, normalize=True
         )
 
@@ -217,10 +217,10 @@ class TestKoinaPipelineIntegration:
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 
-        ref_df = prepare_koina_spectrum_for_plot(predicted, normalize=True)
+        reference_frame = prepare_koina_spectrum_for_plot(predicted, normalize=True)
 
         # Compute metrics between query and reference
-        metrics = compute_all_metrics(query_df, ref_df)
+        metrics = compute_all_metrics(query_frame, reference_frame)
         assert isinstance(metrics, dict)
         assert len(metrics) > 0
         # Cosine similarity should be a number between 0 and 1

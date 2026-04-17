@@ -58,11 +58,11 @@ class TestPlotCreation:
         (create_plotly_mirror_plot, True),
         (create_plotly_single_plot, False),
     ])
-    def test_returns_correct_figure_type(self, spectrum_df, plot_fn, is_mirror):
+    def test_returns_correct_figure_type(self, spectrum_frame, plot_fn, is_mirror):
         if is_mirror:
-            fig = plot_fn(spectrum_df, spectrum_df.copy())
+            fig = plot_fn(spectrum_frame, spectrum_frame.copy())
         else:
-            fig = plot_fn(spectrum_df)
+            fig = plot_fn(spectrum_frame)
         assert isinstance(fig, (Figure, go.Figure))
 
     @pytest.mark.parametrize("plot_fn, is_mirror", [
@@ -71,11 +71,11 @@ class TestPlotCreation:
         (create_plotly_mirror_plot, True),
         (create_plotly_single_plot, False),
     ])
-    def test_empty_df_does_not_crash(self, empty_spectrum_df, plot_fn, is_mirror):
+    def test_empty_df_does_not_crash(self, empty_spectrum_frame, plot_fn, is_mirror):
         if is_mirror:
-            fig = plot_fn(empty_spectrum_df, empty_spectrum_df.copy())
+            fig = plot_fn(empty_spectrum_frame, empty_spectrum_frame.copy())
         else:
-            fig = plot_fn(empty_spectrum_df)
+            fig = plot_fn(empty_spectrum_frame)
         assert isinstance(fig, (Figure, go.Figure))
 
 
@@ -84,15 +84,15 @@ class TestPlotCreation:
 # ---------------------------------------------------------------------------
 
 class TestMirrorPlotExtras:
-    def test_figsize_respected(self, spectrum_df):
-        fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), figure_size=(10, 6))
+    def test_figsize_respected(self, spectrum_frame):
+        fig = create_mirror_plot(spectrum_frame, spectrum_frame.copy(), figure_size=(10, 6))
         size = fig.get_size_inches()
         assert abs(size[0] - 10.0) < 0.1
         assert abs(size[1] - 6.0) < 0.1
 
-    def test_metrics_text_accepted(self, spectrum_df):
+    def test_metrics_text_accepted(self, spectrum_frame):
         metrics_text = "R\u00b2 match: 0.92\nCosine: 0.95"
-        fig = create_mirror_plot(spectrum_df, spectrum_df.copy(), metrics_text=metrics_text)
+        fig = create_mirror_plot(spectrum_frame, spectrum_frame.copy(), metrics_text=metrics_text)
         assert isinstance(fig, Figure)
 
 
@@ -101,8 +101,8 @@ class TestMirrorPlotExtras:
 # ---------------------------------------------------------------------------
 
 class TestFigureSaveable:
-    def test_save_as_png(self, spectrum_df):
-        fig = create_mirror_plot(spectrum_df, spectrum_df.copy())
+    def test_save_as_png(self, spectrum_frame):
+        fig = create_mirror_plot(spectrum_frame, spectrum_frame.copy())
         buffer = BytesIO()
         fig.savefig(buffer, format="png")
         buffer.seek(0)

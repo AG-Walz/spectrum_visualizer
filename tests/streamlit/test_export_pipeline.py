@@ -36,7 +36,7 @@ def _make_loaded_spectrum(peptidoform="PEPTIDEK/2", base_seq="PEPTIDEK",
     )
 
 
-def _make_annotated_df():
+def _make_annotated_frame():
     return pd.DataFrame({
         "mz": [100.0, 200.0, 300.0, 400.0],
         "intensity": [0.33, 0.67, 1.0, 0.17],
@@ -46,7 +46,7 @@ def _make_annotated_df():
     })
 
 
-def _make_comparison_df():
+def _make_comparison_frame():
     """Build a minimal comparison DataFrame matching the real schema."""
     rows = []
     for i, pep in enumerate(["PEPTIDEK", "ANOTHERPEP"]):
@@ -77,13 +77,13 @@ def _make_variant_groups():
         idxml_file="test.idXML", mzml_filename="query.mzML",
         id_merge_index=-1,
     )
-    vg = VariantGroup(
+    variant_group = VariantGroup(
         base_sequence="PEPTIDEK",
         modification_key=None,
         display_label="PEPTIDEK (unmodified)",
         matches=[match],
     )
-    return {"PEPTIDEK|(unmodified)": vg}
+    return {"PEPTIDEK|(unmodified)": variant_group}
 
 
 def _make_psm_lazyframe():
@@ -104,16 +104,16 @@ def _make_psm_lazyframe():
 
 def _build_session_state(tmp_path):
     """Build a mock session_state dict with all keys _run_export needs."""
-    query_spec = _make_loaded_spectrum()
-    query_df = _make_annotated_df()
-    ref_spec = _make_loaded_spectrum(source_file="ref.mzML", is_ref=True)
-    ref_df = _make_annotated_df()
+    query_spectrum = _make_loaded_spectrum()
+    query_frame = _make_annotated_frame()
+    reference_spectrum = _make_loaded_spectrum(source_file="ref.mzML", is_ref=True)
+    reference_frame = _make_annotated_frame()
 
     return {
-        "peptide_mirror.annotated_queries": {0: (query_spec, query_df)},
-        "peptide_mirror.reference_store": {"PEPTIDEK|(unmodified)": [(ref_spec, ref_df)]},
+        "peptide_mirror.annotated_queries": {0: (query_spectrum, query_frame)},
+        "peptide_mirror.reference_store": {"PEPTIDEK|(unmodified)": [(reference_spectrum, reference_frame)]},
         "peptide_mirror.variant_groups": _make_variant_groups(),
-        "peptide_mirror.comparison_df": _make_comparison_df(),
+        "peptide_mirror.comparison_frame": _make_comparison_frame(),
         "peptide_mirror.psm_frame": _make_psm_lazyframe(),
         "peptide_mirror.peaks_frame": pl.DataFrame({"x": [1.0], "y": [1.0]}).lazy(),
         "peptide_mirror.sequence_frame": pl.DataFrame({"seq": ["PEP"]}).lazy(),
@@ -189,9 +189,9 @@ class TestRunExport:
 
         export_root = list(Path(export_dir).iterdir())[0]
         assert (export_root / "comparison_summary.csv").exists()
-        df = pd.read_csv(export_root / "comparison_summary.csv")
-        assert len(df) == 2
-        assert "Peptide" in df.columns
+        frame = pd.read_csv(export_root / "comparison_summary.csv")
+        assert len(frame) == 2
+        assert "Peptide" in frame.columns
 
     def test_mirror_plot_export(self, mock_st):
         _, tmp_path = mock_st

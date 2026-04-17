@@ -83,16 +83,16 @@ def create_mirror_plot(
         ann_offset = max(upper_max, lower_max) * ANN_OFFSET
 
     if not upper_spectrum.empty:
-        upper_df = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
-        _add_matplotlib_spectrum(ax, upper_df, y_multiplier=1.0,
+        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        _add_matplotlib_spectrum(ax, upper_frame, y_multiplier=1.0,
                                 show_annotations=show_annotations,
                                 annotation_fontsize=annotation_fontsize,
                                 ann_offset=ann_offset)
 
     if not lower_spectrum.empty:
-        lower_df = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
-        lower_df["intensity"] = lower_df["intensity"] * -1
-        _add_matplotlib_spectrum(ax, lower_df, y_multiplier=-1.0,
+        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
+        lower_frame["intensity"] = lower_frame["intensity"] * -1
+        _add_matplotlib_spectrum(ax, lower_frame, y_multiplier=-1.0,
                                 show_annotations=show_annotations,
                                 annotation_fontsize=annotation_fontsize,
                                 ann_offset=ann_offset)

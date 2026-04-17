@@ -24,16 +24,15 @@ params = page_setup()
 
 def display_search_results(results: dict) -> None:
     """Display search results table."""
-    summary_frame = summarize_search_results(results)
-    summary_df = summary_frame.collect().to_pandas()
-    if not summary_df.empty:
-        display_df = summary_df.rename(columns={
+    summary_frame = summarize_search_results(results).collect().to_pandas()
+    if not summary_frame.empty:
+        display_frame = summary_frame.rename(columns={
             "base_sequence": "Peptide", "modification": "Modification",
             "psm_count": "PSMs", "idxml_files": "idXML Files",
             "mzml_resolved": "mzML Resolved", "unresolved": "Unresolved",
         })
-        display_df = display_df.drop(columns=["display_label"], errors="ignore")
-        st.dataframe(display_df, width="stretch", hide_index=True)
+        display_frame = display_frame.drop(columns=["display_label"], errors="ignore")
+        st.dataframe(display_frame, width="stretch", hide_index=True)
 
 
 @st.fragment
@@ -68,10 +67,10 @@ def search_results_fragment():
                 run_search_and_load(params)
 
             if st.session_state.get(get_state_key("data_ready")):
-                comparison_df = st.session_state.get(get_state_key("comparison_df"))
-                if comparison_df is not None and not comparison_df.empty:
+                comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+                if comparison_frame is not None and not comparison_frame.empty:
                     st.success(
-                        f"Data loaded with {len(comparison_df)} query/reference comparisons. "
+                        f"Data loaded with {len(comparison_frame)} query/reference comparisons. "
                         f"Go to **Explore** page."
                     )
                 else:

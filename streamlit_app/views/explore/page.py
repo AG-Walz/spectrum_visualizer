@@ -32,33 +32,33 @@ logger = logging.getLogger(__name__)
 @st.fragment
 def comparison_metrics_fragment():
     """Show comparison metrics table and summary statistics."""
-    comparison_df = st.session_state.get(get_state_key("comparison_df"))
-    if comparison_df is None or comparison_df.empty:
+    comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+    if comparison_frame is None or comparison_frame.empty:
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
         return
 
     st.subheader("Comparison Summary")
-    st.caption(f"{len(comparison_df)} query/reference comparisons")
+    st.caption(f"{len(comparison_frame)} query/reference comparisons")
 
     display_cols = ["Peptide", "Modification", "Charge", "Query", "Reference",
                     "R\u00b2 match", "R\u00b2 binned", "Cosine", "Entropy",
                     "Dice", "Jaccard", "SharedRatio", "shared", "ann_q", "ann_r"]
-    available_cols = [c for c in display_cols if c in comparison_df.columns]
-    st.dataframe(comparison_df[available_cols], width="stretch", hide_index=True)
+    available_cols = [c for c in display_cols if c in comparison_frame.columns]
+    st.dataframe(comparison_frame[available_cols], width="stretch", hide_index=True)
 
     # Summary statistics per peptidoform
     st.markdown("---")
     st.subheader("Summary Statistics")
-    metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_df.columns]
+    metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_frame.columns]
     if metric_cols:
-        summary = comparison_df.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
+        summary = comparison_frame.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
             ["count", "median", "mean", "std"]
         )
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
 
     # Summary plots (same as export)
-    available_metrics = [m for m in METRIC_COLUMNS if m in comparison_df.columns]
+    available_metrics = [m for m in METRIC_COLUMNS if m in comparison_frame.columns]
     if available_metrics:
         st.markdown("---")
         st.subheader("Summary Plots")
@@ -68,11 +68,11 @@ def comparison_metrics_fragment():
             key=f"{STATE_PREFIX}_summary_metric",
         )
         try:
-            raw_df, agg_df = prepare_summary_data(comparison_df, metric=metric)
-            fig_dual = plot_classic_dual_axis(raw_df, agg_df, metric=metric)
+            raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)
+            fig_dual = plot_classic_dual_axis(raw_frame, aggregated_frame, metric=metric)
             st.pyplot(fig_dual)
             plt.close(fig_dual)
-            fig_ridge = plot_ridgeline(raw_df, agg_df, metric=metric)
+            fig_ridge = plot_ridgeline(raw_frame, aggregated_frame, metric=metric)
             st.pyplot(fig_ridge)
             plt.close(fig_ridge)
         except Exception as e:

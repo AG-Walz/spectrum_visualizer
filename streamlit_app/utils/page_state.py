@@ -59,12 +59,12 @@ def save_analysis_cache() -> None:
         if frame is not None:
             frame.collect().write_parquet(cache_dir / f"{key}.parquet")
 
-    # 2. comparison_df (pandas) -> Parquet
-    comparison_df = st.session_state.get(get_state_key("comparison_df"))
-    if comparison_df is not None and not comparison_df.empty:
-        comparison_df.to_parquet(cache_dir / "comparison_df.parquet")
-    elif comparison_df is not None:
-        pd.DataFrame().to_parquet(cache_dir / "comparison_df.parquet")
+    # 2. comparison_frame (pandas) -> Parquet
+    comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+    if comparison_frame is not None and not comparison_frame.empty:
+        comparison_frame.to_parquet(cache_dir / "comparison_frame.parquet")
+    elif comparison_frame is not None:
+        pd.DataFrame().to_parquet(cache_dir / "comparison_frame.parquet")
 
     # 3. psm_lookup (dict) -> JSON
     psm_lookup = st.session_state.get(get_state_key("psm_lookup"))
@@ -101,9 +101,9 @@ def _read_analysis_cache(cache_dir_str: str, _cache_mtime: float):
         if p.exists():
             data[key] = pl.scan_parquet(p)
 
-    comparison_path = cache_dir / "comparison_df.parquet"
+    comparison_path = cache_dir / "comparison_frame.parquet"
     if comparison_path.exists():
-        data["comparison_df"] = pd.read_parquet(comparison_path)
+        data["comparison_frame"] = pd.read_parquet(comparison_path)
 
     lookup_path = cache_dir / "psm_lookup.json"
     if lookup_path.exists():
@@ -134,7 +134,7 @@ def load_analysis_cache() -> bool:
         mtime = meta_path.stat().st_mtime
         data = _read_analysis_cache(str(cache_dir), mtime)
 
-        for key in list(_LAZYFRAME_KEYS) + ["comparison_df", "psm_lookup"] + list(_PICKLE_KEYS):
+        for key in list(_LAZYFRAME_KEYS) + ["comparison_frame", "psm_lookup"] + list(_PICKLE_KEYS):
             if key in data:
                 st.session_state[get_state_key(key)] = data[key]
 

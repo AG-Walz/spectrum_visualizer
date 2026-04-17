@@ -48,35 +48,35 @@ def mirror_plots_fragment(params: dict):
             label = f"[{psm_id}] {spec.peptidoform} -- {Path(spec.source_file).stem}"
             psm_options.append((psm_id, label))
 
-    selected_label = st.selectbox("Select PSM", options=[lbl for _, lbl in psm_options],
+    selected_label = st.selectbox("Select PSM", options=[label for _, label in psm_options],
                                   key=f"{STATE_PREFIX}_mirror_psm_select")
 
     selected_psm_id = None
-    for psm_id, lbl in psm_options:
-        if lbl == selected_label:
+    for psm_id, label in psm_options:
+        if label == selected_label:
             selected_psm_id = psm_id
             break
 
     if selected_psm_id is None or selected_psm_id not in annotated_queries:
         return
 
-    query_spec, query_df = annotated_queries[selected_psm_id]
+    query_spectrum, query_frame = annotated_queries[selected_psm_id]
     variant_key = psm_id_to_variant_key.get(selected_psm_id)
-    refs = reference_store.get(variant_key, []) if variant_key else []
+    references = reference_store.get(variant_key, []) if variant_key else []
 
     normalize = get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative"
 
-    if refs:
-        for ref_spec, ref_df in refs:
-            metrics = compute_all_metrics(query_df, ref_df)
+    if references:
+        for reference_spectrum, reference_frame in references:
+            metrics = compute_all_metrics(query_frame, reference_frame)
             metrics_text = format_metrics_text(metrics)
 
-            query_label, ref_label = format_spectrum_labels(query_spec, ref_spec)
-            title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
+            query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
+            title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
 
             fig = create_plotly_mirror_plot(
-                upper_spectrum=query_df,
-                lower_spectrum=ref_df,
+                upper_spectrum=query_frame,
+                lower_spectrum=reference_frame,
                 title=title,
                 upper_label=query_label,
                 lower_label=ref_label,
@@ -95,9 +95,9 @@ def mirror_plots_fragment(params: dict):
                 metric_data["Annotated (Ref)"] = str(metrics.get("ann_r", 0))
                 st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
     else:
-        title = f"{query_spec.peptidoform} +{query_spec.precursor_charge}"
-        label = f"{Path(query_spec.source_file).stem} (RT: {query_spec.rt:.1f})"
+        title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
+        label = f"{Path(query_spectrum.source_file).stem} (RT: {query_spectrum.rt:.1f})"
         fig = create_plotly_single_plot(
-            spectrum=query_df, title=title, label=label, normalize=normalize,
+            spectrum=query_frame, title=title, label=label, normalize=normalize,
         )
         st.plotly_chart(fig, width="stretch")

@@ -75,19 +75,19 @@ def shorten_filenames(filenames: List[str]) -> List[str]:
 
 
 def compute_spectral_entropy_similarity(
-    query_df: pd.DataFrame,
-    ref_df: pd.DataFrame,
+    query_frame: pd.DataFrame,
+    reference_frame: pd.DataFrame,
 ) -> float:
     """Spectral entropy similarity (Li et al., Nature Methods 2021)."""
-    if query_df.empty or ref_df.empty:
+    if query_frame.empty or reference_frame.empty:
         return float("nan")
 
     if ms_entropy is None:
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
-    q_spec = np.column_stack([query_df["mz"].values, query_df["intensity"].values])
-    r_spec = np.column_stack([ref_df["mz"].values, ref_df["intensity"].values])
+    q_spec = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
+    r_spec = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
 
     try:
         similarity = ms_entropy.calculate_entropy_similarity(
@@ -99,33 +99,33 @@ def compute_spectral_entropy_similarity(
         return float("nan")
 
 
-def compute_shared_peak_dice(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
+def compute_shared_peak_dice(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
     """Dice coefficient on shared annotated peaks."""
-    _, _, shared = _get_matching_intensities(query_df, ref_df)
-    ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
-    ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
+    _, _, shared = _get_matching_intensities(query_frame, reference_frame)
+    ann_q = int(query_frame["is_annotated"].sum()) if "is_annotated" in query_frame.columns else 0
+    ann_r = int(reference_frame["is_annotated"].sum()) if "is_annotated" in reference_frame.columns else 0
     denominator = ann_q + ann_r
     if denominator == 0:
         return float("nan")
     return float(2 * len(shared) / denominator)
 
 
-def compute_shared_peak_jaccard(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
+def compute_shared_peak_jaccard(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
     """Jaccard index on shared annotated peaks."""
-    _, _, shared = _get_matching_intensities(query_df, ref_df)
-    ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
-    ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
+    _, _, shared = _get_matching_intensities(query_frame, reference_frame)
+    ann_q = int(query_frame["is_annotated"].sum()) if "is_annotated" in query_frame.columns else 0
+    ann_r = int(reference_frame["is_annotated"].sum()) if "is_annotated" in reference_frame.columns else 0
     denominator = ann_q + ann_r - len(shared)
     if denominator == 0:
         return float("nan")
     return float(len(shared) / denominator)
 
 
-def compute_shared_peak_ratio(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> float:
+def compute_shared_peak_ratio(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
     """Shared peak ratio: shared / min(ann_q, ann_r)."""
-    _, _, shared = _get_matching_intensities(query_df, ref_df)
-    ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
-    ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
+    _, _, shared = _get_matching_intensities(query_frame, reference_frame)
+    ann_q = int(query_frame["is_annotated"].sum()) if "is_annotated" in query_frame.columns else 0
+    ann_r = int(reference_frame["is_annotated"].sum()) if "is_annotated" in reference_frame.columns else 0
     denominator = min(ann_q, ann_r)
     if denominator == 0:
         return float("nan")
@@ -133,8 +133,8 @@ def compute_shared_peak_ratio(query_df: pd.DataFrame, ref_df: pd.DataFrame) -> f
 
 
 def compute_all_metrics(
-    query_df: pd.DataFrame,
-    ref_df: pd.DataFrame,
+    query_frame: pd.DataFrame,
+    reference_frame: pd.DataFrame,
 ) -> Dict[str, float]:
     """
     Compute all 7 comparison metrics plus context counts.
@@ -143,28 +143,28 @@ def compute_all_metrics(
         Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
         Counts:   total_q, total_r, ann_q, ann_r, shared
     """
-    q_ints, r_ints, shared_labels = _get_matching_intensities(query_df, ref_df)
+    query_intensities, reference_intensities, shared_labels = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(shared_labels)
 
-    ann_q = int(query_df["is_annotated"].sum()) if "is_annotated" in query_df.columns else 0
-    ann_r = int(ref_df["is_annotated"].sum()) if "is_annotated" in ref_df.columns else 0
+    query_annotated_count = int(query_frame["is_annotated"].sum()) if "is_annotated" in query_frame.columns else 0
+    reference_annotated_count = int(reference_frame["is_annotated"].sum()) if "is_annotated" in reference_frame.columns else 0
 
-    denom_dice = ann_q + ann_r
-    denom_jacc = ann_q + ann_r - n_shared
-    denom_shr = min(ann_q, ann_r)
+    denom_dice = query_annotated_count + reference_annotated_count
+    denom_jacc = query_annotated_count + reference_annotated_count - n_shared
+    denom_shr = min(query_annotated_count, reference_annotated_count)
 
     return {
-        "R2m": _r2_from_arrays(q_ints, r_ints),
-        "R2b": compute_r2_binned(query_df, ref_df),
-        "Cos": _cosine_from_arrays(q_ints, r_ints),
-        "Ent": compute_spectral_entropy_similarity(query_df, ref_df),
+        "R2m": _r2_from_arrays(query_intensities, reference_intensities),
+        "R2b": compute_r2_binned(query_frame, reference_frame),
+        "Cos": _cosine_from_arrays(query_intensities, reference_intensities),
+        "Ent": compute_spectral_entropy_similarity(query_frame, reference_frame),
         "Dice": float(2 * n_shared / denom_dice) if denom_dice else float("nan"),
         "Jacc": float(n_shared / denom_jacc) if denom_jacc else float("nan"),
         "ShR": float(n_shared / denom_shr) if denom_shr else float("nan"),
-        "total_q": len(query_df),
-        "total_r": len(ref_df),
-        "ann_q": ann_q,
-        "ann_r": ann_r,
+        "total_q": len(query_frame),
+        "total_r": len(reference_frame),
+        "ann_q": query_annotated_count,
+        "ann_r": reference_annotated_count,
         "shared": n_shared,
     }
 

@@ -43,7 +43,7 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
   [ load + annotate ]         mspecviz.spectra.load_spectra_streaming
           │                   mspecviz.pipeline.process_query_result
           │                   (invokes annotation + metrics + Koina fallback)
-          │   → annotated_queries, reference_store, comparison_df
+          │   → annotated_queries, reference_store, comparison_frame
           │
           ▼
   [ dataframes ]              mspecviz.dataframes.build_psm_table

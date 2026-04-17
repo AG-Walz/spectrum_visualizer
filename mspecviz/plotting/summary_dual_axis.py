@@ -21,46 +21,46 @@ from mspecviz.plotting._summary_shared import (
 
 
 def plot_classic_dual_axis(
-    raw_df: pd.DataFrame,
-    agg_df: pd.DataFrame,
+    raw_frame: pd.DataFrame,
+    aggregated_frame: pd.DataFrame,
     metric: str = DEFAULT_METRIC,
     figure_size: Tuple[float, float] = None,
     export_resolution: int = 300,
     title: str = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
-    agg_df = agg_df.sort_values("count", ascending=False).reset_index(drop=True)
+    aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
 
-    n = len(agg_df)
+    n = len(aggregated_frame)
     if figure_size is None:
         figure_size = (14, _auto_height(n))
 
     fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
     y_pos = np.arange(n)
-    labels = agg_df["peptidoform"].values
+    labels = aggregated_frame["peptidoform"].values
 
-    ax.barh(y_pos, agg_df["count"].values, height=0.65, color=SUMMARY_COLORS["bar"],
+    ax.barh(y_pos, aggregated_frame["count"].values, height=0.65, color=SUMMARY_COLORS["bar"],
             alpha=0.55, edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5, zorder=1)
     ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
     ax.invert_yaxis()
     _style_ax(ax, remove_top=False)
 
     ax2 = ax.twiny()
-    for i, pf in enumerate(labels):
-        vals = _subsample_group(raw_df[raw_df["peptidoform"] == pf], metric)
-        if len(vals) < 2:
-            ax2.scatter(vals, [i] * len(vals), s=15, color=SUMMARY_COLORS["scatter"],
+    for i, peptidoform in enumerate(labels):
+        values = _subsample_group(raw_frame[raw_frame["peptidoform"] == peptidoform], metric)
+        if len(values) < 2:
+            ax2.scatter(values, [i] * len(values), s=15, color=SUMMARY_COLORS["scatter"],
                         alpha=0.8, zorder=4)
             continue
 
-        q1, med, q3 = np.percentile(vals, [25, 50, 75])
+        q1, median, q3 = np.percentile(values, [25, 50, 75])
         iqr = q3 - q1
-        wlo = max(vals.min(), q1 - 1.5 * iqr)
-        whi = min(vals.max(), q3 + 1.5 * iqr)
-        outliers = vals[(vals < wlo) | (vals > whi)]
+        whisker_low = max(values.min(), q1 - 1.5 * iqr)
+        whisker_high = min(values.max(), q3 + 1.5 * iqr)
+        outliers = values[(values < whisker_low) | (values > whisker_high)]
 
         ax2.bxp(
-            [dict(med=med, q1=q1, q3=q3, whislo=wlo, whishi=whi, fliers=outliers)],
+            [dict(med=median, q1=q1, q3=q3, whislo=whisker_low, whishi=whisker_high, fliers=outliers)],
             positions=[i], vert=False, widths=0.35, patch_artist=True, showfliers=True,
             boxprops=dict(facecolor=SUMMARY_COLORS["box_fill"], edgecolor=SUMMARY_COLORS["box"],
                           linewidth=0.8, alpha=0.85),

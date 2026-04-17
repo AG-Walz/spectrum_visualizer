@@ -197,9 +197,9 @@ def load_spectra_streaming(
             reference_spectra[variant_key].append(spec)
 
     if on_reference_loaded:
-        for variant_key, refs in reference_spectra.items():
-            if refs:
-                on_reference_loaded(variant_key, len(refs))
+        for variant_key, references in reference_spectra.items():
+            if references:
+                on_reference_loaded(variant_key, len(references))
 
     logger.info(f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra")
 
