@@ -1,9 +1,8 @@
-"""Match experimental peaks against theoretical fragments and post-process.
+"""Match experimental peaks to theoretical fragments via PyOpenMS ``SpectrumAlignment``.
 
-Wraps PyOpenMS ``SpectrumAlignment`` and produces the annotated DataFrames
-that feed every downstream consumer (mirror plots, comparison metrics,
-``insight_dataframes``).  Also handles the Koina-predicted spectrum case,
-where annotations come pre-attached.
+Produces the annotated DataFrames that feed mirror plots, comparison
+metrics, and visualization frames; also handles Koina spectra whose
+annotations are pre-attached.
 """
 import logging
 from typing import Dict, List
@@ -28,17 +27,10 @@ def annotate_spectrum(
     theo_fragments: pd.DataFrame,
     mz_tolerance: float = 0.02
 ) -> pd.DataFrame:
-    """
-    Annotate experimental spectrum peaks with theoretical fragment matches.
+    """Align experimental peaks to ``theo_fragments`` within ``mz_tolerance`` Da.
 
-    Args:
-        exp_mz: Experimental m/z values
-        exp_intensity: Experimental intensity values
-        theo_fragments: DataFrame of theoretical fragments
-        mz_tolerance: Tolerance for matching in Da
-
-    Returns:
-        DataFrame with columns: mz, intensity, annotation, charge, is_annotated
+    Returns one row per experimental peak with ``mz, intensity, annotation,
+    charge, is_annotated`` — unmatched peaks keep ``annotation='unannotated'``.
     """
     if len(exp_mz) == 0:
         return pd.DataFrame(columns=["mz", "intensity", "annotation", "charge", "is_annotated"])
@@ -138,11 +130,7 @@ def prepare_spectrum_for_plot(
 
 
 def _parse_koina_charge(annotation: str) -> int:
-    """
-    Extract charge from a Koina annotation string.
-
-    Koina formats: 'y3+1' (charge 1), 'b5+2' (charge 2), 'y7++' (charge 2).
-    """
+    """Parse Koina annotation charge: ``y3+1`` → 1, ``b5+2`` → 2, ``y7++`` → 2."""
     if not annotation:
         return 0
     # Count trailing '+' signs (e.g. 'y3++' → charge 2)
@@ -178,11 +166,7 @@ def prepare_koina_spectrum_for_plot(
 
 
 def calculate_annotation_stats(annotated_frame: pd.DataFrame) -> Dict:
-    """
-    Calculate annotation statistics for a spectrum.
-
-    Returns dict with: total_peaks, annotated_peaks, coverage, ion_type_counts
-    """
+    """Return ``{total_peaks, annotated_peaks, coverage, ion_type_counts}`` for an annotated frame."""
     total = len(annotated_frame)
     annotated = annotated_frame["is_annotated"].sum() if "is_annotated" in annotated_frame else 0
 

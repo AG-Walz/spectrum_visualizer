@@ -1,16 +1,8 @@
-"""
-Parallel / sequential task dispatch for ProcessPoolExecutor workloads.
+"""Sequential/parallel task dispatch shared by idXML, mzML, and plot workers.
 
-Consolidates the repeated pattern where an idXML/mzML/plot worker must run
-either in-process (``workers<=1``, easy to debug) or across a process pool
-consumed via ``as_completed``. All three former call sites
-(``peptide_search.search_peptides_in_idxmls``,
-``peptide_search.get_unique_peptides_from_idxmls``,
-``spectrum_loader._execute_load_tasks``) now route through ``run_tasks``.
-
-Tasks are *argument tuples*: ``run_tasks`` submits each as ``worker(*task)``.
-Single-arg workers can pass plain values — they are auto-wrapped into a
-one-tuple so callers don't have to write ``[(x,) for x in xs]`` boilerplate.
+``workers<=1`` runs in-process (debug friendly); otherwise tasks are submitted
+to a ``ProcessPoolExecutor`` and drained via ``as_completed``. Tasks are argument
+tuples; bare values are auto-wrapped so single-arg workers skip boilerplate.
 """
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Callable, List, Optional
@@ -26,23 +18,11 @@ def run_tasks(
     on_progress: Optional[Callable[[int, int], None]] = None,
     stop_when: Optional[Callable[[], bool]] = None,
 ) -> List[Any]:
-    """Run *worker* over *tasks* sequentially or in a ``ProcessPoolExecutor``.
+    """Run ``worker(*task)`` across ``tasks``; results returned in finish order.
 
-    Args:
-        tasks: List of argument tuples (or bare values for single-arg workers).
-        worker: Module-level function called as ``worker(*task)``.
-        workers: Effective workers is ``clamp(workers, 1, len(tasks))``. 1 = in-process.
-        on_start: Callback ``(task)`` fired before each worker call (sequential)
-            or during submission (parallel). Useful for UI status updates.
-        on_result: Callback ``(task, result)`` after each task succeeds.
-        on_error: Callback ``(task, exc)`` when a task raises. Exception is swallowed.
-        on_progress: Callback ``(completed, total)`` after each task finishes.
-        stop_when: Optional predicate checked after each result; when it returns
-            True, remaining parallel futures are cancelled and iteration stops.
-
-    Returns:
-        List of worker results, in completion order (parallel) or submission
-        order (sequential). Tasks that raise are not included in the output.
+    ``workers`` is clamped to ``[1, len(tasks)]``. Callbacks fire on start,
+    result, error (swallowed), and progress. ``stop_when`` predicate, if set,
+    cancels pending futures and breaks iteration when it first returns True.
     """
     if not tasks:
         return []

@@ -1,27 +1,11 @@
-"""Data structures returned by peptide search.
-
-``PeptideMatch`` represents a single PSM with all metadata needed to resolve
-its mzML location; ``VariantGroup`` groups matches that share a base sequence
-+ modification combination. The pickle helper allows safe serialisation
-across Streamlit reloads (where module identity may otherwise differ).
-"""
+"""Peptide-search data structures (``PeptideMatch``, ``VariantGroup``) + pickle-safe helper."""
 import importlib
 from dataclasses import dataclass, field
 from typing import List
 
 
 def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
-    """
-    Build an inline-annotated sequence from base_sequence and compact modification_key.
-
-    Args:
-        base_sequence: Unmodified sequence, e.g. "PEPTMDEK"
-        modification_key: Compact mod key, e.g. "M5[Ox]" or "M5[Ox]|S3[Ph]"
-                          Terminal mods: "NTerm[Ac]", "CTerm[...]"
-
-    Returns:
-        Inline string, e.g. "PEPTM[Ox]DEK" or "PEPTMDEK" if no mods
-    """
+    """Splice ``modification_key`` (``"M5[Ox]|NTerm[Ac]"``) into ``base_sequence`` (→ ``"[Ac]PEPTM[Ox]DEK"``)."""
     if not modification_key:
         return base_sequence
 

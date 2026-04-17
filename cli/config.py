@@ -1,11 +1,4 @@
-"""
-CLI configuration — dataclass + loaders.
-
-Holds only the simple "read from disk" and glob helpers; the two-layer
-precedence merge (YAML < CLI flags, seeded by ``defaults.DEFAULTS``) and
-argparse surface live in ``cli.config_builder`` so this file stays focused
-on I/O.
-"""
+"""CLI config dataclass + disk/glob loaders (argparse + merge live in ``cli.config_builder``)."""
 
 import glob as globmod
 import logging
@@ -27,10 +20,10 @@ logger = logging.getLogger("mspecviz.cli")
 
 @dataclass
 class CLIConfig:
-    """All pipeline parameters merged from settings.json, YAML, and CLI args.
+    """Pipeline parameters merged from settings.json, YAML, and CLI args.
 
-    Field defaults come from :data:`mspecviz.common.defaults.DEFAULTS`.
-    Do not duplicate default values here; edit ``defaults.py`` instead.
+    Defaults delegate to :data:`mspecviz.common.defaults.DEFAULTS` — edit
+    there, not here, to keep a single source of truth.
     """
 
     # Input files (resolved absolute paths after glob expansion)
@@ -124,13 +117,9 @@ def load_peptides(
     quiet: bool,
     progress_factory: Optional[Callable] = None,
 ) -> Tuple[List[str], str]:
-    """Resolve a raw peptide source into a concrete, upper-cased sequence list.
-
-    Called by ``cli/main.py`` after :func:`build_config` has populated
-    :attr:`CLIConfig.peptide_source` from either the YAML ``peptide_source:``
-    key or the ``--peptides`` CLI flag.  The returned *mode* string is stored
-    on :attr:`CLIConfig.peptides_mode` and written to ``run_settings.json``
-    so every export run is reproducible.
+    """Resolve a peptide source (inline list / ``"all"`` / file path) into ``(peptides, mode)``.
+    
+    ``mode`` is recorded in ``run_settings.json`` so reruns are reproducible.
     """
     # --- Branch 1: YAML already gave us a Python list (flow-style [...]) ---
     if isinstance(peptide_source, list):

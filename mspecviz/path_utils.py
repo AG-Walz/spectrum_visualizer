@@ -1,9 +1,4 @@
-"""
-Path disambiguation and deduplication utilities.
-
-Handles files with the same name from different directories by computing
-shortest unique display names (e.g., "exp1/data.mzML" vs "exp2/data.mzML").
-"""
+"""Path dedup + shortest-unique-display-name helpers (``exp1/data.mzML`` vs ``exp2/data.mzML``)."""
 import logging
 from collections import Counter
 from pathlib import Path, PurePosixPath
@@ -13,40 +8,12 @@ logger = logging.getLogger(__name__)
 
 
 def deduplicate_paths(paths: List[str]) -> List[str]:
-    """
-    Remove exact duplicate paths, preserving order.
-
-    Args:
-        paths: List of file path strings
-
-    Returns:
-        List with duplicates removed (first occurrence kept)
-    """
+    """Drop exact duplicates, preserving first-occurrence order."""
     return list(dict.fromkeys(paths))
 
 
 def disambiguate_paths(paths: List[str]) -> Dict[str, str]:
-    """
-    Map full paths to shortest unique display names.
-
-    For unique filenames, returns just the filename.
-    For duplicates, prepends parent directories until all names are unique.
-    Exact duplicate paths are deduplicated first.
-
-    Examples:
-        ["/a/exp1/data.mzML", "/a/exp2/data.mzML", "/a/exp1/other.mzML"]
-        -> {
-            "/a/exp1/data.mzML": "exp1/data.mzML",
-            "/a/exp2/data.mzML": "exp2/data.mzML",
-            "/a/exp1/other.mzML": "other.mzML",
-        }
-
-    Args:
-        paths: List of full file path strings
-
-    Returns:
-        Dict mapping full_path -> shortest unique display name
-    """
+    """Map each full path to the shortest unique display name (prepend parents until unique)."""
     unique_paths = list(dict.fromkeys(paths))
 
     if not unique_paths:
@@ -96,23 +63,11 @@ def resolve_mzml_path(
     mzml_paths: List[str],
     idxml_path: Optional[str] = None,
 ) -> Optional[str]:
-    """
-    Resolve a bare mzML filename to the best matching full path.
+    """Resolve a bare mzML filename to the best full path in ``mzml_paths``.
 
-    Uses multiple strategies:
-    1. If only one selected path matches the bare name -> use it
-    2. If multiple match -> use metadata full path for suffix matching
-    3. Fallback -> directory proximity to the idXML file
-
-    Args:
-        mzml_bare_name: Bare filename from idXML metadata (e.g., "data.mzML")
-        metadata_full_path: Original full path from idXML metadata (may be
-            from a different machine, but directory structure often matches)
-        mzml_paths: List of user-selected mzML full paths
-        idxml_path: Full path of the idXML file (for directory proximity)
-
-    Returns:
-        Best matching full path from mzml_paths, or None if no match
+    Strategy: (1) unique bare-name match, (2) longest trailing-component match
+    against ``metadata_full_path``, (3) directory proximity to ``idxml_path``.
+    Returns ``None`` when nothing matches.
     """
     if not mzml_bare_name or not mzml_paths:
         return None

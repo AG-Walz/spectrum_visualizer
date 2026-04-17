@@ -1,11 +1,4 @@
-"""
-CLI pipeline phases — the five-step analysis run.
-
-Split out of ``cli.main`` so ``main.py`` can stay focused on argparse wiring.
-Each ``_run_*`` helper is a phase of :func:`run_pipeline`; export-related
-phases live in ``cli.exports``. They all share ``CLIConfig`` and the
-progress/printing helpers from ``cli.output``.
-"""
+"""CLI pipeline steps — search, load, export. Dataframe + plot writers live in ``cli.exports``."""
 from __future__ import annotations
 
 import copy
@@ -43,7 +36,7 @@ def _validate_inputs(config: CLIConfig) -> int:
 
 
 def _run_search(config: CLIConfig, quiet: bool):
-    """Phase 1: peptide search. Returns (variant_groups, total_psms)."""
+    """Search idXMLs for target peptides; return ``(variant_groups, total_psms)``."""
     if not quiet:
         print("Step 1: Searching peptides in idXML files...")
 
@@ -72,7 +65,7 @@ def _run_search(config: CLIConfig, quiet: bool):
 
 
 def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: int, quiet: bool):
-    """Phase 2: stream spectra + annotate. Returns (annotated_queries, reference_store, comparison_rows, normalize)."""
+    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows, normalize)``."""
     if not quiet:
         print("Step 2: Loading and annotating spectra...")
 

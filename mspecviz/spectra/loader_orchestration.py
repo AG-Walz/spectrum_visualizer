@@ -133,22 +133,11 @@ def load_spectra_streaming(
     workers: int = 1,
     skip_ids: Optional[set] = None,
 ) -> Dict[str, List[LoadedSpectrum]]:
-    """Load spectra with streaming: references first, then queries via callback.
+    """Stream-load references first, then queries; yields each query via ``on_query_ready``.
 
-    Args:
-        variant_groups: Dict of variant_key -> VariantGroup with matches.
-        mzml_paths: List of available mzML paths.
-        reference_substring: Substring (case-insensitive) identifying reference files.
-        on_reference_loaded: Callback(variant_key, count) after references are loaded.
-        on_query_ready: Callback(StreamingResult) for each query spectrum.
-        on_file_start: Callback(filename, is_reference) when starting a file.
-        on_file_complete: Callback(filename, loaded_count, not_found_count) when done.
-        error_callback: Callback(error_message) for errors.
-        workers: Number of parallel workers. 1 = sequential (default).
-        skip_ids: Set of (variant_key, spectrum_id) tuples to skip (for resume).
-
-    Returns:
-        Dict of variant_key -> list of reference spectra.
+    ``reference_substring`` (case-insensitive) splits ``mzml_paths`` into
+    references and queries. Callbacks fire on file start/complete/error plus
+    per reference and per query. Returns ``{variant_key: [reference_spectra]}``.
     """
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])

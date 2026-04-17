@@ -1,10 +1,9 @@
 """mzML spectrum-ID indexing with format-aware fast paths.
 
-Key concern: mzML ``index=N`` native IDs are **not necessarily 0-based**.
-timsTOF/Bruker converters emit 1-based IDs, so ``index=1`` maps to array
-position 0. ``open_indexed_mzml_fast`` auto-detects the offset from the first
-spectrum; ``find_spectrum_index`` applies it on lookup. Do not remove or
-reorder this logic without reading ``docs/`` and running integration tests.
+CRITICAL: mzML ``index=N`` native IDs are not always 0-based — timsTOF/Bruker
+emit 1-based. ``open_indexed_mzml_fast`` auto-detects the offset from the first
+spectrum and ``find_spectrum_index`` applies it; removing this offset logic
+silently corrupts lookups for Bruker files.
 """
 import logging
 from pathlib import Path
@@ -29,22 +28,12 @@ def open_indexed_mzml_fast(
     mzml_path: str,
     needed_ids: Optional[List[str]] = None
 ) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
-    """
-    Open mzML with targeted (not full) index building.
+    """Open mzML and build a targeted ID→position map (skip full scan when possible).
 
-    Optimizations over a naive full-scan:
-    - For ``index=N`` format: O(1) array lookup after offset detection.
-    - For ``scan=N`` with known *needed_ids*: targeted lookup + binary search.
-    - Falls back to full scan when format or *needed_ids* are unavailable.
-
-    Args:
-        mzml_path: Path to mzML file.
-        needed_ids: Optional list of spectrum IDs we need. If provided, enables
-            targeted lookup instead of a full scan.
-
-    Returns:
-        ``(OnDiscMSExperiment, id_to_index)`` where ``id_to_index`` also carries
-        three special keys: ``__format__``, ``__n_spectra__``, ``__index_offset__``.
+    ``index=N``: O(1) via detected offset. ``scan=N`` with ``needed_ids``: targeted
+    lookup. Otherwise: full scan. The returned dict carries three sentinel keys
+    (``__format__``, ``__n_spectra__``, ``__index_offset__``) used by
+    :func:`find_spectrum_index`.
     """
     indexed_exp = oms.OnDiscMSExperiment()
     indexed_exp.openFile(str(mzml_path))
@@ -161,13 +150,10 @@ def find_spectrum_index(
     id_to_index: Dict[str, int],
     n_spectra: int,
 ) -> Optional[int]:
-    """Find spectrum array index using the lookup produced by ``open_indexed_mzml_fast``.
+    """Resolve a spectrum ID to its array position via the map from ``open_indexed_mzml_fast``.
 
-    Strategies, in order:
-        1. Direct dict lookup on the cleaned ID.
-        2. Extract numeric value; for ``index=`` format apply offset; otherwise
-           check the ``_num_N`` cache; fall back to offset-adjusted array access.
-        3. Last-ditch: extract any digits from the ID and try the same paths.
+    Tries direct lookup, then ``(scan|index|spectrum)=N`` with offset adjustment,
+    then a bare-digit fallback.
     """
     clean_id = clean_spectrum_id(spectrum_id)
     if not clean_id:

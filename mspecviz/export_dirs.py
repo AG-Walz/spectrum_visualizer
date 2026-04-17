@@ -56,30 +56,12 @@ def find_or_create_export_directory(
     project_name: str,
     run_settings: dict,
 ) -> Tuple[Path, Path, Path, Path]:
-    """
-    Find an existing export directory matching run_settings, or plan a new one.
+    """Plan an export dir ``{project}_{NNN}_{YYYYMMDD}/`` — reuse on fingerprint match, else bump NNN.
 
-    Naming: {project_name}_{NNN}_{YYYYMMDD}/
-      e.g.  my_project_001_20260226/
-
-    Each folder contains a run_settings.json with the full settings + fingerprint.
-
-    On re-run with identical settings the existing folder is renamed to today's
-    date and reused (enables skipping plots already on disk).  If any setting
-    differs a new numbered folder is planned.
-
-    **No directories are created by this function.**  Call
-    ``commit_export_directory(root_dir, run_settings)`` when you are ready to
-    write files (i.e. after confirming there are plots to generate).
-
-    Args:
-        base_dir: Parent directory (e.g. ./exports)
-        project_name: Project name (e.g. "my_project")
-        run_settings: Dict of all settings that affect output
-
-    Returns:
-        Tuple of (root_dir, png_dir, svg_dir, pdf_dir) -- Path objects only,
-        no directories are created.
+    Returns ``(root, png, svg, pdf)`` as plain Paths; nothing is created until
+    :func:`commit_export_directory` runs (so we don't leave empty folders on
+    abort). On re-run with identical settings the matching folder is renamed
+    to today's date, enabling skip-existing-plots behavior.
     """
     base = Path(base_dir)
     prefix = sanitize_filename(project_name)

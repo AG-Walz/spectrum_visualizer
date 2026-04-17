@@ -1,11 +1,4 @@
-"""
-Two-layer CLI config merger: defaults < YAML < argparse.
-
-Default parameter values are defined in
-:data:`mspecviz.common.defaults.DEFAULTS` and can be
-overwritten by the YAML keys, which can in
-turn be overwritten by the argparse ``dest=``.
-"""
+"""Config merger: :data:`mspecviz.common.defaults.DEFAULTS` < YAML < argparse."""
 
 import argparse
 from dataclasses import fields

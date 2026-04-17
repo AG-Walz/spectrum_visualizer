@@ -1,10 +1,4 @@
-"""Module-level workers for ProcessPoolExecutor-based idXML scanning.
-
-Each worker takes a single idXML path (plus context) and returns a result that
-is serialisable and process-safe. They live as top-level functions so they can
-be pickled when shipped to a worker process. The orchestration layer
-(``mspecviz.search.orchestration``) submits these via ``run_tasks``.
-"""
+"""ProcessPoolExecutor-picklable idXML scanning workers (dispatched by ``search.orchestration``)."""
 import logging
 from collections import Counter
 from pathlib import Path
@@ -79,16 +73,11 @@ def _search_single_idxml(
     target_set: Set[str],
     mzml_path_strs: List[str],
 ) -> Tuple[str, List[Tuple[str, PeptideMatch]], List[str]]:
-    """
-    Worker: search one idXML file for target peptides using psm_utils PSM iteration.
+    """Worker: scan one idXML for target peptides via psm_utils PSM iteration.
 
-    psm_utils resolves id_merge_index → run name internally, so each psm.run
-    already contains the correct mzML basename (without extension).
-
-    Must be a module-level function for ProcessPoolExecutor pickling.
-
-    Returns:
-        Tuple of (idxml_name, list of (variant_key, PeptideMatch), list of errors)
+    Returns ``(idxml_name, [(variant_key, PeptideMatch)], errors)``. Module-level
+    so ProcessPoolExecutor can pickle it; ``psm.run`` already carries the
+    resolved mzML basename.
     """
     matches: List[Tuple[str, PeptideMatch]] = []
     errors: List[str] = []
@@ -102,10 +91,8 @@ def _search_single_idxml(
 
         run_to_metadata = _build_run_to_metadata_map(reader.protein_ids)
 
-        # Manual iteration so a parse error inside psm_utils __iter__ (e.g. float(None) on a
-        # missing rescoring feature) is reported clearly. psm_utils uses a generator — once
-        # it raises, iteration stops. Affected files are typically unfiltered Percolator
-        # output (_pout.idXML).
+        # Manual iteration: psm_utils' __iter__ is a generator, so a single bad PSM
+        # (e.g. null rescoring feature in unfiltered _pout.idXML) kills the stream.
         psm_iter = iter(reader)
         psms_read = 0
         parse_error: Optional[str] = None
@@ -147,11 +134,7 @@ def _search_single_idxml(
 
 
 def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
-    """Count PSMs per base peptide sequence in one idXML file.
-
-    Module-level so it can be submitted to a ProcessPoolExecutor.
-    Returns an empty dict on any parsing error.
-    """
+    """Count PSMs per base sequence in one idXML; ``{}`` on parse error."""
     counts: Counter = Counter()
     try:
         for psm in IdXMLReader(str(idxml_path)):
@@ -164,14 +147,7 @@ def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
 
 
 def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
-    """
-    Worker: extract all unique base sequences from one idXML file.
-
-    Must be a module-level function for ProcessPoolExecutor pickling.
-
-    Returns:
-        Tuple of (idxml_path, set of base sequences)
-    """
+    """Worker: return ``(idxml_path, {base_sequence, ...})`` for one idXML."""
     peptides: Set[str] = set()
     try:
         reader = IdXMLReader(str(idxml_path))

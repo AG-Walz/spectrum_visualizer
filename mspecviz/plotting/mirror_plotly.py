@@ -68,22 +68,10 @@ def create_plotly_mirror_plot(
     normalize: bool = True,
     height: int = 600,
 ):
-    """
-    Create an interactive Plotly mirror plot.
+    """Render an interactive Plotly mirror plot (query on top, reference below).
 
-    Args:
-        upper_spectrum: DataFrame with columns [mz, intensity, annotation]
-        lower_spectrum: DataFrame with columns [mz, intensity, annotation]
-        title: Plot title
-        upper_label: Label for upper spectrum
-        lower_label: Label for lower spectrum
-        color_map: Custom ion color mapping
-        metrics_text: Metrics string for annotation overlay
-        normalize: Normalize intensities to [0, 1]
-        height: Plot height in pixels
-
-    Returns:
-        plotly.graph_objs.Figure
+    Both frames need ``mz, intensity, annotation``. ``metrics_text`` overlays
+    a metrics annotation; ``color_map`` overrides ``ION_COLORS``.
     """
     if color_map is None:
         color_map = ION_COLORS

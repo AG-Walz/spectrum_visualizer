@@ -1,10 +1,4 @@
-"""
-CLI export phases — dataframe writing, export-dir resolution, plot generation.
-
-Split out of ``cli.pipeline`` so that file stays focused on orchestration.
-Each ``_export_*`` / ``_prepare_*`` helper is called once from ``run_pipeline``;
-they share ``CLIConfig`` and the printing helpers from ``cli.output``.
-"""
+"""CLI export helpers — dataframe writes, export-dir resolution, plot dispatch."""
 from __future__ import annotations
 
 import logging
@@ -82,7 +76,7 @@ def _build_run_settings(config: CLIConfig) -> dict:
 
 
 def prepare_export_dir(config: CLIConfig):
-    """Phase 3: resolve/create the versioned export directory + fmt subfolders."""
+    """Resolve/create the versioned export directory and its format subfolders."""
     run_settings = _build_run_settings(config)
     root_dir, png_dir, svg_dir, pdf_dir = find_or_create_export_directory(
         config.export_directory, config.project_name, run_settings,
@@ -98,7 +92,7 @@ def prepare_export_dir(config: CLIConfig):
 def export_plots(config: CLIConfig, annotated_queries, reference_store, variant_groups_copy,
                  comparison_frame, root_dir, png_dir, svg_dir, pdf_dir,
                  normalize: bool, quiet: bool) -> None:
-    """Phase 5: mirror plots + summary plots (when --no-plots is off)."""
+    """Generate mirror + summary plots (skipped when ``--no-plots`` is set)."""
     plot_file_count = export_mirror_plots(
         annotated_queries, reference_store, variant_groups_copy,
         config, root_dir, png_dir, svg_dir, pdf_dir,

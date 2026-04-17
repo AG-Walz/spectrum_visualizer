@@ -1,9 +1,4 @@
-"""Peaks / Sequence / Heatmap LazyFrames for openms_insight.
-
-Builds the three visualisation-oriented DataFrames consumed by the LinePlot,
-SequenceView, and Heatmap components. Schemas match openms_insight's
-``parse_openms_sequence`` / LinePlot expectations exactly.
-"""
+"""Peaks / Sequence / Heatmap LazyFrames for the openms_insight LinePlot, SequenceView, Heatmap."""
 import logging
 import os
 from typing import Dict, List, Tuple
@@ -43,17 +38,10 @@ HEATMAP_SCHEMA: Dict[str, pl.DataType] = {
 
 
 def _proforma_to_openms_str(peptidoform_str: str) -> str:
-    """
-    Convert a ProForma peptidoform string to OpenMS parenthesis notation.
+    """Convert ProForma (``PEPTM[Oxidation]IDEK``) to OpenMS parens (``PEPTM(Oxidation)IDEK``).
 
-    Examples:
-        "PEPTIDE"                   -> "PEPTIDE"
-        "PEPTM[Oxidation]IDEK"      -> "PEPTM(Oxidation)IDEK"
-        "[Acetyl]-PEPTIDE"          -> ".(Acetyl)PEPTIDE"
-
-    Falls back to the raw bare sequence on parsing error.
-    Used to build the ``sequence`` column for openms_insight SequenceView,
-    which uses its own ``parse_openms_sequence()`` to handle this format.
+    Feeds SequenceView's ``parse_openms_sequence()``; returns the bare sequence
+    on parse failure.
     """
     clean_peptidoform_str = peptidoform_str.split("/")[0]
     try:
@@ -79,20 +67,10 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
 def build_peaks_dataframe(
     annotated_spectra: List[Tuple[int, pd.DataFrame]],
 ) -> pl.LazyFrame:
-    """
-    Build a peaks LazyFrame for openms_insight LinePlot and SequenceView.
+    """Build a peaks LazyFrame (one row per peak) matching :data:`PEAKS_SCHEMA`.
 
-    Args:
-        annotated_spectra: List of (psm_id, annotated_frame) where annotated_frame is
-            the output of mspecviz.annotation.prepare_spectrum_for_plot().
-            Expected columns: mz, intensity, annotation, is_annotated, ion_type.
-
-    Returns:
-        Polars LazyFrame matching ``PEAKS_SCHEMA`` — one row per peak. Columns:
-        x (m/z), y (intensity), highlight (1 if annotated), annotation
-        (e.g. ``"y7"``), ion_type (e.g. ``"b"``, ``"precursor"``), and
-        psm_id (foreign key into the PSM table — use as the ``filters`` key
-        in LinePlot / SequenceView so row-click updates the spectrum view).
+    ``annotated_spectra`` is ``[(psm_id, frame_from_prepare_spectrum_for_plot)]``.
+    ``psm_id`` is the foreign key used as LinePlot/SequenceView ``filters``.
     """
     if not annotated_spectra:
         return pl.DataFrame(schema=PEAKS_SCHEMA).lazy()
@@ -141,21 +119,10 @@ def build_peaks_dataframe(
 def build_sequence_dataframe(
     psm_spectra: List[Tuple[int, "LoadedSpectrum"]],
 ) -> pl.LazyFrame:
-    """
-    Build a sequence LazyFrame for the openms_insight SequenceView component.
+    """Build a sequence LazyFrame (one row per PSM) for openms_insight SequenceView.
 
-    One row per PSM. The ``sequence`` column uses OpenMS parenthesis notation
-    (e.g. ``SHC(Carbamidomethyl)IAEVEK``) so that openms_insight's
-    ``parse_openms_sequence()`` can correctly render modification markers.
-
-    Args:
-        psm_spectra: List of (psm_id, LoadedSpectrum) tuples.
-
-    Returns:
-        Polars LazyFrame matching ``SEQUENCE_SCHEMA``: sequence (OpenMS
-        notation), precursor_charge, psm_id (foreign key). Pass alongside
-        ``peaks_frame`` to ``SequenceView`` with ``filters={"selected_psm":
-        "psm_id"}`` for linked row-click spectrum rendering.
+    ``sequence`` is OpenMS parens notation (e.g. ``SHC(Carbamidomethyl)IAEVEK``)
+    so SequenceView's ``parse_openms_sequence()`` renders modifications.
     """
     if not psm_spectra:
         return pl.DataFrame(schema=SEQUENCE_SCHEMA).lazy()
@@ -178,22 +145,11 @@ def build_heatmap_dataframe(
     spectra: List["LoadedSpectrum"],
     min_rt: float = 0.0,
 ) -> pl.LazyFrame:
-    """
-    Build an RT x m/z heatmap LazyFrame for the openms_insight Heatmap component.
+    """Build an RT × m/z heatmap LazyFrame (one row per peak) for the openms_insight Heatmap.
 
-    Each peak from every spectrum contributes one row. The Heatmap component
-    handles downsampling internally (multi-resolution streaming).
-
-    Args:
-        spectra: List of LoadedSpectrum objects. Reference spectra (is_reference=True)
-            are included alongside query spectra -- filter them upstream if needed.
-        min_rt: Exclude spectra with RT < min_rt (default 0.0 keeps everything).
-            Set to e.g. 60.0 to exclude spectra without a valid RT.
-
-    Returns:
-        Polars LazyFrame matching ``HEATMAP_SCHEMA``: x (RT in seconds),
-        y (m/z), intensity. One row per peak per spectrum — the Heatmap
-        component downsamples internally via multi-resolution streaming.
+    ``spectra`` is not filtered — pass only queries (or both) upstream. ``min_rt``
+    drops spectra without a valid RT (e.g. set to 60.0). Heatmap downsamples via
+    multi-resolution streaming internally.
     """
     chunks: List[pl.DataFrame] = []
     for spectrum in spectra:
@@ -217,16 +173,10 @@ def build_heatmap_dataframe(
 
 
 def save_to_parquet(frame: pl.LazyFrame, path: str) -> None:
-    """
-    Collect a LazyFrame and write it to a Parquet file.
+    """Collect a LazyFrame and write it to Parquet (zstd).
 
-    Use this when passing ``data_path=`` to openms_insight components instead
-    of ``data=``.  Subprocess preprocessing (memory isolation) only works with
-    the ``data_path=`` mode.
-
-    Args:
-        frame: Polars LazyFrame to persist.
-        path: Output file path (e.g. "cache/psm_table.parquet").
+    Needed for openms_insight's ``data_path=`` mode — only that mode runs
+    preprocessing in a subprocess (memory isolation).
     """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
     frame.collect().write_parquet(path, compression="zstd")

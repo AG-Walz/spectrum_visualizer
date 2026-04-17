@@ -64,27 +64,11 @@ def _enforce_schema(df: pl.DataFrame, schema: Dict[str, pl.DataType]) -> pl.Data
 def build_psm_table(
     variant_groups: Dict[str, VariantGroup],
 ) -> Tuple[pl.LazyFrame, Dict[str, int]]:
-    """
-    Build a PSM-level LazyFrame for the openms_insight Table component.
+    """Build the PSM-level LazyFrame + ``psm_lookup`` for the openms_insight Table.
 
-    Assigns a stable integer ``id`` to each PeptideMatch.  The returned
-    ``psm_lookup`` dict maps a spectrum key to that ``id`` so that later
-    steps (build_peaks_dataframe, build_sequence_dataframe) can link peaks
-    back to the correct table row.
-
-    The spectrum key is produced by ``spectrum_lookup_key()`` from
-    spectrum_loader:  ``f"{spectrum_id}|{peptidoform}"``.
-
-    Args:
-        variant_groups: Dict of variant_key -> VariantGroup from peptide_search.
-
-    Returns:
-        Tuple of:
-        - LazyFrame with columns:
-            id (Int32), variant_key, base_sequence, modification,
-            display_label, peptidoform, charge (Int32), score (Float32),
-            source_file, spectrum_id, idxml_file
-        - psm_lookup dict: spectrum_key -> psm_id (int)
+    Each PeptideMatch gets a stable integer ``id``; ``psm_lookup`` maps
+    ``spectrum_lookup_key()`` (``"{spectrum_id}|{peptidoform}"``) → that id so
+    downstream frames can link peaks/sequences back to the right row.
     """
     rows: List[dict] = []
     psm_lookup: Dict[str, int] = {}

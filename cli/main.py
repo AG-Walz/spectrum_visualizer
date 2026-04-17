@@ -1,21 +1,9 @@
 #!/usr/bin/env python3
-"""
-MSpecViz CLI — Terminal-based analysis pipeline.
+"""MSpecViz CLI — ``python -m cli --config config.yaml [overrides]``.
 
-Runs the full MSpecViz analysis from the terminal without opening a browser.
-All inputs are provided via a YAML config file (with optional CLI argument
-overrides). Reuses the exact same backend functions as the Streamlit app;
-config parsing, argparse wiring, progress/printing, plot dispatch, and the
-pipeline phases all live in sibling modules (``cli.config``,
-``cli.config_builder``, ``cli.output``, ``cli.plots``, ``cli.pipeline``).
-
-Usage:
-    python -m cli --config config.yaml
-    python -m cli --config config.yaml --peptides peptides.txt --verbose
-    python -m cli --config config.yaml --mz-tolerance 0.05 --no-plots --quiet
-
-Exit codes:
-    0 = success, 1 = pipeline failure, 2 = configuration / input error
+Reuses the same backend as the Streamlit app; argparse/config/output/plots/
+pipeline live in sibling ``cli.*`` modules. Exit codes: 0 ok, 1 pipeline
+failure, 2 config/input error.
 """
 import logging
 import sys

@@ -1,18 +1,7 @@
-"""Single source of truth for pipeline parameter defaults.
+"""Single source of truth for pipeline parameter defaults (``mspecviz``/``cli``/``streamlit_app`` all read here).
 
-Every tunable parameter that has a default value lives here. The three
-entry points (core ``mspecviz``, ``cli``, ``streamlit_app``) all import from
-this module so a default is defined in exactly one place.
-
-Precedence in the three layers that read these values:
-
-    defaults.py (this file)   <- last-resort fallback
-        < settings.json / params.json / YAML config
-            < CLI flags / Streamlit widgets   <- highest priority
-
-Naming rules: all keys are ``snake_case`` everywhere (Python attributes,
-JSON keys, YAML keys, Streamlit session-state keys). Do not introduce
-kebab-case or camelCase variants.
+Precedence: this file < settings.json/params.json/YAML < CLI flags /
+Streamlit widgets. All keys are ``snake_case`` everywhere.
 """
 from dataclasses import dataclass, field, fields
 from typing import List, Tuple
