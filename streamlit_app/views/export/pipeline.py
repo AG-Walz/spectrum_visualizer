@@ -157,11 +157,11 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
 
         if do_parquet:
             st.caption("Saving Parquet DataFrames...")
-            for name in ("psm_lf", "peaks_lf", "seq_lf", "heatmap_lf"):
-                lf = st.session_state.get(get_state_key(name))
-                if lf is not None:
-                    out_file = export_root / f"{name.replace('_lf', '')}.parquet"
-                    lf.collect().write_parquet(out_file)
+            for name in ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame"):
+                frame = st.session_state.get(get_state_key(name))
+                if frame is not None:
+                    out_file = export_root / f"{name.replace('_frame', '')}.parquet"
+                    frame.collect().write_parquet(out_file)
                     saved_files.append(str(out_file))
 
         if do_csv:

@@ -29,9 +29,9 @@ PSM_TABLE_SCHEMA: Dict[str, pl.DataType] = {
 }
 
 
-def validate_dataframe(lf: pl.LazyFrame, schema: dict, name: str) -> bool:
+def validate_dataframe(frame: pl.LazyFrame, schema: dict, name: str) -> bool:
     """Check that a LazyFrame matches the expected schema, logging mismatches."""
-    actual_schema = lf.collect_schema()
+    actual_schema = frame.collect_schema()
     valid = True
 
     for col_name, expected_dtype in schema.items():

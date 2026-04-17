@@ -103,18 +103,18 @@ def _build_annotation_kwargs(params: dict) -> dict:
     )
 
 
-def _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
+def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows) -> None:
     """Persist all analysis results to session state and disk cache."""
-    peaks_lf = build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries])
-    seq_lf = build_sequence_dataframe([(psm_id, s) for psm_id, s, _ in annotated_queries])
-    heatmap_lf = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
+    peaks_frame = build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries])
+    sequence_frame = build_sequence_dataframe([(psm_id, s) for psm_id, s, _ in annotated_queries])
+    heatmap_frame = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
 
-    st.session_state[get_state_key("psm_lf")] = psm_lf
+    st.session_state[get_state_key("psm_frame")] = psm_frame
     st.session_state[get_state_key("psm_lookup")] = psm_lookup
-    st.session_state[get_state_key("peaks_lf")] = peaks_lf
-    st.session_state[get_state_key("seq_lf")] = seq_lf
-    st.session_state[get_state_key("heatmap_lf")] = heatmap_lf
+    st.session_state[get_state_key("peaks_frame")] = peaks_frame
+    st.session_state[get_state_key("sequence_frame")] = sequence_frame
+    st.session_state[get_state_key("heatmap_frame")] = heatmap_frame
 
     st.session_state[get_state_key("annotated_queries")] = {
         psm_id: (spec, df) for psm_id, spec, df in annotated_queries
@@ -146,7 +146,7 @@ def run_search_and_load(params: dict) -> None:
         return
 
     variant_groups_copy = copy.deepcopy(variant_groups)
-    psm_lf, psm_lookup = build_psm_table(variant_groups_copy)
+    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     annotation_kwargs = _build_annotation_kwargs(params)
 
     annotated_queries: list = []
@@ -210,7 +210,7 @@ def run_search_and_load(params: dict) -> None:
             return
 
         status_text.caption(f"Building DataFrames from {len(annotated_queries)} spectra...")
-        _store_analysis_results(psm_lf, psm_lookup, annotated_queries,
+        _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                                 reference_store, comparison_rows)
 
         status.update(

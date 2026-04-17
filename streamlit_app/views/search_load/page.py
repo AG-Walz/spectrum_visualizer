@@ -24,8 +24,8 @@ params = page_setup()
 
 def display_search_results(results: dict) -> None:
     """Display search results table."""
-    summary_lf = summarize_search_results(results)
-    summary_df = summary_lf.collect().to_pandas()
+    summary_frame = summarize_search_results(results)
+    summary_df = summary_frame.collect().to_pandas()
     if not summary_df.empty:
         display_df = summary_df.rename(columns={
             "base_sequence": "Peptide", "modification": "Modification",

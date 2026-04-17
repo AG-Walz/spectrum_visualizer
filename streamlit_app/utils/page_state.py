@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 ANALYSIS_CACHE_DIR = "analysis_cache"
 
 # Keys whose values are Polars LazyFrames (saved as Parquet)
-_LAZYFRAME_KEYS = ("psm_lf", "peaks_lf", "seq_lf", "heatmap_lf")
+_LAZYFRAME_KEYS = ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame")
 
 # Keys whose values are pickle-safe Python objects
 _PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
@@ -55,15 +55,15 @@ def save_analysis_cache() -> None:
 
     # 1. Polars LazyFrames -> Parquet
     for key in _LAZYFRAME_KEYS:
-        lf = st.session_state.get(get_state_key(key))
-        if lf is not None:
-            lf.collect().write_parquet(cache_dir / f"{key}.parquet")
+        frame = st.session_state.get(get_state_key(key))
+        if frame is not None:
+            frame.collect().write_parquet(cache_dir / f"{key}.parquet")
 
     # 2. comparison_df (pandas) -> Parquet
-    comp_df = st.session_state.get(get_state_key("comparison_df"))
-    if comp_df is not None and not comp_df.empty:
-        comp_df.to_parquet(cache_dir / "comparison_df.parquet")
-    elif comp_df is not None:
+    comparison_df = st.session_state.get(get_state_key("comparison_df"))
+    if comparison_df is not None and not comparison_df.empty:
+        comparison_df.to_parquet(cache_dir / "comparison_df.parquet")
+    elif comparison_df is not None:
         pd.DataFrame().to_parquet(cache_dir / "comparison_df.parquet")
 
     # 3. psm_lookup (dict) -> JSON
@@ -101,9 +101,9 @@ def _read_analysis_cache(cache_dir_str: str, _cache_mtime: float):
         if p.exists():
             data[key] = pl.scan_parquet(p)
 
-    comp_path = cache_dir / "comparison_df.parquet"
-    if comp_path.exists():
-        data["comparison_df"] = pd.read_parquet(comp_path)
+    comparison_path = cache_dir / "comparison_df.parquet"
+    if comparison_path.exists():
+        data["comparison_df"] = pd.read_parquet(comparison_path)
 
     lookup_path = cache_dir / "psm_lookup.json"
     if lookup_path.exists():

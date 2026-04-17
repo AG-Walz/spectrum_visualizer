@@ -156,7 +156,7 @@ def build_sequence_dataframe(
     Returns:
         Polars LazyFrame matching ``SEQUENCE_SCHEMA``: sequence (OpenMS
         notation), precursor_charge, psm_id (foreign key). Pass alongside
-        ``peaks_lf`` to ``SequenceView`` with ``filters={"selected_psm":
+        ``peaks_frame`` to ``SequenceView`` with ``filters={"selected_psm":
         "psm_id"}`` for linked row-click spectrum rendering.
     """
     if not psm_spectra:
@@ -218,7 +218,7 @@ def build_heatmap_dataframe(
     return combined.lazy()
 
 
-def save_to_parquet(lf: pl.LazyFrame, path: str) -> None:
+def save_to_parquet(frame: pl.LazyFrame, path: str) -> None:
     """
     Collect a LazyFrame and write it to a Parquet file.
 
@@ -227,9 +227,9 @@ def save_to_parquet(lf: pl.LazyFrame, path: str) -> None:
     the ``data_path=`` mode.
 
     Args:
-        lf: Polars LazyFrame to persist.
+        frame: Polars LazyFrame to persist.
         path: Output file path (e.g. "cache/psm_table.parquet").
     """
     os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-    lf.collect().write_parquet(path, compression="zstd")
+    frame.collect().write_parquet(path, compression="zstd")
     logger.info(f"Saved parquet: {path}")

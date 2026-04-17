@@ -47,6 +47,7 @@ def _render_workspace_switcher(params: dict) -> None:
             for key in stale_keys:
                 st.session_state.pop(key, None)
             st.query_params.workspace = st.session_state["chosen-workspace"]
+            st.rerun()
 
         workspaces_dir.mkdir(parents=True, exist_ok=True)
         options = sorted(

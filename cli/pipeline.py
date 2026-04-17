@@ -143,7 +143,7 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
         return 1
 
     variant_groups_copy = copy.deepcopy(variant_groups)
-    psm_lf, psm_lookup = build_psm_table(variant_groups_copy)
+    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
 
     annotated_queries, reference_store, comparison_rows, normalize = _run_load(
         config, variant_groups_copy, psm_lookup, total_psms, quiet,
@@ -163,7 +163,7 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
         print("Step 4: Exporting results...")
 
     _, _, _, comparison_df = export_dataframes(
-        annotated_queries, comparison_rows, psm_lf, root_dir, quiet,
+        annotated_queries, comparison_rows, psm_frame, root_dir, quiet,
     )
 
     if not config.no_plots:

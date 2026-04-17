@@ -48,7 +48,7 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
           ▼
   [ dataframes ]              mspecviz.dataframes.build_psm_table
           │                   build_peaks_dataframe / sequence / heatmap
-          │   → psm_lf, peaks_lf, seq_lf, heatmap_lf (Polars LazyFrames)
+          │   → psm_frame, peaks_frame, sequence_frame, heatmap_frame (Polars LazyFrames)
           │
           ▼
   [ display / export ]        Streamlit: views/explore + views/export

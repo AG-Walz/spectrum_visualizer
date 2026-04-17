@@ -57,17 +57,17 @@ def openms_insight_explorer_fragment(params: dict):
         st.session_state["mspecviz_sm"] = StateManager(session_key="mspecviz_state")
     state_manager = st.session_state["mspecviz_sm"]
 
-    psm_lf = st.session_state.get(get_state_key("psm_lf"))
-    peaks_lf = st.session_state.get(get_state_key("peaks_lf"))
-    seq_lf = st.session_state.get(get_state_key("seq_lf"))
-    heatmap_lf = st.session_state.get(get_state_key("heatmap_lf"))
+    psm_frame = st.session_state.get(get_state_key("psm_frame"))
+    peaks_frame = st.session_state.get(get_state_key("peaks_frame"))
+    sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
+    heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
 
     # Show currently selected PSM info
     current_state = state_manager.get_state_for_vue()
     selected_id = current_state.get("selected_psm")
-    if selected_id is not None and psm_lf is not None:
+    if selected_id is not None and psm_frame is not None:
         try:
-            row = psm_lf.filter(pl.col("id") == selected_id).collect()
+            row = psm_frame.filter(pl.col("id") == selected_id).collect()
             if row.height > 0:
                 label = row["display_label"][0]
                 source = row["source_file"][0]
@@ -85,19 +85,19 @@ def openms_insight_explorer_fragment(params: dict):
         {"field": "source_file", "title": "Source File"},
     ]
     table = _create_component(Table, "psm_table", CACHE_PATH, needs_regeneration,
-                              data=psm_lf, interactivity={"selected_psm": "id"},
+                              data=psm_frame, interactivity={"selected_psm": "id"},
                               column_definitions=psm_columns, regenerate_cache=True, index_field="id")
     table(key="psm_table", state_manager=state_manager)
 
     # SequenceView
     st.subheader("Sequence Coverage")
     if needs_regeneration:
-        peaks_for_sv = peaks_lf.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
+        peaks_for_sequence_view = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
     else:
-        peaks_for_sv = None
+        peaks_for_sequence_view = None
     sequence_view = _create_component(
-        SequenceView, "seq_view", CACHE_PATH, needs_regeneration,
-        sequence_data=seq_lf, peaks_data=peaks_for_sv,
+        SequenceView, "sequence_view", CACHE_PATH, needs_regeneration,
+        sequence_data=sequence_frame, peaks_data=peaks_for_sequence_view,
         filters={"selected_psm": "psm_id"},
         annotation_config={
             "ion_types": get_param(params, "ion_types", DEFAULTS.ion_types),
@@ -106,27 +106,27 @@ def openms_insight_explorer_fragment(params: dict):
         },
         height=350,
     )
-    sequence_view(key="seq_view", state_manager=state_manager)
+    sequence_view(key="sequence_view", state_manager=state_manager)
 
     # LinePlot linked to SequenceView
     st.subheader("Fragment Spectrum")
     lineplot = _create_component(
         LinePlot, "spectrum_plot", CACHE_PATH, needs_regeneration,
-        data=peaks_lf, filters={"selected_psm": "psm_id"},
+        data=peaks_frame, filters={"selected_psm": "psm_id"},
         filter_defaults={"selected_psm": 0}, regenerate_cache=True,
         x_column="x", y_column="y", highlight_column="highlight",
         annotation_column="annotation", x_label="m/z", y_label="Intensity",
     )
-    lineplot(key="spectrum_plot", state_manager=state_manager, sequence_view_key="seq_view")
+    lineplot(key="spectrum_plot", state_manager=state_manager, sequence_view_key="sequence_view")
 
     # Heatmap
     st.subheader("RT x m/z Heatmap")
-    heatmap_comp = _create_component(
+    heatmap_component = _create_component(
         Heatmap, "rt_heatmap", CACHE_PATH, needs_regeneration,
-        data=heatmap_lf, x_column="x", y_column="y", intensity_column="intensity",
+        data=heatmap_frame, x_column="x", y_column="y", intensity_column="intensity",
         x_label="Retention Time (s)", y_label="m/z", log_scale=True, regenerate_cache=True,
     )
-    heatmap_comp(key="rt_heatmap", state_manager=state_manager)
+    heatmap_component(key="rt_heatmap", state_manager=state_manager)
 
     if needs_regeneration:
         mark_rendered()

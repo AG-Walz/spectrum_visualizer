@@ -79,7 +79,7 @@ between views — written by one view, read by another.
 | `ion_types`, `mz_tolerance`, `add_neutral_losses`, `add_first_prefix_ion`, `remove_precursor_peaks`, `intensity_mode` | Setup | Search & Load, Export | Annotation parameters. |
 | `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Search & Load, Export | Runtime / AI-prediction parameters. |
 | `variant_groups` | Search & Load (stage 1) | Search & Load (stage 2), Export | Search results — the `dict[variant_key → VariantGroup]` returned by `search_peptides_in_idxmls`. |
-| `psm_lf`, `psm_lookup`, `peaks_lf`, `seq_lf`, `heatmap_lf` | Search & Load (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
+| `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Search & Load (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
 | `annotated_queries`, `reference_store`, `comparison_df` | Search & Load (stage 2) | Explore, Export | Annotated spectra + metrics. |
 | `data_ready` | Search & Load (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |
 | `cache_version` | `page_setup()` | Cache validator | Bumped whenever the active workspace changes or the user clicks "Invalidate cache". |
