@@ -10,6 +10,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
+from mspecviz.annotation import prepare_spectrum_for_plot
 from mspecviz.dataframes import (
     HEATMAP_SCHEMA,
     PEAKS_SCHEMA,
@@ -22,8 +23,8 @@ from mspecviz.dataframes import (
     save_to_parquet,
     validate_dataframe,
 )
-from mspecviz.search import VariantGroup
-from mspecviz.spectra import LoadedSpectrum
+from mspecviz.search import VariantGroup, search_peptides_in_idxmls
+from mspecviz.spectra import LoadedSpectrum, load_spectra_streaming, spectrum_lookup_key
 
 from tests.conftest import make_peptide_match
 
@@ -197,7 +198,6 @@ class TestBuildFromRealData:
 
     @pytest.fixture
     def variant_groups(self, idxml_path, target_peptides):
-        from mspecviz.search import search_peptides_in_idxmls
         return search_peptides_in_idxmls([idxml_path], target_peptides)
 
     def test_build_psm_table_real(self, variant_groups):
@@ -209,9 +209,6 @@ class TestBuildFromRealData:
 
     def test_build_all_dataframes_real(self, variant_groups, mzml_paths):
         """Full pipeline: search -> stream -> annotate -> build DataFrames."""
-        from mspecviz.spectra import load_spectra_streaming, spectrum_lookup_key
-        from mspecviz.annotation import prepare_spectrum_for_plot
-
         psm_frame, psm_lookup = build_psm_table(variant_groups)
         annotated = []
 
