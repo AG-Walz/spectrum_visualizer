@@ -35,7 +35,18 @@ def load_params(default: bool = False) -> dict[str, Any]:
         return {}
 
     with open(path, "r", encoding="utf-8") as f:
-        return json.load(f)
+        raw = json.load(f)
+
+    # Migrate legacy hyphenated top-level keys (e.g. ``reference-substring``)
+    # to their snake_case equivalent. Defaults and in-code keys are snake_case
+    # now; without this, workspaces created before the migration keep stale
+    # hyphen keys and ``save_params`` can't sync widget values back to disk.
+    # Snake_case wins if both forms exist.
+    migrated: dict[str, Any] = {k: v for k, v in raw.items() if "-" not in k}
+    for k, v in raw.items():
+        if "-" in k:
+            migrated.setdefault(k.replace("-", "_"), v)
+    return migrated
 
 
 def save_params(params: dict[str, Any]) -> None:

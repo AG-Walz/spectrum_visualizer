@@ -79,11 +79,19 @@ def reference_selection_fragment():
         return
 
     st.markdown("Enter a substring to identify reference mzML files (e.g., 'Synpep', 'Standard', 'Ref')")
+    persisted_key = get_state_key("reference_substring_persisted")
+    initial_value = st.session_state.get(persisted_key, params.get('reference_substring', ''))
     ref_substring = st.text_input(
         "Reference identifier (Optional)",
-        value=params.get('reference_substring', ''),
+        value=initial_value,
         key="reference_substring", placeholder="e.g., Synpep"
     )
+    # Mirror into a non-widget key so the value survives page navigation
+    # (Streamlit garbage-collects widget keys when the owning page unmounts).
+    st.session_state[persisted_key] = ref_substring
+    # Seed into params so save_params picks it up even in legacy workspaces
+    # whose params.json predates the snake_case key migration.
+    params['reference_substring'] = ref_substring
 
     if ref_substring:
         reference_files = [Path(m).name for m in mzmls if ref_substring.lower() in Path(m).name.lower()]
