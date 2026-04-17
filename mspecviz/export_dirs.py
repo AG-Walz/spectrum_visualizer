@@ -114,8 +114,8 @@ def find_or_create_export_directory(
                         if saved.get("_fingerprint") == fingerprint:
                             match_entry = entry
                             match_num = num
-                    except Exception:
-                        pass
+                    except (json.JSONDecodeError, OSError) as e:
+                        logger.warning(f"Could not read {settings_file}: {e}")
 
     if match_entry is not None:
         # Rename to today's date and reuse
@@ -153,7 +153,7 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
             saved["_last_run"] = datetime.now().isoformat()
             with open(settings_file, "w") as f:
                 json.dump(saved, f, indent=2, default=str)
-        except Exception as e:
+        except (json.JSONDecodeError, OSError) as e:
             logger.warning(f"Could not update run_settings.json: {e}")
     else:
         # New dir -- write full settings
@@ -166,5 +166,5 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
         try:
             with open(settings_file, "w") as f:
                 json.dump(settings_to_save, f, indent=2, default=str)
-        except Exception as e:
+        except OSError as e:
             logger.warning(f"Could not write run_settings.json: {e}")

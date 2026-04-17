@@ -58,11 +58,8 @@ def _render_plot_gallery(root_dir: Path) -> None:
                         if browse_fmt == "png":
                             st.image(str(plot_file), caption=plot_file.stem, width="stretch")
                         elif browse_fmt == "svg":
-                            try:
-                                svg_content = plot_file.read_text()
-                                st.markdown(svg_content, unsafe_allow_html=True)
-                            except Exception:
-                                st.caption(f"Could not render: {plot_file.name}")
+                            svg_content = plot_file.read_text(encoding="utf-8")
+                            st.markdown(svg_content, unsafe_allow_html=True)
 
                         run_id = root_dir.name
                         dl_formats = [

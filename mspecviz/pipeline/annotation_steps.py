@@ -67,17 +67,13 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
 
 def _annotate_query_spectrum(result, annotation_kwargs, psm_id):
     """Phase 1 of ``process_query_result``: annotate the query spectrum."""
-    try:
-        return prepare_spectrum_for_plot(
-            result.query_spectrum.mz,
-            result.query_spectrum.intensity,
-            result.query_spectrum.peptidoform,
-            result.query_spectrum.precursor_charge,
-            **annotation_kwargs,
-        )
-    except Exception as e:
-        logger.warning(f"Annotation failed psm_id={psm_id}: {e}")
-        return None
+    return prepare_spectrum_for_plot(
+        result.query_spectrum.mz,
+        result.query_spectrum.intensity,
+        result.query_spectrum.peptidoform,
+        result.query_spectrum.precursor_charge,
+        **annotation_kwargs,
+    )
 
 
 def _cache_reference_spectra(result, reference_store, annotation_kwargs):
@@ -87,15 +83,12 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
         return
     ref_list = []
     for reference_spectrum in result.reference_spectra:
-        try:
-            reference_frame = prepare_spectrum_for_plot(
-                reference_spectrum.mz, reference_spectrum.intensity,
-                reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
-                **annotation_kwargs,
-            )
-            ref_list.append((reference_spectrum, reference_frame))
-        except Exception as e:
-            logger.warning(f"Reference annotation failed: {e}")
+        reference_frame = prepare_spectrum_for_plot(
+            reference_spectrum.mz, reference_spectrum.intensity,
+            reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
+            **annotation_kwargs,
+        )
+        ref_list.append((reference_spectrum, reference_frame))
     reference_store[variant_key] = ref_list
 
 
@@ -150,11 +143,8 @@ def _build_metric_rows(psm_id, result, query_frame, references):
     """Phase 4: compute metrics + build summary rows for each query/ref pair."""
     rows: List[Dict[str, Any]] = []
     for reference_spectrum, reference_frame in references:
-        try:
-            metrics = compute_all_metrics(query_frame, reference_frame)
-            rows.append(build_comparison_row(
-                psm_id, result, query_frame, reference_spectrum, reference_frame, metrics,
-            ))
-        except Exception as e:
-            logger.warning(f"Metric computation failed: {e}")
+        metrics = compute_all_metrics(query_frame, reference_frame)
+        rows.append(build_comparison_row(
+            psm_id, result, query_frame, reference_spectrum, reference_frame, metrics,
+        ))
     return rows

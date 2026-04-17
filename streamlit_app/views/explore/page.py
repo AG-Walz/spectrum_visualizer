@@ -67,16 +67,13 @@ def comparison_metrics_fragment():
             index=available_metrics.index(DEFAULT_METRIC) if DEFAULT_METRIC in available_metrics else 0,
             key=f"{STATE_PREFIX}_summary_metric",
         )
-        try:
-            raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)
-            fig_dual = plot_classic_dual_axis(raw_frame, aggregated_frame, metric=metric)
-            st.pyplot(fig_dual)
-            plt.close(fig_dual)
-            fig_ridge = plot_ridgeline(raw_frame, aggregated_frame, metric=metric)
-            st.pyplot(fig_ridge)
-            plt.close(fig_ridge)
-        except Exception as e:
-            st.warning(f"Could not generate summary plots: {e}")
+        raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)
+        fig_dual = plot_classic_dual_axis(raw_frame, aggregated_frame, metric=metric)
+        st.pyplot(fig_dual)
+        plt.close(fig_dual)
+        fig_ridge = plot_ridgeline(raw_frame, aggregated_frame, metric=metric)
+        st.pyplot(fig_ridge)
+        plt.close(fig_ridge)
 
 
 def render():

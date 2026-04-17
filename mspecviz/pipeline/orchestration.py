@@ -83,9 +83,6 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
         return None
 
     query_frame = _annotate_query_spectrum(result, annotation_kwargs, psm_id)
-    if query_frame is None:
-        return None
-
     _cache_reference_spectra(result, reference_store, annotation_kwargs)
 
     if koina_enabled:

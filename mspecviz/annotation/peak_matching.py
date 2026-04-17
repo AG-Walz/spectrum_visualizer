@@ -66,7 +66,7 @@ def annotate_spectrum(
             params.setValue("is_relative_tolerance", "false")
             aligner.setParameters(params)
             aligner.getSpectrumAlignment(pairs, theo_spec, exp_spec)
-        except Exception as e:
+        except RuntimeError as e:
             logger.warning(f"Spectrum alignment failed: {e}")
 
     # Build result DataFrame

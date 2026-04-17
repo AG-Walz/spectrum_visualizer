@@ -47,12 +47,12 @@ def peptidoform_to_aasequence(peptidoform_str: str) -> oms.AASequence:
 
     try:
         return oms.AASequence.fromString(oms_str)
-    except Exception as e:
+    except RuntimeError as e:
         logger.warning(f"Could not parse peptidoform '{peptidoform_str}': {e}")
-        try:
-            return oms.AASequence.fromString(peptidoform_obj.sequence)
-        except Exception:
-            raise ValueError(f"Cannot convert peptidoform: {peptidoform_str}")
+    try:
+        return oms.AASequence.fromString(peptidoform_obj.sequence)
+    except RuntimeError:
+        raise ValueError(f"Cannot convert peptidoform: {peptidoform_str}")
 
 
 @functools.lru_cache(maxsize=1024)

@@ -158,8 +158,8 @@ def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
             seq = psm.peptidoform.sequence.upper()
             if seq:
                 counts[seq] += 1
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {e}")
     return dict(counts)
 
 
@@ -179,7 +179,7 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
             _base_seq = _psm.peptidoform.sequence.upper()
             if _base_seq:
                 peptides.add(_base_seq)
-    except Exception:
-        pass  # If psm_utils fails, return empty (same as current error handling)
+    except Exception as e:
+        logger.warning(f"_scan_single_idxml_peptides failed for {Path(idxml_path).name}: {e}")
 
     return idxml_path, peptides

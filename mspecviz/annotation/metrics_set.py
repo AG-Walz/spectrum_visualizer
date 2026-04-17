@@ -94,7 +94,7 @@ def compute_spectral_entropy_similarity(
             q_spec, r_spec, ms2_tolerance_in_da=0.02
         )
         return float(similarity)
-    except Exception as e:
+    except (ValueError, FloatingPointError) as e:
         logger.warning(f"Entropy similarity failed: {e}")
         return float("nan")
 

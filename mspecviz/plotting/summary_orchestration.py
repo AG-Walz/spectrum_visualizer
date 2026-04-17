@@ -122,7 +122,7 @@ def generate_all_summary_plots(
 
         try:
             fig = func(raw_frame, aggregated_frame, metric=metric, export_resolution=export_resolution, title=plot_title)
-        except Exception as exc:
+        except ValueError as exc:
             logger.error("Failed to create %s plot: %s", pt, exc)
             continue
 
@@ -134,7 +134,7 @@ def generate_all_summary_plots(
                 fig.savefig(str(out_path), format=fmt, dpi=export_resolution,
                             bbox_inches="tight", facecolor="white")
                 paths[fmt] = str(out_path)
-            except Exception as exc:
+            except OSError as exc:
                 logger.error("Failed to save %s.%s: %s", pt, fmt, exc)
 
         plt.close(fig)

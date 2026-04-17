@@ -63,7 +63,7 @@ def plot_ridgeline(
             kde = gaussian_kde(values, bw_method="scott")
             density = kde(x_grid)
             density = density / density.max() * 0.55
-        except Exception:
+        except np.linalg.LinAlgError:
             continue
 
         ax_ridge.fill_between(x_grid, y_base, y_base + density,

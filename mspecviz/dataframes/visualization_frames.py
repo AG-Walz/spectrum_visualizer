@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 import polars as pl
 from psm_utils import Peptidoform
+from psm_utils.peptidoform import PeptidoformException
 
 from mspecviz.dataframes.psm_tables import _enforce_schema
 from mspecviz.spectra.loader_models import LoadedSpectrum
@@ -50,32 +51,29 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
         "PEPTM[Oxidation]IDEK"      -> "PEPTM(Oxidation)IDEK"
         "[Acetyl]-PEPTIDE"          -> ".(Acetyl)PEPTIDE"
 
-    Falls back to the base sequence on any parsing error.
+    Falls back to the raw bare sequence on parsing error.
     Used to build the ``sequence`` column for openms_insight SequenceView,
     which uses its own ``parse_openms_sequence()`` to handle this format.
     """
+    clean_peptidoform_str = peptidoform_str.split("/")[0]
     try:
-        clean_peptidoform_str = peptidoform_str.split("/")[0]
         peptidoform_obj = Peptidoform(clean_peptidoform_str)
-        parts = []
-        if peptidoform_obj.properties.get("n_term"):
-            for m in peptidoform_obj.properties["n_term"]:
-                parts.append(f".({m.name})")
-        for aa, residue_mods in peptidoform_obj.parsed_sequence:
-            parts.append(aa)
-            if residue_mods:
-                for m in residue_mods:
-                    parts.append(f"({m.name})")
-        if peptidoform_obj.properties.get("c_term"):
-            for m in peptidoform_obj.properties["c_term"]:
-                parts.append(f".({m.name})")
-        return "".join(parts)
-    except Exception:
-        # Safe fallback: return unmodified sequence
-        try:
-            return Peptidoform(peptidoform_str.split("/")[0]).sequence
-        except Exception:
-            return peptidoform_str.split("/")[0]
+    except PeptidoformException:
+        return clean_peptidoform_str
+
+    parts = []
+    if peptidoform_obj.properties.get("n_term"):
+        for m in peptidoform_obj.properties["n_term"]:
+            parts.append(f".({m.name})")
+    for aa, residue_mods in peptidoform_obj.parsed_sequence:
+        parts.append(aa)
+        if residue_mods:
+            for m in residue_mods:
+                parts.append(f"({m.name})")
+    if peptidoform_obj.properties.get("c_term"):
+        for m in peptidoform_obj.properties["c_term"]:
+            parts.append(f".({m.name})")
+    return "".join(parts)
 
 
 def build_peaks_dataframe(

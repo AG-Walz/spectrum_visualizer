@@ -164,7 +164,7 @@ def _save_task_html(task: ComparisonTask) -> str:
         fig.write_html(str(out), include_plotlyjs="cdn")
         return str(out)
 
-    except Exception as e:
+    except OSError as e:
         logger.warning(f"HTML plot save failed for task {task.task_id}: {e}")
         return ""
 

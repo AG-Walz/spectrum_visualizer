@@ -66,14 +66,11 @@ def openms_insight_explorer_fragment(params: dict):
     current_state = state_manager.get_state_for_vue()
     selected_id = current_state.get("selected_psm")
     if selected_id is not None and psm_frame is not None:
-        try:
-            row = psm_frame.filter(pl.col("id") == selected_id).collect()
-            if row.height > 0:
-                label = row["display_label"][0]
-                source = row["source_file"][0]
-                st.info(f"Viewing: **{label}** (PSM {selected_id}) from {source}")
-        except Exception:
-            pass
+        row = psm_frame.filter(pl.col("id") == selected_id).collect()
+        if row.height > 0:
+            label = row["display_label"][0]
+            source = row["source_file"][0]
+            st.info(f"Viewing: **{label}** (PSM {selected_id}) from {source}")
 
     # PSM Table
     st.subheader("PSM Table")
