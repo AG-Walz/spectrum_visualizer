@@ -10,8 +10,8 @@ from mspecviz.search.idxml_parsing import (
     extract_spectra_data_map,
     mod_key_from_peptidoform,
 )
+from mspecviz.common.path_utils import resolve_mzml_path
 from mspecviz.search.models import PeptideMatch
-from mspecviz.path_utils import resolve_mzml_path
 
 logger = logging.getLogger(__name__)
 

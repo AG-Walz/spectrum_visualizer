@@ -189,9 +189,9 @@ MSpecViz/
 │   ├── dataframes/              # Polars LazyFrames for openms_insight
 │   ├── plotting/                # Plotly + Matplotlib mirror/summary plots
 │   ├── pipeline/                # Shared CLI/Streamlit orchestration
-│   ├── common/                  # Ion colors, text helpers, parallel runner
-│   ├── path_utils.py            # Filename disambiguation
-│   └── export_dirs.py           # Versioned export dirs with fingerprinting
+│   ├── export/                  # Shared export orchestrator + versioned dirs
+│   └── common/                  # Ion colors, text helpers, parallel runner,
+│                                # path disambiguation
 ├── streamlit_app/               # Streamlit UI (imports mspecviz.*)
 │   ├── app.py                   # st.navigation entry point
 │   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)

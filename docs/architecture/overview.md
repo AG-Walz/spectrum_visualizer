@@ -52,7 +52,9 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
           │
           ▼
   [ display / export ]        Streamlit: views/explore + views/export
-                              CLI:       cli.exports.export_dataframes + _plots
+                              Both export paths delegate to
+                              mspecviz.export.run_export
+                              (versioned dir + parquets + plots + summaries).
 ```
 
 The same `mspecviz.pipeline` helpers run in both entry points — the only

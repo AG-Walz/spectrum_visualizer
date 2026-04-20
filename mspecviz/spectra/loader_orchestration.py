@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.path_utils import disambiguate_paths
+from mspecviz.common.path_utils import disambiguate_paths
 from mspecviz.search.models import PeptideMatch, VariantGroup
 from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum, StreamingResult
 from mspecviz.spectra.loader_workers import _load_spectra_from_mzml

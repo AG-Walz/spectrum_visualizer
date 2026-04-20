@@ -48,7 +48,7 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_vs_ref_ProT001_z2.png
 ```
 
 Disambiguation suffixes are appended when two references would produce the
-same filename (see `mspecviz/path_utils.py`).
+same filename (see `mspecviz/common/path_utils.py`).
 
 Single-spectrum plots (no reference available, Koina disabled) use the
 simpler form:

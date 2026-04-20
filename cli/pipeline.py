@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 from cli.config import CLIConfig
-from cli.exports import export_dataframes, export_plots, prepare_export_dir
+from cli.exports import run_cli_export
 from cli.output import TerminalProgress, print_completion_summary, print_config_summary
 from mspecviz.dataframes import build_psm_table
 from mspecviz.pipeline import process_query_result
@@ -148,28 +148,19 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
     if not quiet:
         print(f"  Annotated {len(annotated_queries)} spectra, "
               f"{len(comparison_rows)} comparison(s)\n")
-        print("Step 3: Building DataFrames...")
+        print("Step 3: Exporting results...")
 
-    root_dir, png_dir, svg_dir, pdf_dir = prepare_export_dir(config)
-
-    if not quiet:
-        print("Step 4: Exporting results...")
-
-    _, _, _, comparison_frame = export_dataframes(
-        annotated_queries, comparison_rows, psm_frame, root_dir, quiet,
+    result = run_cli_export(
+        config, annotated_queries, reference_store, variant_groups_copy,
+        comparison_rows, psm_frame, normalize, quiet,
     )
-
-    if not config.no_plots:
-        export_plots(config, annotated_queries, reference_store, variant_groups_copy,
-                     comparison_frame, root_dir, png_dir, svg_dir, pdf_dir,
-                     normalize, quiet)
 
     print_completion_summary(
         variant_count=len(variant_groups),
         total_psms=total_psms,
         annotated_count=len(annotated_queries),
         comparison_count=len(comparison_rows),
-        root_dir=root_dir,
+        root_dir=result.export_root,
         elapsed=time.time() - pipeline_start,
         quiet=quiet,
     )

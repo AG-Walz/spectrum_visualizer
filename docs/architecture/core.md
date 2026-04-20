@@ -115,14 +115,12 @@ identically from both front ends belongs here.
 
 ---
 
-## Parent-level helpers
+## Shared cross-cutting helpers
 
-Two modules sit at the root of `mspecviz/` because they're shared across
-multiple subpackages:
-
-- `path_utils.py` — `disambiguate_paths()` keeps same-named files from
-  different directories distinct in display labels. Used by both `search/`
-  and `spectra/`.
-- `export_dirs.py` — versioned export directory management + settings
-  fingerprinting (SHA-256 of canonical settings → stable 16-char hash).
-  Used by both `cli/` and `streamlit_app/`.
+- `common/path_utils.py` — `disambiguate_paths()` keeps same-named files
+  from different directories distinct in display labels. Used by both
+  `search/` and `spectra/`.
+- `export/directories.py` — versioned export directory management +
+  settings fingerprinting (SHA-256 of canonical settings → stable 16-char
+  hash). Consumed by `export/runner.py`, which is the single entry point
+  for CLI + Streamlit exports.

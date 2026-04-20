@@ -235,8 +235,14 @@ class TestRunExport:
         assert "peptides" in settings
 
     def test_export_creates_versioned_directory(self, mock_st):
+        """Streamlit now uses the CLI's fingerprinted ``{project}_{NNN}_{YYYYMMDD}`` layout."""
         _, tmp_path = mock_st
         export_dir = self._run(tmp_path, do_parquet=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
-        assert export_root.name.startswith("export_")
+        # Shared orchestrator: ``MSpecViz_analysis_001_20260420`` (or whatever
+        # project name / next number / today is).
+        assert export_root.name.startswith("MSpecViz_analysis_")
+        parts = export_root.name.rsplit("_", 2)
+        assert parts[1].isdigit() and len(parts[1]) == 3
+        assert parts[2].isdigit() and len(parts[2]) == 8

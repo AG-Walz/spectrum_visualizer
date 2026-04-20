@@ -30,12 +30,12 @@ class CLIConfig:
     idxml_files: List[str] = field(default_factory=list)
     mzml_files: List[str] = field(default_factory=list)
 
-    # Peptides — can come from ``peptide_source`` (can be a path to a 
-    # peptides.txt, or an inline list in YAML).
-    # ``load_peptides`` resolves it into the ``peptides`` list at runtime.
+    # Peptides — can come from ``peptide_source`` (either a peptides.txt, 
+    # or an inline list in YAML). ``load_peptides`` resolves it into the 
+    # ``peptides`` list at runtime.
     peptide_source: Union[str, List[str]] = ""
     peptides: List[str] = field(default_factory=list)
-    peptides_mode: str = ""                            # "all", "file", or "inline"
+    peptides_mode: str = ""                          # "all", "file", or "inline"
 
     # Reference
     reference_substring: str = ""
@@ -111,24 +111,24 @@ def expand_globs(patterns: List[str]) -> List[str]:
 
 
 def load_peptides(
-    peptide_source,
-    idxml_files: List[str],
-    workers: int,
-    quiet: bool,
-    progress_factory: Optional[Callable] = None,
+        peptide_source, 
+        idxml_files: List[str], 
+        workers: int, 
+        quiet: bool,
+        progress_factory: Optional[Callable] = None,
 ) -> Tuple[List[str], str]:
     """Resolve a peptide source (inline list / ``"all"`` / file path) into ``(peptides, mode)``.
     
     ``mode`` is recorded in ``run_settings.json`` so reruns are reproducible.
     """
-    # --- Branch 1: YAML already gave us a Python list (flow-style [...]) ---
+    # --- Option 1: YAML already gave us a Python list (flow-style [...]) ---
     if isinstance(peptide_source, list):
         peptides = [str(p).strip().upper() for p in peptide_source if str(p).strip()]
         return peptides, "inline"
 
     peptide_source = str(peptide_source).strip()
 
-    # --- Branch 2: keyword "all" — scan every idXML for unique peptides ---
+    # --- Option 2: keyword "all" — scan every idXML for unique peptides ---
     if peptide_source.lower() == "all":
         if progress_factory is None:
             progress_factory = TerminalProgress
@@ -147,11 +147,11 @@ def load_peptides(
         progress.finish(f"{len(peptides)} unique peptides")
         return peptides, "all"
 
-    # --- Branch 3: a text file with comma/newline-separated sequences ---
+    # --- Option 3: a text file with comma/newline-separated sequences ---
     peptide_path = Path(peptide_source)
     if peptide_path.exists() and peptide_path.is_file():
         return parse_peptide_list(peptide_path.read_text()), "file"
 
-    # --- Branch 4: bare inline string, e.g. "PEPTIDE, SAMPLE" from YAML scalar ---
+    # --- Option 4: bare inline string, e.g. "PEPTIDE, SAMPLE" from YAML scalar ---
     peptides = [p.strip().upper() for p in peptide_source.replace(",", "\n").split("\n") if p.strip()]
     return peptides, "inline"

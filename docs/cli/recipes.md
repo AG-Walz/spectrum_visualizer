@@ -111,7 +111,7 @@ for CI smoke tests — no GUI, no plot rendering.
   The CLI doesn't invalidate cache automatically. See
   [../settings/app.md#cache](../settings/app.md#cache).
 - **Same-named files** in different directories are disambiguated with a
-  parent-directory suffix by `mspecviz.path_utils`. Look for names like
+  parent-directory suffix by `mspecviz.common.path_utils`. Look for names like
   `foo.mzML [experimentA]` in the output if you notice them.
 - **`run_settings.json`** is the canonical record of what actually ran.
   If a result looks wrong, start there — the resolved peptide list,

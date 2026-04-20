@@ -43,7 +43,10 @@ def _get_matching_intensities(
     return query_intensities, reference_intensities, shared
 
 
-def _r2_from_arrays(query_intensities: np.ndarray, reference_intensities: np.ndarray) -> float:
+def _r2_from_arrays(
+        query_intensities: np.ndarray, 
+        reference_intensities: np.ndarray
+) -> float:
     """R^2 from pre-computed matched intensity arrays."""
     if len(query_intensities) < 2:
         return float("nan")
@@ -51,7 +54,10 @@ def _r2_from_arrays(query_intensities: np.ndarray, reference_intensities: np.nda
     return float(r_value ** 2)
 
 
-def _cosine_from_arrays(query_intensities: np.ndarray, reference_intensities: np.ndarray) -> float:
+def _cosine_from_arrays(
+        query_intensities: np.ndarray, 
+        reference_intensities: np.ndarray
+) -> float:
     """Cosine similarity from pre-computed matched intensity arrays."""
     if len(query_intensities) == 0:
         return float("nan")
@@ -63,7 +69,10 @@ def _cosine_from_arrays(query_intensities: np.ndarray, reference_intensities: np
     return float(dot / (norm_query * norm_reference))
 
 
-def compute_r2_matching(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
+def compute_r2_matching(
+        query_frame: pd.DataFrame, 
+        reference_frame: pd.DataFrame
+) -> float:
     """R^2 (matching) -- LinearRegression R^2 on matching annotated ion intensities."""
     query_intensities, reference_intensities, _ = _get_matching_intensities(query_frame, reference_frame)
     return _r2_from_arrays(query_intensities, reference_intensities)
@@ -100,7 +109,10 @@ def compute_r2_binned(
     return float(r_value ** 2)
 
 
-def compute_cosine_similarity(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
+def compute_cosine_similarity(
+        query_frame: pd.DataFrame, 
+        reference_frame: pd.DataFrame
+) -> float:
     """Cosine similarity on matching annotated ion intensities."""
     query_intensities, reference_intensities, _ = _get_matching_intensities(query_frame, reference_frame)
     return _cosine_from_arrays(query_intensities, reference_intensities)

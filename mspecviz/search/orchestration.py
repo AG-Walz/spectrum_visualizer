@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Set
 import polars as pl
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.path_utils import disambiguate_paths
+from mspecviz.common.path_utils import disambiguate_paths
 from mspecviz.search.models import VariantGroup, format_inline_sequence
 from mspecviz.search.workers import (
     _scan_single_idxml_peptides,

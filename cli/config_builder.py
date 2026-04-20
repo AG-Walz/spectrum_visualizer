@@ -50,7 +50,7 @@ def build_parser() -> argparse.ArgumentParser:
                         help="Path to YAML config file")
 
     # ``dest=`` is set whenever argparse's default name doesn't match the
-    # target CLIConfig field.
+    # target CLIConfig field destination.
     parser.add_argument("--idxml", dest="idxml_files", nargs="+", metavar="PATTERN",
                         help="idXML file paths or glob patterns (overrides config)")
     parser.add_argument("--mzml", dest="mzml_files", nargs="+", metavar="PATTERN",

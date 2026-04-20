@@ -62,9 +62,8 @@ cli/
 ├── config.py           # CLIConfig dataclass + YAML/peptide loaders
 ├── config_builder.py   # 3-layer precedence merge + argparse surface
 ├── pipeline.py         # _validate_inputs, _run_search, _run_load, run_pipeline
-├── exports.py          # export_dataframes, prepare_export_dir, export_plots
+├── exports.py          # run_cli_export -> mspecviz.export.run_export (shared with Streamlit)
 ├── output.py           # TerminalProgress, log formatting
-├── plots.py            # CLI-facing plot wrapper (calls mspecviz.plotting)
 └── config/             # Example YAML configs
 ```
 
@@ -93,8 +92,8 @@ tests/
 │   ├── test_export_pipeline.py
 │   └── test_export_bugfixes.py
 └── mspecviz/
-    ├── test_path_utils.py    # parent-level shared helpers
-    ├── test_export_dirs.py
+    ├── test_path_utils.py    # common/path_utils.py
+    ├── test_export_dirs.py   # export/directories.py
     ├── loading/              # search + spectrum loader + Koina
     ├── annotation/           # peak annotation + spectrum metrics
     │   ├── test_peak_annotation_core.py
