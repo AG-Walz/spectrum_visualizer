@@ -15,6 +15,7 @@ build/
 
 # Runtime data
 exports/
+results/
 workspaces/
 workspaces-*/
 plots/
