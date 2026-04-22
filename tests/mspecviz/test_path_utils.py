@@ -3,22 +3,7 @@ Unit tests for mspecviz/common/path_utils.py
 """
 import pytest
 
-from mspecviz.common.path_utils import deduplicate_paths, disambiguate_paths, resolve_mzml_path
-
-
-# ---------------------------------------------------------------------------
-# TestDeduplicatePaths
-# ---------------------------------------------------------------------------
-
-class TestDeduplicatePaths:
-    @pytest.mark.parametrize("input_paths, expected", [
-        (["/a", "/a", "/b"], ["/a", "/b"]),
-        (["/b", "/a", "/b", "/c", "/a"], ["/b", "/a", "/c"]),
-        ([], []),
-        (["/x/a.mzML", "/y/b.mzML", "/z/c.mzML"], ["/x/a.mzML", "/y/b.mzML", "/z/c.mzML"]),
-    ])
-    def test_deduplication(self, input_paths, expected):
-        assert deduplicate_paths(input_paths) == expected
+from mspecviz.common.path_utils import disambiguate_paths, resolve_mzml_path
 
 
 # ---------------------------------------------------------------------------

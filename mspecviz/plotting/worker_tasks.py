@@ -5,7 +5,6 @@ Kept separate from ``worker_execution`` so they remain lightweight to import
 tasks — e.g. the CLI builder in ``mspecviz.pipeline``.
 """
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
@@ -58,19 +57,6 @@ class ComparisonTask:
     peptide: str = ""
     modification: str = ""
     charge: int = 0
-
-    def outputs_exist(self) -> bool:
-        """Return True if every requested output format already exists on disk."""
-        fmt_dirs = {"png": self.png_dir, "svg": self.svg_dir, "pdf": self.pdf_dir}
-        for fmt, fmt_dir in fmt_dirs.items():
-            if fmt in self.export_formats and fmt_dir:
-                out = Path(fmt_dir) / self.folder_name / f"{self.safe_filename}.{fmt}"
-                if not out.exists():
-                    return False
-        if "html" in self.export_formats and self.html_plot_path:
-            if not Path(self.html_plot_path).exists():
-                return False
-        return True
 
 
 @dataclass

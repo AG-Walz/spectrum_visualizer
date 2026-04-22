@@ -3,7 +3,7 @@
 Precedence: this file < settings.json/params.json/YAML < CLI flags /
 Streamlit widgets. All keys are ``snake_case`` everywhere.
 """
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass
 from typing import List, Tuple
 
 
@@ -40,10 +40,6 @@ class Defaults:
     # --- Summary plots ------------------------------------------------------
     summary_metric: str = "R\u00b2 binned"
     summary_plot_types: Tuple[str, ...] = ("dual_axis", "ridgeline")
-
-    def as_dict(self) -> dict:
-        """Return a plain dict — tuples stay tuples; copy lists at use sites."""
-        return {f.name: getattr(self, f.name) for f in fields(self)}
 
 
 DEFAULTS = Defaults()

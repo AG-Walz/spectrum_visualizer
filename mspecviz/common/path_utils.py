@@ -1,15 +1,10 @@
 """Path dedup + shortest-unique-display-name helpers (``exp1/data.mzML`` vs ``exp2/data.mzML``)."""
 import logging
 from collections import Counter
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Dict, List, Optional
 
 logger = logging.getLogger(__name__)
-
-
-def deduplicate_paths(paths: List[str]) -> List[str]:
-    """Drop exact duplicates, preserving first-occurrence order."""
-    return list(dict.fromkeys(paths))
 
 
 def disambiguate_paths(paths: List[str]) -> Dict[str, str]:

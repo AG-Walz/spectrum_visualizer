@@ -15,14 +15,9 @@ import pandas as pd
 
 from mspecviz.plotting._summary_shared import (
     DEFAULT_METRIC,
-    MAX_SCATTER_PER_GROUP,
     METRIC_COLUMNS,
     PLOT_TYPES,
-    SUMMARY_COLORS,
-    _auto_height,
     _metric_label,
-    _style_ax,
-    _subsample_group,
 )
 from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
 from mspecviz.plotting.summary_ridgeline import plot_ridgeline
@@ -127,7 +122,7 @@ def generate_all_summary_plots(
             continue
 
         paths: Dict[str, str] = {}
-        filename = f"ridgeline_r2_binned" if pt == "ridgeline" and metric == DEFAULT_METRIC else pt
+        filename = "ridgeline_r2_binned" if pt == "ridgeline" and metric == DEFAULT_METRIC else pt
         for fmt in formats:
             out_path = summary_dir / f"{filename}.{fmt}"
             try:

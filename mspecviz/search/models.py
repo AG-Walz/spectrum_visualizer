@@ -101,5 +101,3 @@ class VariantGroup:
     modification_key: str     # e.g., "M5[Ox]" or "" for unmodified
     display_label: str        # Human-readable label
     matches: List[PeptideMatch] = field(default_factory=list)
-    reference_spectra: List = field(default_factory=list)
-    query_spectra: List = field(default_factory=list)

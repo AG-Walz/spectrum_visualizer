@@ -12,12 +12,32 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
 from streamlit_app.utils.state.core import _persisted_key
+
+
+# Canonical list of workspace params persisted in ``params.json``.
+# ``save_params`` pulls each of these from session_state (or its
+# ``_persisted`` backup) so widget values survive across page
+# navigation and browser reloads even on workspaces whose params.json
+# does not yet contain the key. Keep this list in sync with the widget
+# keys used in the Setup page, sidebar, and file browser.
+_PARAM_KEYS: tuple[str, ...] = (
+    "selected_idxmls", "selected_mzmls",
+    "idxml_browser_dir", "mzml_browser_dir",
+    "target_peptides", "reference_substring",
+    "ion_types", "mz_tolerance",
+    "add_neutral_losses", "add_first_prefix_ion", "remove_precursor_peaks",
+    "intensity_mode", "workers",
+    "koina_enabled", "koina_model",
+    "koina_collision_energy", "koina_instrument_type",
+    "image_format",
+)
 
 
 def load_params(default: bool = False) -> dict[str, Any]:
@@ -60,7 +80,13 @@ def save_params(params: dict[str, Any]) -> None:
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
-    for key in params:
+    # Union of the canonical param keys and whatever is already in
+    # ``params``. A key only appears in ``params`` if load_params picked it
+    # up from params.json; canonical keys need to be saved even on their
+    # first-ever write, so iterating ``params`` alone would strand fresh
+    # widget values.
+    tracked_keys = list(dict.fromkeys((*_PARAM_KEYS, *params.keys())))
+    for key in tracked_keys:
         if key in st.session_state:
             params[key] = st.session_state[key]
         else:
@@ -70,10 +96,25 @@ def save_params(params: dict[str, Any]) -> None:
             if persisted in st.session_state:
                 params[key] = st.session_state[persisted]
 
-    # Atomic write: a Streamlit rerun mid-write must never leave a 0-byte file
-    # that breaks load_params() on the next page load.
+    # Atomic write via unique staging file. A single Streamlit rerun calls
+    # save_params from several places (sidebar, each setup fragment, ...);
+    # sharing one ``params.json.tmp`` path between them — or between browser
+    # tabs on the same workspace — caused the second mover's os.replace to
+    # fail because the first had already moved the staging file away.
     params_path = Path(st.session_state.workspace, "params.json")
-    staging_path = params_path.with_suffix(".json.tmp")
-    with open(staging_path, "w", encoding="utf-8") as outfile:
-        json.dump(params, outfile, indent=4)
-    os.replace(staging_path, params_path)
+    params_path.parent.mkdir(parents=True, exist_ok=True)
+    fd, staging_name = tempfile.mkstemp(
+        prefix=".params-", suffix=".json.tmp", dir=params_path.parent,
+    )
+    staging_path = Path(staging_name)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as outfile:
+            json.dump(params, outfile, indent=4)
+        os.replace(staging_path, params_path)
+    except Exception:
+        if staging_path.exists():
+            try:
+                staging_path.unlink()
+            except OSError:
+                pass
+        raise

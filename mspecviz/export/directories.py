@@ -14,37 +14,6 @@ from mspecviz.common.text_utils import sanitize_filename
 logger = logging.getLogger(__name__)
 
 
-def create_export_directory(
-    base_dir: str,
-    experiment_name: str = None,
-    formats: list = None,
-) -> Tuple[Path, Path, Path, Path]:
-    """Create timestamped export directory with format subdirs. Returns (root, png, svg, pdf)."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-
-    if experiment_name:
-        folder_name = f"{sanitize_filename(experiment_name)}_{timestamp}"
-    else:
-        folder_name = f"export_{timestamp}"
-
-    root_dir = Path(base_dir) / folder_name
-    png_dir = root_dir / "png"
-    svg_dir = root_dir / "svg"
-    pdf_dir = root_dir / "pdf"
-
-    root_dir.mkdir(parents=True, exist_ok=True)
-
-    create_all = formats is None
-    if create_all or "png" in formats:
-        png_dir.mkdir(exist_ok=True)
-    if create_all or "svg" in formats:
-        svg_dir.mkdir(exist_ok=True)
-    if create_all or "pdf" in formats:
-        pdf_dir.mkdir(exist_ok=True)
-
-    return root_dir, png_dir, svg_dir, pdf_dir
-
-
 def _settings_fingerprint(run_settings: dict) -> str:
     """Compute a short hash of the settings dict for fast comparison."""
     canonical = json.dumps(run_settings, sort_keys=True, default=str)

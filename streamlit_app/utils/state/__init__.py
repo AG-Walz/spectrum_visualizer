@@ -5,7 +5,6 @@ Re-exports every public name from the four submodules so callers keep using
 name lives in.
 """
 from streamlit_app.utils.state.core import (
-    DEFAULTS,
     OS_PLATFORM,
     PROJECT_ROOT,
     STATE_PREFIX,
@@ -14,7 +13,6 @@ from streamlit_app.utils.state.core import (
     get_state_key,
 )
 from streamlit_app.utils.state.workspace import (
-    _get_workspaces_dir,
     is_safe_workspace_name,
 )
 from streamlit_app.utils.state.params import (
@@ -22,17 +20,16 @@ from streamlit_app.utils.state.params import (
     save_params,
 )
 from streamlit_app.utils.state.sidebar import (
-    _render_workspace_switcher,
     page_setup,
     render_sidebar,
 )
 
 __all__ = [
     # core
-    "DEFAULTS",
     "OS_PLATFORM",
     "PROJECT_ROOT",
     "STATE_PREFIX",
+    "_persisted_key",
     "get_param",
     "get_state_key",
     # workspace

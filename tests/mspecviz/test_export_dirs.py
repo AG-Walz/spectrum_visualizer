@@ -5,7 +5,6 @@ from pathlib import Path
 
 import pytest
 
-from mspecviz.common.text_utils import shorten_stem
 from mspecviz.export.directories import (
     find_or_create_export_directory,
     commit_export_directory,
@@ -32,31 +31,6 @@ class TestSanitizeFilename:
     ], ids=["collapses_underscores", "strips_edges", "truncates_long", "empty_fallback", "valid_unchanged"])
     def test_sanitize_rules(self, input_name, check):
         assert check(sanitize_filename(input_name))
-
-
-# ---------------------------------------------------------------------------
-# TestShortenStem
-# ---------------------------------------------------------------------------
-
-class TestShortenStem:
-    @pytest.mark.parametrize("stem, max_len, should_truncate", [
-        ("short_name", 30, False),
-        ("a" * 30, 30, False),
-        ("a" * 40, 30, True),
-    ], ids=["short_unchanged", "exact_length_unchanged", "long_truncated"])
-    def test_length_behavior(self, stem, max_len, should_truncate):
-        result = shorten_stem(stem, max_len=max_len)
-        if should_truncate:
-            assert len(result) == max_len
-            parts = result.rsplit("_", 1)
-            assert len(parts[1]) == 8  # 8-char hash suffix
-        else:
-            assert result == stem
-
-    def test_deterministic_and_unique(self):
-        stem = "this_is_a_very_long_filename_for_testing_determinism"
-        assert shorten_stem(stem) == shorten_stem(stem)  # deterministic
-        assert shorten_stem("x" * 40) != shorten_stem("y" * 40)  # unique
 
 
 # ---------------------------------------------------------------------------

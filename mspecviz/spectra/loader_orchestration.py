@@ -167,13 +167,6 @@ def load_spectra_streaming(
 
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups}
 
-    # Count queries per variant (for progress tracking)
-    query_counts: Dict[str, int] = {k: 0 for k in variant_groups}
-    for path_key, matches in mzml_to_matches.items():
-        if path_key not in reference_keys:
-            for _, variant_key in matches:
-                query_counts[variant_key] += 1
-
     total_files = sum(1 for pk in list(reference_keys) + list(query_keys) if pk in mzml_to_matches)
     effective_workers = max(1, min(workers, total_files))
 
@@ -197,7 +190,6 @@ def load_spectra_streaming(
     query_results = _execute_load_tasks(query_tasks, False, effective_workers,
                                         on_file_start, on_file_complete, error_callback)
 
-    query_indices: Dict[str, int] = {k: 0 for k in variant_groups}
     for res in query_results:
         for variant_key, loaded in res.loaded:
             if on_query_ready:
@@ -208,10 +200,7 @@ def load_spectra_streaming(
                     variant_key=variant_key,
                     base_sequence=variant_group.base_sequence,
                     modification_key=variant_group.modification_key,
-                    query_index=query_indices[variant_key],
-                    total_queries=query_counts[variant_key],
                 ))
-            query_indices[variant_key] += 1
 
     logger.info("Query streaming complete")
     return reference_spectra

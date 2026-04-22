@@ -18,7 +18,6 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import apply_run_settings, restore_analysis_if_needed
-from mspecviz.common.defaults import DEFAULTS
 
 from streamlit_app.views.export.gallery import _render_plot_gallery
 from streamlit_app.views.export.pipeline import _run_export

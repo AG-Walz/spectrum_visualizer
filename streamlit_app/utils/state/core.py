@@ -13,7 +13,6 @@ from typing import Any
 import streamlit as st
 
 from mspecviz.common.constants import STATE_PREFIX  # noqa: F401
-from mspecviz.common.defaults import DEFAULTS  # noqa: F401  (re-exported for views)
 
 OS_PLATFORM = sys.platform
 

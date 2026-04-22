@@ -1,8 +1,7 @@
 """
 Unit tests for mspecviz/summary_plots.py
 
-Covers dual-axis, ridgeline, and heatmap summary plots plus the
-sanitize_filename / shorten_stem helpers (tested separately in test_export.py).
+Covers dual-axis, ridgeline, and heatmap summary plots.
 """
 from pathlib import Path
 
@@ -52,9 +51,6 @@ def summary_csv(tmp_path):
     frame.to_csv(csv_path, index=False)
     return csv_path
 
-
-# NOTE: TestSanitizeFilename and TestShortenStem are in test_export.py
-# (sanitize_filename and shorten_stem are shared utilities tested there)
 
 # ---------------------------------------------------------------------------
 # TestPrepareSummaryData

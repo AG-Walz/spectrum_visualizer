@@ -36,8 +36,6 @@ class StreamingResult:
     variant_key: str
     base_sequence: str
     modification_key: str
-    query_index: int
-    total_queries: int
 
 
 @dataclass

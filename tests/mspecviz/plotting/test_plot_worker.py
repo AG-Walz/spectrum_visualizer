@@ -79,62 +79,6 @@ def _make_mirror_task(tmp_path, skip_plot=False):
 
 
 # ---------------------------------------------------------------------------
-# TestOutputsExist
-# ---------------------------------------------------------------------------
-
-class TestOutputsExist:
-    def test_all_formats_present_returns_true(self, tmp_path):
-        task = ComparisonTask(
-            task_id=0,
-            task_type="single",
-            query_frame=pd.DataFrame(),
-            folder_name="PEPTIDEK",
-            safe_filename="test_file",
-            png_dir=str(tmp_path / "png"),
-            svg_dir=str(tmp_path / "svg"),
-            pdf_dir="",
-            export_formats=["png", "svg"],
-        )
-        # Create both expected output files
-        (tmp_path / "png" / "PEPTIDEK").mkdir(parents=True)
-        (tmp_path / "svg" / "PEPTIDEK").mkdir(parents=True)
-        (tmp_path / "png" / "PEPTIDEK" / "test_file.png").write_text("fake")
-        (tmp_path / "svg" / "PEPTIDEK" / "test_file.svg").write_text("fake")
-        assert task.outputs_exist() is True
-
-    def test_missing_format_returns_false(self, tmp_path):
-        task = ComparisonTask(
-            task_id=0,
-            task_type="single",
-            query_frame=pd.DataFrame(),
-            folder_name="PEPTIDEK",
-            safe_filename="test_file",
-            png_dir=str(tmp_path / "png"),
-            svg_dir=str(tmp_path / "svg"),
-            pdf_dir="",
-            export_formats=["png", "svg"],
-        )
-        # Only create the PNG, not the SVG
-        (tmp_path / "png" / "PEPTIDEK").mkdir(parents=True)
-        (tmp_path / "png" / "PEPTIDEK" / "test_file.png").write_text("fake")
-        assert task.outputs_exist() is False
-
-    def test_empty_formats_returns_true(self, tmp_path):
-        task = ComparisonTask(
-            task_id=0,
-            task_type="single",
-            query_frame=pd.DataFrame(),
-            folder_name="PEPTIDEK",
-            safe_filename="test_file",
-            png_dir="",
-            svg_dir="",
-            pdf_dir="",
-            export_formats=[],
-        )
-        assert task.outputs_exist() is True
-
-
-# ---------------------------------------------------------------------------
 # TestProcessSingleTask
 # ---------------------------------------------------------------------------
 

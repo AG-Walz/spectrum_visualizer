@@ -18,7 +18,6 @@ from mspecviz.plotting.summary_orchestration import (
     DEFAULT_METRIC,
     METRIC_COLUMNS,
     PLOT_TYPES,
-    SUMMARY_COLORS,
     generate_all_summary_plots,
     prepare_summary_data,
 )
@@ -45,7 +44,6 @@ __all__ = [
     "DEFAULT_METRIC",
     "METRIC_COLUMNS",
     "PLOT_TYPES",
-    "SUMMARY_COLORS",
     "generate_all_summary_plots",
     "plot_classic_dual_axis",
     "plot_ridgeline",

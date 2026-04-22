@@ -6,7 +6,7 @@ authoritative location so both frontends stay in sync.
 """
 import logging
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Dict, List
 
 from mspecviz.annotation.metrics_set import (
     compute_all_metrics,
@@ -17,7 +17,6 @@ from mspecviz.pipeline.annotation_steps import (
     _build_metric_rows,
     _cache_reference_spectra,
     _try_koina_fallback,
-    build_comparison_row,
 )
 from mspecviz.plotting.worker_tasks import ComparisonTask
 from mspecviz.spectra.loader_models import spectrum_lookup_key

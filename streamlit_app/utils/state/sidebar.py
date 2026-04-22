@@ -16,7 +16,7 @@ import streamlit as st
 
 from mspecviz.common.defaults import DEFAULTS
 
-from streamlit_app.utils.state.core import PROJECT_ROOT, STATE_PREFIX
+from streamlit_app.utils.state.core import PROJECT_ROOT, STATE_PREFIX, _persisted_key
 from streamlit_app.utils.state.params import load_params, save_params
 from streamlit_app.utils.state.workspace import (
     _get_workspaces_dir,
@@ -47,7 +47,6 @@ def _render_workspace_switcher(params: dict) -> None:
             for key in stale_keys:
                 st.session_state.pop(key, None)
             st.query_params.workspace = st.session_state["chosen-workspace"]
-            st.rerun()
 
         workspaces_dir.mkdir(parents=True, exist_ok=True)
         options = sorted(
@@ -160,15 +159,25 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
 
         with st.expander("**Settings**"):
             img_formats = ["svg", "png", "jpeg", "webp"]
-            default_format = params.get("image_format", DEFAULTS.image_format)
-            if default_format not in img_formats:
-                default_format = DEFAULTS.image_format
-            st.selectbox(
+            persisted = _persisted_key("image_format")
+            # Seed session_state BEFORE the widget is created so Streamlit
+            # uses the restored value on page navigation. Reading from the
+            # non-widget persisted backup survives widget garbage collection.
+            if "image_format" not in st.session_state:
+                restored = st.session_state.get(
+                    persisted, params.get("image_format", DEFAULTS.image_format)
+                )
+                if restored not in img_formats:
+                    restored = DEFAULTS.image_format
+                st.session_state["image_format"] = restored
+            selected_format = st.selectbox(
                 "image export format",
                 img_formats,
-                img_formats.index(default_format),
                 key="image_format",
             )
+            st.session_state[persisted] = selected_format
+            params["image_format"] = selected_format
+            save_params(params)
 
         version_info = st.session_state.settings.get("version", "0.1.0")
         app_name = st.session_state.settings.get("app_name", "MSpecViz")
