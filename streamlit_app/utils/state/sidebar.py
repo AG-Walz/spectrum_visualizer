@@ -17,7 +17,7 @@ import streamlit as st
 from mspecviz.common.defaults import DEFAULTS
 
 from streamlit_app.utils.state.core import PROJECT_ROOT, STATE_PREFIX, _persisted_key
-from streamlit_app.utils.state.params import load_params, save_params
+from streamlit_app.utils.state.params import _PARAM_KEYS, load_params, save_params
 from streamlit_app.utils.state.workspace import (
     _get_workspaces_dir,
     is_safe_workspace_name,
@@ -36,10 +36,15 @@ def _render_workspace_switcher(params: dict) -> None:
             # dropdown on_change can be lost on switch.
             save_params(params)
 
-            for key in params:
+            # Pop every known widget key — not just the ones that happened to
+            # be on disk in ``params.json`` — so settings from the outgoing
+            # workspace do not bleed into the incoming one's widgets (and from
+            # there, back into its params.json via save_params).
+            for key in (*_PARAM_KEYS, *params.keys()):
                 st.session_state.pop(key, None)
-            # Clear page-namespaced keys so stale analysis state from
-            # the previous workspace is not shown in the new one.
+            # Clear page-namespaced keys so stale analysis state (and the
+            # ``_persisted`` widget-value backups) from the previous workspace
+            # are not shown in the new one.
             stale_keys = [
                 k for k in st.session_state
                 if k.startswith(STATE_PREFIX)
@@ -47,6 +52,13 @@ def _render_workspace_switcher(params: dict) -> None:
             for key in stale_keys:
                 st.session_state.pop(key, None)
             st.query_params.workspace = st.session_state["chosen-workspace"]
+            # Halt this rerun immediately. Without rerun, the script keeps
+            # executing with st.session_state.workspace still pointing at the
+            # OLD workspace while widgets re-seed session_state from the OLD
+            # params dict; the next rerun (triggered by any later interaction)
+            # then writes those OLD values into the NEW workspace's
+            # params.json via save_params, clobbering its settings.
+            st.rerun()
 
         workspaces_dir.mkdir(parents=True, exist_ok=True)
         options = sorted(
