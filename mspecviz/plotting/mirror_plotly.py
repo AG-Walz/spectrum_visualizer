@@ -8,9 +8,9 @@ from typing import Dict, Optional
 import pandas as pd
 import plotly.graph_objects as go
 
-from mspecviz.common.constants import MZ_WINDOW_PADDING
 from mspecviz.common.ion_utils import ION_COLORS
 from mspecviz.plotting._mirror_shared import (
+    MZ_WINDOW_PADDING,
     _get_annotated_mask,
     _prepare_spectrum_data,
 )

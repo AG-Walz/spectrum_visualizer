@@ -14,11 +14,7 @@ from typing import Dict, Optional
 import pandas as pd
 
 from mspecviz.annotation.peak_theory import peptidoform_to_aasequence
-from mspecviz.common.defaults import (
-    DEFAULT_KOINA_COLLISION_ENERGY,
-    DEFAULT_KOINA_INSTRUMENT_TYPE,
-    DEFAULT_KOINA_MODEL,
-)
+from mspecviz.common.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -51,12 +47,6 @@ KOINA_MODELS: Dict[str, str] = {
 
 INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
-# Re-export for back-compat with call sites that imported DEFAULT_* from here.
-# The canonical source is ``mspecviz.common.defaults``.
-DEFAULT_MODEL = DEFAULT_KOINA_MODEL
-DEFAULT_COLLISION_ENERGY = DEFAULT_KOINA_COLLISION_ENERGY
-DEFAULT_INSTRUMENT_TYPE = DEFAULT_KOINA_INSTRUMENT_TYPE
-
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     """Convert ProForma peptidoform to UniMod bracket notation for Koina input."""
@@ -70,9 +60,9 @@ def convert_peptide_to_unimod(peptidoform_str: str) -> str:
 def predict_koina_spectrum(
     peptidoform_str: str,
     charge: int,
-    model_id: str = DEFAULT_MODEL,
-    collision_energy: int = DEFAULT_COLLISION_ENERGY,
-    instrument_type: str = DEFAULT_INSTRUMENT_TYPE,
+    model_id: str = DEFAULTS.koina_model,
+    collision_energy: int = DEFAULTS.koina_collision_energy,
+    instrument_type: str = DEFAULTS.koina_instrument_type,
 ) -> Optional[pd.DataFrame]:
     """Predict MS/MS spectrum via Koina. Returns DataFrame [mz, intensity, annotation] or None."""
     if not KOINA_AVAILABLE:
@@ -132,7 +122,7 @@ def get_koina_settings(settings: dict) -> dict:
     koina_cfg = settings.get("koina", {})
     return {
         "enabled": koina_cfg.get("enabled", True),
-        "model": koina_cfg.get("model", DEFAULT_MODEL),
-        "collision_energy": koina_cfg.get("collision_energy", DEFAULT_COLLISION_ENERGY),
-        "instrument_type": koina_cfg.get("instrument_type", DEFAULT_INSTRUMENT_TYPE),
+        "model": koina_cfg.get("model", DEFAULTS.koina_model),
+        "collision_energy": koina_cfg.get("collision_energy", DEFAULTS.koina_collision_energy),
+        "instrument_type": koina_cfg.get("instrument_type", DEFAULTS.koina_instrument_type),
     }

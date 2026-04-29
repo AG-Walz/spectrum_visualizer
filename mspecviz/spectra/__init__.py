@@ -4,9 +4,6 @@ Re-exports the public API of the submodules so callers can keep using
 ``from mspecviz.spectra import ...`` without caring which file a name lives in.
 """
 from mspecviz.spectra.koina_prediction import (
-    DEFAULT_COLLISION_ENERGY,
-    DEFAULT_INSTRUMENT_TYPE,
-    DEFAULT_MODEL,
     INSTRUMENT_TYPES,
     KOINA_AVAILABLE,
     KOINA_MODELS,
@@ -62,9 +59,6 @@ __all__ = [
     "find_spectrum_index",
     "open_indexed_mzml_fast",
     # koina_prediction
-    "DEFAULT_COLLISION_ENERGY",
-    "DEFAULT_INSTRUMENT_TYPE",
-    "DEFAULT_MODEL",
     "INSTRUMENT_TYPES",
     "KOINA_AVAILABLE",
     "KOINA_MODELS",

@@ -17,21 +17,17 @@ from mspecviz.common.text_utils import get_nested as get_settings_value
 try:
     from mspecviz.spectra import (
         KOINA_AVAILABLE, KOINA_MODELS, INSTRUMENT_TYPES,
-        DEFAULT_MODEL, DEFAULT_COLLISION_ENERGY, DEFAULT_INSTRUMENT_TYPE,
         get_koina_settings,
     )
 except ImportError:
     KOINA_AVAILABLE = False
     KOINA_MODELS = {}
     INSTRUMENT_TYPES = []
-    DEFAULT_MODEL = ""
-    DEFAULT_COLLISION_ENERGY = 35
-    DEFAULT_INSTRUMENT_TYPE = "TIMSTOF"
 
     def get_koina_settings(s):
-        return {"enabled": False, "model": DEFAULT_MODEL,
-                "collision_energy": DEFAULT_COLLISION_ENERGY,
-                "instrument_type": DEFAULT_INSTRUMENT_TYPE}
+        return {"enabled": False, "model": DEFAULTS.koina_model,
+                "collision_energy": DEFAULTS.koina_collision_energy,
+                "instrument_type": DEFAULTS.koina_instrument_type}
 
 params = page_setup()
 

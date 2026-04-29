@@ -11,10 +11,8 @@ import numpy as np
 import pandas as pd
 import pyopenms as oms
 
-from mspecviz.annotation.peak_theory import (
-    DEFAULT_ION_TYPES,
-    generate_theoretical_fragments,
-)
+from mspecviz.annotation.peak_theory import generate_theoretical_fragments
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.ion_utils import get_ion_type
 from mspecviz.common.normalization import normalize_intensities
 
@@ -119,7 +117,7 @@ def prepare_spectrum_for_plot(
 ) -> pd.DataFrame:
     """Annotate a spectrum and return a DataFrame ready for plotting."""
     if ion_types is None:
-        ion_types = DEFAULT_ION_TYPES
+        ion_types = list(DEFAULTS.ion_types)
 
     theo_frags = generate_theoretical_fragments(
         peptidoform, charge=charge, ion_types=ion_types,
@@ -153,7 +151,7 @@ def prepare_koina_spectrum_for_plot(
 ) -> pd.DataFrame:
     """Prepare a Koina-predicted spectrum for plotting, preserving native annotations."""
     if ion_types is None:
-        ion_types = DEFAULT_ION_TYPES
+        ion_types = list(DEFAULTS.ion_types)
 
     annotated = pd.DataFrame({
         "mz": koina_frame["mz"].values,

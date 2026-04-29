@@ -12,7 +12,9 @@ from typing import Any
 
 import streamlit as st
 
-from mspecviz.common.constants import STATE_PREFIX  # noqa: F401
+# Namespace for Streamlit session-state keys owned by the app, used to avoid
+# colliding with third-party widget keys.
+STATE_PREFIX = "peptide_mirror"
 
 OS_PLATFORM = sys.platform
 

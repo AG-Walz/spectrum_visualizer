@@ -1,0 +1,116 @@
+# MSpecViz — Activity log
+
+This file is appended to automatically by Claude Code hooks configured in
+`.claude/settings.local.json`:
+
+- **`UserPromptSubmit`** — every prompt you send is recorded with a timestamp.
+- **`PostToolUse`** for `Write`/`Edit` — every file Claude changes is logged.
+- **`Stop`** — an end-of-turn marker is appended.
+
+In addition, Claude writes a one- or two-sentence prose **recap** at the end of
+each turn (best-effort, instructed via auto-memory). If a recap is missing,
+the file changes above are the canonical record.
+- Write: /mnt/volume/nacho/MSpecViz/LOG.md
+- Write: /home/ubuntu/.claude/projects/-mnt-volume-nacho-MSpecViz/memory/feedback_activity_log.md
+- Edit: /home/ubuntu/.claude/projects/-mnt-volume-nacho-MSpecViz/memory/MEMORY.md
+
+**Recap.** Wired up three Claude Code hooks in `.claude/settings.local.json` (UserPromptSubmit logs prompts, PostToolUse on Write|Edit logs changed file paths, Stop appends an end-of-turn marker), seeded `LOG.md`, and saved a feedback memory so future conversations also append a prose recap at the end of each turn.
+
+_— end of turn (10:41:13) —_
+
+
+## 2026-04-29 09:01:48 — User prompt
+
+I would like to go with you through every single file and every single function in the whole project starting with the functionality alone (/mnt/volume/nacho/MSpecViz/mspecviz/ and all of its underlying files) with you and critically understand every single function and its purpose on this project. The goal is to explain one function and script at a time and how it is connected with the rest of the project, so that I can take notes and determine what follows and whether this is necessary or can be cropped down if that case is too extreme or not. I want to understand every single line of code. Lets start somewhere that make sense and very slowly work from there, allow me to interrupt and ask questions in the meantime.
+
+
+_— end of turn (09:03:16) —_
+
+
+## 2026-04-29 09:12:28 — User prompt
+
+First of all, I would like to rename the folders 00_commons 01_search 02_spectra 03_annotation 04_polars (instead of dataframe which is too generic), 05_plottFirst of all, I would like to rename the folders 00_commons 01_search 02_spectra 03_annotation 04_polars (instead of dataframe which is     
+  too generic), 05_plotting, 00_pipeline and 06_export   First of all, I would like to rename the folders 00_commons 01_search 02_spectra 03_annotation 04_polars (instead of dataframe which is     
+  too generic), 05_plotting, 00_pipeline and 06_export
+
+
+## 2026-04-29 09:13:20 — User prompt
+
+Could you please start anew and type down what you just told me? I happened to clear the terminal by error
+
+
+_— end of turn (09:13:38) —_
+
+
+## 2026-04-29 09:19:18 — User prompt
+
+Regarding this file, you can move ANN_OFFSET and MZ_WINDOW_PADDING to a constants section of the plotting/_mirror_shared.py and lets figure out a better place to put the STATE_PREFIX into. This way we can remove this file.
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/utils/state/core.py
+
+_— end of turn (09:21:25) —_
+
+
+## 2026-04-29 09:21:51 — User prompt
+
+Move to the next file
+
+
+_— end of turn (09:23:02) —_
+
+
+## 2026-04-29 10:29:43 — User prompt
+
+continue where we left, I need your text to the /mspecviz/common/defaults.py we were discussing, do you remember?
+
+
+_— end of turn (10:31:07) —_
+
+
+## 2026-04-29 10:46:36 — User prompt
+
+Find a better way to drop all aliases thrughout the whole project.
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/defaults.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/defaults.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_theory.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_theory.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_matching.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_matching.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_summary_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_summary_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_summary_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_dual_axis.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_dual_axis.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_ridgeline.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_ridgeline.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/summary_orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/explore/page.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/explore/page.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/loading/test_koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/loading/test_koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/loading/test_koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/loading/test_koina_prediction.py
+
+**Recap.** Walked through `mspecviz/common/defaults.py` then dropped every `DEFAULT_*` back-compat alias project-wide — both the ones in `defaults.py` and the local re-aliases in `koina_prediction.py` / `_summary_shared.py`. Rewired 14 files (4 `mspecviz/` modules, 4 `__init__.py` re-exports, 2 streamlit views, 1 test) to use `DEFAULTS.foo` access; 200/200 pytest tests pass.
+- Edit: /mnt/volume/nacho/MSpecViz/LOG.md
+
+_— end of turn (10:55:52) —_
+

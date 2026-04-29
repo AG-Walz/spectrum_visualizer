@@ -1,11 +1,7 @@
-"""Single source of truth for pipeline parameter defaults (``mspecviz``/``cli``/``streamlit_app`` all read here).
+"""Source for all pipeline parameter defaults (Both cli and streamlit app read from here)."""
 
-Precedence: this file < settings.json/params.json/YAML < CLI flags /
-Streamlit widgets. All keys are ``snake_case`` everywhere.
-"""
 from dataclasses import dataclass
-from typing import List, Tuple
-
+from typing import Tuple
 
 @dataclass(frozen=True)
 class Defaults:
@@ -43,15 +39,3 @@ class Defaults:
 
 
 DEFAULTS = Defaults()
-
-
-# Module-level constants kept for convenience at import sites that previously
-# declared their own local DEFAULT_* (peak_theory, koina_prediction,
-# _summary_shared). Re-exporting here lets those modules import a single
-# name without dragging in the whole dataclass.
-DEFAULT_ION_TYPES: List[str] = list(DEFAULTS.ion_types)
-DEFAULT_KOINA_MODEL: str = DEFAULTS.koina_model
-DEFAULT_KOINA_COLLISION_ENERGY: int = DEFAULTS.koina_collision_energy
-DEFAULT_KOINA_INSTRUMENT_TYPE: str = DEFAULTS.koina_instrument_type
-DEFAULT_SUMMARY_METRIC: str = DEFAULTS.summary_metric
-DEFAULT_SUMMARY_PLOT_TYPES: List[str] = list(DEFAULTS.summary_plot_types)

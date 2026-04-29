@@ -10,8 +10,8 @@ from matplotlib.patches import Patch  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.plotting._summary_shared import (
-    DEFAULT_METRIC,
     SUMMARY_COLORS,
     _auto_height,
     _metric_label,
@@ -23,7 +23,7 @@ from mspecviz.plotting._summary_shared import (
 def plot_classic_dual_axis(
     raw_frame: pd.DataFrame,
     aggregated_frame: pd.DataFrame,
-    metric: str = DEFAULT_METRIC,
+    metric: str = DEFAULTS.summary_metric,
     figure_size: Tuple[float, float] = None,
     export_resolution: int = 300,
     title: str = None,

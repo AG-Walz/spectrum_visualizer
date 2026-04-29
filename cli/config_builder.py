@@ -6,10 +6,8 @@ from cli.config import CLIConfig, expand_globs
 
 
 def _copy_into_config(config: CLIConfig, source: dict) -> None:
-    """Copy every ``source`` entry whose key matches a CLIConfig field.
-
-    ``None`` and empty-list values mean "layer did not supply this key" and are
-    skipped (left as default) so they can't overwrite a lower-precedence value.
+    """Copy every parameter entry whose key matches a CLIConfig field. 
+    Skip empty or missing values so they can't overwrite a lower-precedence value.
     """
     config_fields = {f.name for f in fields(config)}
     for field_name, field_value in source.items():

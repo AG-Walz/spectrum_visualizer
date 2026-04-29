@@ -5,7 +5,6 @@ Re-exports the public API of the four submodules so callers can keep using
 """
 from mspecviz.annotation.peak_theory import (
     ALL_ION_TYPES,
-    DEFAULT_ION_TYPES,
     generate_theoretical_fragments,
     peptidoform_to_aasequence,
 )
@@ -34,7 +33,6 @@ from mspecviz.annotation.metrics_set import (
 __all__ = [
     # peak_theory
     "ALL_ION_TYPES",
-    "DEFAULT_ION_TYPES",
     "generate_theoretical_fragments",
     "peptidoform_to_aasequence",
     # peak_matching

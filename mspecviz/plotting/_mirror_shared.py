@@ -12,6 +12,13 @@ import pandas as pd
 from mspecviz.common.ion_utils import ION_COLORS, get_ion_color
 from mspecviz.common.normalization import normalize_intensities
 
+# --- Plot tuning -----------------------------------------------------------
+# Fraction of peak intensity used as vertical offset for annotation text.
+ANN_OFFSET = 0.03
+
+# Extra m/z padding on the plot x-axis (Da) so outer peaks aren't clipped.
+MZ_WINDOW_PADDING = 50
+
 
 def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
     """Return df with an 'annotation' column, adding 'unannotated' if absent."""

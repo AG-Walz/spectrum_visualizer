@@ -10,13 +10,11 @@ from mspecviz.annotation import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.spectra import (
     KOINA_AVAILABLE,
     KOINA_MODELS,
     INSTRUMENT_TYPES,
-    DEFAULT_MODEL,
-    DEFAULT_COLLISION_ENERGY,
-    DEFAULT_INSTRUMENT_TYPE,
     convert_peptide_to_unimod,
     predict_koina_spectrum,
     get_koina_settings,
@@ -77,9 +75,9 @@ class TestGetKoinaSettings:
     def test_empty_settings_returns_defaults(self):
         result = get_koina_settings({})
         assert result["enabled"] is True
-        assert result["model"] == DEFAULT_MODEL
-        assert result["collision_energy"] == DEFAULT_COLLISION_ENERGY
-        assert result["instrument_type"] == DEFAULT_INSTRUMENT_TYPE
+        assert result["model"] == DEFAULTS.koina_model
+        assert result["collision_energy"] == DEFAULTS.koina_collision_energy
+        assert result["instrument_type"] == DEFAULTS.koina_instrument_type
 
     def test_partial_settings(self):
         settings = {"koina": {"model": "Prosit_2019_intensity"}}
@@ -87,8 +85,8 @@ class TestGetKoinaSettings:
         assert result["model"] == "Prosit_2019_intensity"
         # Other keys should fall back to defaults
         assert result["enabled"] is True
-        assert result["collision_energy"] == DEFAULT_COLLISION_ENERGY
-        assert result["instrument_type"] == DEFAULT_INSTRUMENT_TYPE
+        assert result["collision_energy"] == DEFAULTS.koina_collision_energy
+        assert result["instrument_type"] == DEFAULTS.koina_instrument_type
 
     def test_all_settings_override(self):
         settings = {
@@ -117,9 +115,9 @@ class TestKoinaConstants:
     def test_defaults_valid(self):
         assert len(KOINA_MODELS) > 0
         assert len(INSTRUMENT_TYPES) > 0
-        assert DEFAULT_MODEL in KOINA_MODELS.values()
-        assert DEFAULT_INSTRUMENT_TYPE in INSTRUMENT_TYPES
-        assert DEFAULT_COLLISION_ENERGY > 0
+        assert DEFAULTS.koina_model in KOINA_MODELS.values()
+        assert DEFAULTS.koina_instrument_type in INSTRUMENT_TYPES
+        assert DEFAULTS.koina_collision_energy > 0
 
     def test_model_keys_are_display_names_and_values_are_ids(self):
         for key, value in KOINA_MODELS.items():

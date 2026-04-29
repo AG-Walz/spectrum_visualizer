@@ -13,10 +13,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.plotting._summary_shared import (
-    DEFAULT_METRIC,
     METRIC_COLUMNS,
-    PLOT_TYPES,
     _metric_label,
 )
 from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
@@ -33,7 +32,7 @@ _PLOT_REGISTRY = {
 
 def prepare_summary_data(
     source: Union[str, Path, pd.DataFrame],
-    metric: str = DEFAULT_METRIC,
+    metric: str = DEFAULTS.summary_metric,
 ) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """Load and aggregate comparison data into per-peptidoform statistics.
 
@@ -82,7 +81,7 @@ def prepare_summary_data(
 def generate_all_summary_plots(
     source: Union[str, Path, pd.DataFrame],
     output_dir: Union[str, Path],
-    metric: str = DEFAULT_METRIC,
+    metric: str = DEFAULTS.summary_metric,
     plot_types: Optional[List[str]] = None,
     formats: Optional[List[str]] = None,
     export_resolution: int = 300,
@@ -93,7 +92,7 @@ def generate_all_summary_plots(
     Returns ``{plot_type: {format: file_path}}``.
     """
     if plot_types is None:
-        plot_types = list(PLOT_TYPES)
+        plot_types = list(DEFAULTS.summary_plot_types)
     if formats is None:
         formats = ["png"]
 
@@ -122,7 +121,7 @@ def generate_all_summary_plots(
             continue
 
         paths: Dict[str, str] = {}
-        filename = "ridgeline_r2_binned" if pt == "ridgeline" and metric == DEFAULT_METRIC else pt
+        filename = "ridgeline_r2_binned" if pt == "ridgeline" and metric == DEFAULTS.summary_metric else pt
         for fmt in formats:
             out_path = summary_dir / f"{filename}.{fmt}"
             try:

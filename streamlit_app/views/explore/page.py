@@ -14,8 +14,8 @@ from streamlit_app.utils.state import (
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.plotting import (
-    DEFAULT_METRIC,
     METRIC_COLUMNS,
     plot_classic_dual_axis,
     plot_ridgeline,
@@ -64,7 +64,7 @@ def comparison_metrics_fragment():
         st.subheader("Summary Plots")
         metric = st.selectbox(
             "Metric", options=available_metrics,
-            index=available_metrics.index(DEFAULT_METRIC) if DEFAULT_METRIC in available_metrics else 0,
+            index=available_metrics.index(DEFAULTS.summary_metric) if DEFAULTS.summary_metric in available_metrics else 0,
             key=f"{STATE_PREFIX}_summary_metric",
         )
         raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)

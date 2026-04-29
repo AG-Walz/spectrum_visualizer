@@ -12,7 +12,7 @@ import pandas as pd
 import pyopenms as oms
 from psm_utils import Peptidoform
 
-from mspecviz.common.defaults import DEFAULT_ION_TYPES
+from mspecviz.common.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
@@ -159,7 +159,7 @@ def generate_theoretical_fragments(
         Do NOT modify the returned DataFrame — it is shared across callers.
     """
     if ion_types is None:
-        ion_types = DEFAULT_ION_TYPES
+        ion_types = list(DEFAULTS.ion_types)
 
     return _generate_fragments_impl(
         peptidoform,
