@@ -75,8 +75,6 @@ def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: in
         mz_tolerance=config.mz_tolerance,
         normalize=normalize,
         add_neutral_losses=config.add_neutral_losses,
-        add_first_prefix_ion=config.add_first_prefix_ion,
-        remove_precursor_peaks=config.remove_precursor_peaks,
     )
 
     annotated_queries = []   # (psm_id, LoadedSpectrum, annotated_frame)

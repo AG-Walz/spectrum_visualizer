@@ -1,9 +1,4 @@
-"""Sequential/parallel task dispatch shared by idXML, mzML, and plot workers.
-
-``workers<=1`` runs in-process (debug friendly); otherwise tasks are submitted
-to a ``ProcessPoolExecutor`` and drained via ``as_completed``. Tasks are argument
-tuples; bare values are auto-wrapped so single-arg workers skip boilerplate.
-"""
+"""Parallel task dispatch shared by idXML, mzML, and plot workers."""
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Callable, List, Optional
 

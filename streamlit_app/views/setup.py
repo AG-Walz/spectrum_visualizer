@@ -137,19 +137,9 @@ def settings_fragment():
                         step=0.005, format="%.3f", key="mz_tolerance")
 
     st.markdown("**Annotation Settings**")
-    ann_col1, ann_col2, ann_col3 = st.columns(3)
-    with ann_col1:
-        st.checkbox("Add neutral losses (H2O, NH3)",
-                    value=params.get('add_neutral_losses', DEFAULTS.add_neutral_losses),
-                    key="add_neutral_losses")
-    with ann_col2:
-        st.checkbox("Add first prefix ion",
-                    value=params.get('add_first_prefix_ion', DEFAULTS.add_first_prefix_ion),
-                    key="add_first_prefix_ion")
-    with ann_col3:
-        st.checkbox("Remove precursor peaks",
-                    value=params.get('remove_precursor_peaks', DEFAULTS.remove_precursor_peaks),
-                    key="remove_precursor_peaks")
+    st.checkbox("Add neutral losses (H2O, NH3)",
+                value=params.get('add_neutral_losses', DEFAULTS.add_neutral_losses),
+                key="add_neutral_losses")
 
     st.radio("**Intensity Display Mode**",
              options=["Relative", "Raw"],

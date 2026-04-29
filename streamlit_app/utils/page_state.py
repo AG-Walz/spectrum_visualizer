@@ -206,8 +206,6 @@ RUN_SETTINGS_FIELDS: list[tuple[str, str, object]] = [
     ("ion_types",              "ion_types",              list(DEFAULTS.ion_types)),
     ("mz_tolerance",           "mz_tolerance",           DEFAULTS.mz_tolerance),
     ("add_neutral_losses",     "add_neutral_losses",     DEFAULTS.add_neutral_losses),
-    ("add_first_prefix_ion",   "add_first_prefix_ion",   DEFAULTS.add_first_prefix_ion),
-    ("remove_precursor_peaks", "remove_precursor_peaks", DEFAULTS.remove_precursor_peaks),
     ("intensity_mode",         "intensity_mode",         DEFAULTS.intensity_mode),
     ("koina_enabled",          "koina_enabled",          DEFAULTS.koina_enabled),
 ]

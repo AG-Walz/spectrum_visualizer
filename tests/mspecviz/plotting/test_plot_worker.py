@@ -8,7 +8,13 @@ import pandas as pd
 import pytest
 
 from mspecviz.plotting import ComparisonTask, process_single_task
-from mspecviz.annotation import prepare_spectrum_for_plot, generate_theoretical_fragments
+from mspecviz.annotation import prepare_spectrum_for_plot
+
+# Pinned singly-charged b2 / y2 m/z values for PEPTIDEK (computed via
+# spectrum_utils.MsmsSpectrum.annotate_proforma) — keeps the test from
+# coupling to whichever theoretical-generation library we use today.
+PEPTIDEK_B2_PLUS = 227.1026
+PEPTIDEK_Y2_PLUS = 276.1554
 
 
 # ---------------------------------------------------------------------------
@@ -17,10 +23,7 @@ from mspecviz.annotation import prepare_spectrum_for_plot, generate_theoretical_
 
 def _make_annotated_frame(peptidoform="PEPTIDEK", charge=2):
     """Build a real annotated DataFrame using prepare_spectrum_for_plot."""
-    frags = generate_theoretical_fragments(peptidoform, charge=charge, ion_types=["b", "y"])
-    b2_mz = float(frags[frags["annotation"] == "b2+"]["mz"].values[0])
-    y2_mz = float(frags[frags["annotation"] == "y2+"]["mz"].values[0])
-    mz = np.array([b2_mz, y2_mz, 500.0, 600.0])
+    mz = np.array([PEPTIDEK_B2_PLUS, PEPTIDEK_Y2_PLUS, 500.0, 600.0])
     intensity = np.array([1000.0, 800.0, 200.0, 150.0])
     return prepare_spectrum_for_plot(mz, intensity, peptidoform, charge=charge)
 

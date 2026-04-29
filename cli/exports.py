@@ -31,8 +31,6 @@ def _build_run_settings(config: CLIConfig) -> dict:
         "peptides": config.peptides, "reference_substring": config.reference_substring,
         "ion_types": config.ion_types, "mz_tolerance": config.mz_tolerance,
         "add_neutral_losses": config.add_neutral_losses,
-        "add_first_prefix_ion": config.add_first_prefix_ion,
-        "remove_precursor_peaks": config.remove_precursor_peaks,
         "intensity_mode": config.intensity_mode,
         "koina_enabled": config.koina_enabled, "koina_model": config.koina_model,
         "koina_collision_energy": config.koina_collision_energy,

@@ -9,11 +9,12 @@ Pure-data tests of individual metrics live in
 import numpy as np
 import pytest
 
-from mspecviz.annotation import (
-    compute_all_metrics,
-    generate_theoretical_fragments,
-    prepare_spectrum_for_plot,
-)
+from mspecviz.annotation import compute_all_metrics, prepare_spectrum_for_plot
+
+# Singly-charged b1/b2/y1/y2/b3 m/z for ASDDFDQASY — pinned values from the
+# spectrum_utils parity spike; saves the test from generating theoretical
+# fragments just to learn where the peaks should land.
+ASDDFDQASY_BY_MZ = np.array([72.0444, 159.0764, 182.0812, 269.1132, 274.1034])
 
 
 @pytest.mark.integration
@@ -22,10 +23,8 @@ class TestMetricsWithRealAnnotation:
 
     def test_self_comparison_perfect(self):
         """A spectrum compared against itself should have high similarity."""
-        # Use actual theoretical fragment m/z values so peaks get annotated
-        frags = generate_theoretical_fragments("ASDDFDQASY", charge=1, ion_types=["b", "y"])
-        mz = frags["mz"].values[:5].astype(np.float64)
-        intensity = np.array([100, 200, 150, 300, 250], dtype=np.float64)[:len(mz)]
+        mz = ASDDFDQASY_BY_MZ.astype(np.float64)
+        intensity = np.array([100, 200, 150, 300, 250], dtype=np.float64)
 
         df = prepare_spectrum_for_plot(
             mz, intensity, "ASDDFDQASY", charge=1,

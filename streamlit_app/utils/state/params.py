@@ -32,7 +32,7 @@ _PARAM_KEYS: tuple[str, ...] = (
     "idxml_browser_dir", "mzml_browser_dir",
     "target_peptides", "reference_substring",
     "ion_types", "mz_tolerance",
-    "add_neutral_losses", "add_first_prefix_ion", "remove_precursor_peaks",
+    "add_neutral_losses",
     "intensity_mode", "workers",
     "koina_enabled", "koina_model",
     "koina_collision_energy", "koina_instrument_type",

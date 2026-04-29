@@ -2,9 +2,9 @@
 Koina AI spectrum prediction for MSpecViz.
 
 Generates predicted MS/MS fragment spectra using Koina deep-learning models
-(via koinapy). Unlike the PyOpenMS TheoreticalSpectrumGenerator which only
-produces m/z positions, Koina models predict both m/z AND relative intensities,
-making them useful for quantitative comparison against experimental spectra.
+(via koinapy). Unlike PyOpenMS' theoretical generator which only produces m/z
+positions, Koina models predict both m/z AND relative intensities, making them
+useful for quantitative comparison against experimental spectra.
 
 Used as a fallback reference when no experimental reference mzML is available.
 """
@@ -13,8 +13,8 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from mspecviz.annotation.peak_theory import peptidoform_to_aasequence
 from mspecviz.common.defaults import DEFAULTS
+from mspecviz.common.peptidoform_utils import peptidoform_to_aasequence
 
 logger = logging.getLogger(__name__)
 
@@ -49,7 +49,7 @@ INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
-    """Convert ProForma peptidoform to UniMod bracket notation for Koina input."""
+    """Convert a ProForma peptidoform to UniMod bracket notation for Koina input."""
     aa_seq = peptidoform_to_aasequence(peptidoform_str)
     # toUniModString() uses parentheses: PEPTM(UniMod:35)IDE
     # Koina expects brackets: PEPTM[UNIMOD:35]IDE

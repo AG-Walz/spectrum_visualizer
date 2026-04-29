@@ -44,8 +44,6 @@ class CLIConfig:
     ion_types: List[str] = field(default_factory=lambda: list(DEFAULTS.ion_types))
     mz_tolerance: float = DEFAULTS.mz_tolerance
     add_neutral_losses: bool = DEFAULTS.add_neutral_losses
-    add_first_prefix_ion: bool = DEFAULTS.add_first_prefix_ion
-    remove_precursor_peaks: bool = DEFAULTS.remove_precursor_peaks
     intensity_mode: str = DEFAULTS.intensity_mode
 
     # Export

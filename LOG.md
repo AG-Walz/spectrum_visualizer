@@ -114,3 +114,110 @@ Find a better way to drop all aliases thrughout the whole project.
 
 _— end of turn (10:55:52) —_
 
+
+## 2026-04-29 10:57:21 — User prompt
+
+Perfect, proceed to the next file
+
+
+_— end of turn (10:58:20) —_
+
+
+## 2026-04-29 11:12:55 — User prompt
+
+Apply this cleanup
+
+- Write: /mnt/volume/nacho/MSpecViz/mspecviz/common/ion_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/ion_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/ion_utils.py
+
+_— end of turn (11:15:10) —_
+
+
+## 2026-04-29 11:15:30 — User prompt
+
+Ready to move on
+
+
+_— end of turn (11:16:19) —_
+
+
+## 2026-04-29 11:20:07 — User prompt
+
+Is there a function somewhere in the internet that accomplishes this normalization and can be simply imported in either package? That way we can remove this file and simply add two extra lines to the scripts that import and implement the normalization. Search for this functionality.
+
+
+_— end of turn (11:21:15) —_
+
+
+## 2026-04-29 11:24:07 — User prompt
+
+Use the pyopenms.Normalizer  option and ensure that we are using MSpectrum instead of dataframe wherever possible, this is more maintainable.
+
+
+_— end of turn (11:24:53) —_
+
+
+## 2026-04-29 11:29:35 — User prompt
+
+Take option B, I want to use external published packages wherever possible. Make a thorough pass through the whole logic to find where upstream and downstream of the normalization we have to change code to accomodate this change.
+
+
+_— end of turn (11:34:18) —_
+
+
+## 2026-04-29 12:34:56 — User prompt
+
+replace peak_theory.py + peak_matching.py:annotate_spectrum with spectrum_utils.MsmsSpectrum.annotate_proforma, implement all other High and Medium ROI, as well as the rest which you consider necessary (feel free to ask for opinion), report parity results and what is still missing and remember where we left the walkthrough to continue later.
+
+- Write: /home/ubuntu/.claude/projects/-mnt-volume-nacho-MSpecViz/memory/project_walkthrough_progress.md
+- Edit: /home/ubuntu/.claude/projects/-mnt-volume-nacho-MSpecViz/memory/MEMORY.md
+
+_— end of turn (12:52:42) —_
+
+
+## 2026-04-29 13:08:13 — User prompt
+
+1a drop the feature, decision 2 drop both, decision 3 (c) accept the perf hit, ship cleanly.
+
+- Write: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_matching.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Write: /mnt/volume/nacho/MSpecViz/mspecviz/common/peptidoform_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/defaults.py
+- Edit: /mnt/volume/nacho/MSpecViz/cli/config.py
+- Edit: /mnt/volume/nacho/MSpecViz/cli/pipeline.py
+- Edit: /mnt/volume/nacho/MSpecViz/cli/exports.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/search_load/pipeline.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/utils/page_state.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/utils/state/params.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+
+## 2026-04-29 13:21:29 — User prompt
+
+Can you continue with the plan to check every single file, check where we left it last time from the log
+
+
+_— end of turn (13:22:26) —_
+
+- Write: /mnt/volume/nacho/MSpecViz/tests/mspecviz/common/__init__.py
+- Write: /mnt/volume/nacho/MSpecViz/tests/mspecviz/common/test_peptidoform_utils.py
+- Write: /mnt/volume/nacho/MSpecViz/tests/mspecviz/annotation/test_peak_annotation_core.py
+- Write: /mnt/volume/nacho/MSpecViz/tests/mspecviz/annotation/test_peak_annotation_integration.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/annotation/test_spectrum_metrics_integration.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/plotting/test_plot_worker.py
+
+_— end of turn (13:43:17) —_
+
+
+## 2026-04-29 13:50:54 — User prompt
+
+Lets stop here, suggest a commit
+
+
+_— end of turn (13:51:06) —_
+

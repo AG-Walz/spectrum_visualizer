@@ -98,8 +98,6 @@ def _build_annotation_kwargs(params: dict) -> dict:
         mz_tolerance=get_param(params, "mz_tolerance", DEFAULTS.mz_tolerance),
         normalize=get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative",
         add_neutral_losses=get_param(params, "add_neutral_losses", DEFAULTS.add_neutral_losses),
-        add_first_prefix_ion=get_param(params, "add_first_prefix_ion", DEFAULTS.add_first_prefix_ion),
-        remove_precursor_peaks=get_param(params, "remove_precursor_peaks", DEFAULTS.remove_precursor_peaks),
     )
 
 

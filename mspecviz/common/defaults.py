@@ -11,8 +11,6 @@ class Defaults:
     ion_types: Tuple[str, ...] = ("b", "y")
     mz_tolerance: float = 0.02                 # Da
     add_neutral_losses: bool = False           # include H2O, NH3 fragment losses
-    add_first_prefix_ion: bool = True          # include a1/b1/c1 ions
-    remove_precursor_peaks: bool = False       # mask peaks near precursor m/z
     intensity_mode: str = "Relative"           # "Relative" | "Raw"
 
     # --- Performance --------------------------------------------------------

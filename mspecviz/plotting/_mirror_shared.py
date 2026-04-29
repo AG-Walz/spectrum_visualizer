@@ -5,12 +5,11 @@ Both backends start from an annotated DataFrame (``mz``, ``intensity``,
 normalise intensities, and map ion types to colours. Centralising the logic
 avoids colour-mapping drift between the two renderers.
 """
-from typing import Dict
+from typing import Dict, Optional
 
 import pandas as pd
 
 from mspecviz.common.ion_utils import ION_COLORS, get_ion_color
-from mspecviz.common.normalization import normalize_intensities
 
 # --- Plot tuning -----------------------------------------------------------
 # Fraction of peak intensity used as vertical offset for annotation text.
@@ -29,11 +28,13 @@ def _ensure_annotation_col(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _prepare_spectrum_data(df: pd.DataFrame, normalize: bool = True,
-                           color_map: Dict[str, str] = None) -> pd.DataFrame:
+                           color_map: Optional[Dict[str, str]] = None) -> pd.DataFrame:
     """Prepare spectrum DataFrame for plotting (shared by Plotly and Matplotlib)."""
     df = _ensure_annotation_col(df.copy())
-    if normalize:
-        df = normalize_intensities(df)
+    if normalize and not df.empty:
+        max_intensity = df["intensity"].max()
+        if max_intensity and max_intensity > 0:
+            df["intensity"] = df["intensity"] / max_intensity
     if color_map is None:
         color_map = ION_COLORS
     df["_color"] = df["annotation"].map(lambda a: get_ion_color(a, color_map))
