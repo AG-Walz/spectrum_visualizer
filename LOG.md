@@ -408,3 +408,47 @@ _— end of turn (auto-recap) —_
 
 _— end of turn (11:32:38) —_
 
+
+## 2026-04-30 11:33:43 — User prompt
+
+Check again fragment_utils as you were doing before
+
+
+_— end of turn (11:34:59) —_
+
+
+## 2026-04-30 11:37:47 — User prompt
+
+If you can replace  get_ion_type by a one-liner do so directly with a spectrum utils functionality  (then you wont need the tests), drop the color map parameter. Then analyse better options to solve the conversion of peptidoform_to_aasequence with already published functions from the internet
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/fragment_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_matching.py
+
+_— end of turn (11:50:58) —_
+
+
+## 2026-04-30 11:54:04 — User prompt
+
+Proceed with option A
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/fragment_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/fragment_utils.py
+
+**Recap.** Cleanups in `mspecviz/common/fragment_utils.py`: collapsed `get_ion_type` from 24 lines to a one-liner backed by spectrum_utils' `SUPPORTED_IONS = "?abcxyzIm_prf"` first-character contract; dropped the `color_map` parameter from `get_ion_color` and from the entire plotting plumbing chain (`_mirror_shared._prepare_spectrum_data`, `mirror_plotly.{create_plotly_mirror_plot, create_plotly_single_plot}`, `mirror_matplotlib.{create_mirror_plot, create_single_spectrum_plot}`). At call site 1 of `peak_matching.py:_spec_to_dataframe`, switched to passing `fa.ion_type` directly to `get_ion_type` instead of round-tripping through a reconstructed string. **Replaced `peptidoform_to_aasequence` (Option A):** the function existed solely to feed `AASequence.toUniModString()` for Koina input — re-implemented `convert_peptide_to_unimod` in `mspecviz/spectra/koina_prediction.py` to read each modification's resolved UniMod ID directly from `psm_utils.Peptidoform`'s `mod.definition['id']`, killing the pyopenms bounce and the silent fallback. `fragment_utils.py` now has zero imports. Deleted obsolete `tests/mspecviz/common/test_fragment_utils.py`. 60/60 unaffected tests pass; existing `TestConvertPeptideToUnimod` tests pass against the new implementation.
+
+_— end of turn (auto-recap) —_
+
+_— end of turn (11:56:34) —_
+

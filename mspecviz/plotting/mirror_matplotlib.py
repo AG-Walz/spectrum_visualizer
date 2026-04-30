@@ -4,7 +4,7 @@ Shares data-prep with the Plotly renderer via ``_mirror_shared``. Uses the
 ``Agg`` backend so this module is safe to import in worker processes.
 """
 from io import BytesIO
-from typing import Dict, Optional, Tuple
+from typing import Optional, Tuple
 
 import matplotlib
 matplotlib.use('Agg')
@@ -12,7 +12,6 @@ import matplotlib.ticker  # noqa: E402 (kept after matplotlib.use)
 from matplotlib.figure import Figure as MplFigure  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from mspecviz.common.fragment_utils import ION_COLORS
 from mspecviz.plotting._mirror_shared import (
     ANN_OFFSET,
     MZ_WINDOW_PADDING,
@@ -61,7 +60,6 @@ def create_mirror_plot(
     title: str = "Mirror Plot",
     upper_label: str = "Query",
     lower_label: str = "Reference",
-    color_map: Dict[str, str] = None,
     figure_size: Tuple[int, int] = (12, 8),
     export_resolution: int = 300,
     show_annotations: bool = True,
@@ -70,9 +68,6 @@ def create_mirror_plot(
     normalize: bool = True,
 ):
     """Create a publication-ready static matplotlib mirror plot."""
-    if color_map is None:
-        color_map = ION_COLORS
-
     fig = MplFigure(figsize=figure_size, dpi=export_resolution)
     ax = fig.add_subplot(111)
 
@@ -84,14 +79,14 @@ def create_mirror_plot(
         ann_offset = max(upper_max, lower_max) * ANN_OFFSET
 
     if not upper_spectrum.empty:
-        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize)
         _add_matplotlib_spectrum(ax, upper_frame, y_multiplier=1.0,
                                 show_annotations=show_annotations,
                                 annotation_fontsize=annotation_fontsize,
                                 ann_offset=ann_offset)
 
     if not lower_spectrum.empty:
-        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
+        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize)
         lower_frame["intensity"] = lower_frame["intensity"] * -1
         _add_matplotlib_spectrum(ax, lower_frame, y_multiplier=-1.0,
                                 show_annotations=show_annotations,
@@ -151,7 +146,6 @@ def create_single_spectrum_plot(
     spectrum: pd.DataFrame,
     title: str = "Annotated Spectrum",
     label: str = "",
-    color_map: Dict[str, str] = None,
     figure_size: Tuple[int, int] = (12, 8),
     export_resolution: int = 300,
     show_annotations: bool = True,
@@ -159,14 +153,11 @@ def create_single_spectrum_plot(
     normalize: bool = True,
 ):
     """Create a static matplotlib single annotated spectrum plot."""
-    if color_map is None:
-        color_map = ION_COLORS
-
     fig = MplFigure(figsize=figure_size, dpi=export_resolution)
     ax = fig.add_subplot(111)
 
     if not spectrum.empty:
-        df = _prepare_spectrum_data(spectrum, normalize=normalize, color_map=color_map)
+        df = _prepare_spectrum_data(spectrum, normalize=normalize)
         if normalize:
             ann_offset = ANN_OFFSET
         else:

@@ -3,12 +3,11 @@
 Used for Streamlit display and HTML export. Shares data-prep with the
 Matplotlib backend via ``_mirror_shared``.
 """
-from typing import Dict, Optional
+from typing import Optional
 
 import pandas as pd
 import plotly.graph_objects as go
 
-from mspecviz.common.fragment_utils import ION_COLORS
 from mspecviz.plotting._mirror_shared import (
     MZ_WINDOW_PADDING,
     _get_annotated_mask,
@@ -63,7 +62,6 @@ def create_plotly_mirror_plot(
     title: str = "Mirror Plot",
     upper_label: str = "Query",
     lower_label: str = "Reference",
-    color_map: Dict[str, str] = None,
     metrics_text: Optional[str] = None,
     normalize: bool = True,
     height: int = 600,
@@ -71,22 +69,19 @@ def create_plotly_mirror_plot(
     """Render an interactive Plotly mirror plot (query on top, reference below).
 
     Both frames need ``mz, intensity, annotation``. ``metrics_text`` overlays
-    a metrics annotation; ``color_map`` overrides ``ION_COLORS``.
+    a metrics annotation.
     """
-    if color_map is None:
-        color_map = ION_COLORS
-
     fig = go.Figure()
 
     # --- Upper spectrum (query, positive) ---
     if not upper_spectrum.empty:
-        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize, color_map=color_map)
+        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize)
         _add_plotly_spectrum_traces(fig, upper_frame, y_multiplier=1.0,
                                    label=upper_label, show_annotations=True)
 
     # --- Lower spectrum (reference, negative) ---
     if not lower_spectrum.empty:
-        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize, color_map=color_map)
+        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize)
         _add_plotly_spectrum_traces(fig, lower_frame, y_multiplier=-1.0,
                                    label=lower_label, show_annotations=True)
 
@@ -147,18 +142,14 @@ def create_plotly_single_plot(
     spectrum: pd.DataFrame,
     title: str = "Annotated Spectrum",
     label: str = "",
-    color_map: Dict[str, str] = None,
     normalize: bool = True,
     height: int = 500,
 ):
     """Create an interactive Plotly single-spectrum plot."""
-    if color_map is None:
-        color_map = ION_COLORS
-
     fig = go.Figure()
 
     if not spectrum.empty:
-        df = _prepare_spectrum_data(spectrum, normalize=normalize, color_map=color_map)
+        df = _prepare_spectrum_data(spectrum, normalize=normalize)
         _add_plotly_spectrum_traces(fig, df, y_multiplier=1.0,
                                    label=label, show_annotations=True)
 

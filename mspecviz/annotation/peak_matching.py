@@ -63,9 +63,8 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
             flags.append(False)
             continue
         fa = fa_list[0]
-        ann_string = f"{fa.ion_type}+{fa.charge}"
-        annotations.append(ann_string)
-        ion_types.append(get_ion_type(ann_string))
+        annotations.append(f"{fa.ion_type}+{fa.charge}")
+        ion_types.append(get_ion_type(fa.ion_type))
         charges.append(int(fa.charge))
         flags.append(True)
 

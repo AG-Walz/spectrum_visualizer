@@ -12,9 +12,9 @@ import logging
 from typing import Dict, Optional
 
 import pandas as pd
+from psm_utils import Peptidoform
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.fragment_utils import peptidoform_to_aasequence
 
 logger = logging.getLogger(__name__)
 
@@ -49,12 +49,28 @@ INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
-    """Convert a ProForma peptidoform to UniMod bracket notation for Koina input."""
-    aa_seq = peptidoform_to_aasequence(peptidoform_str)
-    # toUniModString() uses parentheses: PEPTM(UniMod:35)IDE
-    # Koina expects brackets: PEPTM[UNIMOD:35]IDE
-    unimod_str = str(aa_seq.toUniModString())
-    return unimod_str.replace("(", "[").replace(")", "]")
+    """Convert a ProForma peptidoform to Koina's UniMod-bracket notation.
+
+    ``"PEPM[Oxidation]IDEK"`` → ``"PEPM[UNIMOD:35]IDEK"``. Reads the resolved
+    UniMod accession from each modification's ``definition`` (psm_utils delegates
+    the resolution to pyteomics' UnimodResolver). A modification without a
+    UniMod entry — e.g. a bare mass-shift like ``[+15.99]`` or PSI-MOD/XLMOD —
+    raises ``KeyError`` here and is caught upstream by ``predict_koina_spectrum``.
+    """
+    p = Peptidoform(peptidoform_str.split("/")[0])
+    parts = []
+    if p.properties.get("n_term"):
+        for mod in p.properties["n_term"]:
+            parts.append(f"[UNIMOD:{mod.definition['id']}]-")
+    for aa, mods in p.parsed_sequence:
+        parts.append(aa)
+        if mods:
+            for mod in mods:
+                parts.append(f"[UNIMOD:{mod.definition['id']}]")
+    if p.properties.get("c_term"):
+        for mod in p.properties["c_term"]:
+            parts.append(f"-[UNIMOD:{mod.definition['id']}]")
+    return "".join(parts)
 
 
 def predict_koina_spectrum(
