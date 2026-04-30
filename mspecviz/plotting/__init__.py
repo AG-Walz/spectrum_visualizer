@@ -27,7 +27,7 @@ from mspecviz.plotting.worker_execution import (
 from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
 
 # Re-export ion colour palette from common (plotting is the public home)
-from mspecviz.common.ion_utils import ION_COLORS, get_ion_color
+from mspecviz.common.fragment_utils import ION_COLORS, get_ion_color
 
 __all__ = [
     # mirror plots

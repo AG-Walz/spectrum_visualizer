@@ -14,7 +14,7 @@ from typing import Dict, Optional
 import pandas as pd
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.peptidoform_utils import peptidoform_to_aasequence
+from mspecviz.common.fragment_utils import peptidoform_to_aasequence
 
 logger = logging.getLogger(__name__)
 

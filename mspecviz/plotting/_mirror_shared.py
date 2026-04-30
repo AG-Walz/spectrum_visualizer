@@ -9,7 +9,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from mspecviz.common.ion_utils import ION_COLORS, get_ion_color
+from mspecviz.common.fragment_utils import ION_COLORS, get_ion_color
 
 # --- Plot tuning -----------------------------------------------------------
 # Fraction of peak intensity used as vertical offset for annotation text.

@@ -18,7 +18,7 @@ import pandas as pd
 from spectrum_utils.spectrum import MsmsSpectrum
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.ion_utils import get_ion_type
+from mspecviz.common.fragment_utils import get_ion_type
 
 logger = logging.getLogger(__name__)
 

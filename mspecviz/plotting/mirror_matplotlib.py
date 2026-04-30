@@ -12,7 +12,7 @@ import matplotlib.ticker  # noqa: E402 (kept after matplotlib.use)
 from matplotlib.figure import Figure as MplFigure  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from mspecviz.common.ion_utils import ION_COLORS
+from mspecviz.common.fragment_utils import ION_COLORS
 from mspecviz.plotting._mirror_shared import (
     ANN_OFFSET,
     MZ_WINDOW_PADDING,

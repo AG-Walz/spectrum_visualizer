@@ -371,3 +371,40 @@ _— end of turn (auto-recap) —_
 
 _— end of turn (11:25:29) —_
 
+
+## 2026-04-30 11:28:27 — User prompt
+
+Join ion_utils and peptidoform_utils into another named file
+
+- Write: /mnt/volume/nacho/MSpecViz/mspecviz/common/chemistry.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+
+_— end of turn (11:29:33) —_
+
+
+## 2026-04-30 11:29:33 — User prompt
+
+I prefer sth like spectrum_utils
+
+
+_— end of turn (11:29:50) —_
+
+
+## 2026-04-30 11:30:43 — User prompt
+
+fragment_utils.py is a good compromise
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_plotly.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/mirror_matplotlib.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/_mirror_shared.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/plotting/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/annotation/peak_matching.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/koina_prediction.py
+- Edit: /mnt/volume/nacho/MSpecViz/tests/mspecviz/common/test_fragment_utils.py
+
+**Recap.** Merged `mspecviz/common/ion_utils.py` and `mspecviz/common/peptidoform_utils.py` into a single `mspecviz/common/fragment_utils.py`; rewired the 6 import sites (`mspecviz/plotting/{mirror_plotly,mirror_matplotlib,_mirror_shared,__init__}.py`, `mspecviz/annotation/peak_matching.py`, `mspecviz/spectra/koina_prediction.py`); renamed `tests/mspecviz/common/test_peptidoform_utils.py` → `test_fragment_utils.py` and updated its import. Name choice: `fragment_utils` (avoids the third-party `spectrum_utils` namespace clash). 46/46 affected tests pass.
+
+_— end of turn (auto-recap) —_
+
+_— end of turn (11:32:38) —_
+

@@ -1,8 +1,8 @@
-"""Unit tests for ``mspecviz.common.peptidoform_utils.peptidoform_to_aasequence``."""
+"""Unit tests for ``mspecviz.common.fragment_utils.peptidoform_to_aasequence``."""
 import pyopenms as oms
 import pytest
 
-from mspecviz.common.peptidoform_utils import peptidoform_to_aasequence
+from mspecviz.common.fragment_utils import peptidoform_to_aasequence
 
 
 class TestPeptidoformToAASequence:
