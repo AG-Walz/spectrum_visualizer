@@ -10,7 +10,7 @@ from pathlib import Path
 from cli.config import CLIConfig
 from cli.exports import run_cli_export
 from cli.output import TerminalProgress, print_completion_summary, print_config_summary
-from mspecviz.common.input_validation import (
+from mspecviz.common.text_utils import (
     DuplicateBasenameError,
     ensure_unique_basenames,
 )

@@ -331,3 +331,43 @@ _— end of turn (auto-recap) —_
 
 _— end of turn (10:59:47) —_
 
+
+## 2026-04-30 11:18:37 — User prompt
+
+Proceed
+
+
+_— end of turn (11:19:46) —_
+
+
+## 2026-04-30 11:22:11 — User prompt
+
+Leave the comments, solve 2 and 3
+
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/text_utils.py
+
+**Recap.** Cleanups in `mspecviz/common/text_utils.py` walkthrough: dropped the `as get_settings_value` import alias in `streamlit_app/views/setup.py` and switched the two call sites to use `get_nested` directly; added a docstring note to `parse_peptide_list` explaining it is newline-only and callers must pre-normalise commas (as `cli/config.py` does for the inline-YAML branch). Common-helper tests pass (20/20).
+
+_— end of turn (auto-recap) —_
+
+_— end of turn (11:24:10) —_
+
+
+## 2026-04-30 11:24:29 — User prompt
+
+Move the ensure_unique_basenames to the text_utils
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/text_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/text_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/cli/pipeline.py
+- Edit: /mnt/volume/nacho/MSpecViz/streamlit_app/views/setup.py
+
+**Recap.** Folded `ensure_unique_basenames` and `DuplicateBasenameError` into `mspecviz/common/text_utils.py` and deleted the now-empty `mspecviz/common/input_validation.py`; updated the two import sites (`cli/pipeline.py`, `streamlit_app/views/setup.py`). Smoke test confirms the moved helper still raises on basename collisions; affected tests (20/20) pass.
+
+_— end of turn (auto-recap) —_
+
+_— end of turn (11:25:29) —_
+

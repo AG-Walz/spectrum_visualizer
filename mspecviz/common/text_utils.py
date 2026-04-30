@@ -2,14 +2,18 @@
 Shared text and filename utilities.
 """
 import re
-from typing import List
+from collections import Counter
+from pathlib import Path
+from typing import Iterable, List
+
+
+class DuplicateBasenameError(ValueError):
+    """Two or more selected files share the same basename — refuse to start."""
 
 
 def sanitize_filename(name: str) -> str:
     """
-    Sanitize a string for use as a filename.
-
-    Removes or replaces invalid characters.
+    Removes or replaces invalid characters from filename.
     """
     # Replace problematic characters
     sanitized = re.sub(r'[<>:"/\\|?*\[\]]', '_', name)
@@ -24,7 +28,12 @@ def sanitize_filename(name: str) -> str:
 
 
 def parse_peptide_list(text: str) -> List[str]:
-    """Parse newline-separated peptide list, uppercased and stripped."""
+    """Parse newline-separated peptide list, uppercased and stripped.
+
+    Newlines only — callers feeding comma-separated input must pre-normalise
+    (e.g. ``text.replace(",", "\\n")`` as ``cli/config.py`` does for the
+    inline-YAML-scalar branch).
+    """
     return [p.strip().upper() for p in text.split('\n') if p.strip()]
 
 
@@ -51,3 +60,21 @@ def get_nested(source: dict, *keys, default=None):
         else:
             return default
     return current if current is not None else default
+
+
+def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
+    """Raise :class:`DuplicateBasenameError` if any two ``paths`` share a basename.
+
+    The pipeline binds idXML PSMs to mzML files by bare filename; if two selected
+    files share a basename the binding is undefined and downstream artifacts
+    (exports, plots) named after the file would also collide. Catch it at input.
+    """
+    duplicates = sorted(
+        name for name, count in Counter(Path(p).name for p in paths).items()
+        if count > 1
+    )
+    if duplicates:
+        raise DuplicateBasenameError(
+            f"Two or more selected {kind} files share the same basename: "
+            f"{duplicates}. Rename or symlink so every {kind} basename is unique."
+        )
