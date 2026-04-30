@@ -12,6 +12,10 @@ from streamlit_app.utils.page_state import restore_analysis_if_needed
 from streamlit_app.views.widgets.file_browser import render_directory_browser
 from streamlit_app.views.widgets.peptide_input import render_peptide_input
 from mspecviz.common.defaults import DEFAULTS
+from mspecviz.common.input_validation import (
+    DuplicateBasenameError,
+    ensure_unique_basenames,
+)
 from mspecviz.common.text_utils import get_nested as get_settings_value
 
 try:
@@ -62,6 +66,12 @@ def file_selection_fragment():
         selected_directory = st.session_state.get(dir_ss_key, fallback)
         params[dir_param] = selected_directory
         st.session_state[dir_param] = selected_directory
+
+    for kind, state_key in [("idXML", 'selected_idxmls'), ("mzML", 'selected_mzmls')]:
+        try:
+            ensure_unique_basenames(st.session_state.get(state_key, []), kind)
+        except DuplicateBasenameError as exc:
+            st.error(str(exc))
 
     save_params(params)
 

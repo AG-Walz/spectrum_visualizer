@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.common.path_utils import disambiguate_paths
 from mspecviz.search.models import PeptideMatch, VariantGroup
 from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum, StreamingResult
 from mspecviz.spectra.loader_workers import _load_spectra_from_mzml
@@ -24,14 +23,13 @@ def build_mzml_to_matches_map(
 ) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
     """Map each mzML path key to the list of (match, variant_key) pairs to load.
 
-    Uses ``mzml_resolved_path`` when available (handles same-name files from
-    different directories). Falls back to bare-filename matching; ambiguous
-    matches pick the first candidate and log a warning.
+    Prefers ``mzml_resolved_path`` when set, then falls back to a bare-name
+    lookup. The unique-basename invariant (enforced at input) guarantees the
+    fallback is unambiguous.
     """
-    # Bare-name fallback: lowercase name -> list of path keys
-    name_to_keys: Dict[str, List[str]] = {}
-    for key, path in available_mzml_paths.items():
-        name_to_keys.setdefault(path.name.lower(), []).append(key)
+    name_to_key: Dict[str, str] = {
+        path.name.lower(): key for key, path in available_mzml_paths.items()
+    }
 
     mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]] = {}
 
@@ -40,25 +38,14 @@ def build_mzml_to_matches_map(
             if not match.mzml_filename:
                 continue
 
-            # Prefer resolved path (handles same-name files)
             path_key = None
             if match.mzml_resolved_path:
                 resolved_key = str(Path(match.mzml_resolved_path).resolve()).lower()
                 if resolved_key in available_mzml_paths:
                     path_key = resolved_key
 
-            # Fallback: bare filename match
             if path_key is None:
-                candidates = name_to_keys.get(match.mzml_filename.lower(), [])
-                if candidates:
-                    path_key = candidates[0]
-                    if len(candidates) > 1:
-                        paths = [str(available_mzml_paths[c]) for c in candidates]
-                        logger.warning(
-                            f"Ambiguous mzML match for '{match.mzml_filename}': "
-                            f"{len(candidates)} files with same name. "
-                            f"Using '{paths[0]}'. All candidates: {paths}"
-                        )
+                path_key = name_to_key.get(match.mzml_filename.lower())
 
             if path_key:
                 mzml_to_matches.setdefault(path_key, []).append((match, variant_key))
@@ -66,15 +53,14 @@ def build_mzml_to_matches_map(
     return mzml_to_matches
 
 
-def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map, mzml_disambig):
+def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
     """Build (path_str, display_name, matches) tuples for files that have matches."""
     tasks = []
     for path_key in file_keys:
         if path_key not in mzml_to_matches:
             continue
         mzml_path = mzml_path_map[path_key]
-        display_name = mzml_disambig.get(str(mzml_path), mzml_path.name)
-        tasks.append((str(mzml_path), display_name, mzml_to_matches[path_key]))
+        tasks.append((str(mzml_path), mzml_path.name, mzml_to_matches[path_key]))
     return tasks
 
 
@@ -140,7 +126,6 @@ def load_spectra_streaming(
     per reference and per query. Returns ``{variant_key: [reference_spectra]}``.
     """
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
-    mzml_disambig = disambiguate_paths([str(p) for p in mzml_paths])
 
     reference_keys: Dict[str, Path] = {}
     query_keys: Dict[str, Path] = {}
@@ -171,7 +156,7 @@ def load_spectra_streaming(
     effective_workers = max(1, min(workers, total_files))
 
     # Phase 1: References
-    ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map, mzml_disambig)
+    ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map)
     ref_results = _execute_load_tasks(ref_tasks, True, effective_workers,
                                       on_file_start, on_file_complete, error_callback)
     for res in ref_results:
@@ -186,7 +171,7 @@ def load_spectra_streaming(
     logger.info(f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra")
 
     # Phase 2: Queries - stream via callback
-    query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map, mzml_disambig)
+    query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map)
     query_results = _execute_load_tasks(query_tasks, False, effective_workers,
                                         on_file_start, on_file_complete, error_callback)
 

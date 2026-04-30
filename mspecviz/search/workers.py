@@ -2,52 +2,31 @@
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, Optional, Set, Tuple
 
 from psm_utils.io.idxml import IdXMLReader
 
-from mspecviz.search.idxml_parsing import (
-    extract_spectra_data_map,
-    mod_key_from_peptidoform,
-)
-from mspecviz.common.path_utils import resolve_mzml_path
+from mspecviz.search.idxml_parsing import mod_key_from_peptidoform
 from mspecviz.search.models import PeptideMatch
 
 logger = logging.getLogger(__name__)
-
-
-def _build_run_to_metadata_map(protein_ids) -> Dict[str, str]:
-    """Return {run_stem: full_path} for mzML disambiguation."""
-    _, run_map_full = extract_spectra_data_map(protein_ids)
-    run_to_metadata: Dict[str, str] = {}
-    for full_paths in run_map_full.values():
-        for full_path in full_paths:
-            stem = Path(full_path).stem
-            if stem not in run_to_metadata:
-                run_to_metadata[stem] = full_path
-    return run_to_metadata
 
 
 def _build_match_from_psm(
     psm,
     idxml_path: str,
     idxml_name: str,
-    run_to_metadata: Dict[str, str],
-    mzml_path_strs: List[str],
+    mzml_by_name: Dict[str, str],
 ) -> Optional[Tuple[str, PeptideMatch]]:
-    """Build a (variant_key, PeptideMatch) from a psm_utils PSM, or None."""
+    """Build a (variant_key, PeptideMatch) from a psm_utils PSM, or None.
+
+    ``mzml_by_name`` maps lowercase basename → full path. The unique-basename
+    invariant (enforced at input) makes this lookup unambiguous.
+    """
     base_seq = psm.peptidoform.sequence.upper()
 
     mzml_filename = (psm.run + ".mzML") if psm.run else ""
-    metadata_path = run_to_metadata.get(psm.run, "") if psm.run else ""
-
-    resolved_path = ""
-    if mzml_path_strs and mzml_filename:
-        resolved = resolve_mzml_path(
-            mzml_filename, metadata_path, mzml_path_strs, idxml_path,
-        )
-        if resolved:
-            resolved_path = resolved
+    resolved_path = mzml_by_name.get(mzml_filename.lower(), "") if mzml_filename else ""
 
     mod_key = mod_key_from_peptidoform(psm.peptidoform)
     variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
@@ -71,16 +50,17 @@ def _search_single_idxml(
     idxml_path: str,
     idxml_name: str,
     target_set: Set[str],
-    mzml_path_strs: List[str],
-) -> Tuple[str, List[Tuple[str, PeptideMatch]], List[str]]:
+    mzml_by_name: Dict[str, str],
+) -> Tuple[str, list, list]:
     """Worker: scan one idXML for target peptides via psm_utils PSM iteration.
 
     Returns ``(idxml_name, [(variant_key, PeptideMatch)], errors)``. Module-level
     so ProcessPoolExecutor can pickle it; ``psm.run`` already carries the
-    resolved mzML basename.
+    resolved mzML basename and ``mzml_by_name`` (lowercase basename → full path)
+    binds it to a concrete file.
     """
-    matches: List[Tuple[str, PeptideMatch]] = []
-    errors: List[str] = []
+    matches: list = []
+    errors: list = []
 
     try:
         try:
@@ -88,8 +68,6 @@ def _search_single_idxml(
         except Exception as load_error:
             errors.append(f"No peptide identifications in {idxml_name}: {load_error}")
             return idxml_name, matches, errors
-
-        run_to_metadata = _build_run_to_metadata_map(reader.protein_ids)
 
         # Manual iteration: psm_utils' __iter__ is a generator, so a single bad PSM
         # (e.g. null rescoring feature in unfiltered _pout.idXML) kills the stream.
@@ -110,9 +88,7 @@ def _search_single_idxml(
             try:
                 if psm.peptidoform.sequence.upper() not in target_set:
                     continue
-                built = _build_match_from_psm(
-                    psm, idxml_path, idxml_name, run_to_metadata, mzml_path_strs,
-                )
+                built = _build_match_from_psm(psm, idxml_path, idxml_name, mzml_by_name)
                 if built is not None:
                     matches.append(built)
             except Exception as e:

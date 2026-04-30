@@ -11,7 +11,6 @@ from typing import Dict, List, Optional, Set
 import polars as pl
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.common.path_utils import disambiguate_paths
 from mspecviz.search.models import VariantGroup, format_inline_sequence
 from mspecviz.search.workers import (
     _scan_single_idxml_peptides,
@@ -35,9 +34,11 @@ def search_peptides_in_idxmls(
     Extracts all metadata needed for mzML resolution including id_merge_index.
 
     Args:
-        idxml_paths: List of idXML file paths to search
+        idxml_paths: List of idXML file paths to search. Basenames must be
+            unique — enforced upstream via ``ensure_unique_basenames``.
         target_peptides: List of peptide sequences to find (base sequences)
-        mzml_paths: Optional list of selected mzML file paths (for disambiguation)
+        mzml_paths: Optional list of selected mzML file paths. Basenames must
+            be unique — enforced upstream via ``ensure_unique_basenames``.
         progress_callback: Optional callback(current, total, message) for progress
         error_callback: Optional callback(error_message) for immediate error reporting
         workers: Number of parallel workers. 1 = sequential (default).
@@ -53,17 +54,15 @@ def search_peptides_in_idxmls(
         logger.warning("No valid target peptides provided")
         return {}
 
-    idxml_disambig = disambiguate_paths(idxml_paths)
-    mzml_path_strs = [str(p) for p in mzml_paths] if mzml_paths else []
+    mzml_by_name: Dict[str, str] = (
+        {Path(p).name.lower(): str(p) for p in mzml_paths} if mzml_paths else {}
+    )
 
     total_files = len(idxml_paths)
     variant_groups: Dict[str, VariantGroup] = {}
     total_psms_found = 0
 
-    tasks = [
-        (p, idxml_disambig.get(p, Path(p).name), target_set, mzml_path_strs)
-        for p in idxml_paths
-    ]
+    tasks = [(p, Path(p).name, target_set, mzml_by_name) for p in idxml_paths]
 
     if workers > 1:
         logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")

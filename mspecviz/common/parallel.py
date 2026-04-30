@@ -1,75 +1,42 @@
 """Parallel task dispatch shared by idXML, mzML, and plot workers."""
 from concurrent.futures import ProcessPoolExecutor, as_completed
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Iterator, Tuple
 
 
 def run_tasks(
-    tasks: List[Any],
-    worker: Callable,
-    workers: int = 1,
-    on_start: Optional[Callable[[Any], None]] = None,
-    on_result: Optional[Callable[[Any, Any], None]] = None,
-    on_error: Optional[Callable[[Any, Exception], None]] = None,
-    on_progress: Optional[Callable[[int, int], None]] = None,
-    stop_when: Optional[Callable[[], bool]] = None,
-) -> List[Any]:
-    """Run ``worker(*task)`` across ``tasks``; results returned in finish order.
-
-    ``workers`` is clamped to ``[1, len(tasks)]``. Callbacks fire on start,
-    result, error (swallowed), and progress. ``stop_when`` predicate, if set,
-    cancels pending futures and breaks iteration when it first returns True.
-    """
+    tasks: list,            # tasks to process; each is a single arg or a tuple of args
+    worker: Callable,       # function to run per task
+    workers: int = 1,       # number of workers; <=1 runs in-process
+) -> Iterator[Tuple[Any, bool, Any]]:
+    """    Run any number of workers accross a set of tasks; list of results returned in finish order. """
     if not tasks:
-        return []
+        return
 
-    def _args(task):
-        return task if isinstance(task, tuple) else (task,)
+    # Ensure the number of workers is between 1 and the number of tasks
+    workers = max(1, min(workers, len(tasks)))
 
-    effective_workers = max(1, min(workers, len(tasks)))
-    results: List[Any] = []
+    def args(t):
+        return t if isinstance(t, tuple) else (t,)
 
-    if effective_workers <= 1:
-        for i, task in enumerate(tasks):
-            if on_start:
-                on_start(task)
-            try:
-                result = worker(*_args(task))
-                results.append(result)
-                if on_result:
-                    on_result(task, result)
-            except Exception as exc:
-                if on_error:
-                    on_error(task, exc)
-            if on_progress:
-                on_progress(i + 1, len(tasks))
-            if stop_when and stop_when():
-                break
-        return results
-
-    with ProcessPoolExecutor(max_workers=effective_workers) as pool:
-        future_map = {}
+    # Sequential execution for a single worker
+    if workers == 1:
         for task in tasks:
-            if on_start:
-                on_start(task)
-            future_map[pool.submit(worker, *_args(task))] = task
-
-        completed = 0
-        for future in as_completed(future_map):
-            completed += 1
-            task = future_map[future]
             try:
-                result = future.result()
-                results.append(result)
-                if on_result:
-                    on_result(task, result)
+                yield task, True, worker(*args(task))
             except Exception as exc:
-                if on_error:
-                    on_error(task, exc)
-            if on_progress:
-                on_progress(completed, len(tasks))
-            if stop_when and stop_when():
-                for pending in future_map:
-                    pending.cancel()
-                break
+                yield task, False, exc
+        return
 
-    return results
+    # Parallel execution for multiple workers
+    with ProcessPoolExecutor(max_workers=workers) as pool:
+        future_map = {pool.submit(worker, *args(task)): task for task in tasks}
+        try:
+            for future in as_completed(future_map):
+                task = future_map[future]
+                try:
+                    yield task, True, future.result()
+                except Exception as exc:
+                    yield task, False, exc
+        finally:
+            for f in future_map:
+                f.cancel()

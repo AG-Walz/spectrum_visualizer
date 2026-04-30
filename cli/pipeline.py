@@ -10,6 +10,10 @@ from pathlib import Path
 from cli.config import CLIConfig
 from cli.exports import run_cli_export
 from cli.output import TerminalProgress, print_completion_summary, print_config_summary
+from mspecviz.common.input_validation import (
+    DuplicateBasenameError,
+    ensure_unique_basenames,
+)
 from mspecviz.dataframes import build_psm_table
 from mspecviz.pipeline import process_query_result
 from mspecviz.search import search_peptides_in_idxmls
@@ -32,6 +36,13 @@ def _validate_inputs(config: CLIConfig) -> int:
             if not Path(f).exists():
                 print(f"Error: {label} file not found: {f}", file=sys.stderr)
                 return 2
+
+    try:
+        ensure_unique_basenames(config.idxml_files, "idXML")
+        ensure_unique_basenames(config.mzml_files, "mzML")
+    except DuplicateBasenameError as exc:
+        print(f"Error: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
