@@ -1,4 +1,5 @@
 """Parallel task dispatch shared by idXML, mzML, and plot workers."""
+
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from typing import Any, Callable, Iterator, Tuple
 
@@ -8,11 +9,8 @@ def run_tasks(
     worker: Callable,       # function to run per task
     workers: int = 1,       # number of workers; <=1 runs in-process
 ) -> Iterator[Tuple[Any, bool, Any]]:
-    """Yield ``(task, success, result_or_exc)`` for each task across ``workers`` processes, in finish order.
-
-    ``workers <= 1`` runs in-process. The generator is **lazy**: callers must
-    iterate it for any work to happen. Breaking out of the iteration cancels
-    pending futures via the ``try/finally`` below.
+    """Run tasks in parallel (depending on the number of workers),
+    yielding (task, success, result or exception) for each.
     """
     if not tasks:
         return
@@ -20,21 +18,21 @@ def run_tasks(
     # Ensure the number of workers is between 1 and the number of tasks
     workers = max(1, min(workers, len(tasks)))
 
-    def args(t):
+    def _args(t):
         return t if isinstance(t, tuple) else (t,)
 
     # Sequential execution for a single worker
     if workers == 1:
         for task in tasks:
             try:
-                yield task, True, worker(*args(task))
+                yield task, True, worker(*_args(task))
             except Exception as exc:
                 yield task, False, exc
         return
 
     # Parallel execution for multiple workers
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        future_map = {pool.submit(worker, *args(task)): task for task in tasks}
+        future_map = {pool.submit(worker, *_args(task)): task for task in tasks}
         try:
             for future in as_completed(future_map):
                 task = future_map[future]

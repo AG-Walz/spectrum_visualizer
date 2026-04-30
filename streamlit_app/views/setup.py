@@ -15,8 +15,18 @@ from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.text_utils import (
     DuplicateBasenameError,
     ensure_unique_basenames,
-    get_nested,
 )
+
+
+def _get_nested(source: dict, *keys, default=None):
+    """Safely traverse nested dicts: ``_get_nested(d, 'a', 'b')`` -> ``d['a']['b']``."""
+    current = source
+    for key in keys:
+        if isinstance(current, dict):
+            current = current.get(key)
+        else:
+            return default
+    return current if current is not None else default
 
 try:
     from mspecviz.spectra import (
@@ -39,7 +49,7 @@ params = page_setup()
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
     _settings = st.session_state.get("settings", {})
-    data_dir_default = get_nested(_settings, "data_directories", "default", default="/")
+    data_dir_default = _get_nested(_settings, "data_directories", "default", default="/")
 
     idxml_dir = params.get('idxml_browser_dir', data_dir_default)
     mzml_dir = params.get('mzml_browser_dir', data_dir_default)
@@ -129,8 +139,8 @@ def reference_selection_fragment():
 def settings_fragment():
     """Annotation, display, performance, and Koina settings fragment."""
     st.subheader("Settings")
-    available_ions = get_nested(st.session_state.get("settings", {}), "ion_types", "available",
-                                default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
+    available_ions = _get_nested(st.session_state.get("settings", {}), "ion_types", "available",
+                                 default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
 
     col1, col2 = st.columns(2)
     with col1:

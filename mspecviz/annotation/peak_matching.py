@@ -18,11 +18,25 @@ import pandas as pd
 from spectrum_utils.spectrum import MsmsSpectrum
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.fragment_utils import get_ion_type
 
 logger = logging.getLogger(__name__)
 
 _EMPTY_COLUMNS = ["mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"]
+
+# Per spectrum_utils' SUPPORTED_IONS = "?abcxyzIm_prf", the leading character of
+# FragmentAnnotation.ion_type identifies the ion class. Koina annotation strings
+# follow the same convention ("y3+1", "b5++"). The six fragment letters keep
+# their letter so user filters like ['b', 'y'] match the dataframe column;
+# uppercase 'I' and lowercase 'p' map to readable bucket names.
+_BUCKET_FROM_PREFIX = {
+    "a": "a", "b": "b", "c": "c", "x": "x", "y": "y", "z": "z",
+    "I": "immonium", "p": "precursor",
+}
+
+
+def get_ion_type(annotation: str) -> str:
+    """Map a spectrum_utils ion_type or Koina annotation to its colour-bucket key."""
+    return _BUCKET_FROM_PREFIX.get(annotation[:1], "unannotated") if annotation else "unannotated"
 
 
 def _ion_types_to_string(ion_types: List[str]) -> str:

@@ -26,9 +26,6 @@ from mspecviz.plotting.worker_execution import (
 )
 from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
 
-# Re-export ion colour palette from common (plotting is the public home)
-from mspecviz.common.fragment_utils import ION_COLORS, get_ion_color
-
 __all__ = [
     # mirror plots
     "create_mirror_plot",
@@ -36,8 +33,6 @@ __all__ = [
     "create_plotly_single_plot",
     "create_single_spectrum_plot",
     "figure_to_bytes",
-    "ION_COLORS",
-    "get_ion_color",
     # summary plots
     "METRIC_COLUMNS",
     "generate_all_summary_plots",

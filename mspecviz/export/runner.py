@@ -14,7 +14,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 import pandas as pd
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.common.text_utils import sanitize_filename
+from mspecviz.export.directories import sanitize_filename
 from mspecviz.export.directories import (
     commit_export_directory,
     find_or_create_export_directory,

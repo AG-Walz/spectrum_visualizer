@@ -9,9 +9,17 @@ from pathlib import Path
 from typing import Tuple
 from datetime import datetime
 
-from mspecviz.common.text_utils import sanitize_filename
-
 logger = logging.getLogger(__name__)
+
+
+def sanitize_filename(name: str) -> str:
+    """Strip filesystem-unsafe characters and truncate to 100 chars."""
+    sanitized = re.sub(r'[<>:"/\\|?*\[\]]', '_', name)
+    sanitized = re.sub(r'_+', '_', sanitized)
+    sanitized = sanitized.strip('_ ')
+    if len(sanitized) > 100:
+        sanitized = sanitized[:100]
+    return sanitized
 
 
 def _settings_fingerprint(run_settings: dict) -> str:

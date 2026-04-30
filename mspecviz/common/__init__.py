@@ -1,1 +1,1 @@
-"""Shared utilities for the core package (defaults, fragment-ion helpers, text parsing, input validation, parallelism)."""
+"""Shared utilities for the core package (defaults, text parsing, time formatting, input validation, parallelism)."""

@@ -17,32 +17,12 @@ from matplotlib.figure import Figure
 
 from mspecviz.annotation import prepare_spectrum_for_plot
 from mspecviz.plotting import (
-    ION_COLORS,
     create_mirror_plot,
     create_plotly_mirror_plot,
     create_plotly_single_plot,
     create_single_spectrum_plot,
     figure_to_bytes,
-    get_ion_color,
 )
-
-
-# ---------------------------------------------------------------------------
-# TestGetIonColor
-# ---------------------------------------------------------------------------
-
-class TestGetIonColor:
-    @pytest.mark.parametrize("annotation, expect_hex", [
-        ("b3", True),
-        ("y2", True),
-    ])
-    def test_known_ions_return_hex_color(self, annotation, expect_hex):
-        color = get_ion_color(annotation)
-        assert isinstance(color, str) and color.startswith("#")
-
-    @pytest.mark.parametrize("annotation", ["unannotated", "hello_world"])
-    def test_unannotated_or_unknown_returns_gray(self, annotation):
-        assert get_ion_color(annotation) == ION_COLORS["unannotated"]
 
 
 # ---------------------------------------------------------------------------
