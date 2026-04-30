@@ -177,32 +177,25 @@ def _run_plot_tasks(
         return 0
 
     total_files = 0
+    completed = 0
+    total = len(tasks)
 
-    def _on_result(_task, result: ComparisonResult):
-        nonlocal total_files
-        total_files += _count_written(result)
-        for path in (result.png_path, result.svg_path, result.pdf_path, result.html_path):
-            if path:
-                saved_files.append(path)
-
-    def _on_error(_task, exc):
-        msg = f"Plot generation failed: {exc}"
-        logger.error(msg)
-        if callbacks.on_warning:
-            callbacks.on_warning(msg)
-
-    def _on_progress(completed, total):
+    for _task, ok, result in run_tasks(
+        tasks=tasks, worker=_plot_worker, workers=plot_settings.workers,
+    ):
+        completed += 1
+        if ok:
+            total_files += _count_written(result)
+            for path in (result.png_path, result.svg_path, result.pdf_path, result.html_path):
+                if path:
+                    saved_files.append(path)
+        else:
+            msg = f"Plot generation failed: {result}"
+            logger.error(msg)
+            if callbacks.on_warning:
+                callbacks.on_warning(msg)
         if callbacks.on_plot_progress:
             callbacks.on_plot_progress(completed, total)
-
-    run_tasks(
-        tasks=tasks,
-        worker=_plot_worker,
-        workers=plot_settings.workers,
-        on_result=_on_result,
-        on_error=_on_error,
-        on_progress=_on_progress,
-    )
 
     return total_files
 

@@ -1,6 +1,4 @@
-"""
-Shared text and filename utilities.
-"""
+"""Shared text, filename, and input-validation utilities."""
 import re
 from collections import Counter
 from pathlib import Path

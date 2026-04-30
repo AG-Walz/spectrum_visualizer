@@ -452,3 +452,30 @@ _— end of turn (auto-recap) —_
 
 _— end of turn (11:56:34) —_
 
+
+## 2026-04-30 12:00:21 — User prompt
+
+PRoceed with the script passing restarting from all files in common
+
+
+_— end of turn (12:01:29) —_
+
+
+## 2026-04-30 12:04:35 — User prompt
+
+Do all four
+
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/__init__.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/text_utils.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/common/parallel.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/search/orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/search/orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/spectra/loader_orchestration.py
+- Edit: /mnt/volume/nacho/MSpecViz/mspecviz/export/runner.py
+
+**Recap.** Final pass on `mspecviz/common/`: tightened the stale module docstrings in `__init__.py` and `text_utils.py`; rewrote the `parallel.py:run_tasks` docstring to reflect its new generator-based contract (and fix the ``accross``→``across`` typo). Then ported the three lingering callers of the old callback-style API (`mspecviz/search/orchestration.py:search_peptides_in_idxmls` + `get_unique_peptides_from_idxmls`, `mspecviz/spectra/loader_orchestration.py:_execute_load_tasks`, `mspecviz/export/runner.py:_run_plot_tasks`) to consume the new ``(task, ok, result)`` iterator. Preserved each call site's progress + error semantics; the early-exit/`stop_when` use case in `get_unique_peptides_from_idxmls` is now a plain ``break`` (which `run_tasks`' ``try/finally`` correctly turns into future-cancellation). 180/180 tests pass and the CLI end-to-end on `config_example.yaml` exits 0.
+
+_— end of turn (auto-recap) —_
+
+_— end of turn (12:09:33) —_
+

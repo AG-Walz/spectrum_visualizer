@@ -67,42 +67,32 @@ def search_peptides_in_idxmls(
     if workers > 1:
         logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
 
-    def _on_result(task, result):
-        nonlocal total_psms_found
-        _, worker_matches, worker_errors = result
-        for variant_key, match in worker_matches:
-            mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
-            if variant_key not in variant_groups:
-                variant_groups[variant_key] = VariantGroup(
-                    base_sequence=match.base_sequence,
-                    modification_key=mod_key,
-                    display_label=format_inline_sequence(match.base_sequence, mod_key),
-                )
-            variant_groups[variant_key].matches.append(match)
-            total_psms_found += 1
-        for error_message in worker_errors:
+    completed = 0
+    for task, ok, result in run_tasks(tasks=tasks, worker=_search_single_idxml, workers=workers):
+        completed += 1
+        if not ok:
+            error_message = f"Worker crashed processing {Path(task[0]).name}: {result}"
             if error_callback:
                 error_callback(error_message)
             logger.error(error_message)
-
-    def _on_error(task, exc):
-        error_message = f"Worker crashed processing {Path(task[0]).name}: {exc}"
-        if error_callback:
-            error_callback(error_message)
-        logger.error(error_message)
-
-    def _on_progress(completed, total):
+        else:
+            _, worker_matches, worker_errors = result
+            for variant_key, match in worker_matches:
+                mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
+                if variant_key not in variant_groups:
+                    variant_groups[variant_key] = VariantGroup(
+                        base_sequence=match.base_sequence,
+                        modification_key=mod_key,
+                        display_label=format_inline_sequence(match.base_sequence, mod_key),
+                    )
+                variant_groups[variant_key].matches.append(match)
+                total_psms_found += 1
+            for error_message in worker_errors:
+                if error_callback:
+                    error_callback(error_message)
+                logger.error(error_message)
         if progress_callback:
-            progress_callback(completed, total, "Searching idXML files")
-
-    run_tasks(
-        tasks=tasks,
-        worker=_search_single_idxml,
-        workers=workers,
-        on_result=_on_result,
-        on_error=_on_error,
-        on_progress=_on_progress,
-    )
+            progress_callback(completed, total_files, "Searching idXML files")
 
     if progress_callback:
         progress_callback(total_files, total_files, "Search complete")
@@ -136,26 +126,21 @@ def get_unique_peptides_from_idxmls(
     if workers > 1:
         logger.info(f"Parallel peptide scan: {total_files} files, {workers} workers")
 
-    def _on_result(task, result):
-        _, file_peptides = result
-        unique_peptides.update(file_peptides)
-
-    def _on_error(task, exc):
-        logger.warning(f"Worker error scanning peptides: {exc}")
-
-    def _on_progress(completed, total):
+    completed = 0
+    # Single-arg tasks: run_tasks auto-wraps each ``idxml_path`` into a 1-tuple.
+    for _task, ok, result in run_tasks(
+        tasks=idxml_paths, worker=_scan_single_idxml_peptides, workers=workers,
+    ):
+        completed += 1
+        if ok:
+            _, file_peptides = result
+            unique_peptides.update(file_peptides)
+        else:
+            logger.warning(f"Worker error scanning peptides: {result}")
         if progress_callback:
-            progress_callback(completed, total, "Scanning idXML files")
-
-    run_tasks(
-        tasks=idxml_paths,  # single-arg → auto-wrapped by run_tasks
-        worker=_scan_single_idxml_peptides,
-        workers=workers,
-        on_result=_on_result,
-        on_error=_on_error,
-        on_progress=_on_progress,
-        stop_when=lambda: len(unique_peptides) >= limit,
-    )
+            progress_callback(completed, total_files, "Scanning idXML files")
+        if len(unique_peptides) >= limit:
+            break  # cancels remaining futures via run_tasks' try/finally
 
     if progress_callback:
         progress_callback(total_files, total_files, "Scan complete")

@@ -8,7 +8,12 @@ def run_tasks(
     worker: Callable,       # function to run per task
     workers: int = 1,       # number of workers; <=1 runs in-process
 ) -> Iterator[Tuple[Any, bool, Any]]:
-    """    Run any number of workers accross a set of tasks; list of results returned in finish order. """
+    """Yield ``(task, success, result_or_exc)`` for each task across ``workers`` processes, in finish order.
+
+    ``workers <= 1`` runs in-process. The generator is **lazy**: callers must
+    iterate it for any work to happen. Breaking out of the iteration cancels
+    pending futures via the ``try/finally`` below.
+    """
     if not tasks:
         return
 

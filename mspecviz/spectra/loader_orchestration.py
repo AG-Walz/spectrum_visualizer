@@ -78,31 +78,27 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
     tasks = [(p, d, m, is_reference) for p, d, m in file_tasks]
     all_results: List[LoadResult] = []
 
-    def _on_start(task):
-        if on_file_start:
-            on_file_start(task[1], is_reference)  # task[1] = display_name
+    # Mirror the original eager-callback behaviour: announce all files up front.
+    if on_file_start:
+        for _path, display_name, _matches, _is_ref in tasks:
+            on_file_start(display_name, is_reference)
 
-    def _on_result(task, result: LoadResult):
+    for task, ok, result in run_tasks(
+        tasks=tasks,
+        worker=_load_spectra_from_mzml,
+        workers=workers if len(file_tasks) > 1 else 1,
+    ):
+        if not ok:
+            display_name = task[1]
+            if error_callback:
+                error_callback(f"Worker crashed loading {kind} {display_name}: {result}")
+            continue
         if error_callback:
             for err in result.errors:
                 error_callback(err)
         all_results.append(result)
         if on_file_complete:
             on_file_complete(result.display_name, result.loaded_count, result.not_found_count)
-
-    def _on_error(task, exc):
-        display_name = task[1]
-        if error_callback:
-            error_callback(f"Worker crashed loading {kind} {display_name}: {exc}")
-
-    run_tasks(
-        tasks=tasks,
-        worker=_load_spectra_from_mzml,
-        workers=workers if len(file_tasks) > 1 else 1,
-        on_start=_on_start,
-        on_result=_on_result,
-        on_error=_on_error,
-    )
 
     return all_results
 
