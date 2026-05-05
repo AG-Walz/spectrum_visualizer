@@ -13,6 +13,7 @@ from mspecviz.spectra.loader_models import LoadedSpectrum
 from streamlit_app.views.explore.mirror_plots import (
     _build_picker_frames,
     _eligible_variants,
+    _ref_row_id,
 )
 from tests.conftest import make_peptide_match
 
@@ -86,11 +87,23 @@ class TestBuildPickerFrames:
         assert ref.columns == ["id", "mzml", "scan", "rt", "charge", "score"]
         assert query.columns == ["psm_id", "mzml", "scan", "rt", "charge", "score"]
         assert ref.row(0, named=True) == {
-            "id": 0, "mzml": "r1", "scan": 10, "rt": 12.5, "charge": 2, "score": None,
+            "id": _ref_row_id("PEPTIDEK|", 0),
+            "mzml": "r1", "scan": 10, "rt": 12.5, "charge": 2, "score": None,
         }
         assert query.row(0, named=True) == {
             "psm_id": 7, "mzml": "q1", "scan": 42, "rt": 12.5, "charge": 2, "score": 0.875,
         }
+
+    def test_ref_row_ids_differ_across_peptides(self):
+        # The whole point of _ref_row_id: same positional index, different
+        # variant_keys must produce different ids — otherwise the openms_insight
+        # render-cache key collides on the auto-filled selection and the
+        # reference table never refreshes when the peptide changes.
+        ids_for_a = [_ref_row_id("VARIANT_A|", i) for i in range(3)]
+        ids_for_b = [_ref_row_id("VARIANT_B|", i) for i in range(3)]
+        assert set(ids_for_a).isdisjoint(ids_for_b)
+        # And the function is deterministic across calls.
+        assert _ref_row_id("VARIANT_A|", 0) == ids_for_a[0]
 
     def test_koina_reference_renders_as_blank_scan(self):
         # Koina spectra use spectrum_id="koina_prediction" which has no digits

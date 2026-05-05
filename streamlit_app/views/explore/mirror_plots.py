@@ -9,6 +9,7 @@ mirrors the Explorer fragment (toppview-lite reference).
 """
 from __future__ import annotations
 
+import hashlib
 import os
 from pathlib import Path
 
@@ -59,6 +60,22 @@ def _safe_score(spec) -> float | None:
     return float(score) if score == score else None  # NaN check
 
 
+def _ref_row_id(variant_key: str, position: int) -> int:
+    """Deterministic, peptide-scoped row id for the reference picker.
+
+    Positional ids ([0, 1, 2, …]) collide across peptides, which makes the
+    Vue render cache key for the reference Table identical between peptide
+    switches (the first auto-filled selection is always 0) and the table
+    therefore appears stuck on stale data. Hashing in the *variant_key*
+    makes the auto-filled ``selected_ref_row`` differ per peptide, busting
+    the cache and forcing the bridge to push fresh rows. The query Table
+    doesn't need this — its index is the real ``psm_id`` which is already
+    unique across peptides.
+    """
+    digest = hashlib.md5(f"{variant_key}|{position}".encode()).digest()
+    return int.from_bytes(digest[:4], "big", signed=False) & 0x7FFFFFFF
+
+
 _PICKER_REF_SCHEMA = {
     "id": pl.Int32, "mzml": pl.String, "scan": pl.Int32,
     "rt": pl.Float32, "charge": pl.Int32, "score": pl.Float32,
@@ -74,7 +91,7 @@ def _build_picker_frames(
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Two LazyFrames — references (id = positional) and queries (psm_id = real key)."""
     ref_rows = [
-        {"id": i, **_picker_row(spec, _safe_score(spec))}
+        {"id": _ref_row_id(variant_key, i), **_picker_row(spec, _safe_score(spec))}
         for i, (spec, _) in enumerate(reference_store.get(variant_key, []))
     ]
     query_rows = [
@@ -266,11 +283,15 @@ def mirror_plots_fragment(params: dict):
     if query_psm not in annotated_queries:
         return
     refs = reference_store.get(chosen, [])
-    if not (0 <= ref_id < len(refs)):
+    # ref ids are hashed per (variant_key, position) — see _ref_row_id docstring.
+    # Rebuild the reverse index here so a stale ref_id from a previous peptide
+    # (after auto-fill races) resolves to None and we bail safely.
+    ref_index = {_ref_row_id(chosen, i): i for i in range(len(refs))}
+    if ref_id not in ref_index:
         return
 
     query_spectrum, query_anno = annotated_queries[query_psm]
-    reference_spectrum, reference_anno = refs[ref_id]
+    reference_spectrum, reference_anno = refs[ref_index[ref_id]]
     normalize = get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative"
     _render_mirror_pair(
         query_spectrum, query_anno, reference_spectrum, reference_anno, normalize,
