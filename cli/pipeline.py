@@ -75,24 +75,21 @@ def _run_search(config: CLIConfig, quiet: bool):
     return variant_groups, total_psms
 
 
-def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: int, quiet: bool):
-    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows, normalize)``."""
-    if not quiet:
-        print("Step 2: Loading and annotating spectra...")
-
-    normalize = config.intensity_mode == "Relative"
-    annotation_kwargs = dict(
+def _build_annotation_kwargs(config: CLIConfig, normalize: bool) -> dict:
+    """Pack annotation params from *config* into a kwargs dict."""
+    return dict(
         ion_types=config.ion_types,
         mz_tolerance=config.mz_tolerance,
         normalize=normalize,
         add_neutral_losses=config.add_neutral_losses,
     )
 
-    annotated_queries = []   # (psm_id, LoadedSpectrum, annotated_frame)
-    reference_store = {}     # variant_key -> [(LoadedSpectrum, annotated_frame)]
-    comparison_rows = []
 
-    progress = TerminalProgress("Loading", total_psms, quiet)
+def _make_query_ready_callback(
+    config: CLIConfig, psm_lookup, annotation_kwargs, reference_store,
+    annotated_queries: list, comparison_rows: list, progress: "TerminalProgress",
+):
+    """Build the ``on_query_ready`` callback that buffers PSMs + drives the progress bar."""
     loaded_count = [0]
 
     def on_query_ready(result):
@@ -111,12 +108,31 @@ def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: in
         loaded_count[0] += 1
         progress.update(loaded_count[0])
 
+    return on_query_ready
+
+
+def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: int, quiet: bool):
+    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows, normalize)``."""
+    if not quiet:
+        print("Step 2: Loading and annotating spectra...")
+
+    normalize = config.intensity_mode == "Relative"
+    annotation_kwargs = _build_annotation_kwargs(config, normalize)
+
+    annotated_queries: list = []   # (psm_id, LoadedSpectrum, annotated_frame)
+    reference_store: dict = {}     # variant_key -> [(LoadedSpectrum, annotated_frame)]
+    comparison_rows: list = []
+    progress = TerminalProgress("Loading", total_psms, quiet)
+
     load_spectra_streaming(
         variant_groups=variant_groups_copy,
         mzml_paths=[Path(m) for m in config.mzml_files],
         reference_substring=config.reference_substring,
         on_reference_loaded=lambda _v, _c: None,
-        on_query_ready=on_query_ready,
+        on_query_ready=_make_query_ready_callback(
+            config, psm_lookup, annotation_kwargs, reference_store,
+            annotated_queries, comparison_rows, progress,
+        ),
         on_file_start=lambda p, is_ref: logger.info(
             f"Processing {'reference' if is_ref else 'query'}: {Path(p).name}"),
         on_file_complete=lambda p, loaded, total: logger.info(

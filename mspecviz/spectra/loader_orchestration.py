@@ -103,6 +103,81 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
     return all_results
 
 
+def _split_reference_and_query_keys(
+    mzml_path_map: Dict[str, Path], reference_substring: str,
+) -> Tuple[Dict[str, Path], Dict[str, Path]]:
+    """Partition path-keys into ``(references, queries)`` by case-insensitive substring."""
+    reference_keys: Dict[str, Path] = {}
+    query_keys: Dict[str, Path] = {}
+    needle = reference_substring.lower() if reference_substring else None
+    for path_key, path in mzml_path_map.items():
+        if needle and needle in str(path).lower():
+            reference_keys[path_key] = path
+        else:
+            query_keys[path_key] = path
+    return reference_keys, query_keys
+
+
+def _filter_already_loaded(
+    mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]],
+    skip_ids: set,
+) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
+    """Drop any (variant_key, spectrum_id) pairs already present in *skip_ids*."""
+    before = sum(len(m) for m in mzml_to_matches.values())
+    filtered = {
+        pk: [(m, vk) for m, vk in ms if (vk, m.spectrum_id) not in skip_ids]
+        for pk, ms in mzml_to_matches.items()
+    }
+    filtered = {k: v for k, v in filtered.items() if v}
+    skipped = before - sum(len(m) for m in filtered.values())
+    if skipped > 0:
+        logger.info(
+            f"Resume: skipping {skipped} cached spectra, "
+            f"{sum(len(v) for v in filtered.values())} remaining"
+        )
+    return filtered
+
+
+def _collect_reference_spectra(
+    ref_results: List[LoadResult], variant_groups: Dict[str, VariantGroup],
+    on_reference_loaded: Optional[Callable[[str, int], None]],
+) -> Dict[str, List[LoadedSpectrum]]:
+    """Bucket reference spectra by variant_key and fire the per-variant callback."""
+    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups}
+    for res in ref_results:
+        for variant_key, spec in res.loaded:
+            reference_spectra[variant_key].append(spec)
+    if on_reference_loaded:
+        for variant_key, references in reference_spectra.items():
+            if references:
+                on_reference_loaded(variant_key, len(references))
+    logger.info(
+        f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra"
+    )
+    return reference_spectra
+
+
+def _stream_query_results(
+    query_results: List[LoadResult],
+    reference_spectra: Dict[str, List[LoadedSpectrum]],
+    variant_groups: Dict[str, VariantGroup],
+    on_query_ready: Optional[Callable[[StreamingResult], None]],
+) -> None:
+    """Fire ``on_query_ready`` once per loaded query spectrum."""
+    if not on_query_ready:
+        return
+    for res in query_results:
+        for variant_key, loaded in res.loaded:
+            variant_group = variant_groups[variant_key]
+            on_query_ready(StreamingResult(
+                query_spectrum=loaded,
+                reference_spectra=reference_spectra[variant_key],
+                variant_key=variant_key,
+                base_sequence=variant_group.base_sequence,
+                modification_key=variant_group.modification_key,
+            ))
+
+
 def load_spectra_streaming(
     variant_groups: Dict[str, VariantGroup],
     mzml_paths: List[Path],
@@ -122,66 +197,34 @@ def load_spectra_streaming(
     per reference and per query. Returns ``{variant_key: [reference_spectra]}``.
     """
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
-
-    reference_keys: Dict[str, Path] = {}
-    query_keys: Dict[str, Path] = {}
-    for path_key, path in mzml_path_map.items():
-        if reference_substring and reference_substring.lower() in str(path).lower():
-            reference_keys[path_key] = path
-        else:
-            query_keys[path_key] = path
+    reference_keys, query_keys = _split_reference_and_query_keys(
+        mzml_path_map, reference_substring,
+    )
 
     mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
-
-    # Filter already-loaded spectra when resuming from partial cache
     if skip_ids:
-        before = sum(len(m) for m in mzml_to_matches.values())
-        mzml_to_matches = {
-            pk: [(m, vk) for m, vk in ms if (vk, m.spectrum_id) not in skip_ids]
-            for pk, ms in mzml_to_matches.items()
-        }
-        mzml_to_matches = {k: v for k, v in mzml_to_matches.items() if v}
-        skipped = before - sum(len(m) for m in mzml_to_matches.values())
-        if skipped > 0:
-            logger.info(f"Resume: skipping {skipped} cached spectra, "
-                        f"{sum(len(v) for v in mzml_to_matches.values())} remaining")
+        mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
 
-    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups}
-
-    total_files = sum(1 for pk in list(reference_keys) + list(query_keys) if pk in mzml_to_matches)
+    total_files = sum(
+        1 for pk in list(reference_keys) + list(query_keys) if pk in mzml_to_matches
+    )
     effective_workers = max(1, min(workers, total_files))
 
-    # Phase 1: References
     ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map)
-    ref_results = _execute_load_tasks(ref_tasks, True, effective_workers,
-                                      on_file_start, on_file_complete, error_callback)
-    for res in ref_results:
-        for variant_key, spec in res.loaded:
-            reference_spectra[variant_key].append(spec)
+    ref_results = _execute_load_tasks(
+        ref_tasks, True, effective_workers,
+        on_file_start, on_file_complete, error_callback,
+    )
+    reference_spectra = _collect_reference_spectra(
+        ref_results, variant_groups, on_reference_loaded,
+    )
 
-    if on_reference_loaded:
-        for variant_key, references in reference_spectra.items():
-            if references:
-                on_reference_loaded(variant_key, len(references))
-
-    logger.info(f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra")
-
-    # Phase 2: Queries - stream via callback
     query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map)
-    query_results = _execute_load_tasks(query_tasks, False, effective_workers,
-                                        on_file_start, on_file_complete, error_callback)
-
-    for res in query_results:
-        for variant_key, loaded in res.loaded:
-            if on_query_ready:
-                variant_group = variant_groups[variant_key]
-                on_query_ready(StreamingResult(
-                    query_spectrum=loaded,
-                    reference_spectra=reference_spectra[variant_key],
-                    variant_key=variant_key,
-                    base_sequence=variant_group.base_sequence,
-                    modification_key=variant_group.modification_key,
-                ))
+    query_results = _execute_load_tasks(
+        query_tasks, False, effective_workers,
+        on_file_start, on_file_complete, error_callback,
+    )
+    _stream_query_results(query_results, reference_spectra, variant_groups, on_query_ready)
 
     logger.info("Query streaming complete")
     return reference_spectra

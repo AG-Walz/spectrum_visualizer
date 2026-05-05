@@ -163,7 +163,7 @@ class TestRunExport:
 
             yield mock_st, tmp_path
 
-    def _run(self, tmp_path, **flags):
+    def _invoke_export(self, tmp_path, **flags):
         export_dir = str(tmp_path / "exports")
         defaults = dict(do_parquet=False, do_csv=False, do_mirror=False,
                         do_summary=False, do_html=False)
@@ -173,7 +173,7 @@ class TestRunExport:
 
     def test_parquet_export(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_parquet=True)
+        export_dir = self._invoke_export(tmp_path, do_parquet=True)
 
         export_dirs = list(Path(export_dir).iterdir())
         assert len(export_dirs) == 1
@@ -185,7 +185,7 @@ class TestRunExport:
 
     def test_csv_export(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_csv=True)
+        export_dir = self._invoke_export(tmp_path, do_csv=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
         assert (export_root / "comparison_summary.csv").exists()
@@ -195,7 +195,7 @@ class TestRunExport:
 
     def test_mirror_plot_export(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_mirror=True)
+        export_dir = self._invoke_export(tmp_path, do_mirror=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
         png_files = list(export_root.rglob("*.png"))
@@ -205,7 +205,7 @@ class TestRunExport:
 
     def test_summary_plot_export(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_summary=True)
+        export_dir = self._invoke_export(tmp_path, do_summary=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
         summary_dir = export_root / "summary"
@@ -215,7 +215,7 @@ class TestRunExport:
 
     def test_full_export(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_parquet=True, do_csv=True,
+        export_dir = self._invoke_export(tmp_path, do_parquet=True, do_csv=True,
                                do_mirror=True, do_summary=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
@@ -227,7 +227,7 @@ class TestRunExport:
 
     def test_run_settings_json_valid(self, mock_st):
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path)
+        export_dir = self._invoke_export(tmp_path)
 
         export_root = list(Path(export_dir).iterdir())[0]
         with open(export_root / "run_settings.json") as f:
@@ -237,7 +237,7 @@ class TestRunExport:
     def test_export_creates_versioned_directory(self, mock_st):
         """Streamlit now uses the CLI's fingerprinted ``{project}_{NNN}_{YYYYMMDD}`` layout."""
         _, tmp_path = mock_st
-        export_dir = self._run(tmp_path, do_parquet=True)
+        export_dir = self._invoke_export(tmp_path, do_parquet=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
         # Shared orchestrator: ``MSpecViz_analysis_001_20260420`` (or whatever

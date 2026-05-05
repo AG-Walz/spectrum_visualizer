@@ -14,6 +14,56 @@ from mspecviz.spectra.mzml_lookup import find_spectrum_index, open_indexed_mzml_
 logger = logging.getLogger(__name__)
 
 
+def _resolve_precursor(spectrum, default_charge: int) -> Tuple[float, int]:
+    """Pull precursor m/z and charge from *spectrum*, falling back to the match charge."""
+    precursors = spectrum.getPrecursors()
+    if not precursors:
+        return 0.0, default_charge
+    prec = precursors[0]
+    charge = prec.getCharge() if prec.getCharge() > 0 else default_charge
+    return prec.getMZ(), charge
+
+
+def _build_loaded_spectrum(
+    spectrum, match: "PeptideMatch", display_name: str, is_reference: bool,
+) -> LoadedSpectrum:
+    """Wrap a pyopenms ``MSSpectrum`` in our ``LoadedSpectrum`` dataclass."""
+    mz_array, intensity_array = spectrum.get_peaks()
+    precursor_mz, precursor_charge = _resolve_precursor(spectrum, match.charge)
+    return LoadedSpectrum(
+        spectrum_id=match.spectrum_id,
+        mz=mz_array,
+        intensity=intensity_array,
+        precursor_mz=precursor_mz,
+        precursor_charge=precursor_charge,
+        peptidoform=match.peptidoform,
+        base_sequence=match.base_sequence,
+        source_file=display_name,
+        is_reference=is_reference,
+        rt=spectrum.getRT(),
+        match=match,
+    )
+
+
+def _load_one_match(
+    indexed_exp, id_to_index: dict, n_spectra: int,
+    match: "PeptideMatch", variant_key: str,
+    display_name: str, is_reference: bool,
+) -> Tuple[Tuple[str, LoadedSpectrum] | None, str | None]:
+    """Resolve and read a single match; returns ``(loaded_pair, error_msg)``."""
+    try:
+        idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+        if idx is None:
+            return None, f"Spectrum not found: {match.spectrum_id} in {display_name}"
+        spectrum = indexed_exp.getSpectrum(idx)
+        loaded = (variant_key, _build_loaded_spectrum(
+            spectrum, match, display_name, is_reference,
+        ))
+        return loaded, None
+    except Exception as e:
+        return None, f"Error loading {match.spectrum_id}: {e}"
+
+
 def _load_spectra_from_mzml(
     mzml_path_str: str,
     display_name: str,
@@ -32,42 +82,17 @@ def _load_spectra_from_mzml(
         n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
         for match, variant_key in matches_for_file:
-            try:
-                idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
-                if idx is None:
-                    not_found_count += 1
-                    errors.append(f"Spectrum not found: {match.spectrum_id} in {display_name}")
-                    continue
-
-                spectrum = indexed_exp.getSpectrum(idx)
-                mz_array, intensity_array = spectrum.get_peaks()
-
-                precursor_mz = 0.0
-                precursor_charge = match.charge
-                if spectrum.getPrecursors():
-                    prec = spectrum.getPrecursors()[0]
-                    precursor_mz = prec.getMZ()
-                    if prec.getCharge() > 0:
-                        precursor_charge = prec.getCharge()
-
-                loaded.append((variant_key, LoadedSpectrum(
-                    spectrum_id=match.spectrum_id,
-                    mz=mz_array,
-                    intensity=intensity_array,
-                    precursor_mz=precursor_mz,
-                    precursor_charge=precursor_charge,
-                    peptidoform=match.peptidoform,
-                    base_sequence=match.base_sequence,
-                    source_file=display_name,
-                    is_reference=is_reference,
-                    rt=spectrum.getRT(),
-                    match=match,
-                )))
+            pair, error = _load_one_match(
+                indexed_exp, id_to_index, n_spectra,
+                match, variant_key, display_name, is_reference,
+            )
+            if pair is not None:
+                loaded.append(pair)
                 loaded_count += 1
-
-            except Exception as e:
+            else:
                 not_found_count += 1
-                errors.append(f"Error loading {match.spectrum_id}: {e}")
+                if error:
+                    errors.append(error)
 
     except Exception as e:
         errors.append(f"Error opening {display_name}: {e}")

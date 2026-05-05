@@ -37,16 +37,8 @@ def build_config(yaml_config: dict, args: argparse.Namespace) -> CLIConfig:
     return config
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(
-        prog="mspecviz-cli",
-        description="MSpecViz CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
-        epilog="Example: python -m cli --config cli/config/config_example.yaml --verbose",
-    )
-
-    parser.add_argument("-c", "--config", required=True,
-                        help="Path to YAML config file")
-
+def _add_input_arguments(parser: argparse.ArgumentParser) -> None:
+    """Inputs: idXML/mzML files + peptides + reference substring."""
     # ``dest=`` is set whenever argparse's default name doesn't match the
     # target CLIConfig field destination.
     parser.add_argument("--idxml", dest="idxml_files", nargs="+", metavar="PATTERN",
@@ -58,11 +50,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--reference-substring", metavar="STR",
                         help="Reference file substring (overrides config)")
 
+
+def _add_annotation_arguments(parser: argparse.ArgumentParser) -> None:
+    """Ion types + tolerance for the annotation pass."""
     parser.add_argument("--ion-types", nargs="+", metavar="ION",
                         help="Ion types, e.g. b y (overrides config)")
     parser.add_argument("--mz-tolerance", type=float, metavar="DA",
                         help="m/z tolerance in Da (overrides config)")
 
+
+def _add_export_arguments(parser: argparse.ArgumentParser) -> None:
+    """Output directory + project name + formats + workers."""
     parser.add_argument("--export-directory", metavar="DIR",
                         help="Export directory (overrides config)")
     parser.add_argument("--project-name", metavar="NAME",
@@ -73,12 +71,18 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--workers", type=int, metavar="N",
                         help="Parallel workers (overrides config)")
 
+
+def _add_summary_arguments(parser: argparse.ArgumentParser) -> None:
+    """Summary-plot metric + plot-type selectors."""
     parser.add_argument("--summary-metric", metavar="NAME",
                         help="Default summary plot metric (overrides config)")
     parser.add_argument("--summary-plot-types", nargs="+", metavar="TYPE",
                         choices=["dual_axis", "ridgeline", "heatmap"],
                         help="Summary plot types to render (overrides config)")
 
+
+def _add_toggle_arguments(parser: argparse.ArgumentParser) -> None:
+    """Negative toggles for plots and Koina fallback."""
     # ``default=None`` turns argparse's usual False into "not supplied" so the
     # copy loop's None-filter lets a YAML-set ``no_plots: true`` survive when
     # the flag is absent. Present → True → overrides; absent → None → skipped.
@@ -87,6 +91,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no-koina", action="store_true", default=None,
                         help="Disable Koina AI fallback predictions")
 
+
+def _add_koina_arguments(parser: argparse.ArgumentParser) -> None:
+    """Koina model selector + collision energy + instrument type."""
     parser.add_argument("--koina-model", metavar="ID",
                         help="Koina model ID (overrides config)")
     parser.add_argument("--koina-collision-energy", type=int, metavar="EV",
@@ -94,9 +101,28 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--koina-instrument-type", metavar="TYPE",
                         help="Koina instrument type (overrides config)")
 
+
+def _add_logging_arguments(parser: argparse.ArgumentParser) -> None:
+    """``-v`` / ``-q`` log-level toggles."""
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="Verbose output (DEBUG logging)")
     parser.add_argument("-q", "--quiet", action="store_true",
                         help="Suppress non-error output")
 
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="mspecviz-cli",
+        description="MSpecViz CLI -- Terminal-based MS/MS spectrum analysis pipeline.",
+        epilog="Example: python -m cli --config cli/config/config_example.yaml --verbose",
+    )
+    parser.add_argument("-c", "--config", required=True,
+                        help="Path to YAML config file")
+    _add_input_arguments(parser)
+    _add_annotation_arguments(parser)
+    _add_export_arguments(parser)
+    _add_summary_arguments(parser)
+    _add_toggle_arguments(parser)
+    _add_koina_arguments(parser)
+    _add_logging_arguments(parser)
     return parser

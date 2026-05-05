@@ -22,7 +22,7 @@ MOD_ABBREVIATIONS = {
 }
 
 
-def abbreviate_mod(name: str) -> str:
+def abbreviate_modification(name: str) -> str:
     """Return short abbreviation for a modification, or the full name if unknown."""
     return MOD_ABBREVIATIONS.get(name, name)
 
@@ -79,7 +79,7 @@ def extract_spectra_data_map(protein_ids: List) -> Tuple[Dict[str, List[str]], D
     return run_map, run_map_full
 
 
-def mod_key_from_peptidoform(peptidoform_obj) -> str:
+def modification_key_from_peptidoform(peptidoform_obj) -> str:
     """
     Build compact modification key from a psm_utils Peptidoform object.
 
@@ -88,12 +88,12 @@ def mod_key_from_peptidoform(peptidoform_obj) -> str:
     mods = []
     if peptidoform_obj.properties.get("n_term"):
         for mod in peptidoform_obj.properties["n_term"]:
-            mods.append(f"NTerm[{abbreviate_mod(mod.name)}]")
+            mods.append(f"NTerm[{abbreviate_modification(mod.name)}]")
     for position, (amino_acid, residue_mods) in enumerate(peptidoform_obj.parsed_sequence):
         if residue_mods:
             for mod in residue_mods:
-                mods.append(f"{amino_acid}{position + 1}[{abbreviate_mod(mod.name)}]")
+                mods.append(f"{amino_acid}{position + 1}[{abbreviate_modification(mod.name)}]")
     if peptidoform_obj.properties.get("c_term"):
         for mod in peptidoform_obj.properties["c_term"]:
-            mods.append(f"CTerm[{abbreviate_mod(mod.name)}]")
+            mods.append(f"CTerm[{abbreviate_modification(mod.name)}]")
     return "|".join(mods) if mods else ""

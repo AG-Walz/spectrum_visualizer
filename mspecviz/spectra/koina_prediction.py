@@ -73,6 +73,31 @@ def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     return "".join(parts)
 
 
+def _build_koina_input(unimod_seq: str, charge: int, collision_energy: int,
+                       instrument_type: str) -> pd.DataFrame:
+    """Build the single-row input DataFrame Koina expects."""
+    return pd.DataFrame({
+        "peptide_sequences": [unimod_seq],
+        "precursor_charges": [charge],
+        "collision_energies": [collision_energy],
+        "instrument_types": [instrument_type],
+    })
+
+
+def _koina_predictions_to_frame(predictions) -> pd.DataFrame:
+    """Convert raw Koina output into our standard ``[mz, intensity, annotation]`` frame."""
+    annotations = (
+        predictions["annotation"].astype(str)
+        .str.replace(r"^b'|'$", "", regex=True)
+    )
+    result = pd.DataFrame({
+        "mz": predictions["mz"].astype(float),
+        "intensity": predictions["intensities"].astype(float),
+        "annotation": annotations,
+    })
+    return result[result["intensity"] > 0].reset_index(drop=True)
+
+
 def predict_koina_spectrum(
     peptidoform_str: str,
     charge: int,
@@ -93,44 +118,25 @@ def predict_koina_spectrum(
 
     try:
         koina = Koina(model_id)
-
-        inputs = pd.DataFrame({
-            "peptide_sequences": [unimod_seq],
-            "precursor_charges": [charge],
-            "collision_energies": [collision_energy],
-            "instrument_types": [instrument_type],
-        })
-
-        predictions = koina.predict(inputs)
-
-        # Clean byte-string artifacts from annotation column (b'y3+1' -> y3+1)
-        annotations = (
-            predictions["annotation"]
-            .astype(str)
-            .str.replace(r"^b'|'$", "", regex=True)
+        predictions = koina.predict(
+            _build_koina_input(unimod_seq, charge, collision_energy, instrument_type)
         )
-
-        result = pd.DataFrame({
-            "mz": predictions["mz"].astype(float),
-            "intensity": predictions["intensities"].astype(float),
-            "annotation": annotations,
-        })
-
-        result = result[result["intensity"] > 0].reset_index(drop=True)
-
-        if result.empty:
-            logger.warning(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
-            return None
-
-        logger.info(
-            f"Koina: predicted {len(result)} fragments for '{peptidoform_str}' "
-            f"(model={model_id}, CE={collision_energy}, inst={instrument_type})"
-        )
-        return result
-
+        result = _koina_predictions_to_frame(predictions)
     except Exception as e:
         logger.warning(f"Koina prediction failed for '{peptidoform_str}': {e}")
         return None
+
+    if result.empty:
+        logger.warning(
+            f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})"
+        )
+        return None
+
+    logger.info(
+        f"Koina: predicted {len(result)} fragments for '{peptidoform_str}' "
+        f"(model={model_id}, CE={collision_energy}, inst={instrument_type})"
+    )
+    return result
 
 
 def get_koina_settings(settings: dict) -> dict:

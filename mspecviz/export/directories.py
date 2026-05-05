@@ -28,6 +28,59 @@ def _settings_fingerprint(run_settings: dict) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
+def _entry_fingerprint(settings_file: Path) -> str | None:
+    """Return the ``_fingerprint`` from a ``run_settings.json``, or None on parse error."""
+    try:
+        with open(settings_file) as f:
+            return json.load(f).get("_fingerprint")
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Could not read {settings_file}: {e}")
+        return None
+
+
+def _scan_existing_dirs(base: Path, pattern: re.Pattern, fingerprint: str):
+    """Walk *base* looking for fingerprint-matching folders + the highest used NNN.
+
+    Returns ``(max_num, match_entry, match_num)``.
+    """
+    max_num = 0
+    match_entry = None
+    match_num = None
+    if not base.exists():
+        return max_num, match_entry, match_num
+
+    for entry in sorted(base.iterdir()):
+        if not entry.is_dir():
+            continue
+        name_match = pattern.match(entry.name)
+        if not name_match:
+            continue
+        num = int(name_match.group(1))
+        max_num = max(max_num, num)
+        if match_entry is None:
+            settings_file = entry / "run_settings.json"
+            if settings_file.exists() and _entry_fingerprint(settings_file) == fingerprint:
+                match_entry = entry
+                match_num = num
+    return max_num, match_entry, match_num
+
+
+def _rename_or_reuse_match(base: Path, prefix: str, match_entry: Path,
+                           match_num: int, today: str) -> Path:
+    """Rename a fingerprint-matching folder to today's date, falling back on failure."""
+    new_path = base / f"{prefix}_{match_num:03d}_{today}"
+    if match_entry == new_path:
+        logger.info(f"Reusing export directory: {new_path.name}")
+        return new_path
+    try:
+        match_entry.rename(new_path)
+        logger.info(f"Renamed {match_entry.name} -> {new_path.name}")
+        return new_path
+    except OSError as e:
+        logger.warning(f"Could not rename folder: {e}")
+        return match_entry
+
+
 def find_or_create_export_directory(
     base_dir: str,
     project_name: str,
@@ -44,58 +97,16 @@ def find_or_create_export_directory(
     prefix = sanitize_filename(project_name)
     fingerprint = _settings_fingerprint(run_settings)
     today = datetime.now().strftime("%Y%m%d")
-
-    # Pattern: {prefix}_{NNN}_{YYYYMMDD}
     pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{3}})_(\d{{8}})$")
 
-    # Scan existing folders (base may not exist yet on first run)
-    max_num = 0
-    match_entry = None
-    match_num = None
-
-    if base.exists():
-        for entry in sorted(base.iterdir()):
-            if not entry.is_dir():
-                continue
-            name_match = pattern.match(entry.name)
-            if not name_match:
-                continue
-            num = int(name_match.group(1))
-            max_num = max(max_num, num)
-
-            # Check settings match
-            if match_entry is None:
-                settings_file = entry / "run_settings.json"
-                if settings_file.exists():
-                    try:
-                        with open(settings_file) as f:
-                            saved = json.load(f)
-                        if saved.get("_fingerprint") == fingerprint:
-                            match_entry = entry
-                            match_num = num
-                    except (json.JSONDecodeError, OSError) as e:
-                        logger.warning(f"Could not read {settings_file}: {e}")
+    max_num, match_entry, match_num = _scan_existing_dirs(base, pattern, fingerprint)
 
     if match_entry is not None:
-        # Rename to today's date and reuse
-        new_name = f"{prefix}_{match_num:03d}_{today}"
-        new_path = base / new_name
-        if match_entry != new_path:
-            try:
-                match_entry.rename(new_path)
-                logger.info(f"Renamed {match_entry.name} -> {new_name}")
-            except OSError as e:
-                logger.warning(f"Could not rename folder: {e}")
-                new_path = match_entry  # fall back to old path
-        else:
-            logger.info(f"Reusing export directory: {new_path.name}")
-
+        new_path = _rename_or_reuse_match(base, prefix, match_entry, match_num, today)
         return new_path, new_path / "png", new_path / "svg", new_path / "pdf"
 
-    # No match -- plan next numbered folder (no mkdir yet)
     next_num = max_num + 1
-    folder_name = f"{prefix}_{next_num:03d}_{today}"
-    root_dir = base / folder_name
+    root_dir = base / f"{prefix}_{next_num:03d}_{today}"
     return root_dir, root_dir / "png", root_dir / "svg", root_dir / "pdf"
 
 

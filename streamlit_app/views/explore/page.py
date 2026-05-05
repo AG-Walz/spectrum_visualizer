@@ -22,8 +22,8 @@ from mspecviz.plotting import (
     prepare_summary_data,
 )
 
-from streamlit_app.views.explore.explorer import openms_insight_explorer_fragment
-from streamlit_app.views.explore.plots import mirror_plots_fragment
+from streamlit_app.views.explore.explorer import render_explorer
+from streamlit_app.views.explore.mirror_plots import mirror_plots_fragment
 
 params = page_setup()
 logger = logging.getLogger(__name__)
@@ -91,7 +91,7 @@ def render():
     )
 
     if explore_mode == "Interactive Explorer":
-        openms_insight_explorer_fragment(params)
+        render_explorer(params)
     elif explore_mode == "Mirror Plots":
         mirror_plots_fragment(params)
     elif explore_mode == "Comparison Metrics":

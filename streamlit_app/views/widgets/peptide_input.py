@@ -88,32 +88,29 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
             st.success(f"{len(peptides)} peptide(s) entered")
 
 
-def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
-    """Pick-from-idXML tab: scans files, renders filterable multiselect."""
-    if not idxmls:
-        st.info("Select idXML files above first.")
-        return
-
+def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
+    """Return cached PSM counts for the given idXML files, scanning if needed."""
     scan_key = '_idxml_psm_counts'
     scan_files_key = '_idxml_scan_files'
     psm_counts = st.session_state.get(scan_key, {})
     scanned_files = st.session_state.get(scan_files_key)
 
-    if not psm_counts or scanned_files != idxmls:
-        n = len(idxmls)
-        st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
-        if st.button(f"Scan {n} files for peptides",
-                     key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-            merged, _errors = _scan_idxmls_for_psm_counts(idxmls, workers)
-            st.session_state[scan_key] = dict(sorted(merged.items()))
-            st.session_state[scan_files_key] = idxmls
-            st.rerun()
+    if psm_counts and scanned_files == idxmls:
+        return psm_counts
 
-    if not psm_counts:
-        return
+    n = len(idxmls)
+    st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
+    if st.button(f"Scan {n} files for peptides",
+                 key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
+        merged, _errors = _scan_idxmls_for_psm_counts(idxmls, workers)
+        st.session_state[scan_key] = dict(sorted(merged.items()))
+        st.session_state[scan_files_key] = idxmls
+        st.rerun()
+    return psm_counts
 
-    st.caption(f"{len(psm_counts)} unique peptides found")
 
+def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
+    """Render the filter input + min-PSM number_input; returns ``(text, min_psm)``."""
     f_col1, f_col2 = st.columns([2, 1])
     with f_col1:
         filter_text = st.text_input(
@@ -127,41 +124,63 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
             key=f"{STATE_PREFIX}_pick_min_psm",
             help="Show only peptides with at least this many PSMs",
         )
+    return filter_text, min_psm
 
+
+def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -> list[str]:
+    """Render the peptide multiselect; returns the list of selected sequences."""
     shown_items = [
         (seq, cnt) for seq, cnt in psm_counts.items()
         if cnt >= min_psm and (not filter_text or filter_text.upper() in seq)
     ]
     labels = [f"{seq} ({cnt})" for seq, cnt in shown_items]
     label_to_seq = dict(zip(labels, (seq for seq, _ in shown_items)))
-
     current = set(parse_peptide_list(st.session_state.get('target_peptides', '')))
     defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
-
     selected_labels = st.multiselect(
         "Select peptides", options=labels, default=defaults,
         key=f"{STATE_PREFIX}_pick_multi",
     )
-    selected = [label_to_seq[lbl] for lbl in selected_labels]
+    return [label_to_seq[lbl] for lbl in selected_labels]
 
-    def _set_pending(mode: str) -> None:
-        """mode='replace' sets the paste box to *selected*; 'append' merges with existing."""
-        if mode == "append":
-            existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
-            peps = list(dict.fromkeys(existing + selected))
-        else:
-            peps = selected
-        st.session_state[pending_key] = "\n".join(peps)
-        st.rerun()
 
+def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) -> None:
+    """Write *selected* into ``pending_key`` either replacing or appending."""
+    if mode == "append":
+        existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
+        peps = list(dict.fromkeys(existing + selected))
+    else:
+        peps = selected
+    st.session_state[pending_key] = "\n".join(peps)
+    st.rerun()
+
+
+def _render_pick_actions(selected: list[str], pending_key: str) -> None:
+    """Render the 'Set as target' / 'Add to existing' buttons."""
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
                      type="primary"):
-            _set_pending("replace")
+            _commit_picked_peptides(selected, pending_key, "replace")
     with c2:
         if st.button("Add to existing", key=f"{STATE_PREFIX}_pick_add"):
-            _set_pending("append")
+            _commit_picked_peptides(selected, pending_key, "append")
+
+
+def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
+    """Pick-from-idXML tab: scans files, renders filterable multiselect."""
+    if not idxmls:
+        st.info("Select idXML files above first.")
+        return
+
+    psm_counts = _ensure_psm_counts_for(idxmls, workers)
+    if not psm_counts:
+        return
+
+    st.caption(f"{len(psm_counts)} unique peptides found")
+    filter_text, min_psm = _render_pick_filters(psm_counts)
+    selected = _render_pick_multiselect(psm_counts, filter_text, min_psm)
+    _render_pick_actions(selected, pending_key)
 
 
 def render_peptide_input(params: dict) -> None:

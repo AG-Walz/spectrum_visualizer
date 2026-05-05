@@ -24,6 +24,116 @@ from mspecviz.spectra.mzml_native_ids import (
 logger = logging.getLogger(__name__)
 
 
+def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tuple[str, int]:
+    """Inspect the first spectrum's native ID; return ``(format, offset)``.
+
+    ``offset`` is meaningful only for ``index=N`` (0 for 0-based, 1 for 1-based).
+    """
+    if n_spectra == 0:
+        return "unknown", 0
+    first_id = indexed_exp.getSpectrum(0).getNativeID()
+    if INDEX_TAG in first_id:
+        first_num = _extract_id_number(first_id)
+        return "index", (first_num if first_num is not None else 0)
+    if SCAN_TAG in first_id:
+        return "scan", 0
+    if SPECTRUM_TAG in first_id:
+        return "spectrum", 0
+    return "unknown", 0
+
+
+def _try_candidate_indices(
+    indexed_exp: oms.OnDiscMSExperiment, clean_id: str, candidates: List[int],
+    id_to_index: Dict[str, int],
+) -> bool:
+    """Try a small list of candidate array positions; persist the first match."""
+    for candidate_idx in candidates:
+        try:
+            check_id = indexed_exp.getSpectrum(candidate_idx).getNativeID()
+        except Exception:
+            continue
+        if clean_id != clean_spectrum_id(check_id):
+            continue
+        id_to_index[clean_id] = candidate_idx
+        check_num = _extract_id_number(check_id)
+        if check_num is not None:
+            id_to_index[f"_num_{check_num}"] = candidate_idx
+        return True
+    return False
+
+
+def _binary_search_for_num(
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, num: int,
+    clean_id: str, id_to_index: Dict[str, int],
+) -> bool:
+    """Scan IDs are typically monotonic — binary-search by extracted number."""
+    lo, hi = 0, n_spectra - 1
+    while lo <= hi:
+        mid = (lo + hi) // 2
+        try:
+            mid_id = indexed_exp.getSpectrum(mid).getNativeID()
+        except Exception:
+            return False
+        mid_num = _extract_id_number(mid_id)
+        if mid_num is None:
+            return False
+        if mid_num == num:
+            id_to_index[clean_id] = mid
+            id_to_index[f"_num_{mid_num}"] = mid
+            return True
+        if mid_num < num:
+            lo = mid + 1
+        else:
+            hi = mid - 1
+    return False
+
+
+def _resolve_targeted_id(
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, sid: str,
+    id_to_index: Dict[str, int],
+) -> bool:
+    """Resolve one needed spectrum ID via off-by-one probe then binary search."""
+    clean_id = clean_spectrum_id(sid)
+    num = _extract_id_number(clean_id)
+    if num is None:
+        return False
+    candidates = []
+    if 0 <= num < n_spectra:
+        candidates.append(num)
+    if num > 0 and (num - 1) < n_spectra:
+        candidates.append(num - 1)
+    if _try_candidate_indices(indexed_exp, clean_id, candidates, id_to_index):
+        return True
+    return _binary_search_for_num(indexed_exp, n_spectra, num, clean_id, id_to_index)
+
+
+def _build_targeted_index(
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, needed_ids: List[str],
+    id_to_index: Dict[str, int],
+) -> int:
+    """Populate *id_to_index* for each needed ID; returns count found."""
+    found = 0
+    for sid in needed_ids:
+        if _resolve_targeted_id(indexed_exp, n_spectra, sid, id_to_index):
+            found += 1
+    return found
+
+
+def _build_full_scan_index(
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, id_to_index: Dict[str, int],
+) -> None:
+    """Fall back to walking every spectrum and recording its native ID."""
+    for i in range(n_spectra):
+        try:
+            native_id = indexed_exp.getSpectrum(i).getNativeID()
+        except Exception:
+            continue
+        id_to_index[native_id] = i
+        num_match = ANY_DIGITS_RE.search(native_id)
+        if num_match:
+            id_to_index[f"_num_{num_match.group(1)}"] = i
+
+
 def open_indexed_mzml_fast(
     mzml_path: str,
     needed_ids: Optional[List[str]] = None
@@ -37,111 +147,31 @@ def open_indexed_mzml_fast(
     """
     indexed_exp = oms.OnDiscMSExperiment()
     indexed_exp.openFile(str(mzml_path))
-
     n_spectra = indexed_exp.getNrSpectra()
-    id_to_index: Dict[str, int] = {}
 
-    # Detect format and index offset from first spectrum
-    id_format = "unknown"
-    index_offset = 0
-    if n_spectra > 0:
-        first_id = indexed_exp.getSpectrum(0).getNativeID()
-        if INDEX_TAG in first_id:
-            id_format = "index"
-            # Detect 0-based vs 1-based indexing
-            first_num = _extract_id_number(first_id)
-            if first_num is not None:
-                index_offset = first_num  # 0 for 0-based, 1 for 1-based
-        elif SCAN_TAG in first_id:
-            id_format = "scan"
-        elif SPECTRUM_TAG in first_id:
-            id_format = "spectrum"
+    id_format, index_offset = _detect_id_format(indexed_exp, n_spectra)
+    id_to_index: Dict[str, int] = {
+        "__format__": id_format,
+        "__n_spectra__": n_spectra,
+        "__index_offset__": index_offset,
+    }
 
-    id_to_index["__format__"] = id_format
-    id_to_index["__n_spectra__"] = n_spectra
-    id_to_index["__index_offset__"] = index_offset
-
-    # FAST PATH: "index=N" format - apply offset to convert native ID number
-    # to array position. E.g., 1-based "index=1" -> array position 0.
     if id_format == "index":
         logger.debug(f"Fast path: index format detected (offset={index_offset}), "
                      f"skipping full scan ({n_spectra} spectra)")
         return indexed_exp, id_to_index
 
-    # FAST PATH: known needed IDs + numeric format -> targeted lookup
     if needed_ids and id_format in ("scan", "spectrum"):
-        found = 0
-        for sid in needed_ids:
-            clean_id = clean_spectrum_id(sid)
-            num = _extract_id_number(clean_id)
-            if num is None:
-                continue
-
-            # Try direct + off-by-one first (scan numbers often near indices)
-            candidates = []
-            if 0 <= num < n_spectra:
-                candidates.append(num)
-            if num > 0 and (num - 1) < n_spectra:
-                candidates.append(num - 1)
-
-            matched = False
-            for candidate_idx in candidates:
-                try:
-                    check_spec = indexed_exp.getSpectrum(candidate_idx)
-                    check_id = check_spec.getNativeID()
-                    if clean_id == clean_spectrum_id(check_id):
-                        id_to_index[clean_id] = candidate_idx
-                        check_num = _extract_id_number(check_id)
-                        if check_num is not None:
-                            id_to_index[f"_num_{check_num}"] = candidate_idx
-                        found += 1
-                        matched = True
-                        break
-                except Exception:
-                    continue
-
-            if not matched:
-                # Binary search: scan numbers are typically monotonic
-                lo, hi = 0, n_spectra - 1
-                while lo <= hi:
-                    mid = (lo + hi) // 2
-                    try:
-                        mid_spec = indexed_exp.getSpectrum(mid)
-                        mid_id = mid_spec.getNativeID()
-                        mid_num = _extract_id_number(mid_id)
-                        if mid_num is None:
-                            break
-                        if mid_num == num:
-                            id_to_index[clean_id] = mid
-                            id_to_index[f"_num_{mid_num}"] = mid
-                            found += 1
-                            break
-                        elif mid_num < num:
-                            lo = mid + 1
-                        else:
-                            hi = mid - 1
-                    except Exception:
-                        break
-
-        logger.debug(f"Targeted lookup: found {found}/{len(needed_ids)} spectra in {Path(mzml_path).name}")
-
-        # If we found enough, skip the slow fallback
+        found = _build_targeted_index(indexed_exp, n_spectra, needed_ids, id_to_index)
+        logger.debug(
+            f"Targeted lookup: found {found}/{len(needed_ids)} spectra in "
+            f"{Path(mzml_path).name}"
+        )
         if found > 0:
             return indexed_exp, id_to_index
 
-    # SLOW FALLBACK: full scan (unknown format or all targeted lookups missed)
     logger.debug(f"Full scan fallback for {Path(mzml_path).name} ({n_spectra} spectra)")
-    for i in range(n_spectra):
-        try:
-            spec = indexed_exp.getSpectrum(i)
-            native_id = spec.getNativeID()
-            id_to_index[native_id] = i
-            num_match = ANY_DIGITS_RE.search(native_id)
-            if num_match:
-                id_to_index[f"_num_{num_match.group(1)}"] = i
-        except Exception:
-            continue
-
+    _build_full_scan_index(indexed_exp, n_spectra, id_to_index)
     return indexed_exp, id_to_index
 
 

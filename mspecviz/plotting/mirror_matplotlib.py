@@ -24,16 +24,7 @@ def _add_matplotlib_spectrum(ax, df: pd.DataFrame, y_multiplier: float,
                              show_annotations: bool = True,
                              annotation_fontsize: int = 7,
                              ann_offset: float = ANN_OFFSET):
-    """Add matplotlib vlines and annotation text for one spectrum.
-
-    Args:
-        ax: matplotlib Axes to draw on.
-        df: prepared DataFrame (must already have '_color' column).
-        y_multiplier: +1 for upper/single, -1 for lower (mirror).
-        show_annotations: whether to add text annotations on peaks.
-        annotation_fontsize: font size for annotations.
-        ann_offset: vertical offset for annotation text.
-    """
+    """Add matplotlib vlines and annotation text for one spectrum."""
     if df.empty:
         return
 
@@ -54,6 +45,88 @@ def _add_matplotlib_spectrum(ax, df: pd.DataFrame, y_multiplier: float,
                     ha="center", va=va_label, rotation=0)
 
 
+def _resolve_ann_offset(upper_spectrum: pd.DataFrame, lower_spectrum: pd.DataFrame,
+                       normalize: bool) -> float:
+    """Pick the annotation y-offset based on whether intensities are normalised."""
+    if normalize:
+        return ANN_OFFSET
+    upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
+    lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
+    return max(upper_max, lower_max) * ANN_OFFSET
+
+
+def _draw_mirror_spectra(ax, upper_spectrum: pd.DataFrame, lower_spectrum: pd.DataFrame,
+                        normalize: bool, ann_offset: float,
+                        show_annotations: bool, annotation_fontsize: int) -> None:
+    """Draw the upper + lower (negated) spectra onto *ax*."""
+    if not upper_spectrum.empty:
+        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize)
+        _add_matplotlib_spectrum(ax, upper_frame, y_multiplier=1.0,
+                                 show_annotations=show_annotations,
+                                 annotation_fontsize=annotation_fontsize,
+                                 ann_offset=ann_offset)
+    if not lower_spectrum.empty:
+        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize)
+        lower_frame["intensity"] = lower_frame["intensity"] * -1
+        _add_matplotlib_spectrum(ax, lower_frame, y_multiplier=-1.0,
+                                 show_annotations=show_annotations,
+                                 annotation_fontsize=annotation_fontsize,
+                                 ann_offset=ann_offset)
+
+
+def _set_mirror_axes(ax, upper_spectrum: pd.DataFrame, lower_spectrum: pd.DataFrame,
+                    normalize: bool) -> None:
+    """Apply the x/y limits and tick formatting for a mirror plot."""
+    all_mz = []
+    if not upper_spectrum.empty:
+        all_mz.extend(upper_spectrum["mz"].tolist())
+    if not lower_spectrum.empty:
+        all_mz.extend(lower_spectrum["mz"].tolist())
+    if all_mz:
+        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
+
+    if normalize:
+        ax.set_ylim(-1.2, 1.2)
+        ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
+        ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
+    else:
+        upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
+        lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
+        y_max = max(upper_max, lower_max) * 1.2
+        ax.set_ylim(-y_max, y_max)
+        ax.yaxis.set_major_formatter(
+            matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
+        )
+
+
+def _draw_corner_label(ax, text: str, *, top: bool) -> None:
+    """Draw a small bold corner label (top-left when ``top`` else bottom-left)."""
+    y, va = (0.99, "top") if top else (0.01, "bottom")
+    ax.text(0.02, y, text, transform=ax.transAxes,
+            fontsize=9, fontweight="bold", va=va, ha="left", color="#333",
+            bbox=dict(boxstyle="round,pad=0.2", facecolor="white",
+                      edgecolor="none", alpha=0.8))
+
+
+def _draw_metrics_box(ax, metrics_text: str) -> None:
+    """Draw the upper-right metrics monospace text box."""
+    ax.text(0.98, 0.82, metrics_text, transform=ax.transAxes,
+            fontsize=10, fontfamily="monospace", va="top", ha="right", color="#333",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
+                      edgecolor="#CCC", alpha=0.85))
+
+
+def _style_axes(ax, title: str, normalize: bool) -> None:
+    """Apply the shared title/labels/spines styling for spectrum plots."""
+    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
+                  fontsize=12, fontweight="bold")
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
+    ax.grid(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
 def create_mirror_plot(
     upper_spectrum: pd.DataFrame,
     lower_spectrum: pd.DataFrame,
@@ -71,75 +144,33 @@ def create_mirror_plot(
     fig = MplFigure(figsize=figure_size, dpi=export_resolution)
     ax = fig.add_subplot(111)
 
-    if normalize:
-        ann_offset = ANN_OFFSET
-    else:
-        upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
-        lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
-        ann_offset = max(upper_max, lower_max) * ANN_OFFSET
-
-    if not upper_spectrum.empty:
-        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize)
-        _add_matplotlib_spectrum(ax, upper_frame, y_multiplier=1.0,
-                                show_annotations=show_annotations,
-                                annotation_fontsize=annotation_fontsize,
-                                ann_offset=ann_offset)
-
-    if not lower_spectrum.empty:
-        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize)
-        lower_frame["intensity"] = lower_frame["intensity"] * -1
-        _add_matplotlib_spectrum(ax, lower_frame, y_multiplier=-1.0,
-                                show_annotations=show_annotations,
-                                annotation_fontsize=annotation_fontsize,
-                                ann_offset=ann_offset)
-
-    all_mz = []
-    if not upper_spectrum.empty:
-        all_mz.extend(upper_spectrum["mz"].tolist())
-    if not lower_spectrum.empty:
-        all_mz.extend(lower_spectrum["mz"].tolist())
-
-    if all_mz:
-        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
-
-    if normalize:
-        ax.set_ylim(-1.2, 1.2)
-        ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
-        ax.set_yticklabels(["1.0", "0.5", "0", "0.5", "1.0"])
-    else:
-        upper_max = upper_spectrum["intensity"].max() if not upper_spectrum.empty else 1
-        lower_max = lower_spectrum["intensity"].max() if not lower_spectrum.empty else 1
-        y_max = max(upper_max, lower_max) * 1.2
-        ax.set_ylim(-y_max, y_max)
-        ax.yaxis.set_major_formatter(
-            matplotlib.ticker.FuncFormatter(lambda v, _: f"{abs(v):.0f}")
-        )
+    ann_offset = _resolve_ann_offset(upper_spectrum, lower_spectrum, normalize)
+    _draw_mirror_spectra(ax, upper_spectrum, lower_spectrum, normalize,
+                         ann_offset, show_annotations, annotation_fontsize)
+    _set_mirror_axes(ax, upper_spectrum, lower_spectrum, normalize)
 
     ax.axhline(y=0, color="black", linewidth=1, alpha=0.5)
-
-    ax.text(0.02, 0.99, upper_label, transform=ax.transAxes,
-            fontsize=9, fontweight="bold", va="top", ha="left", color="#333",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
-    ax.text(0.02, 0.01, lower_label, transform=ax.transAxes,
-            fontsize=9, fontweight="bold", va="bottom", ha="left", color="#333",
-            bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
-
+    _draw_corner_label(ax, upper_label, top=True)
+    _draw_corner_label(ax, lower_label, top=False)
     if metrics_text:
-        ax.text(0.98, 0.82, metrics_text, transform=ax.transAxes,
-                fontsize=10, fontfamily="monospace", va="top", ha="right", color="#333",
-                bbox=dict(boxstyle="round,pad=0.4", facecolor="white",
-                          edgecolor="#CCC", alpha=0.85))
+        _draw_metrics_box(ax, metrics_text)
 
-    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
-                  fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+    _style_axes(ax, title, normalize)
     fig.tight_layout()
-
     return fig
+
+
+def _set_single_axes(ax, spectrum: pd.DataFrame, normalize: bool) -> None:
+    """Apply the x/y limits + tick layout for a single (non-mirrored) plot."""
+    if not spectrum.empty:
+        all_mz = spectrum["mz"].tolist()
+        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
+    if normalize:
+        ax.set_ylim(0, 1.15)
+        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
+    else:
+        y_max = spectrum["intensity"].max() * 1.15 if not spectrum.empty else 1
+        ax.set_ylim(0, y_max)
 
 
 def create_single_spectrum_plot(
@@ -158,40 +189,20 @@ def create_single_spectrum_plot(
 
     if not spectrum.empty:
         df = _prepare_spectrum_data(spectrum, normalize=normalize)
-        if normalize:
-            ann_offset = ANN_OFFSET
-        else:
-            ann_offset = df["intensity"].max() * ANN_OFFSET if len(df) > 0 else 1
+        ann_offset = (
+            ANN_OFFSET if normalize
+            else (df["intensity"].max() * ANN_OFFSET if len(df) > 0 else 1)
+        )
         _add_matplotlib_spectrum(ax, df, y_multiplier=1.0,
-                                show_annotations=show_annotations,
-                                annotation_fontsize=annotation_fontsize,
-                                ann_offset=ann_offset)
+                                 show_annotations=show_annotations,
+                                 annotation_fontsize=annotation_fontsize,
+                                 ann_offset=ann_offset)
 
-    if not spectrum.empty:
-        all_mz = spectrum["mz"].tolist()
-        ax.set_xlim(min(all_mz) - MZ_WINDOW_PADDING, max(all_mz) + MZ_WINDOW_PADDING)
-
-    if normalize:
-        ax.set_ylim(0, 1.15)
-        ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
-    else:
-        y_max = spectrum["intensity"].max() * 1.15 if not spectrum.empty else 1
-        ax.set_ylim(0, y_max)
-
+    _set_single_axes(ax, spectrum, normalize)
     if label:
-        ax.text(0.02, 0.99, label, transform=ax.transAxes,
-                fontsize=9, fontweight="bold", va="top", ha="left", color="#333",
-                bbox=dict(boxstyle="round,pad=0.2", facecolor="white", edgecolor="none", alpha=0.8))
-
-    ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
-    ax.set_ylabel("Relative Intensity" if normalize else "Intensity",
-                  fontsize=12, fontweight="bold")
-    ax.set_title(title, fontsize=14, fontweight="bold", pad=15)
-    ax.grid(False)
-    ax.spines["top"].set_visible(False)
-    ax.spines["right"].set_visible(False)
+        _draw_corner_label(ax, label, top=True)
+    _style_axes(ax, title, normalize)
     fig.tight_layout()
-
     return fig
 
 

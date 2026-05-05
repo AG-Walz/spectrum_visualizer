@@ -20,6 +20,36 @@ from mspecviz.search.workers import (
 logger = logging.getLogger(__name__)
 
 
+def _build_mzml_lookup(mzml_paths: Optional[List[str]]) -> Dict[str, str]:
+    """Map ``basename.lower() → str(path)`` for the optional mzML candidate list."""
+    if not mzml_paths:
+        return {}
+    return {Path(p).name.lower(): str(p) for p in mzml_paths}
+
+
+def _merge_worker_matches(
+    worker_matches, worker_errors, variant_groups: Dict[str, VariantGroup],
+    error_callback: Optional[callable],
+) -> int:
+    """Fold one worker's ``(matches, errors)`` into *variant_groups*; return new-PSM count."""
+    new_psms = 0
+    for variant_key, match in worker_matches:
+        mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
+        if variant_key not in variant_groups:
+            variant_groups[variant_key] = VariantGroup(
+                base_sequence=match.base_sequence,
+                modification_key=mod_key,
+                display_label=format_inline_sequence(match.base_sequence, mod_key),
+            )
+        variant_groups[variant_key].matches.append(match)
+        new_psms += 1
+    for error_message in worker_errors:
+        if error_callback:
+            error_callback(error_message)
+        logger.error(error_message)
+    return new_psms
+
+
 def search_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
@@ -47,26 +77,35 @@ def search_peptides_in_idxmls(
         Dict mapping variant_key -> VariantGroup
     """
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
-
     if not target_set:
         if error_callback:
             error_callback("No valid target peptides provided")
         logger.warning("No valid target peptides provided")
         return {}
 
-    mzml_by_name: Dict[str, str] = (
-        {Path(p).name.lower(): str(p) for p in mzml_paths} if mzml_paths else {}
-    )
-
+    mzml_by_name = _build_mzml_lookup(mzml_paths)
     total_files = len(idxml_paths)
-    variant_groups: Dict[str, VariantGroup] = {}
-    total_psms_found = 0
-
     tasks = [(p, Path(p).name, target_set, mzml_by_name) for p in idxml_paths]
 
     if workers > 1:
         logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
 
+    variant_groups: Dict[str, VariantGroup] = {}
+    total_psms_found = _drive_search_workers(
+        tasks, total_files, workers, variant_groups, progress_callback, error_callback,
+    )
+    logger.info(f"Found {total_psms_found} PSMs across {len(variant_groups)} variants")
+    return variant_groups
+
+
+def _drive_search_workers(
+    tasks, total_files: int, workers: int,
+    variant_groups: Dict[str, VariantGroup],
+    progress_callback: Optional[callable],
+    error_callback: Optional[callable],
+) -> int:
+    """Drain :func:`run_tasks` and merge each worker's output into *variant_groups*."""
+    total_psms_found = 0
     completed = 0
     for task, ok, result in run_tasks(tasks=tasks, worker=_search_single_idxml, workers=workers):
         completed += 1
@@ -77,29 +116,15 @@ def search_peptides_in_idxmls(
             logger.error(error_message)
         else:
             _, worker_matches, worker_errors = result
-            for variant_key, match in worker_matches:
-                mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
-                if variant_key not in variant_groups:
-                    variant_groups[variant_key] = VariantGroup(
-                        base_sequence=match.base_sequence,
-                        modification_key=mod_key,
-                        display_label=format_inline_sequence(match.base_sequence, mod_key),
-                    )
-                variant_groups[variant_key].matches.append(match)
-                total_psms_found += 1
-            for error_message in worker_errors:
-                if error_callback:
-                    error_callback(error_message)
-                logger.error(error_message)
+            total_psms_found += _merge_worker_matches(
+                worker_matches, worker_errors, variant_groups, error_callback,
+            )
         if progress_callback:
             progress_callback(completed, total_files, "Searching idXML files")
 
     if progress_callback:
         progress_callback(total_files, total_files, "Search complete")
-
-    logger.info(f"Found {total_psms_found} PSMs across {len(variant_groups)} variants")
-
-    return variant_groups
+    return total_psms_found
 
 
 def get_unique_peptides_from_idxmls(

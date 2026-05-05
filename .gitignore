@@ -4,6 +4,9 @@
 # Project instructions (tracked separately)
 CLAUDE.md
 
+# Activity log (per-developer; written by Claude Code hooks)
+LOG.md
+
 # Python
 __pycache__/
 *.pyc
