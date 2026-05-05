@@ -24,21 +24,16 @@ from mspecviz.spectra.loader_models import spectrum_lookup_key
 logger = logging.getLogger("mspecviz.pipeline")
 
 
-def get_source_label(spec) -> str:
-    """Extract filename stem from spectrum, or 'Koina' if no source file."""
-    return Path(spec.source_file).stem if spec.source_file else "Koina"
-
-
 def format_spectrum_labels(query_spectrum, reference_spectrum=None):
     """Format query/reference spectrum labels with RT.
 
     Returns ``(query_label, reference_label)`` tuple.  *reference_label* is ``""``
     when *reference_spectrum* is ``None``.
     """
-    query_label = f"Query: {get_source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
+    query_label = f"Query: {query_spectrum.source_label} (RT: {query_spectrum.rt:.1f})"
     if reference_spectrum is None:
         return query_label, ""
-    reference_label = f"Ref: {get_source_label(reference_spectrum)} (RT: {reference_spectrum.rt:.1f})"
+    reference_label = f"Ref: {reference_spectrum.source_label} (RT: {reference_spectrum.rt:.1f})"
     return query_label, reference_label
 
 
@@ -115,7 +110,7 @@ def _build_mirror_task(
     metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
     query_label, reference_label = format_spectrum_labels(query_spectrum, reference_spectrum)
     safe_filename = sanitize_fn(
-        f"{get_source_label(query_spectrum)}_vs_{get_source_label(reference_spectrum)}"
+        f"{query_spectrum.source_label}_vs_{reference_spectrum.source_label}"
     )
     html_path = (
         str(Path(html_dir) / folder_name / f"{safe_filename}.html")
@@ -142,8 +137,8 @@ def _build_single_task(
     figure_size, export_resolution: int, normalize: bool,
 ) -> ComparisonTask:
     """Construct one single-spectrum ``ComparisonTask`` (no reference)."""
-    safe_filename = sanitize_fn(get_source_label(query_spectrum))
-    query_label = f"{get_source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
+    safe_filename = sanitize_fn(query_spectrum.source_label)
+    query_label = f"{query_spectrum.source_label} (RT: {query_spectrum.rt:.1f})"
     # Unpaired/single plots never emit HTML (cli used to enforce this).
     single_formats = [f for f in export_formats if f != "html"]
     return ComparisonTask(

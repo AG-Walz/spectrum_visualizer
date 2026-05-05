@@ -6,7 +6,6 @@ so the picker shows how many hits each peptide has. Uses
 ``mspecviz.common.parallel.run_tasks`` so the sequential/parallel dispatch is
 consistent with the rest of the codebase.
 """
-import time as _time
 from collections import Counter
 from pathlib import Path
 
@@ -16,54 +15,33 @@ from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.parallel import run_tasks
 from mspecviz.common.text_utils import parse_peptide_list
 from mspecviz.search import count_psms_per_peptide
+from streamlit_app.utils.progress import progress_status
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Run count_psms_per_peptide across files in a st.status block."""
+    """Run count_psms_per_peptide across files; live progress via ``progress_status``."""
     merged: Counter = Counter()
     errors: list[str] = []
     n = len(idxmls)
 
-    with st.status(f"Scanning {n} idXML files ({workers} workers)...", expanded=True) as status:
-        progress = st.progress(0)
-        info = st.empty()
-        t0 = _time.time()
+    with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as p:
+        for done, (task, ok, result) in enumerate(
+            run_tasks(tasks=idxmls, worker=count_psms_per_peptide, workers=min(workers, n)),
+            start=1,
+        ):
+            if ok:
+                merged.update(result)
+            else:
+                errors.append(f"{Path(task).name}: {result}")
+            p.update(done, n, units="files")
 
-        def _on_result(task, result):
-            merged.update(result)
-
-        def _on_error(task, exc):
-            errors.append(f"{Path(task).name}: {exc}")
-
-        def _on_progress(done, total):
-            elapsed = _time.time() - t0
-            remaining = (elapsed / done) * (total - done) if done < total else 0
-            progress.progress(
-                done / total,
-                f"{done}/{total} files — {elapsed:.0f}s elapsed, ~{remaining:.0f}s remaining",
-            )
-
-        def _on_start(task):
-            info.caption(f"Scanning {Path(task).name}")
-
-        run_tasks(
-            tasks=idxmls,  # single-arg: auto-wrapped by run_tasks
-            worker=count_psms_per_peptide,
-            workers=min(workers, n),
-            on_start=_on_start,
-            on_result=_on_result,
-            on_error=_on_error,
-            on_progress=_on_progress,
-        )
-
-        progress.progress(1.0, f"Done — {len(merged)} peptides from {n} files in {_time.time()-t0:.1f}s")
         if errors:
-            status.update(label=f"Completed with {len(errors)} errors", state="error")
+            p.finalize(f"Completed with {len(errors)} errors", state="error")
             for e in errors[:5]:
                 st.caption(e)
         else:
-            status.update(label=f"{len(merged)} peptides from {n} files", state="complete")
+            p.finalize(f"{len(merged)} peptides from {n} files")
 
     return merged, errors
 

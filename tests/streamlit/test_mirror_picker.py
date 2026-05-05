@@ -118,8 +118,9 @@ class TestBuildPickerFrames:
             "PEPTIDEK|", annotated_queries, reference_store, psm_to_vk,
         )
         row = ref_lazy.collect().row(0, named=True)
-        # get_source_label returns the source_file stem ("Koina:ms2pip") when set,
-        # only falling back to bare "Koina" when source_file is empty.
+        # LoadedSpectrum.source_label returns the source_file stem
+        # ("Koina:ms2pip") when set, only falling back to bare "Koina" when
+        # source_file is empty.
         assert row["mzml"] == "Koina:ms2pip"
         assert row["scan"] is None
         assert row["score"] is None

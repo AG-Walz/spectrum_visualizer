@@ -4,6 +4,7 @@ Kept separate from the loader workers so they can be imported cheaply (no
 pyopenms pull-in) by consumers that only need the types.
 """
 from dataclasses import dataclass
+from pathlib import Path
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
@@ -26,6 +27,11 @@ class LoadedSpectrum:
     is_reference: bool = False
     rt: float = 0.0
     match: Optional["PeptideMatch"] = None
+
+    @property
+    def source_label(self) -> str:
+        """Filename stem for plot titles / picker tables; ``"Koina"`` for synthetic refs."""
+        return Path(self.source_file).stem if self.source_file else "Koina"
 
 
 @dataclass

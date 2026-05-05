@@ -5,7 +5,6 @@ Koina fallback, build metric rows. Extracted so ``orchestration.py`` stays
 readable and each phase can be unit-tested independently.
 """
 import logging
-from pathlib import Path
 from typing import Any, Dict, List
 
 import numpy as np
@@ -124,8 +123,8 @@ def build_comparison_row(psm_id, result, query_frame, reference_spectrum, refere
         "Peptide": result.base_sequence,
         "Modification": result.modification_key,
         "Charge": result.query_spectrum.precursor_charge,
-        "Query": Path(result.query_spectrum.source_file).stem,
-        "Reference": Path(reference_spectrum.source_file).stem if reference_spectrum.source_file else "Koina",
+        "Query": result.query_spectrum.source_label,
+        "Reference": reference_spectrum.source_label,
         "query_spectrum_id": result.query_spectrum.spectrum_id,
         "ref_spectrum_id": reference_spectrum.spectrum_id,
         "query_rt": result.query_spectrum.rt,

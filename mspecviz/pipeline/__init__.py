@@ -16,7 +16,6 @@ from mspecviz.pipeline.orchestration import (
     build_plot_tasks,
     build_psm_to_variant_mapping,
     format_spectrum_labels,
-    get_source_label,
     process_query_result,
 )
 
@@ -32,6 +31,5 @@ __all__ = [
     "build_plot_tasks",
     "build_psm_to_variant_mapping",
     "format_spectrum_labels",
-    "get_source_label",
     "process_query_result",
 ]

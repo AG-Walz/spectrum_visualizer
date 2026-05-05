@@ -9,12 +9,12 @@ from __future__ import annotations
 
 import copy
 import logging
-import time as _time
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 
+from streamlit_app.utils.progress import progress_status
 from streamlit_app.utils.state import get_param, get_state_key, save_params
 from streamlit_app.utils.page_state import clear_analysis_cache, save_analysis_cache
 from mspecviz.common.defaults import DEFAULTS
@@ -32,36 +32,14 @@ from mspecviz.spectra import load_spectra_streaming
 logger = logging.getLogger(__name__)
 
 
-def _make_search_progress_callback(start_time: float, progress_bar, status_text):
-    """Build the per-file progress callback for the peptide search stage."""
-    def progress_callback(current, total, message):
-        if total <= 0:
-            return
-        fraction = current / total
-        progress_bar.progress(fraction, message)
-        elapsed = _time.time() - start_time
-        if fraction > 0 and current < total:
-            remaining = (elapsed / fraction) - elapsed
-            status_text.caption(
-                f"{current}/{total} files  "
-                f"({format_time(elapsed)} elapsed, ~{format_time(remaining)} remaining)"
-            )
-        elif current >= total:
-            status_text.caption(f"Done in {format_time(elapsed)}")
-    return progress_callback
-
-
-def _show_search_results_summary(results, error_messages, status, params: dict) -> None:
-    """Update the status block with PSM/variant counts and any warnings."""
+def _show_search_results_summary(results, error_messages, p, params: dict) -> None:
+    """Finalize the status block with PSM/variant counts and any warnings."""
     if not results:
-        status.update(label="No matches found", state="error")
+        p.finalize("No matches found", state="error")
         return
 
     total_matches = sum(len(variant_group.matches) for variant_group in results.values())
-    status.update(
-        label=f"Found {total_matches} PSMs across {len(results)} variants",
-        state="complete",
-    )
+    p.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
     save_params(params)
 
     unresolved = sum(
@@ -81,23 +59,15 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
     mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
-    with st.status("Searching peptides...", expanded=True) as status:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        progress_callback = _make_search_progress_callback(
-            _time.time(), progress_bar, status_text,
-        )
-
+    with progress_status("Searching peptides...") as p:
         results = search_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
-            progress_callback=progress_callback,
+            progress_callback=lambda c, t, m: p.update(c, t, units="files", message=m),
             error_callback=error_messages.append,
             workers=get_param(params, "workers", DEFAULTS.workers),
         )
         st.session_state[get_state_key("variant_groups")] = results
-        progress_bar.progress(1.0, "Search complete!")
-
-        _show_search_results_summary(results, error_messages, status, params)
+        _show_search_results_summary(results, error_messages, p, params)
 
 
 def _build_annotation_kwargs(params: dict) -> dict:
@@ -155,9 +125,9 @@ def _koina_kwargs(params: dict) -> dict:
 def _make_query_ready_callback(
     psm_lookup, annotation_kwargs, reference_store, koina_kwargs,
     annotated_queries: list, comparison_rows: list,
-    total_psms: int, start_time: float, progress_bar, status_text,
+    total_psms: int, tracker,
 ):
-    """Return ``on_query_ready`` callback that buffers results and updates UI."""
+    """Return ``on_query_ready`` callback that buffers results and ticks the tracker."""
     loaded_count = [0]
 
     def on_query_ready(result):
@@ -172,13 +142,7 @@ def _make_query_ready_callback(
 
         loaded_count[0] += 1
         if loaded_count[0] % 10 == 0 or loaded_count[0] == total_psms:
-            fraction = min(loaded_count[0] / max(total_psms, 1), 1.0)
-            elapsed = _time.time() - start_time
-            progress_bar.progress(fraction)
-            status_text.caption(
-                f"{loaded_count[0]}/{total_psms} spectra "
-                f"({format_time(elapsed)} elapsed)"
-            )
+            tracker.update(loaded_count[0], total_psms, units="spectra")
 
     return on_query_ready
 
@@ -187,19 +151,17 @@ def _stream_and_annotate(
     params: dict, variant_groups_copy, mzmls,
     psm_lookup, annotation_kwargs,
     annotated_queries: list, reference_store: dict, comparison_rows: list,
-    total_psms: int, status_text, progress_bar,
+    total_psms: int, tracker,
 ) -> None:
     """Run ``load_spectra_streaming`` with progress + error wiring."""
-    start_time = _time.time()
     on_query_ready = _make_query_ready_callback(
         psm_lookup, annotation_kwargs, reference_store, _koina_kwargs(params),
-        annotated_queries, comparison_rows,
-        total_psms, start_time, progress_bar, status_text,
+        annotated_queries, comparison_rows, total_psms, tracker,
     )
 
     def on_file_start(path, is_reference):
         kind = "reference" if is_reference else "query"
-        status_text.caption(f"Processing {kind}: {Path(path).name}")
+        tracker.info(f"Processing {kind}: {Path(path).name}")
 
     load_spectra_streaming(
         variant_groups=variant_groups_copy,
@@ -230,17 +192,15 @@ def _validate_load_inputs(params: dict) -> tuple | None:
 
 
 def _finalize_load(
-    psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows,
-    elapsed: float, status, status_text,
+    psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, tracker,
 ) -> None:
     """Persist results + update the status block with the run summary."""
-    status_text.caption(f"Building DataFrames from {len(annotated_queries)} spectra...")
+    tracker.info(f"Building DataFrames from {len(annotated_queries)} spectra...")
     _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows)
-    status.update(
-        label=f"Loaded {len(annotated_queries)} spectra, "
-              f"{len(comparison_rows)} comparisons in {format_time(elapsed)}",
-        state="complete",
+    tracker.finalize(
+        f"Loaded {len(annotated_queries)} spectra, "
+        f"{len(comparison_rows)} comparisons in {format_time(tracker.elapsed)}"
     )
 
 
@@ -262,26 +222,18 @@ def run_search_and_load(params: dict) -> None:
     comparison_rows: list = []
     total_psms = sum(len(group.matches) for group in variant_groups_copy.values())
 
-    with st.status(f"Loading {total_psms} spectra...", expanded=True) as status:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        load_start = _time.time()
-
+    with progress_status(f"Loading {total_psms} spectra...") as p:
         _stream_and_annotate(
             params, variant_groups_copy, mzmls,
             psm_lookup, annotation_kwargs,
             annotated_queries, reference_store, comparison_rows,
-            total_psms, status_text, progress_bar,
+            total_psms, p,
         )
-        progress_bar.progress(1.0)
-
         if not annotated_queries:
-            status.update(label="No spectra could be loaded or annotated", state="error")
+            p.finalize("No spectra could be loaded or annotated", state="error")
             return
-
         _finalize_load(
-            psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows,
-            _time.time() - load_start, status, status_text,
+            psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, p,
         )
 
     st.rerun()

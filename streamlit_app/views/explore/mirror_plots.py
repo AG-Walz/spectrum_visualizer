@@ -28,7 +28,6 @@ from mspecviz.common.defaults import DEFAULTS
 from mspecviz.pipeline import (
     build_psm_to_variant_mapping,
     format_spectrum_labels,
-    get_source_label,
 )
 from mspecviz.plotting import create_plotly_mirror_plot
 from mspecviz.spectra.mzml_native_ids import _extract_id_number
@@ -44,7 +43,7 @@ def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: d
 def _picker_row(spec, score) -> dict:
     """Translate one ``LoadedSpectrum`` into the columns the Tables display."""
     return {
-        "mzml": get_source_label(spec),
+        "mzml": spec.source_label,
         "scan": _extract_id_number(spec.spectrum_id),
         "rt": float(spec.rt) if spec.rt is not None else None,
         "charge": int(spec.precursor_charge or 0),
