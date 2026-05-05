@@ -18,8 +18,8 @@ from mspecviz.common.text_utils import (
 )
 
 
-def _get_nested(source: dict, *keys, default=None):
-    """Safely traverse nested dicts: ``_get_nested(d, 'a', 'b')`` -> ``d['a']['b']``."""
+def _get_nested_value(source: dict, *keys, default=None):
+    """Safely traverse nested dicts: ``_get_nested_value(d, 'a', 'b')`` -> ``d['a']['b']``."""
     current = source
     for key in keys:
         if isinstance(current, dict):
@@ -49,7 +49,7 @@ params = page_setup()
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
     _settings = st.session_state.get("settings", {})
-    data_dir_default = _get_nested(_settings, "data_directories", "default", default="/")
+    data_dir_default = _get_nested_value(_settings, "data_directories", "default", default="/")
 
     idxml_dir = params.get('idxml_browser_dir', data_dir_default)
     mzml_dir = params.get('mzml_browser_dir', data_dir_default)
@@ -136,12 +136,8 @@ def reference_selection_fragment():
     save_params(params)
 
 
-def settings_fragment():
-    """Annotation, display, performance, and Koina settings fragment."""
-    st.subheader("Settings")
-    available_ions = _get_nested(st.session_state.get("settings", {}), "ion_types", "available",
-                                 default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
-
+def _render_ion_settings(available_ions: list) -> None:
+    """Render ion-types multiselect + m/z tolerance side by side."""
     col1, col2 = st.columns(2)
     with col1:
         st.markdown("**Ion Types**")
@@ -149,38 +145,72 @@ def settings_fragment():
         st.multiselect("Select ion types", options=available_ions,
                        default=[i for i in current_ions if i in available_ions],
                        key="ion_types")
-
     with col2:
         st.markdown("**m/z Tolerance**")
         st.number_input("Tolerance (Da)", min_value=0.001, max_value=1.0,
                         value=float(params.get('mz_tolerance', DEFAULTS.mz_tolerance)),
                         step=0.005, format="%.3f", key="mz_tolerance")
 
+
+def _render_annotation_display_settings() -> None:
+    """Render neutral-loss checkbox and the intensity-display radio."""
     st.markdown("**Annotation Settings**")
     st.checkbox("Add neutral losses (H2O, NH3)",
                 value=params.get('add_neutral_losses', DEFAULTS.add_neutral_losses),
                 key="add_neutral_losses")
-
     st.radio("**Intensity Display Mode**",
              options=["Relative", "Raw"],
              captions=["Relative to the highest intensity", "Raw intensity"],
              index=0 if params.get('intensity_mode', DEFAULTS.intensity_mode) == 'Relative' else 1,
              horizontal=True, key="intensity_mode", label_visibility="visible")
 
+
+def _render_performance_settings() -> None:
+    """Render the parallel-workers slider."""
     st.markdown("**Performance**")
     st.slider("Parallel workers", min_value=1, max_value=32,
               value=params.get('workers', DEFAULTS.workers), key="workers",
               help="Number of parallel processes for plot generation (~30 MB per worker)")
 
+
+def _render_koina_model_columns(koina_defaults: dict) -> None:
+    """Render the model / CE / instrument three-column row for Koina."""
+    k_col1, k_col2, k_col3 = st.columns(3)
+    with k_col1:
+        model_names = list(KOINA_MODELS.keys())
+        model_ids = list(KOINA_MODELS.values())
+        current_model_id = params.get("koina_model", koina_defaults["model"])
+        default_idx = model_ids.index(current_model_id) if current_model_id in model_ids else 0
+        selected_model_name = st.selectbox(
+            "Prediction Model", options=model_names, index=default_idx,
+            key=f"{STATE_PREFIX}_koina_model_select",
+            help="Deep-learning model for fragment ion prediction",
+        )
+        st.session_state["koina_model"] = KOINA_MODELS[selected_model_name]
+    with k_col2:
+        st.number_input(
+            "Collision Energy (eV)", min_value=1, max_value=100,
+            value=params.get("koina_collision_energy", koina_defaults["collision_energy"]),
+            key="koina_collision_energy",
+        )
+    with k_col3:
+        current_inst = params.get("koina_instrument_type", koina_defaults["instrument_type"])
+        inst_idx = INSTRUMENT_TYPES.index(current_inst) if current_inst in INSTRUMENT_TYPES else 0
+        st.selectbox(
+            "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
+            key="koina_instrument_type",
+        )
+
+
+def _render_koina_settings() -> None:
+    """Render the Koina AI-prediction section: enable toggle + model controls."""
     st.markdown("---")
     st.markdown("**Koina AI Prediction**")
     st.caption(
         "When enabled, spectra without an experimental reference are compared "
         "against AI-predicted fragmentation patterns (intensity + m/z)."
     )
-
     koina_defaults = get_koina_settings(st.session_state.get("settings", {}))
-
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",
         value=params.get("koina_enabled", koina_defaults["enabled"]),
@@ -188,41 +218,21 @@ def settings_fragment():
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
         disabled=not KOINA_AVAILABLE,
     )
-
     if not KOINA_AVAILABLE:
         st.warning("koinapy is not installed. Install it to enable Koina predictions.")
-
     if koina_enabled and KOINA_AVAILABLE:
-        k_col1, k_col2, k_col3 = st.columns(3)
+        _render_koina_model_columns(koina_defaults)
 
-        with k_col1:
-            model_names = list(KOINA_MODELS.keys())
-            model_ids = list(KOINA_MODELS.values())
-            current_model_id = params.get("koina_model", koina_defaults["model"])
-            default_idx = model_ids.index(current_model_id) if current_model_id in model_ids else 0
 
-            selected_model_name = st.selectbox(
-                "Prediction Model", options=model_names, index=default_idx,
-                key=f"{STATE_PREFIX}_koina_model_select",
-                help="Deep-learning model for fragment ion prediction",
-            )
-            st.session_state["koina_model"] = KOINA_MODELS[selected_model_name]
-
-        with k_col2:
-            st.number_input(
-                "Collision Energy (eV)", min_value=1, max_value=100,
-                value=params.get("koina_collision_energy", koina_defaults["collision_energy"]),
-                key="koina_collision_energy",
-            )
-
-        with k_col3:
-            current_inst = params.get("koina_instrument_type", koina_defaults["instrument_type"])
-            inst_idx = INSTRUMENT_TYPES.index(current_inst) if current_inst in INSTRUMENT_TYPES else 0
-            st.selectbox(
-                "Instrument Type", options=INSTRUMENT_TYPES, index=inst_idx,
-                key="koina_instrument_type",
-            )
-
+def settings_fragment():
+    """Annotation, display, performance, and Koina settings fragment."""
+    st.subheader("Settings")
+    available_ions = _get_nested_value(st.session_state.get("settings", {}), "ion_types", "available",
+                                 default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])
+    _render_ion_settings(available_ions)
+    _render_annotation_display_settings()
+    _render_performance_settings()
+    _render_koina_settings()
     save_params(params)
 
 

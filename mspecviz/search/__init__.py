@@ -5,10 +5,10 @@ Re-exports the public API of the four submodules so callers can keep using
 """
 from mspecviz.search.idxml_parsing import (
     MOD_ABBREVIATIONS,
-    abbreviate_mod,
+    abbreviate_modification,
     decode_metadata_value,
     extract_spectra_data_map,
-    mod_key_from_peptidoform,
+    modification_key_from_peptidoform,
 )
 from mspecviz.search.models import (
     PeptideMatch,
@@ -25,10 +25,10 @@ from mspecviz.search.workers import count_psms_per_peptide
 __all__ = [
     # idxml_parsing
     "MOD_ABBREVIATIONS",
-    "abbreviate_mod",
+    "abbreviate_modification",
     "decode_metadata_value",
     "extract_spectra_data_map",
-    "mod_key_from_peptidoform",
+    "modification_key_from_peptidoform",
     # models
     "PeptideMatch",
     "VariantGroup",

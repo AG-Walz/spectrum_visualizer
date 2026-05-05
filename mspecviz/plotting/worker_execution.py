@@ -28,85 +28,96 @@ from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
 logger = logging.getLogger(__name__)
 
 
+def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
+    """Compose the per-task row that becomes one line of the comparison CSV."""
+    return {
+        "query_file": task.query_file,
+        "ref_file": task.reference_file,
+        "peptide": task.peptide,
+        "modification": task.modification,
+        "charge": task.charge,
+        **metrics,
+    }
+
+
+def _render_mirror_figure(task: ComparisonTask, metrics: dict):
+    """Build the matplotlib mirror figure for a task (caller closes the figure)."""
+    metrics_text = task.metrics_text or format_metrics_text(metrics)
+    return create_mirror_plot(
+        upper_spectrum=task.query_frame,
+        lower_spectrum=task.reference_frame,
+        upper_label=task.query_label,
+        lower_label=task.reference_label,
+        title=task.plot_title,
+        metrics_text=metrics_text,
+        figure_size=task.figure_size,
+        export_resolution=task.export_resolution,
+        normalize=task.normalize,
+    )
+
+
+def _render_single_figure(task: ComparisonTask):
+    """Build the matplotlib single-spectrum figure for a task."""
+    return create_single_spectrum_plot(
+        spectrum=task.query_frame,
+        title=task.plot_title,
+        label=task.query_label,
+        figure_size=task.figure_size,
+        export_resolution=task.export_resolution,
+        normalize=task.normalize,
+    )
+
+
+def _save_static_and_close(fig, task: ComparisonTask) -> Tuple[str, str, str]:
+    """Save *fig* via ``_save_task_figure`` then close + delete it."""
+    png_path, svg_path, pdf_path = _save_task_figure(fig, task)
+    plt.close(fig)
+    del fig
+    return png_path, svg_path, pdf_path
+
+
+def _process_mirror_task(task: ComparisonTask) -> Tuple[dict, Tuple[str, str, str], str]:
+    """Run the mirror branch: metrics + (optional) static + (optional) HTML."""
+    metrics = compute_all_metrics(task.query_frame, task.reference_frame)
+    summary_row = _build_summary_row(task, metrics)
+    paths = ("", "", "")
+    if not task.skip_plot:
+        fig = _render_mirror_figure(task, metrics)
+        paths = _save_static_and_close(fig, task)
+    html_path = _save_task_html(task) if task.html_plot_path else ""
+    return summary_row, paths, html_path
+
+
+def _process_single_task_branch(task: ComparisonTask) -> Tuple[Tuple[str, str, str], str]:
+    """Run the single-spectrum branch: optional static + optional HTML."""
+    paths = ("", "", "")
+    if not task.skip_plot:
+        fig = _render_single_figure(task)
+        paths = _save_static_and_close(fig, task)
+    html_path = _save_task_html(task) if task.html_plot_path else ""
+    return paths, html_path
+
+
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
     """Worker: compute metrics, create figure, save to disk. Skips plot if skip_plot is set."""
     try:
         summary_row = None
-        png_path = ""
-        svg_path = ""
-        pdf_path = ""
-        html_path = ""
+        png_path = svg_path = pdf_path = html_path = ""
 
         if task.task_type == "mirror" and task.reference_frame is not None:
-            # --- Metrics (always computed for summary CSV) ---
-            metrics = compute_all_metrics(task.query_frame, task.reference_frame)
-
-            summary_row = {
-                "query_file": task.query_file,
-                "ref_file": task.reference_file,
-                "peptide": task.peptide,
-                "modification": task.modification,
-                "charge": task.charge,
-                **metrics,
-            }
-
-            if not task.skip_plot:
-                # --- Full mirror plot (Matplotlib, batch export) ---
-                metrics_text = task.metrics_text or format_metrics_text(metrics)
-                fig = create_mirror_plot(
-                    upper_spectrum=task.query_frame,
-                    lower_spectrum=task.reference_frame,
-                    upper_label=task.query_label,
-                    lower_label=task.reference_label,
-                    title=task.plot_title,
-                    metrics_text=metrics_text,
-                    figure_size=task.figure_size,
-                    export_resolution=task.export_resolution,
-                    normalize=task.normalize,
-                )
-                png_path, svg_path, pdf_path = _save_task_figure(fig, task)
-                plt.close(fig)
-                del fig
-
-            # --- Interactive HTML (Plotly, optional) ---
-            if task.html_plot_path:
-                html_path = _save_task_html(task)
-
+            summary_row, (png_path, svg_path, pdf_path), html_path = _process_mirror_task(task)
         elif not task.skip_plot:
-            # --- Single spectrum plot (no metrics) ---
-            fig = create_single_spectrum_plot(
-                spectrum=task.query_frame,
-                title=task.plot_title,
-                label=task.query_label,
-                figure_size=task.figure_size,
-                export_resolution=task.export_resolution,
-                normalize=task.normalize,
-            )
-            png_path, svg_path, pdf_path = _save_task_figure(fig, task)
-            plt.close(fig)
-            del fig
-
-            # --- Interactive HTML for single-spectrum plots ---
-            if task.html_plot_path:
-                html_path = _save_task_html(task)
+            (png_path, svg_path, pdf_path), html_path = _process_single_task_branch(task)
 
         return ComparisonResult(
-            task_id=task.task_id,
-            task_type=task.task_type,
-            success=True,
-            png_path=png_path,
-            svg_path=svg_path,
-            pdf_path=pdf_path,
-            html_path=html_path,
-            summary_row=summary_row,
+            task_id=task.task_id, task_type=task.task_type, success=True,
+            png_path=png_path, svg_path=svg_path, pdf_path=pdf_path,
+            html_path=html_path, summary_row=summary_row,
         )
-
     except Exception as e:
         return ComparisonResult(
-            task_id=task.task_id,
-            task_type=task.task_type,
-            success=False,
-            error=str(e),
+            task_id=task.task_id, task_type=task.task_type,
+            success=False, error=str(e),
         )
 
 

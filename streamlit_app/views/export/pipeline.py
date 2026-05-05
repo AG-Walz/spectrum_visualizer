@@ -38,23 +38,9 @@ def _collect_session_frames() -> dict:
     }
 
 
-def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
-                do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
-    """Drive :func:`mspecviz.export.run_export` and render the resulting gallery."""
-    annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
-    if not annotated_queries:
-        st.warning("No annotated spectra in session -- re-run **Search & Load** first.")
-        return None
-
-    reference_store = st.session_state.get(get_state_key("reference_store"), {})
-    variant_groups = st.session_state.get(get_state_key("variant_groups"), {})
-    comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
-
-    selection = ExportSelection(
-        parquet=do_parquet, csv=do_csv,
-        mirror_plots=do_mirror, summary_plots=do_summary, html=do_html,
-    )
-    plot_settings = PlotSettings(
+def _build_plot_settings(params: dict) -> PlotSettings:
+    """Resolve PlotSettings from session params + defaults."""
+    return PlotSettings(
         export_formats=["png", "svg"],
         figure_size=DEFAULTS.figure_size,
         export_resolution=DEFAULTS.export_resolution,
@@ -65,41 +51,58 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
         workers=get_param(params, "workers", DEFAULTS.workers),
     )
 
+
+def _show_export_summary(result, status) -> None:
+    """Update the status block + show plot counts after export completes."""
+    if result.mirror_plot_count:
+        st.caption(f"  Generated {result.mirror_plot_count} mirror plot file(s)")
+    if result.summary_plot_count:
+        st.caption(f"  Generated {result.summary_plot_count} summary plot(s)")
+    status.update(
+        label=f"Exported {len(result.saved_files)} files to {result.export_root}",
+        state="complete",
+    )
+
+
+def _show_saved_files_expander(result) -> None:
+    """Render an expander listing every saved file."""
+    if not result.saved_files:
+        return
+    with st.expander(f"Exported files ({len(result.saved_files)})", expanded=False):
+        for file_path in result.saved_files:
+            st.caption(f"  {file_path}")
+
+
+def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
+                do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
+    """Drive :func:`mspecviz.export.run_export` and render the resulting gallery."""
+    annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
+    if not annotated_queries:
+        st.warning("No annotated spectra in session -- re-run **Search & Load** first.")
+        return None
+
+    selection = ExportSelection(
+        parquet=do_parquet, csv=do_csv,
+        mirror_plots=do_mirror, summary_plots=do_summary, html=do_html,
+    )
+    plot_settings = _build_plot_settings(params)
+
     with st.status("Exporting...", expanded=True) as status:
-        def _on_step(msg: str) -> None:
-            st.caption(msg)
-
-        def _on_warning(msg: str) -> None:
-            st.warning(msg)
-
         result = run_export(
             export_directory=export_dir,
             project_name=DEFAULTS.project_name,
             run_settings=build_run_settings(),
             frames=_collect_session_frames(),
             annotated_queries=annotated_queries,
-            reference_store=reference_store,
-            variant_groups=variant_groups,
-            comparison_frame=comparison_frame,
+            reference_store=st.session_state.get(get_state_key("reference_store"), {}),
+            variant_groups=st.session_state.get(get_state_key("variant_groups"), {}),
+            comparison_frame=st.session_state.get(get_state_key("comparison_frame")),
             selection=selection,
             plot_settings=plot_settings,
-            callbacks=ExportCallbacks(on_step=_on_step, on_warning=_on_warning),
+            callbacks=ExportCallbacks(on_step=st.caption, on_warning=st.warning),
         )
+        _show_export_summary(result, status)
 
-        if result.mirror_plot_count:
-            st.caption(f"  Generated {result.mirror_plot_count} mirror plot file(s)")
-        if result.summary_plot_count:
-            st.caption(f"  Generated {result.summary_plot_count} summary plot(s)")
-
-        status.update(
-            label=f"Exported {len(result.saved_files)} files to {result.export_root}",
-            state="complete",
-        )
-
-    if result.saved_files:
-        with st.expander(f"Exported files ({len(result.saved_files)})", expanded=False):
-            for file_path in result.saved_files:
-                st.caption(f"  {file_path}")
-
+    _show_saved_files_expander(result)
     _render_plot_gallery(result.export_root)
     return result.export_root

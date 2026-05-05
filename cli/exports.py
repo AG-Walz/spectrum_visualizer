@@ -80,6 +80,44 @@ def _make_callbacks(quiet: bool) -> ExportCallbacks:
     )
 
 
+def _print_export_preamble(frames: dict, comparison_frame) -> None:
+    """Echo PSM/Peaks/Comparison row counts before kicking off the export."""
+    peaks_height = frames["peaks"].select("x").collect().height
+    psm_height = frames["psm"].select("id").collect().height
+    print(f"  PSMs: {psm_height}, Peaks: {peaks_height}, "
+          f"Comparisons: {len(comparison_frame)}\n")
+
+
+def _build_export_selection(config: CLIConfig) -> ExportSelection:
+    """Decide which artifact groups the CLI run will write."""
+    return ExportSelection(
+        parquet=True,
+        csv=True,
+        mirror_plots=not config.no_plots,
+        summary_plots=not config.no_plots,
+        html="html" in config.export_formats,
+    )
+
+
+def _build_plot_settings(config: CLIConfig, normalize: bool) -> PlotSettings:
+    """Translate the CLI config into a :class:`PlotSettings` for the runner."""
+    return PlotSettings(
+        export_formats=list(config.export_formats),
+        figure_size=config.figure_size,
+        export_resolution=config.export_resolution,
+        plot_unpaired_queries=config.plot_unpaired_queries,
+        normalize=normalize,
+        workers=config.workers,
+    )
+
+
+def _print_export_summary(result: ExportResult) -> None:
+    """Echo plot counts after the export completes."""
+    print(f"  Generated {result.mirror_plot_count} plot file(s)")
+    if result.summary_plot_count:
+        print(f"  Generated {result.summary_plot_count} summary plot(s)")
+
+
 def run_cli_export(
     config: CLIConfig,
     annotated_queries: list,
@@ -95,26 +133,7 @@ def run_cli_export(
     comparison_frame = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
 
     if not quiet:
-        peaks_height = frames["peaks"].select("x").collect().height
-        psm_height = frames["psm"].select("id").collect().height
-        print(f"  PSMs: {psm_height}, Peaks: {peaks_height}, "
-              f"Comparisons: {len(comparison_frame)}\n")
-
-    selection = ExportSelection(
-        parquet=True,
-        csv=True,
-        mirror_plots=not config.no_plots,
-        summary_plots=not config.no_plots,
-        html="html" in config.export_formats,
-    )
-    plot_settings = PlotSettings(
-        export_formats=list(config.export_formats),
-        figure_size=config.figure_size,
-        export_resolution=config.export_resolution,
-        plot_unpaired_queries=config.plot_unpaired_queries,
-        normalize=normalize,
-        workers=config.workers,
-    )
+        _print_export_preamble(frames, comparison_frame)
 
     result = run_export(
         export_directory=config.export_directory,
@@ -125,14 +144,11 @@ def run_cli_export(
         reference_store=reference_store,
         variant_groups=variant_groups,
         comparison_frame=comparison_frame,
-        selection=selection,
-        plot_settings=plot_settings,
+        selection=_build_export_selection(config),
+        plot_settings=_build_plot_settings(config, normalize),
         callbacks=_make_callbacks(quiet),
     )
 
     if not quiet:
-        print(f"  Generated {result.mirror_plot_count} plot file(s)")
-        if result.summary_plot_count:
-            print(f"  Generated {result.summary_plot_count} summary plot(s)")
-
+        _print_export_summary(result)
     return result

@@ -120,7 +120,7 @@ def _count_written(result: ComparisonResult) -> int:
     )
 
 
-def _resolve_fmt_dirs(
+def _resolve_format_dirs(
     root_dir: Path, export_formats: List[str],
 ) -> Tuple[Dict[str, str], str]:
     """Return ``(fmt_dirs, html_dir)`` without creating any folders.
@@ -145,6 +145,30 @@ def _plot_worker(task):
     return result
 
 
+def _effective_export_formats(picture_formats: List[str], do_html: bool) -> List[str]:
+    """Add ``"html"`` to *picture_formats* when HTML output was requested."""
+    if do_html and "html" not in picture_formats:
+        return list(picture_formats) + ["html"]
+    return list(picture_formats)
+
+
+def _record_plot_result(
+    ok: bool, result, saved_files: List[str], callbacks: ExportCallbacks,
+) -> int:
+    """Process one ``run_tasks`` outcome; returns count of files written by it."""
+    if not ok:
+        msg = f"Plot generation failed: {result}"
+        logger.error(msg)
+        if callbacks.on_warning:
+            callbacks.on_warning(msg)
+        return 0
+    written = _count_written(result)
+    for path in (result.png_path, result.svg_path, result.pdf_path, result.html_path):
+        if path:
+            saved_files.append(path)
+    return written
+
+
 def _run_plot_tasks(
     annotated_queries: List[tuple],
     reference_store: dict,
@@ -156,13 +180,9 @@ def _run_plot_tasks(
     callbacks: ExportCallbacks,
 ) -> int:
     """Build tasks via :func:`build_plot_tasks` and dispatch through :func:`run_tasks`."""
-    # Merge the user's picture formats with html routing for build_plot_tasks.
-    effective_formats = list(plot_settings.export_formats)
-    if do_html and "html" not in effective_formats:
-        effective_formats = effective_formats + ["html"]
-
-    fmt_dirs, html_dir = _resolve_fmt_dirs(root_dir, effective_formats)
-
+    fmt_dirs, html_dir = _resolve_format_dirs(
+        root_dir, _effective_export_formats(plot_settings.export_formats, do_html),
+    )
     tasks = build_plot_tasks(
         annotated_queries, reference_store, variant_groups,
         normalize=plot_settings.normalize,
@@ -177,23 +197,13 @@ def _run_plot_tasks(
         return 0
 
     total_files = 0
-    completed = 0
     total = len(tasks)
-
+    completed = 0
     for _task, ok, result in run_tasks(
         tasks=tasks, worker=_plot_worker, workers=plot_settings.workers,
     ):
         completed += 1
-        if ok:
-            total_files += _count_written(result)
-            for path in (result.png_path, result.svg_path, result.pdf_path, result.html_path):
-                if path:
-                    saved_files.append(path)
-        else:
-            msg = f"Plot generation failed: {result}"
-            logger.error(msg)
-            if callbacks.on_warning:
-                callbacks.on_warning(msg)
+        total_files += _record_plot_result(ok, result, saved_files, callbacks)
         if callbacks.on_plot_progress:
             callbacks.on_plot_progress(completed, total)
 
@@ -228,6 +238,56 @@ def _run_summary_plots(
     return count
 
 
+def _announce(callbacks: ExportCallbacks, message: str) -> None:
+    """Push a step message through ``on_step`` if the caller registered one."""
+    if callbacks.on_step:
+        callbacks.on_step(message)
+
+
+def _maybe_write_parquets(selection: ExportSelection, frames, root_dir: Path,
+                          saved_files: List[str], callbacks: ExportCallbacks) -> None:
+    if not selection.parquet:
+        return
+    _announce(callbacks, "Saving Parquet DataFrames...")
+    _write_parquets(frames, root_dir, saved_files)
+
+
+def _maybe_write_summary_csv(selection: ExportSelection, comparison_frame,
+                             root_dir: Path, saved_files: List[str],
+                             callbacks: ExportCallbacks) -> None:
+    if not selection.csv:
+        return
+    _announce(callbacks, "Saving comparison summary...")
+    _write_comparison_summary(comparison_frame, root_dir, saved_files, callbacks.on_warning)
+
+
+def _maybe_run_mirror_plots(
+    selection: ExportSelection, annotated_queries, reference_store, variant_groups,
+    root_dir: Path, plot_settings: PlotSettings, saved_files: List[str],
+    callbacks: ExportCallbacks,
+) -> int:
+    if not (selection.mirror_plots or selection.html):
+        return 0
+    _announce(callbacks, "Generating mirror plots...")
+    return _run_plot_tasks(
+        _normalize_annotated_queries(annotated_queries),
+        reference_store, variant_groups, root_dir,
+        plot_settings, selection.html, saved_files, callbacks,
+    )
+
+
+def _maybe_run_summary_plots(
+    selection: ExportSelection, comparison_frame, root_dir: Path,
+    plot_settings: PlotSettings, saved_files: List[str], callbacks: ExportCallbacks,
+) -> int:
+    if not selection.summary_plots:
+        return 0
+    _announce(callbacks, "Generating summary plots...")
+    return _run_summary_plots(
+        comparison_frame, root_dir, plot_settings.export_formats, saved_files,
+    )
+
+
 def run_export(
     *,
     export_directory: str,
@@ -260,36 +320,17 @@ def run_export(
     commit_export_directory(root_dir, run_settings)
 
     saved_files: List[str] = [str(root_dir / "run_settings.json")]
-
-    if selection.parquet:
-        if callbacks.on_step:
-            callbacks.on_step("Saving Parquet DataFrames...")
-        _write_parquets(frames, root_dir, saved_files)
-
-    if selection.csv:
-        if callbacks.on_step:
-            callbacks.on_step("Saving comparison summary...")
-        _write_comparison_summary(
-            comparison_frame, root_dir, saved_files, callbacks.on_warning,
-        )
-
-    mirror_plot_count = 0
-    if selection.mirror_plots or selection.html:
-        if callbacks.on_step:
-            callbacks.on_step("Generating mirror plots...")
-        queries = _normalize_annotated_queries(annotated_queries)
-        mirror_plot_count = _run_plot_tasks(
-            queries, reference_store, variant_groups, root_dir,
-            plot_settings, selection.html, saved_files, callbacks,
-        )
-
-    summary_plot_count = 0
-    if selection.summary_plots:
-        if callbacks.on_step:
-            callbacks.on_step("Generating summary plots...")
-        summary_plot_count = _run_summary_plots(
-            comparison_frame, root_dir, plot_settings.export_formats, saved_files,
-        )
+    _maybe_write_parquets(selection, frames, root_dir, saved_files, callbacks)
+    _maybe_write_summary_csv(
+        selection, comparison_frame, root_dir, saved_files, callbacks,
+    )
+    mirror_plot_count = _maybe_run_mirror_plots(
+        selection, annotated_queries, reference_store, variant_groups,
+        root_dir, plot_settings, saved_files, callbacks,
+    )
+    summary_plot_count = _maybe_run_summary_plots(
+        selection, comparison_frame, root_dir, plot_settings, saved_files, callbacks,
+    )
 
     return ExportResult(
         export_root=root_dir,

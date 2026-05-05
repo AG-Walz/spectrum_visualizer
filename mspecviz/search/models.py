@@ -4,61 +4,55 @@ from dataclasses import dataclass, field
 from typing import List
 
 
-def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
-    """Splice ``modification_key`` (``"M5[Ox]|NTerm[Ac]"``) into ``base_sequence`` (→ ``"[Ac]PEPTM[Ox]DEK"``)."""
-    if not modification_key:
-        return base_sequence
+def _parse_modification_entry(entry: str):
+    """Parse one ``M5[Ox]`` / ``NTerm[Ac]`` token into ``(prefix, abbrev)`` or ``None``."""
+    entry = entry.strip()
+    if not entry:
+        return None
+    bracket_start = entry.find("[")
+    bracket_end = entry.find("]")
+    if bracket_start < 0 or bracket_end < 0:
+        return None
+    return entry[:bracket_start], entry[bracket_start:bracket_end + 1]
 
-    # Parse each mod entry: "M5[Ox]" -> (position=5, abbrev="Ox")
-    # Terminal mods: "NTerm[Ac]" -> (position=0, abbrev="Ac", is_nterm=True)
-    insertions = {}  # position (1-based) -> list of abbreviations to insert after that position
-    prefix_mods = []  # N-terminal mods shown as prefix
-    suffix_mods = []  # C-terminal mods shown as suffix
+
+def _parse_modification_key(modification_key: str):
+    """Split ``modification_key`` into ``(prefix_mods, suffix_mods, position→[abbrev])``."""
+    insertions: dict[int, list[str]] = {}
+    prefix_mods: list[str] = []
+    suffix_mods: list[str] = []
 
     for entry in modification_key.split("|"):
-        entry = entry.strip()
-        if not entry:
+        parsed = _parse_modification_entry(entry)
+        if parsed is None:
             continue
-
-        # Extract abbreviation from brackets
-        bracket_start = entry.find("[")
-        bracket_end = entry.find("]")
-        if bracket_start < 0 or bracket_end < 0:
-            continue
-
-        abbrev = entry[bracket_start:bracket_end + 1]  # e.g. "[Ox]"
-        prefix = entry[:bracket_start]  # e.g. "M5" or "NTerm" or "CTerm"
+        prefix, abbrev = parsed
 
         if prefix == "NTerm":
             prefix_mods.append(abbrev)
         elif prefix == "CTerm":
             suffix_mods.append(abbrev)
         else:
-            # Parse residue + position: "M5" -> position 5
-            # Find where digits start
-            pos_str = ""
-            for ch in prefix:
-                if ch.isdigit():
-                    pos_str += ch
+            pos_str = "".join(ch for ch in prefix if ch.isdigit())
             if pos_str:
-                pos = int(pos_str)
-                if pos not in insertions:
-                    insertions[pos] = []
-                insertions[pos].append(abbrev)
+                insertions.setdefault(int(pos_str), []).append(abbrev)
 
-    # Build the inline sequence
-    parts = []
-    for part in prefix_mods:
-        parts.append(part)
+    return prefix_mods, suffix_mods, insertions
+
+
+def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
+    """Splice ``modification_key`` (``"M5[Ox]|NTerm[Ac]"``) into ``base_sequence``."""
+    if not modification_key:
+        return base_sequence
+
+    prefix_mods, suffix_mods, insertions = _parse_modification_key(modification_key)
+
+    parts: list[str] = list(prefix_mods)
     for i, aa in enumerate(base_sequence):
         parts.append(aa)
-        pos = i + 1  # 1-based position
-        if pos in insertions:
-            for abbrev in insertions[pos]:
-                parts.append(abbrev)
-    for part in suffix_mods:
-        parts.append(part)
-
+        if (pos := i + 1) in insertions:
+            parts.extend(insertions[pos])
+    parts.extend(suffix_mods)
     return "".join(parts)
 
 

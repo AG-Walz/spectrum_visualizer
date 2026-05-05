@@ -24,91 +24,104 @@ from streamlit_app.utils.state.workspace import (
 )
 
 
+def _flush_and_switch_workspace(params: dict) -> None:
+    """Selectbox callback: persist outgoing params, clear stale state, switch.
+
+    Keeping this at module level (instead of as a nested closure) makes the
+    workspace-switcher easy to read: each widget just dispatches to a named
+    helper and the heavy state surgery lives here.
+    """
+    # Flush any in-flight session state to the OUTGOING workspace's
+    # params.json BEFORE deleting keys. Without this, peptides the user
+    # typed in a text_area whose blur event races with the dropdown
+    # on_change can be lost on switch.
+    save_params(params)
+    # Pop every known widget key — not just the ones that happened to
+    # be on disk in ``params.json`` — so settings from the outgoing
+    # workspace do not bleed into the incoming one's widgets (and from
+    # there, back into its params.json via save_params).
+    for key in (*_PARAM_KEYS, *params.keys()):
+        st.session_state.pop(key, None)
+    # Clear page-namespaced keys so stale analysis state (and the
+    # ``_persisted`` widget-value backups) from the previous workspace
+    # are not shown in the new one.
+    stale_keys = [k for k in st.session_state if k.startswith(STATE_PREFIX)]
+    for key in stale_keys:
+        st.session_state.pop(key, None)
+    st.query_params.workspace = st.session_state["chosen-workspace"]
+    # Halt this rerun immediately to avoid the script continuing with
+    # session_state.workspace still pointing at the OLD workspace.
+    st.rerun()
+
+
+def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
+    """Render the existing-workspace dropdown; returns the current workspace name."""
+    workspaces_dir.mkdir(parents=True, exist_ok=True)
+    options = sorted(f.name for f in workspaces_dir.iterdir() if f.is_dir())
+    if not options:
+        options = ["default"]
+
+    current_workspace = str(st.session_state.workspace.stem)
+    index = options.index(current_workspace) if current_workspace in options else 0
+    st.selectbox(
+        "choose existing workspace",
+        options, index=index,
+        on_change=_flush_and_switch_workspace, args=(params,),
+        key="chosen-workspace",
+    )
+    return current_workspace
+
+
+def _render_create_workspace(workspaces_dir: Path) -> None:
+    """Render the 'New workspace name' input and Create button."""
+    new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
+    if not st.button("**Create Workspace**"):
+        return
+    if new_ws_name and is_safe_workspace_name(new_ws_name):
+        new_path = Path(workspaces_dir, new_ws_name)
+        new_path.mkdir(parents=True, exist_ok=True)
+        st.session_state.workspace = new_path
+        st.query_params.workspace = new_ws_name
+        st.rerun()
+    else:
+        st.warning("Please enter a valid workspace name.")
+
+
+def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> None:
+    """Render the delete-with-confirmation flow for the current workspace."""
+    if current_workspace == "default":
+        return
+    confirm_key = "_confirm_delete_workspace"
+    if not st.session_state.get(confirm_key):
+        if st.button("Delete this workspace"):
+            st.session_state[confirm_key] = True
+            st.rerun()
+        return
+
+    st.warning(f"Delete workspace **{current_workspace}** and all its data?")
+    yes_col, no_col = st.columns(2)
+    with yes_col:
+        if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
+            ws_path = Path(workspaces_dir, current_workspace)
+            if ws_path.exists():
+                shutil.rmtree(ws_path)
+            st.session_state.workspace = Path(workspaces_dir, "default")
+            st.query_params.workspace = "default"
+            st.session_state.pop(confirm_key, None)
+            st.rerun()
+    with no_col:
+        if st.button("Cancel", key="ws-confirm-no"):
+            st.session_state.pop(confirm_key, None)
+            st.rerun()
+
+
 def _render_workspace_switcher(params: dict) -> None:
     """Render workspace selector, create, and delete controls."""
     workspaces_dir = _get_workspaces_dir()
-
     with st.expander("**Workspaces**"):
-        def change_workspace():
-            # Flush any in-flight session state to the OUTGOING workspace's
-            # params.json BEFORE deleting keys. Without this, peptides the
-            # user typed in a text_area whose blur event races with the
-            # dropdown on_change can be lost on switch.
-            save_params(params)
-
-            # Pop every known widget key — not just the ones that happened to
-            # be on disk in ``params.json`` — so settings from the outgoing
-            # workspace do not bleed into the incoming one's widgets (and from
-            # there, back into its params.json via save_params).
-            for key in (*_PARAM_KEYS, *params.keys()):
-                st.session_state.pop(key, None)
-            # Clear page-namespaced keys so stale analysis state (and the
-            # ``_persisted`` widget-value backups) from the previous workspace
-            # are not shown in the new one.
-            stale_keys = [
-                k for k in st.session_state
-                if k.startswith(STATE_PREFIX)
-            ]
-            for key in stale_keys:
-                st.session_state.pop(key, None)
-            st.query_params.workspace = st.session_state["chosen-workspace"]
-            # Halt this rerun immediately. Without rerun, the script keeps
-            # executing with st.session_state.workspace still pointing at the
-            # OLD workspace while widgets re-seed session_state from the OLD
-            # params dict; the next rerun (triggered by any later interaction)
-            # then writes those OLD values into the NEW workspace's
-            # params.json via save_params, clobbering its settings.
-            st.rerun()
-
-        workspaces_dir.mkdir(parents=True, exist_ok=True)
-        options = sorted(
-            f.name for f in workspaces_dir.iterdir() if f.is_dir()
-        )
-        if not options:
-            options = ["default"]
-
-        current_workspace = str(st.session_state.workspace.stem)
-        index = options.index(current_workspace) if current_workspace in options else 0
-
-        st.selectbox(
-            "choose existing workspace",
-            options, index=index,
-            on_change=change_workspace, key="chosen-workspace",
-        )
-
-        new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
-        if st.button("**Create Workspace**"):
-            if new_ws_name and is_safe_workspace_name(new_ws_name):
-                new_path = Path(workspaces_dir, new_ws_name)
-                new_path.mkdir(parents=True, exist_ok=True)
-                st.session_state.workspace = new_path
-                st.query_params.workspace = new_ws_name
-                st.rerun()
-            else:
-                st.warning("Please enter a valid workspace name.")
-
-        if current_workspace != "default":
-            confirm_key = "_confirm_delete_workspace"
-            if st.session_state.get(confirm_key):
-                st.warning(f"Delete workspace **{current_workspace}** and all its data?")
-                yes_col, no_col = st.columns(2)
-                with yes_col:
-                    if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
-                        ws_path = Path(workspaces_dir, current_workspace)
-                        if ws_path.exists():
-                            shutil.rmtree(ws_path)
-                        st.session_state.workspace = Path(workspaces_dir, "default")
-                        st.query_params.workspace = "default"
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
-                with no_col:
-                    if st.button("Cancel", key="ws-confirm-no"):
-                        st.session_state.pop(confirm_key, None)
-                        st.rerun()
-            else:
-                if st.button("Delete this workspace"):
-                    st.session_state[confirm_key] = True
-                    st.rerun()
+        current_workspace = _render_workspace_select(workspaces_dir, params)
+        _render_create_workspace(workspaces_dir)
+        _render_delete_workspace(workspaces_dir, current_workspace)
 
 
 def page_setup(page: str = "") -> dict[str, Any]:

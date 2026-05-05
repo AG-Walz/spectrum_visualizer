@@ -11,8 +11,8 @@ from __future__ import annotations
 import os
 from pathlib import Path
 
-import streamlit as st
 import polars as pl
+import streamlit as st
 from openms_insight import Heatmap, LinePlot, SequenceView, StateManager, Table
 
 from streamlit_app.utils.state import get_param, get_state_key
@@ -44,57 +44,66 @@ def _needs_cache_regen():
     return needs, mark_rendered
 
 
-@st.fragment
-def openms_insight_explorer_fragment(params: dict):
-    """openms_insight Table + LinePlot + SequenceView + Heatmap."""
+def _resolve_cache_path(params: dict) -> str:
+    """Return the explorer's component-cache directory, creating it if needed."""
     export_dir = get_param(params, "export_directory", "")
-    CACHE_PATH = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
-    os.makedirs(CACHE_PATH, exist_ok=True)
+    cache_path = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
+    os.makedirs(cache_path, exist_ok=True)
+    return cache_path
 
-    needs_regeneration, mark_rendered = _needs_cache_regen()
 
+def _get_state_manager() -> StateManager:
+    """Return the cross-component StateManager, creating it on first access."""
     if "mspecviz_sm" not in st.session_state:
         st.session_state["mspecviz_sm"] = StateManager(session_key="mspecviz_state")
-    state_manager = st.session_state["mspecviz_sm"]
+    return st.session_state["mspecviz_sm"]
 
-    psm_frame = st.session_state.get(get_state_key("psm_frame"))
-    peaks_frame = st.session_state.get(get_state_key("peaks_frame"))
-    sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
-    heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
 
-    # Show currently selected PSM info
-    current_state = state_manager.get_state_for_vue()
-    selected_id = current_state.get("selected_psm")
-    if selected_id is not None and psm_frame is not None:
-        row = psm_frame.filter(pl.col("id") == selected_id).collect()
-        if row.height > 0:
-            label = row["display_label"][0]
-            source = row["source_file"][0]
-            st.info(f"Viewing: **{label}** (PSM {selected_id}) from {source}")
+def _show_selected_psm_banner(psm_frame: pl.LazyFrame | None, state_manager: StateManager) -> None:
+    """Show an info banner naming the currently selected PSM, if any."""
+    if psm_frame is None:
+        return
+    selected_id = state_manager.get_state_for_vue().get("selected_psm")
+    if selected_id is None:
+        return
+    row = psm_frame.filter(pl.col("id") == selected_id).collect()
+    if row.height == 0:
+        return
+    label = row["display_label"][0]
+    source = row["source_file"][0]
+    st.info(f"Viewing: **{label}** (PSM {selected_id}) from {source}")
 
-    # PSM Table
+
+def _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager) -> None:
+    """Render the PSM Table; selecting a row updates ``selected_psm``."""
     st.subheader("PSM Table")
     st.caption("Click a row to update the spectrum and sequence views below.")
-    psm_columns = [
+    columns = [
         {"field": "display_label", "title": "Peptide"},
         {"field": "charge", "title": "Z"},
         {"field": "score", "title": "Score", "formatter": "money", "formatterParams": {"precision": 4}},
         {"field": "source_file", "title": "Source File"},
     ]
-    table = _create_component(Table, "psm_table", CACHE_PATH, needs_regeneration,
-                              data=psm_frame, interactivity={"selected_psm": "id"},
-                              column_definitions=psm_columns, regenerate_cache=True, index_field="id")
+    table = _create_component(
+        Table, "psm_table", cache_path, needs_regeneration,
+        data=psm_frame, interactivity={"selected_psm": "id"},
+        column_definitions=columns, regenerate_cache=True, index_field="id",
+    )
     table(key="psm_table", state_manager=state_manager)
 
-    # SequenceView
+
+def _render_sequence_view(
+    sequence_frame, peaks_frame, params, cache_path, needs_regeneration, state_manager,
+) -> None:
+    """Render the SequenceView coverage map filtered by ``selected_psm``."""
     st.subheader("Sequence Coverage")
     if needs_regeneration:
-        peaks_for_sequence_view = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
+        peaks_for_sv = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
     else:
-        peaks_for_sequence_view = None
+        peaks_for_sv = None
     sequence_view = _create_component(
-        SequenceView, "sequence_view", CACHE_PATH, needs_regeneration,
-        sequence_data=sequence_frame, peaks_data=peaks_for_sequence_view,
+        SequenceView, "sequence_view", cache_path, needs_regeneration,
+        sequence_data=sequence_frame, peaks_data=peaks_for_sv,
         filters={"selected_psm": "psm_id"},
         annotation_config={
             "ion_types": get_param(params, "ion_types", DEFAULTS.ion_types),
@@ -105,10 +114,12 @@ def openms_insight_explorer_fragment(params: dict):
     )
     sequence_view(key="sequence_view", state_manager=state_manager)
 
-    # LinePlot linked to SequenceView
+
+def _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager) -> None:
+    """Render the fragment-spectrum LinePlot, linked to the SequenceView."""
     st.subheader("Fragment Spectrum")
     lineplot = _create_component(
-        LinePlot, "spectrum_plot", CACHE_PATH, needs_regeneration,
+        LinePlot, "spectrum_plot", cache_path, needs_regeneration,
         data=peaks_frame, filters={"selected_psm": "psm_id"},
         filter_defaults={"selected_psm": 0}, regenerate_cache=True,
         x_column="x", y_column="y", highlight_column="highlight",
@@ -116,14 +127,37 @@ def openms_insight_explorer_fragment(params: dict):
     )
     lineplot(key="spectrum_plot", state_manager=state_manager, sequence_view_key="sequence_view")
 
-    # Heatmap
+
+def _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager) -> None:
+    """Render the RT x m/z Heatmap (log-scaled intensity)."""
     st.subheader("RT x m/z Heatmap")
-    heatmap_component = _create_component(
-        Heatmap, "rt_heatmap", CACHE_PATH, needs_regeneration,
+    heatmap = _create_component(
+        Heatmap, "rt_heatmap", cache_path, needs_regeneration,
         data=heatmap_frame, x_column="x", y_column="y", intensity_column="intensity",
         x_label="Retention Time (s)", y_label="m/z", log_scale=True, regenerate_cache=True,
     )
-    heatmap_component(key="rt_heatmap", state_manager=state_manager)
+    heatmap(key="rt_heatmap", state_manager=state_manager)
+
+
+@st.fragment
+def render_explorer(params: dict) -> None:
+    """openms_insight Table + LinePlot + SequenceView + Heatmap."""
+    cache_path = _resolve_cache_path(params)
+    needs_regeneration, mark_rendered = _needs_cache_regen()
+    state_manager = _get_state_manager()
+
+    psm_frame = st.session_state.get(get_state_key("psm_frame"))
+    peaks_frame = st.session_state.get(get_state_key("peaks_frame"))
+    sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
+    heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
+
+    _show_selected_psm_banner(psm_frame, state_manager)
+    _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager)
+    _render_sequence_view(
+        sequence_frame, peaks_frame, params, cache_path, needs_regeneration, state_manager,
+    )
+    _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
+    _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager)
 
     if needs_regeneration:
         mark_rendered()

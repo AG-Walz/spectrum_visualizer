@@ -6,7 +6,7 @@ from typing import Dict, Optional, Set, Tuple
 
 from psm_utils.io.idxml import IdXMLReader
 
-from mspecviz.search.idxml_parsing import mod_key_from_peptidoform
+from mspecviz.search.idxml_parsing import modification_key_from_peptidoform
 from mspecviz.search.models import PeptideMatch
 
 logger = logging.getLogger(__name__)
@@ -28,7 +28,7 @@ def _build_match_from_psm(
     mzml_filename = (psm.run + ".mzML") if psm.run else ""
     resolved_path = mzml_by_name.get(mzml_filename.lower(), "") if mzml_filename else ""
 
-    mod_key = mod_key_from_peptidoform(psm.peptidoform)
+    mod_key = modification_key_from_peptidoform(psm.peptidoform)
     variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
 
     match = PeptideMatch(
@@ -46,19 +46,54 @@ def _build_match_from_psm(
     return variant_key, match
 
 
+def _process_psm_against_targets(
+    psm, idxml_path: str, idxml_name: str,
+    target_set: Set[str], mzml_by_name: Dict[str, str], matches: list,
+) -> None:
+    """Append the PSM's ``(variant_key, PeptideMatch)`` to *matches* if it targets a peptide."""
+    try:
+        if psm.peptidoform.sequence.upper() not in target_set:
+            return
+        built = _build_match_from_psm(psm, idxml_path, idxml_name, mzml_by_name)
+        if built is not None:
+            matches.append(built)
+    except Exception as e:
+        logger.debug(f"Error processing PSM: {e}")
+
+
+def _iterate_psms_safely(
+    reader, idxml_name: str,
+) -> Tuple[list, int, Optional[str]]:
+    """Manually drain the psm_utils generator, isolating one bad PSM from the rest.
+
+    Returns ``(psms, psms_read, parse_error)``. We iterate manually because
+    psm_utils' ``__iter__`` is a generator: one bad PSM (e.g. null rescoring
+    feature in unfiltered ``_pout.idXML``) kills the stream entirely.
+    """
+    psms: list = []
+    psm_iter = iter(reader)
+    psms_read = 0
+    while True:
+        try:
+            psm = next(psm_iter)
+            psms_read += 1
+            psms.append(psm)
+        except StopIteration:
+            return psms, psms_read, None
+        except Exception as e:
+            logger.debug(
+                f"PSM parse error in {idxml_name} after {psms_read} PSMs: {e}"
+            )
+            return psms, psms_read, str(e)
+
+
 def _search_single_idxml(
     idxml_path: str,
     idxml_name: str,
     target_set: Set[str],
     mzml_by_name: Dict[str, str],
 ) -> Tuple[str, list, list]:
-    """Worker: scan one idXML for target peptides via psm_utils PSM iteration.
-
-    Returns ``(idxml_name, [(variant_key, PeptideMatch)], errors)``. Module-level
-    so ProcessPoolExecutor can pickle it; ``psm.run`` already carries the
-    resolved mzML basename and ``mzml_by_name`` (lowercase basename → full path)
-    binds it to a concrete file.
-    """
+    """Worker: scan one idXML for target peptides via psm_utils PSM iteration."""
     matches: list = []
     errors: list = []
 
@@ -69,31 +104,11 @@ def _search_single_idxml(
             errors.append(f"No peptide identifications in {idxml_name}: {load_error}")
             return idxml_name, matches, errors
 
-        # Manual iteration: psm_utils' __iter__ is a generator, so a single bad PSM
-        # (e.g. null rescoring feature in unfiltered _pout.idXML) kills the stream.
-        psm_iter = iter(reader)
-        psms_read = 0
-        parse_error: Optional[str] = None
-        while True:
-            try:
-                psm = next(psm_iter)
-                psms_read += 1
-            except StopIteration:
-                break
-            except Exception as e:
-                parse_error = str(e)
-                logger.debug(f"PSM parse error in {idxml_name} after {psms_read} PSMs: {e}")
-                break  # generator is dead — no point continuing
-
-            try:
-                if psm.peptidoform.sequence.upper() not in target_set:
-                    continue
-                built = _build_match_from_psm(psm, idxml_path, idxml_name, mzml_by_name)
-                if built is not None:
-                    matches.append(built)
-            except Exception as e:
-                logger.debug(f"Error processing PSM: {e}")
-                continue
+        psms, psms_read, parse_error = _iterate_psms_safely(reader, idxml_name)
+        for psm in psms:
+            _process_psm_against_targets(
+                psm, idxml_path, idxml_name, target_set, mzml_by_name, matches,
+            )
 
         if parse_error is not None:
             errors.append(
@@ -102,7 +117,6 @@ def _search_single_idxml(
                 f"Percolator output (_pout.idXML) that contains PSMs missing metadata. "
                 f"Switch to _pout_filtered.idXML for complete, reliable results."
             )
-
     except Exception as e:
         errors.append(f"Error loading {Path(idxml_path).name}: {e}")
 

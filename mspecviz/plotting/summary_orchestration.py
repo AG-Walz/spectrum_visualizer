@@ -78,6 +78,58 @@ def prepare_summary_data(
     return raw_frame, agg
 
 
+def _summary_filename(plot_type: str, metric: str) -> str:
+    """Pick the basename for a saved summary plot (special-cased for ridgeline)."""
+    if plot_type == "ridgeline" and metric == DEFAULTS.summary_metric:
+        return "ridgeline_r2_binned"
+    return plot_type
+
+
+def _save_figure_in_formats(fig, summary_dir: Path, basename: str,
+                            formats: List[str], export_resolution: int) -> Dict[str, str]:
+    """Save *fig* in each requested format; returns ``{format: path}`` for those that succeeded."""
+    paths: Dict[str, str] = {}
+    for fmt in formats:
+        out_path = summary_dir / f"{basename}.{fmt}"
+        try:
+            fig.savefig(str(out_path), format=fmt, dpi=export_resolution,
+                        bbox_inches="tight", facecolor="white")
+            paths[fmt] = str(out_path)
+        except OSError as exc:
+            logger.error("Failed to save %s.%s: %s", basename, fmt, exc)
+    return paths
+
+
+def _render_one_summary_plot(
+    plot_type: str, raw_frame, aggregated_frame, metric: str,
+    summary_dir: Path, formats: List[str],
+    export_resolution: int, title_prefix: str,
+) -> Dict[str, str] | None:
+    """Render + save a single plot type; returns ``{format: path}`` or None on failure."""
+    func = _PLOT_REGISTRY.get(plot_type)
+    if func is None:
+        logger.warning("Unknown plot type: %s (skipping)", plot_type)
+        return None
+
+    plot_title = (
+        f"{title_prefix} -- {_metric_label(metric)}".strip(" -")
+        if title_prefix else None
+    )
+    try:
+        fig = func(raw_frame, aggregated_frame, metric=metric,
+                   export_resolution=export_resolution, title=plot_title)
+    except ValueError as exc:
+        logger.error("Failed to create %s plot: %s", plot_type, exc)
+        return None
+
+    paths = _save_figure_in_formats(
+        fig, summary_dir, _summary_filename(plot_type, metric),
+        formats, export_resolution,
+    )
+    plt.close(fig)
+    return paths or None
+
+
 def generate_all_summary_plots(
     source: Union[str, Path, pd.DataFrame],
     output_dir: Union[str, Path],
@@ -104,35 +156,11 @@ def generate_all_summary_plots(
                 len(aggregated_frame), len(raw_frame), metric)
 
     results: Dict[str, Dict[str, str]] = {}
-
     for pt in plot_types:
-        func = _PLOT_REGISTRY.get(pt)
-        if func is None:
-            logger.warning("Unknown plot type: %s (skipping)", pt)
-            continue
-
-        plot_title = (f"{title_prefix} -- {_metric_label(metric)}".strip(" -")
-                      if title_prefix else None)
-
-        try:
-            fig = func(raw_frame, aggregated_frame, metric=metric, export_resolution=export_resolution, title=plot_title)
-        except ValueError as exc:
-            logger.error("Failed to create %s plot: %s", pt, exc)
-            continue
-
-        paths: Dict[str, str] = {}
-        filename = "ridgeline_r2_binned" if pt == "ridgeline" and metric == DEFAULTS.summary_metric else pt
-        for fmt in formats:
-            out_path = summary_dir / f"{filename}.{fmt}"
-            try:
-                fig.savefig(str(out_path), format=fmt, dpi=export_resolution,
-                            bbox_inches="tight", facecolor="white")
-                paths[fmt] = str(out_path)
-            except OSError as exc:
-                logger.error("Failed to save %s.%s: %s", pt, fmt, exc)
-
-        plt.close(fig)
+        paths = _render_one_summary_plot(
+            pt, raw_frame, aggregated_frame, metric,
+            summary_dir, formats, export_resolution, title_prefix,
+        )
         if paths:
             results[pt] = paths
-
     return results

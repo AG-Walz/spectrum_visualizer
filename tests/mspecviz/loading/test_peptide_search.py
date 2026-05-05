@@ -1,11 +1,11 @@
-"""Tests for peptide_search helper functions: abbreviate_mod, format_inline_sequence,
+"""Tests for peptide_search helper functions: abbreviate_modification, format_inline_sequence,
 and summarize_search_results (returns pl.LazyFrame).
 """
 import pytest
 import polars as pl
 
 from mspecviz.search import (
-    abbreviate_mod,
+    abbreviate_modification,
     format_inline_sequence,
     get_unique_peptides_from_idxmls,
     MOD_ABBREVIATIONS,
@@ -16,22 +16,22 @@ from mspecviz.search import (
 from tests.conftest import make_peptide_match
 
 
-class TestAbbreviateMod:
-    """Tests for abbreviate_mod()."""
+class TestAbbreviateModification:
+    """Tests for abbreviate_modification()."""
 
     def test_known_modifications(self):
-        assert abbreviate_mod("Oxidation") == "Ox"
-        assert abbreviate_mod("Phospho") == "Ph"
-        assert abbreviate_mod("Carbamidomethyl") == "CAM"
-        assert abbreviate_mod("Acetyl") == "Ac"
-        assert abbreviate_mod("Deamidated") == "Deam"
+        assert abbreviate_modification("Oxidation") == "Ox"
+        assert abbreviate_modification("Phospho") == "Ph"
+        assert abbreviate_modification("Carbamidomethyl") == "CAM"
+        assert abbreviate_modification("Acetyl") == "Ac"
+        assert abbreviate_modification("Deamidated") == "Deam"
 
     def test_unknown_modification_returns_full_name(self):
-        assert abbreviate_mod("SomeUnknownMod") == "SomeUnknownMod"
+        assert abbreviate_modification("SomeUnknownMod") == "SomeUnknownMod"
 
     def test_all_abbreviations_in_map(self):
         for mod_name, abbrev in MOD_ABBREVIATIONS.items():
-            assert abbreviate_mod(mod_name) == abbrev
+            assert abbreviate_modification(mod_name) == abbrev
 
 
 class TestFormatInlineSequence:

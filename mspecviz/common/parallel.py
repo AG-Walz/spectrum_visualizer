@@ -18,21 +18,21 @@ def run_tasks(
     # Ensure the number of workers is between 1 and the number of tasks
     workers = max(1, min(workers, len(tasks)))
 
-    def _args(t):
+    def _as_args_tuple(t):
         return t if isinstance(t, tuple) else (t,)
 
     # Sequential execution for a single worker
     if workers == 1:
         for task in tasks:
             try:
-                yield task, True, worker(*_args(task))
+                yield task, True, worker(*_as_args_tuple(task))
             except Exception as exc:
                 yield task, False, exc
         return
 
     # Parallel execution for multiple workers
     with ProcessPoolExecutor(max_workers=workers) as pool:
-        future_map = {pool.submit(worker, *_args(task)): task for task in tasks}
+        future_map = {pool.submit(worker, *_as_args_tuple(task)): task for task in tasks}
         try:
             for future in as_completed(future_map):
                 task = future_map[future]

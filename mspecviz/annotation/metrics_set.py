@@ -171,19 +171,19 @@ def compute_all_metrics(
 
 def format_metrics_text(metrics: Dict[str, float]) -> str:
     """Format metrics as multi-line string for plot overlay."""
-    def _fmt(val) -> str:
+    def _format_metric_value(val) -> str:
         if val is None or (isinstance(val, float) and math.isnan(val)):
             return "N/A"
         return f"{val:.3f}"
 
     return (
-        f"R\u00b2 Match: {_fmt(metrics.get('R2m'))}\n"
-        f"R\u00b2 Binned: {_fmt(metrics.get('R2b'))}\n"
-        f"Cosine: {_fmt(metrics.get('Cos'))}\n"
-        f"Entropy: {_fmt(metrics.get('Ent'))}\n"
-        f"Dice: {_fmt(metrics.get('Dice'))}\n"
-        f"Jaccard: {_fmt(metrics.get('Jacc'))}\n"
-        f"Shared: {_fmt(metrics.get('ShR'))}"
+        f"R\u00b2 Match: {_format_metric_value(metrics.get('R2m'))}\n"
+        f"R\u00b2 Binned: {_format_metric_value(metrics.get('R2b'))}\n"
+        f"Cosine: {_format_metric_value(metrics.get('Cos'))}\n"
+        f"Entropy: {_format_metric_value(metrics.get('Ent'))}\n"
+        f"Dice: {_format_metric_value(metrics.get('Dice'))}\n"
+        f"Jaccard: {_format_metric_value(metrics.get('Jacc'))}\n"
+        f"Shared: {_format_metric_value(metrics.get('ShR'))}"
     )
 
 
