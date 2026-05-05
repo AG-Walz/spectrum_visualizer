@@ -129,8 +129,8 @@ def annotate_spectrum(
             ion_types=ion_types_str,
             neutral_losses=add_neutral_losses,
         )
-    except (ValueError, KeyError) as e:
-        logger.warning(f"annotate_proforma failed for '{peptidoform}': {e}")
+    except (ValueError, KeyError) as error:
+        logger.warning(f"annotate_proforma failed for '{peptidoform}': {error}")
         return _empty_annotated_frame(mz, intensity)
 
     return _spec_to_dataframe(spec)

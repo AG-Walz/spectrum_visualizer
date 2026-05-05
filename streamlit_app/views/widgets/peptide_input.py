@@ -25,7 +25,7 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
     errors: list[str] = []
     n = len(idxmls)
 
-    with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as p:
+    with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
         for done, (task, ok, result) in enumerate(
             run_tasks(tasks=idxmls, worker=count_psms_per_peptide, workers=min(workers, n)),
             start=1,
@@ -34,14 +34,14 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
                 merged.update(result)
             else:
                 errors.append(f"{Path(task).name}: {result}")
-            p.update(done, n, units="files")
+            tracker.update(done, n, units="files")
 
         if errors:
-            p.finalize(f"Completed with {len(errors)} errors", state="error")
-            for e in errors[:5]:
-                st.caption(e)
+            tracker.finalize(f"Completed with {len(errors)} errors", state="error")
+            for error in errors[:5]:
+                st.caption(error)
         else:
-            p.finalize(f"{len(merged)} peptides from {n} files")
+            tracker.finalize(f"{len(merged)} peptides from {n} files")
 
     return merged, errors
 
@@ -108,18 +108,18 @@ def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
 def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -> list[str]:
     """Render the peptide multiselect; returns the list of selected sequences."""
     shown_items = [
-        (seq, cnt) for seq, cnt in psm_counts.items()
-        if cnt >= min_psm and (not filter_text or filter_text.upper() in seq)
+        (sequence, count) for sequence, count in psm_counts.items()
+        if count >= min_psm and (not filter_text or filter_text.upper() in sequence)
     ]
-    labels = [f"{seq} ({cnt})" for seq, cnt in shown_items]
-    label_to_seq = dict(zip(labels, (seq for seq, _ in shown_items)))
+    labels = [f"{sequence} ({count})" for sequence, count in shown_items]
+    label_to_sequence = dict(zip(labels, (sequence for sequence, _ in shown_items)))
     current = set(parse_peptide_list(st.session_state.get('target_peptides', '')))
-    defaults = [lbl for lbl, seq in label_to_seq.items() if seq in current]
+    defaults = [label for label, sequence in label_to_sequence.items() if sequence in current]
     selected_labels = st.multiselect(
         "Select peptides", options=labels, default=defaults,
         key=f"{STATE_PREFIX}_pick_multi",
     )
-    return [label_to_seq[lbl] for lbl in selected_labels]
+    return [label_to_sequence[label] for label in selected_labels]
 
 
 def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) -> None:

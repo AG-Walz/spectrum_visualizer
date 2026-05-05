@@ -54,18 +54,18 @@ def load_params(default: bool = False) -> dict[str, Any]:
     if not path.exists():
         return {}
 
-    with open(path, "r", encoding="utf-8") as f:
-        raw = json.load(f)
+    with open(path, "r", encoding="utf-8") as handle:
+        raw_params = json.load(handle)
 
     # Migrate legacy hyphenated top-level keys (e.g. ``reference-substring``)
     # to their snake_case equivalent. Defaults and in-code keys are snake_case
     # now; without this, workspaces created before the migration keep stale
     # hyphen keys and ``save_params`` can't sync widget values back to disk.
     # Snake_case wins if both forms exist.
-    migrated: dict[str, Any] = {k: v for k, v in raw.items() if "-" not in k}
-    for k, v in raw.items():
-        if "-" in k:
-            migrated.setdefault(k.replace("-", "_"), v)
+    migrated: dict[str, Any] = {key: value for key, value in raw_params.items() if "-" not in key}
+    for key, value in raw_params.items():
+        if "-" in key:
+            migrated.setdefault(key.replace("-", "_"), value)
     return migrated
 
 
@@ -103,12 +103,12 @@ def save_params(params: dict[str, Any]) -> None:
     # fail because the first had already moved the staging file away.
     params_path = Path(st.session_state.workspace, "params.json")
     params_path.parent.mkdir(parents=True, exist_ok=True)
-    fd, staging_name = tempfile.mkstemp(
+    file_descriptor, staging_name = tempfile.mkstemp(
         prefix=".params-", suffix=".json.tmp", dir=params_path.parent,
     )
     staging_path = Path(staging_name)
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as outfile:
+        with os.fdopen(file_descriptor, "w", encoding="utf-8") as outfile:
             json.dump(params, outfile, indent=4)
         os.replace(staging_path, params_path)
     except Exception:

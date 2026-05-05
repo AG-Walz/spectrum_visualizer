@@ -10,27 +10,26 @@ class DuplicateBasenameError(ValueError):
 
 def parse_peptide_list(text: str) -> List[str]:
     """Parse newline-separated peptide list, uppercased and stripped."""
-    return [p.strip().upper() for p in text.split('\n') if p.strip()]
+    return [line.strip().upper() for line in text.splitlines() if line.strip()]
 
 
 def format_time(seconds: float) -> str:
-    """Format seconds as human-readable duration (e.g. '2m 30s')."""
+    """Format seconds as human-readable duration (e.g. ``"2m 30s"``)."""
     if seconds < 60:
         return f"{seconds:.0f}s"
-    elif seconds < 3600:
-        mins = int(seconds // 60)
-        secs = int(seconds % 60)
-        return f"{mins}m {secs}s"
-    else:
-        hours = int(seconds // 3600)
-        mins = int((seconds % 3600) // 60)
-        return f"{hours}h {mins}m"
+    if seconds < 3600:
+        minutes = int(seconds // 60)
+        remaining_seconds = int(seconds % 60)
+        return f"{minutes}m {remaining_seconds}s"
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    return f"{hours}h {minutes}m"
 
 
 def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
     """Raise :class:`DuplicateBasenameError` if any two ``paths`` share a basename."""
     duplicates = sorted(
-        name for name, count in Counter(Path(p).name for p in paths).items()
+        name for name, count in Counter(Path(path).name for path in paths).items()
         if count > 1
     )
     if duplicates:

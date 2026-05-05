@@ -52,16 +52,16 @@ def _load_one_match(
 ) -> Tuple[Tuple[str, LoadedSpectrum] | None, str | None]:
     """Resolve and read a single match; returns ``(loaded_pair, error_msg)``."""
     try:
-        idx = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
-        if idx is None:
+        spectrum_index = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+        if spectrum_index is None:
             return None, f"Spectrum not found: {match.spectrum_id} in {display_name}"
-        spectrum = indexed_exp.getSpectrum(idx)
+        spectrum = indexed_exp.getSpectrum(spectrum_index)
         loaded = (variant_key, _build_loaded_spectrum(
             spectrum, match, display_name, is_reference,
         ))
         return loaded, None
-    except Exception as e:
-        return None, f"Error loading {match.spectrum_id}: {e}"
+    except Exception as error:
+        return None, f"Error loading {match.spectrum_id}: {error}"
 
 
 def _load_spectra_from_mzml(
@@ -94,8 +94,8 @@ def _load_spectra_from_mzml(
                 if error:
                     errors.append(error)
 
-    except Exception as e:
-        errors.append(f"Error opening {display_name}: {e}")
+    except Exception as error:
+        errors.append(f"Error opening {display_name}: {error}")
 
     return LoadResult(
         display_name=display_name,

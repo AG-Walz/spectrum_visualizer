@@ -14,9 +14,9 @@ import streamlit as st
 
 def _pick_browse_format(root_dir: Path) -> tuple[Path, str] | None:
     """Return the (dir, format) used to browse plots — prefer SVG, fall back to PNG."""
-    for subdir, fmt in [(root_dir / "svg", "svg"), (root_dir / "png", "png")]:
+    for subdir, output_format in [(root_dir / "svg", "svg"), (root_dir / "png", "png")]:
         if subdir.exists():
-            return subdir, fmt
+            return subdir, output_format
     return None
 
 
@@ -33,11 +33,11 @@ def _group_files_by_reference(plot_files: list[Path]) -> dict[str, list[Path]]:
     return ref_groups
 
 
-def _show_plot(plot_file: Path, browse_fmt: str) -> None:
+def _show_plot(plot_file: Path, browse_format: str) -> None:
     """Render one plot file inline (image for PNG, raw markup for SVG)."""
-    if browse_fmt == "png":
+    if browse_format == "png":
         st.image(str(plot_file), caption=plot_file.stem, width="stretch")
-    elif browse_fmt == "svg":
+    elif browse_format == "svg":
         st.markdown(plot_file.read_text(encoding="utf-8"), unsafe_allow_html=True)
 
 
@@ -62,7 +62,7 @@ def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: P
 
 def _render_reference_group(
     ref_stem: str, ref_files: list[Path], peptide_dir_name: str,
-    browse_fmt: str, root_dir: Path,
+    browse_format: str, root_dir: Path,
 ) -> None:
     """Render an inner expander grouping all plots with the same reference."""
     sub_label = (
@@ -71,20 +71,20 @@ def _render_reference_group(
     )
     with st.expander(f"{sub_label} ({len(ref_files)})", expanded=False):
         for plot_file in ref_files[:20]:
-            _show_plot(plot_file, browse_fmt)
+            _show_plot(plot_file, browse_format)
             _render_download_buttons(plot_file, peptide_dir_name, root_dir)
         if len(ref_files) > 20:
             st.caption(f"... and {len(ref_files) - 20} more")
 
 
-def _render_peptide_dir(peptide_dir: Path, browse_fmt: str, root_dir: Path) -> None:
+def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -> None:
     """Render the outer expander for one peptide variant directory."""
-    plot_files = sorted(peptide_dir.glob(f"*.{browse_fmt}"))
+    plot_files = sorted(peptide_dir.glob(f"*.{browse_format}"))
     if not plot_files:
         return
     with st.expander(f"{peptide_dir.name} ({len(plot_files)} plots)", expanded=False):
         for ref_stem, ref_files in sorted(_group_files_by_reference(plot_files).items()):
-            _render_reference_group(ref_stem, ref_files, peptide_dir.name, browse_fmt, root_dir)
+            _render_reference_group(ref_stem, ref_files, peptide_dir.name, browse_format, root_dir)
 
 
 def _render_plot_gallery(root_dir: Path) -> None:
@@ -92,7 +92,7 @@ def _render_plot_gallery(root_dir: Path) -> None:
     browse = _pick_browse_format(root_dir)
     if browse is None:
         return
-    browse_dir, browse_fmt = browse
+    browse_dir, browse_format = browse
 
     peptide_dirs = sorted([d for d in browse_dir.iterdir() if d.is_dir()])
     if not peptide_dirs:
@@ -100,8 +100,8 @@ def _render_plot_gallery(root_dir: Path) -> None:
 
     st.markdown("---")
     st.subheader("Browse Plots")
-    total_plots = sum(len(list(d.glob(f"*.{browse_fmt}"))) for d in peptide_dirs)
+    total_plots = sum(len(list(d.glob(f"*.{browse_format}"))) for d in peptide_dirs)
     st.caption(f"{len(peptide_dirs)} peptide variants, {total_plots} plots")
 
     for peptide_dir in peptide_dirs:
-        _render_peptide_dir(peptide_dir, browse_fmt, root_dir)
+        _render_peptide_dir(peptide_dir, browse_format, root_dir)

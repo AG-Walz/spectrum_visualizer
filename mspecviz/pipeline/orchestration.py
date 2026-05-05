@@ -19,7 +19,7 @@ from mspecviz.pipeline.annotation_steps import (
     _try_koina_fallback,
 )
 from mspecviz.plotting.worker_tasks import ComparisonTask
-from mspecviz.spectra.loader_models import spectrum_lookup_key
+from mspecviz.spectra.loader_models import source_label, spectrum_lookup_key
 
 logger = logging.getLogger("mspecviz.pipeline")
 
@@ -30,10 +30,10 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None):
     Returns ``(query_label, reference_label)`` tuple.  *reference_label* is ``""``
     when *reference_spectrum* is ``None``.
     """
-    query_label = f"Query: {query_spectrum.source_label} (RT: {query_spectrum.rt:.1f})"
+    query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
     if reference_spectrum is None:
         return query_label, ""
-    reference_label = f"Ref: {reference_spectrum.source_label} (RT: {reference_spectrum.rt:.1f})"
+    reference_label = f"Ref: {source_label(reference_spectrum)} (RT: {reference_spectrum.rt:.1f})"
     return query_label, reference_label
 
 
@@ -91,9 +91,9 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     return (psm_id, result.query_spectrum, query_frame, comparison_rows)
 
 
-def _resolve_export_formats(fmt_dirs: dict, html_dir: str) -> List[str]:
-    """Return the list of formats to emit (always copies; never mutates *fmt_dirs*)."""
-    export_formats = list(fmt_dirs.keys())
+def _resolve_export_formats(format_dirs: dict, html_dir: str) -> List[str]:
+    """Return the list of formats to emit (always copies; never mutates *format_dirs*)."""
+    export_formats = list(format_dirs.keys())
     if html_dir:
         export_formats = export_formats + ["html"]
     return export_formats
@@ -103,14 +103,14 @@ def _build_mirror_task(
     *, task_id: int, query_spectrum, query_frame,
     reference_spectrum, reference_frame,
     folder_name: str, plot_title: str, sanitize_fn,
-    fmt_dirs: dict, export_formats: List[str], html_dir: str,
+    format_dirs: dict, export_formats: List[str], html_dir: str,
     figure_size, export_resolution: int, normalize: bool,
 ) -> ComparisonTask:
     """Construct one mirror-plot ``ComparisonTask`` (query vs one reference)."""
     metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
     query_label, reference_label = format_spectrum_labels(query_spectrum, reference_spectrum)
     safe_filename = sanitize_fn(
-        f"{query_spectrum.source_label}_vs_{reference_spectrum.source_label}"
+        f"{source_label(query_spectrum)}_vs_{source_label(reference_spectrum)}"
     )
     html_path = (
         str(Path(html_dir) / folder_name / f"{safe_filename}.html")
@@ -121,8 +121,8 @@ def _build_mirror_task(
         query_frame=query_frame, reference_frame=reference_frame,
         query_label=query_label, reference_label=reference_label,
         plot_title=plot_title, folder_name=folder_name, safe_filename=safe_filename,
-        png_dir=fmt_dirs.get("png", ""), svg_dir=fmt_dirs.get("svg", ""),
-        pdf_dir=fmt_dirs.get("pdf", ""),
+        png_dir=format_dirs.get("png", ""), svg_dir=format_dirs.get("svg", ""),
+        pdf_dir=format_dirs.get("pdf", ""),
         export_formats=export_formats,
         figure_size=figure_size, export_resolution=export_resolution,
         normalize=normalize, html_plot_path=html_path, metrics_text=metrics_text,
@@ -133,12 +133,12 @@ def _build_mirror_task(
 def _build_single_task(
     *, task_id: int, query_spectrum, query_frame,
     folder_name: str, plot_title: str, sanitize_fn,
-    fmt_dirs: dict, export_formats: List[str],
+    format_dirs: dict, export_formats: List[str],
     figure_size, export_resolution: int, normalize: bool,
 ) -> ComparisonTask:
     """Construct one single-spectrum ``ComparisonTask`` (no reference)."""
-    safe_filename = sanitize_fn(query_spectrum.source_label)
-    query_label = f"{query_spectrum.source_label} (RT: {query_spectrum.rt:.1f})"
+    safe_filename = sanitize_fn(source_label(query_spectrum))
+    query_label = f"{source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
     # Unpaired/single plots never emit HTML (cli used to enforce this).
     single_formats = [f for f in export_formats if f != "html"]
     return ComparisonTask(
@@ -146,8 +146,8 @@ def _build_single_task(
         query_frame=query_frame, reference_frame=None,
         query_label=query_label, reference_label="",
         plot_title=plot_title, folder_name=folder_name, safe_filename=safe_filename,
-        png_dir=fmt_dirs.get("png", ""), svg_dir=fmt_dirs.get("svg", ""),
-        pdf_dir=fmt_dirs.get("pdf", ""),
+        png_dir=format_dirs.get("png", ""), svg_dir=format_dirs.get("svg", ""),
+        pdf_dir=format_dirs.get("pdf", ""),
         export_formats=single_formats,
         figure_size=figure_size, export_resolution=export_resolution,
         normalize=normalize,
@@ -156,7 +156,7 @@ def _build_single_task(
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
-                     normalize, sanitize_fn, fmt_dirs=None, figure_size=(12, 8),
+                     normalize, sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
     """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
 
@@ -164,9 +164,9 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     workers can re-use them via :pyattr:`ComparisonTask.metrics_text` instead
     of duplicating the work per task.
     """
-    if fmt_dirs is None:
-        fmt_dirs = {}
-    export_formats = _resolve_export_formats(fmt_dirs, html_dir)
+    if format_dirs is None:
+        format_dirs = {}
+    export_formats = _resolve_export_formats(format_dirs, html_dir)
     psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
 
     tasks: List[ComparisonTask] = []
@@ -184,7 +184,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     task_id=task_id, query_spectrum=query_spectrum, query_frame=query_frame,
                     reference_spectrum=reference_spectrum, reference_frame=reference_frame,
                     folder_name=folder_name, plot_title=plot_title, sanitize_fn=sanitize_fn,
-                    fmt_dirs=fmt_dirs, export_formats=export_formats, html_dir=html_dir,
+                    format_dirs=format_dirs, export_formats=export_formats, html_dir=html_dir,
                     figure_size=figure_size, export_resolution=export_resolution,
                     normalize=normalize,
                 ))
@@ -193,7 +193,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
             tasks.append(_build_single_task(
                 task_id=task_id, query_spectrum=query_spectrum, query_frame=query_frame,
                 folder_name=folder_name, plot_title=plot_title, sanitize_fn=sanitize_fn,
-                fmt_dirs=fmt_dirs, export_formats=export_formats,
+                format_dirs=format_dirs, export_formats=export_formats,
                 figure_size=figure_size, export_resolution=export_resolution,
                 normalize=normalize,
             ))

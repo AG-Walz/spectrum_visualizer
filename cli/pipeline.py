@@ -40,8 +40,8 @@ def _validate_inputs(config: CLIConfig) -> int:
     try:
         ensure_unique_basenames(config.idxml_files, "idXML")
         ensure_unique_basenames(config.mzml_files, "mzML")
-    except DuplicateBasenameError as exc:
-        print(f"Error: {exc}", file=sys.stderr)
+    except DuplicateBasenameError as error:
+        print(f"Error: {error}", file=sys.stderr)
         return 2
     return 0
 
@@ -133,11 +133,11 @@ def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: in
             config, psm_lookup, annotation_kwargs, reference_store,
             annotated_queries, comparison_rows, progress,
         ),
-        on_file_start=lambda p, is_ref: logger.info(
-            f"Processing {'reference' if is_ref else 'query'}: {Path(p).name}"),
-        on_file_complete=lambda p, loaded, total: logger.info(
-            f"Completed {Path(p).name}: {loaded}/{total} spectra"),
-        error_callback=lambda e: logger.error(f"Streaming error: {e}"),
+        on_file_start=lambda path, is_reference: logger.info(
+            f"Processing {'reference' if is_reference else 'query'}: {Path(path).name}"),
+        on_file_complete=lambda path, loaded, total: logger.info(
+            f"Completed {Path(path).name}: {loaded}/{total} spectra"),
+        error_callback=lambda error: logger.error(f"Streaming error: {error}"),
         workers=config.workers,
     )
     progress.finish()

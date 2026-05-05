@@ -57,8 +57,8 @@ def _process_psm_against_targets(
         built = _build_match_from_psm(psm, idxml_path, idxml_name, mzml_by_name)
         if built is not None:
             matches.append(built)
-    except Exception as e:
-        logger.debug(f"Error processing PSM: {e}")
+    except Exception as error:
+        logger.debug(f"Error processing PSM: {error}")
 
 
 def _iterate_psms_safely(
@@ -80,11 +80,11 @@ def _iterate_psms_safely(
             psms.append(psm)
         except StopIteration:
             return psms, psms_read, None
-        except Exception as e:
+        except Exception as error:
             logger.debug(
-                f"PSM parse error in {idxml_name} after {psms_read} PSMs: {e}"
+                f"PSM parse error in {idxml_name} after {psms_read} PSMs: {error}"
             )
-            return psms, psms_read, str(e)
+            return psms, psms_read, str(error)
 
 
 def _search_single_idxml(
@@ -117,8 +117,8 @@ def _search_single_idxml(
                 f"Percolator output (_pout.idXML) that contains PSMs missing metadata. "
                 f"Switch to _pout_filtered.idXML for complete, reliable results."
             )
-    except Exception as e:
-        errors.append(f"Error loading {Path(idxml_path).name}: {e}")
+    except Exception as error:
+        errors.append(f"Error loading {Path(idxml_path).name}: {error}")
 
     return idxml_name, matches, errors
 
@@ -131,8 +131,8 @@ def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
             seq = psm.peptidoform.sequence.upper()
             if seq:
                 counts[seq] += 1
-    except Exception as e:
-        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {e}")
+    except Exception as error:
+        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {error}")
     return dict(counts)
 
 
@@ -145,7 +145,7 @@ def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
             base_sequence = psm.peptidoform.sequence.upper()
             if base_sequence:
                 peptides.add(base_sequence)
-    except Exception as e:
-        logger.warning(f"_scan_single_idxml_peptides failed for {Path(idxml_path).name}: {e}")
+    except Exception as error:
+        logger.warning(f"_scan_single_idxml_peptides failed for {Path(idxml_path).name}: {error}")
 
     return idxml_path, peptides

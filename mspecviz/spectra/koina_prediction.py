@@ -112,8 +112,8 @@ def predict_koina_spectrum(
 
     try:
         unimod_seq = convert_peptide_to_unimod(peptidoform_str)
-    except Exception as e:
-        logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {e}")
+    except Exception as error:
+        logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
         return None
 
     try:
@@ -122,8 +122,8 @@ def predict_koina_spectrum(
             _build_koina_input(unimod_seq, charge, collision_energy, instrument_type)
         )
         result = _koina_predictions_to_frame(predictions)
-    except Exception as e:
-        logger.warning(f"Koina prediction failed for '{peptidoform_str}': {e}")
+    except Exception as error:
+        logger.warning(f"Koina prediction failed for '{peptidoform_str}': {error}")
         return None
 
     if result.empty:

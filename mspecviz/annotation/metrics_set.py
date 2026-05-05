@@ -94,8 +94,8 @@ def compute_spectral_entropy_similarity(
             q_spec, r_spec, ms2_tolerance_in_da=0.02
         )
         return float(similarity)
-    except (ValueError, FloatingPointError) as e:
-        logger.warning(f"Entropy similarity failed: {e}")
+    except (ValueError, FloatingPointError) as error:
+        logger.warning(f"Entropy similarity failed: {error}")
         return float("nan")
 
 
@@ -171,10 +171,10 @@ def compute_all_metrics(
 
 def format_metrics_text(metrics: Dict[str, float]) -> str:
     """Format metrics as multi-line string for plot overlay."""
-    def _format_metric_value(val) -> str:
-        if val is None or (isinstance(val, float) and math.isnan(val)):
+    def _format_metric_value(value) -> str:
+        if value is None or (isinstance(value, float) and math.isnan(value)):
             return "N/A"
-        return f"{val:.3f}"
+        return f"{value:.3f}"
 
     return (
         f"R\u00b2 Match: {_format_metric_value(metrics.get('R2m'))}\n"

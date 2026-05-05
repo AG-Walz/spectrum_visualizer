@@ -45,7 +45,7 @@ def _flush_and_switch_workspace(params: dict) -> None:
     # Clear page-namespaced keys so stale analysis state (and the
     # ``_persisted`` widget-value backups) from the previous workspace
     # are not shown in the new one.
-    stale_keys = [k for k in st.session_state if k.startswith(STATE_PREFIX)]
+    stale_keys = [key for key in st.session_state if key.startswith(STATE_PREFIX)]
     for key in stale_keys:
         st.session_state.pop(key, None)
     st.query_params.workspace = st.session_state["chosen-workspace"]
@@ -57,7 +57,7 @@ def _flush_and_switch_workspace(params: dict) -> None:
 def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
     """Render the existing-workspace dropdown; returns the current workspace name."""
     workspaces_dir.mkdir(parents=True, exist_ok=True)
-    options = sorted(f.name for f in workspaces_dir.iterdir() if f.is_dir())
+    options = sorted(entry.name for entry in workspaces_dir.iterdir() if entry.is_dir())
     if not options:
         options = ["default"]
 
@@ -74,14 +74,14 @@ def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
 
 def _render_create_workspace(workspaces_dir: Path) -> None:
     """Render the 'New workspace name' input and Create button."""
-    new_ws_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
+    new_workspace_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
     if not st.button("**Create Workspace**"):
         return
-    if new_ws_name and is_safe_workspace_name(new_ws_name):
-        new_path = Path(workspaces_dir, new_ws_name)
+    if new_workspace_name and is_safe_workspace_name(new_workspace_name):
+        new_path = Path(workspaces_dir, new_workspace_name)
         new_path.mkdir(parents=True, exist_ok=True)
         st.session_state.workspace = new_path
-        st.query_params.workspace = new_ws_name
+        st.query_params.workspace = new_workspace_name
         st.rerun()
     else:
         st.warning("Please enter a valid workspace name.")
@@ -99,18 +99,18 @@ def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> No
         return
 
     st.warning(f"Delete workspace **{current_workspace}** and all its data?")
-    yes_col, no_col = st.columns(2)
-    with yes_col:
-        if st.button("Yes, delete", type="primary", key="ws-confirm-yes"):
-            ws_path = Path(workspaces_dir, current_workspace)
-            if ws_path.exists():
-                shutil.rmtree(ws_path)
+    confirm_column, cancel_column = st.columns(2)
+    with confirm_column:
+        if st.button("Yes, delete", type="primary", key="workspace-delete-confirm-yes"):
+            workspace_path = Path(workspaces_dir, current_workspace)
+            if workspace_path.exists():
+                shutil.rmtree(workspace_path)
             st.session_state.workspace = Path(workspaces_dir, "default")
             st.query_params.workspace = "default"
             st.session_state.pop(confirm_key, None)
             st.rerun()
-    with no_col:
-        if st.button("Cancel", key="ws-confirm-no"):
+    with cancel_column:
+        if st.button("Cancel", key="workspace-delete-confirm-no"):
             st.session_state.pop(confirm_key, None)
             st.rerun()
 
@@ -128,8 +128,8 @@ def page_setup(page: str = "") -> dict[str, Any]:
     """Set up page config, workspace, and sidebar. Call at the top of every page."""
     if "settings" not in st.session_state:
         settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
-        with open(settings_path, "r") as f:
-            st.session_state.settings = json.load(f)
+        with open(settings_path, "r") as handle:
+            st.session_state.settings = json.load(handle)
 
     logo_path = PROJECT_ROOT / "assets" / "openms_transparent_bg_logo.svg"
     st.set_page_config(
@@ -183,7 +183,7 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             _render_workspace_switcher(params)
 
         with st.expander("**Settings**"):
-            img_formats = ["svg", "png", "jpeg", "webp"]
+            image_formats = ["svg", "png", "jpeg", "webp"]
             persisted = _persisted_key("image_format")
             # Seed session_state BEFORE the widget is created so Streamlit
             # uses the restored value on page navigation. Reading from the
@@ -192,12 +192,12 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
                 restored = st.session_state.get(
                     persisted, params.get("image_format", DEFAULTS.image_format)
                 )
-                if restored not in img_formats:
+                if restored not in image_formats:
                     restored = DEFAULTS.image_format
                 st.session_state["image_format"] = restored
             selected_format = st.selectbox(
                 "image export format",
-                img_formats,
+                image_formats,
                 key="image_format",
             )
             st.session_state[persisted] = selected_format

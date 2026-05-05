@@ -89,14 +89,14 @@ def _save_figure_in_formats(fig, summary_dir: Path, basename: str,
                             formats: List[str], export_resolution: int) -> Dict[str, str]:
     """Save *fig* in each requested format; returns ``{format: path}`` for those that succeeded."""
     paths: Dict[str, str] = {}
-    for fmt in formats:
-        out_path = summary_dir / f"{basename}.{fmt}"
+    for output_format in formats:
+        output_path = summary_dir / f"{basename}.{output_format}"
         try:
-            fig.savefig(str(out_path), format=fmt, dpi=export_resolution,
+            fig.savefig(str(output_path), format=output_format, dpi=export_resolution,
                         bbox_inches="tight", facecolor="white")
-            paths[fmt] = str(out_path)
-        except OSError as exc:
-            logger.error("Failed to save %s.%s: %s", basename, fmt, exc)
+            paths[output_format] = str(output_path)
+        except OSError as error:
+            logger.error("Failed to save %s.%s: %s", basename, output_format, error)
     return paths
 
 
@@ -118,8 +118,8 @@ def _render_one_summary_plot(
     try:
         fig = func(raw_frame, aggregated_frame, metric=metric,
                    export_resolution=export_resolution, title=plot_title)
-    except ValueError as exc:
-        logger.error("Failed to create %s plot: %s", plot_type, exc)
+    except ValueError as error:
+        logger.error("Failed to create %s plot: %s", plot_type, error)
         return None
 
     paths = _save_figure_in_formats(

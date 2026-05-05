@@ -56,9 +56,9 @@ def _make_callbacks(quiet: bool) -> ExportCallbacks:
     # once ``run_tasks`` emits its first progress call.
     progress_holder: dict = {"bar": None}
 
-    def _on_step(msg: str) -> None:
+    def _on_step(message: str) -> None:
         if not quiet:
-            print(f"  {msg}")
+            print(f"  {message}")
 
     def _on_plot_progress(completed: int, total: int) -> None:
         bar: Optional[TerminalProgress] = progress_holder["bar"]
@@ -70,8 +70,8 @@ def _make_callbacks(quiet: bool) -> ExportCallbacks:
             bar.finish()
             progress_holder["bar"] = None
 
-    def _on_warning(msg: str) -> None:
-        logger.warning(msg)
+    def _on_warning(message: str) -> None:
+        logger.warning(message)
 
     return ExportCallbacks(
         on_step=_on_step,

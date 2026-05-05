@@ -50,9 +50,7 @@ def clean_spectrum_id(spectrum_id: str) -> str:
     # For simple scan=N format, ensure clean extraction
     for tag in NATIVE_ID_TAGS:
         if tag in clean_id:
-            idx = clean_id.find(tag)
-            rest = clean_id[idx:]
-            parts = rest.split()
-            return parts[0]
+            tag_index = clean_id.find(tag)
+            return clean_id[tag_index:].split()[0]
 
     return clean_id

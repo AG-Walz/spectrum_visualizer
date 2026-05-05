@@ -28,10 +28,16 @@ class LoadedSpectrum:
     rt: float = 0.0
     match: Optional["PeptideMatch"] = None
 
-    @property
-    def source_label(self) -> str:
-        """Filename stem for plot titles / picker tables; ``"Koina"`` for synthetic refs."""
-        return Path(self.source_file).stem if self.source_file else "Koina"
+
+def source_label(spectrum) -> str:
+    """Filename stem for plot titles / picker tables; ``"Koina"`` for synthetic refs.
+
+    Defined as a module-level function (not a method on LoadedSpectrum) so that
+    older instances cached in Streamlit's session_state across an auto-reload
+    keep working — a method/property would only resolve on instances of the
+    *currently-loaded* class.
+    """
+    return Path(spectrum.source_file).stem if spectrum.source_file else "Koina"
 
 
 @dataclass

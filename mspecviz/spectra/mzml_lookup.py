@@ -33,8 +33,8 @@ def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tu
         return "unknown", 0
     first_id = indexed_exp.getSpectrum(0).getNativeID()
     if INDEX_TAG in first_id:
-        first_num = _extract_id_number(first_id)
-        return "index", (first_num if first_num is not None else 0)
+        first_number = _extract_id_number(first_id)
+        return "index", (first_number if first_number is not None else 0)
     if SCAN_TAG in first_id:
         return "scan", 0
     if SPECTRUM_TAG in first_id:
@@ -47,64 +47,66 @@ def _try_candidate_indices(
     id_to_index: Dict[str, int],
 ) -> bool:
     """Try a small list of candidate array positions; persist the first match."""
-    for candidate_idx in candidates:
+    for candidate_index in candidates:
         try:
-            check_id = indexed_exp.getSpectrum(candidate_idx).getNativeID()
+            check_id = indexed_exp.getSpectrum(candidate_index).getNativeID()
         except Exception:
             continue
         if clean_id != clean_spectrum_id(check_id):
             continue
-        id_to_index[clean_id] = candidate_idx
-        check_num = _extract_id_number(check_id)
-        if check_num is not None:
-            id_to_index[f"_num_{check_num}"] = candidate_idx
+        id_to_index[clean_id] = candidate_index
+        check_number = _extract_id_number(check_id)
+        if check_number is not None:
+            id_to_index[f"_num_{check_number}"] = candidate_index
         return True
     return False
 
 
-def _binary_search_for_num(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, num: int,
+def _binary_search_for_number(
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, target_number: int,
     clean_id: str, id_to_index: Dict[str, int],
 ) -> bool:
     """Scan IDs are typically monotonic — binary-search by extracted number."""
-    lo, hi = 0, n_spectra - 1
-    while lo <= hi:
-        mid = (lo + hi) // 2
+    low, high = 0, n_spectra - 1
+    while low <= high:
+        mid = (low + high) // 2
         try:
             mid_id = indexed_exp.getSpectrum(mid).getNativeID()
         except Exception:
             return False
-        mid_num = _extract_id_number(mid_id)
-        if mid_num is None:
+        mid_number = _extract_id_number(mid_id)
+        if mid_number is None:
             return False
-        if mid_num == num:
+        if mid_number == target_number:
             id_to_index[clean_id] = mid
-            id_to_index[f"_num_{mid_num}"] = mid
+            id_to_index[f"_num_{mid_number}"] = mid
             return True
-        if mid_num < num:
-            lo = mid + 1
+        if mid_number < target_number:
+            low = mid + 1
         else:
-            hi = mid - 1
+            high = mid - 1
     return False
 
 
 def _resolve_targeted_id(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, sid: str,
+    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, spectrum_id: str,
     id_to_index: Dict[str, int],
 ) -> bool:
     """Resolve one needed spectrum ID via off-by-one probe then binary search."""
-    clean_id = clean_spectrum_id(sid)
-    num = _extract_id_number(clean_id)
-    if num is None:
+    clean_id = clean_spectrum_id(spectrum_id)
+    extracted_number = _extract_id_number(clean_id)
+    if extracted_number is None:
         return False
     candidates = []
-    if 0 <= num < n_spectra:
-        candidates.append(num)
-    if num > 0 and (num - 1) < n_spectra:
-        candidates.append(num - 1)
+    if 0 <= extracted_number < n_spectra:
+        candidates.append(extracted_number)
+    if extracted_number > 0 and (extracted_number - 1) < n_spectra:
+        candidates.append(extracted_number - 1)
     if _try_candidate_indices(indexed_exp, clean_id, candidates, id_to_index):
         return True
-    return _binary_search_for_num(indexed_exp, n_spectra, num, clean_id, id_to_index)
+    return _binary_search_for_number(
+        indexed_exp, n_spectra, extracted_number, clean_id, id_to_index,
+    )
 
 
 def _build_targeted_index(
@@ -113,8 +115,8 @@ def _build_targeted_index(
 ) -> int:
     """Populate *id_to_index* for each needed ID; returns count found."""
     found = 0
-    for sid in needed_ids:
-        if _resolve_targeted_id(indexed_exp, n_spectra, sid, id_to_index):
+    for spectrum_id in needed_ids:
+        if _resolve_targeted_id(indexed_exp, n_spectra, spectrum_id, id_to_index):
             found += 1
     return found
 
@@ -123,15 +125,15 @@ def _build_full_scan_index(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, id_to_index: Dict[str, int],
 ) -> None:
     """Fall back to walking every spectrum and recording its native ID."""
-    for i in range(n_spectra):
+    for index in range(n_spectra):
         try:
-            native_id = indexed_exp.getSpectrum(i).getNativeID()
+            native_id = indexed_exp.getSpectrum(index).getNativeID()
         except Exception:
             continue
-        id_to_index[native_id] = i
-        num_match = ANY_DIGITS_RE.search(native_id)
-        if num_match:
-            id_to_index[f"_num_{num_match.group(1)}"] = i
+        id_to_index[native_id] = index
+        number_match = ANY_DIGITS_RE.search(native_id)
+        if number_match:
+            id_to_index[f"_num_{number_match.group(1)}"] = index
 
 
 def open_indexed_mzml_fast(
@@ -199,28 +201,28 @@ def find_spectrum_index(
     # Strategy 2: structured ID with (scan|index|spectrum)=N
     scan_match = NATIVE_ID_NUM_RE.search(clean_id)
     if scan_match:
-        num = int(scan_match.group(1))
+        extracted_number = int(scan_match.group(1))
 
         if id_format == "index":
-            arr_pos = num - index_offset
-            if 0 <= arr_pos < n_spectra:
-                return arr_pos
+            array_position = extracted_number - index_offset
+            if 0 <= array_position < n_spectra:
+                return array_position
 
-        num_key = f"_num_{num}"
-        if num_key in id_to_index:
-            return id_to_index[num_key]
+        number_key = f"_num_{extracted_number}"
+        if number_key in id_to_index:
+            return id_to_index[number_key]
 
     # Strategy 3: bare number fallback
-    num_match = ANY_DIGITS_RE.search(clean_id)
-    if num_match:
-        num = int(num_match.group(1))
-        num_key = f"_num_{num}"
-        if num_key in id_to_index:
-            return id_to_index[num_key]
+    number_match = ANY_DIGITS_RE.search(clean_id)
+    if number_match:
+        extracted_number = int(number_match.group(1))
+        number_key = f"_num_{extracted_number}"
+        if number_key in id_to_index:
+            return id_to_index[number_key]
 
         if id_format == "index":
-            arr_pos = num - index_offset
-            if 0 <= arr_pos < n_spectra:
-                return arr_pos
+            array_position = extracted_number - index_offset
+            if 0 <= array_position < n_spectra:
+                return array_position
 
     return None

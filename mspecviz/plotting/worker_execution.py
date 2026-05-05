@@ -114,10 +114,10 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             png_path=png_path, svg_path=svg_path, pdf_path=pdf_path,
             html_path=html_path, summary_row=summary_row,
         )
-    except Exception as e:
+    except Exception as error:
         return ComparisonResult(
             task_id=task.task_id, task_type=task.task_type,
-            success=False, error=str(e),
+            success=False, error=str(error),
         )
 
 
@@ -131,20 +131,21 @@ _FORMAT_SAVE_KWARGS: Dict[str, dict] = {
 
 def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
     """Save a matplotlib figure to each requested format. Returns (png_path, svg_path, pdf_path)."""
-    fmt_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
+    format_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
     paths = {"png": "", "svg": "", "pdf": ""}
 
-    for fmt, fmt_dir in fmt_dirs.items():
-        if fmt not in task.export_formats or not fmt_dir:
+    for output_format, format_dir in format_dirs.items():
+        if output_format not in task.export_formats or not format_dir:
             continue
-        variant_dir = Path(fmt_dir) / task.folder_name
+        variant_dir = Path(format_dir) / task.folder_name
         variant_dir.mkdir(parents=True, exist_ok=True)
-        out = variant_dir / f"{task.safe_filename}.{fmt}"
-        save_kwargs = {"bbox_inches": "tight", "facecolor": "white", **_FORMAT_SAVE_KWARGS[fmt]}
-        if fmt == "png":
+        output_path = variant_dir / f"{task.safe_filename}.{output_format}"
+        save_kwargs = {"bbox_inches": "tight", "facecolor": "white",
+                       **_FORMAT_SAVE_KWARGS[output_format]}
+        if output_format == "png":
             save_kwargs["dpi"] = task.export_resolution
-        fig.savefig(str(out), **save_kwargs)
-        paths[fmt] = str(out)
+        fig.savefig(str(output_path), **save_kwargs)
+        paths[output_format] = str(output_path)
 
     return paths["png"], paths["svg"], paths["pdf"]
 
@@ -175,8 +176,8 @@ def _save_task_html(task: ComparisonTask) -> str:
         fig.write_html(str(out), include_plotlyjs="cdn")
         return str(out)
 
-    except OSError as e:
-        logger.warning(f"HTML plot save failed for task {task.task_id}: {e}")
+    except OSError as error:
+        logger.warning(f"HTML plot save failed for task {task.task_id}: {error}")
         return ""
 
 
@@ -211,13 +212,13 @@ def run_parallel_comparisons(
                 completed += 1
                 try:
                     result = future.result()
-                except Exception as e:
+                except Exception as error:
                     task = future_map[future]
                     result = ComparisonResult(
                         task_id=task.task_id,
                         task_type=task.task_type,
                         success=False,
-                        error=f"Process error: {e}",
+                        error=f"Process error: {error}",
                     )
                 results.append(result)
                 if on_task_complete:

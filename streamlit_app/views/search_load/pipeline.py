@@ -32,19 +32,19 @@ from mspecviz.spectra import load_spectra_streaming
 logger = logging.getLogger(__name__)
 
 
-def _show_search_results_summary(results, error_messages, p, params: dict) -> None:
+def _show_search_results_summary(results, error_messages, tracker, params: dict) -> None:
     """Finalize the status block with PSM/variant counts and any warnings."""
     if not results:
-        p.finalize("No matches found", state="error")
+        tracker.finalize("No matches found", state="error")
         return
 
     total_matches = sum(len(variant_group.matches) for variant_group in results.values())
-    p.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
+    tracker.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
     save_params(params)
 
     unresolved = sum(
         1 for variant_group in results.values()
-        for m in variant_group.matches if not m.mzml_filename
+        for match in variant_group.matches if not match.mzml_filename
     )
     if unresolved > 0:
         st.warning(f"{unresolved} PSMs could not be mapped to mzML files")
@@ -59,15 +59,17 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
     mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
-    with progress_status("Searching peptides...") as p:
+    with progress_status("Searching peptides...") as tracker:
         results = search_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
-            progress_callback=lambda c, t, m: p.update(c, t, units="files", message=m),
+            progress_callback=lambda current, total, message: tracker.update(
+                current, total, units="files", message=message,
+            ),
             error_callback=error_messages.append,
             workers=get_param(params, "workers", DEFAULTS.workers),
         )
         st.session_state[get_state_key("variant_groups")] = results
-        _show_search_results_summary(results, error_messages, p, params)
+        _show_search_results_summary(results, error_messages, tracker, params)
 
 
 def _build_annotation_kwargs(params: dict) -> dict:
@@ -165,15 +167,15 @@ def _stream_and_annotate(
 
     load_spectra_streaming(
         variant_groups=variant_groups_copy,
-        mzml_paths=[Path(m) for m in mzmls],
+        mzml_paths=[Path(mzml) for mzml in mzmls],
         reference_substring=get_param(params, "reference_substring", ""),
-        on_reference_loaded=lambda vk, c: None,
+        on_reference_loaded=lambda variant_key, count: None,
         on_query_ready=on_query_ready,
         on_file_start=on_file_start,
-        on_file_complete=lambda p, loaded, total: logger.info(
-            f"Completed {Path(p).name}: {loaded}/{total}"
+        on_file_complete=lambda path, loaded, total: logger.info(
+            f"Completed {Path(path).name}: {loaded}/{total}"
         ),
-        error_callback=lambda e: logger.error(f"Streaming error: {e}"),
+        error_callback=lambda error: logger.error(f"Streaming error: {error}"),
         workers=get_param(params, "workers", DEFAULTS.workers),
     )
 
@@ -222,18 +224,18 @@ def run_search_and_load(params: dict) -> None:
     comparison_rows: list = []
     total_psms = sum(len(group.matches) for group in variant_groups_copy.values())
 
-    with progress_status(f"Loading {total_psms} spectra...") as p:
+    with progress_status(f"Loading {total_psms} spectra...") as tracker:
         _stream_and_annotate(
             params, variant_groups_copy, mzmls,
             psm_lookup, annotation_kwargs,
             annotated_queries, reference_store, comparison_rows,
-            total_psms, p,
+            total_psms, tracker,
         )
         if not annotated_queries:
-            p.finalize("No spectra could be loaded or annotated", state="error")
+            tracker.finalize("No spectra could be loaded or annotated", state="error")
             return
         _finalize_load(
-            psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, p,
+            psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, tracker,
         )
 
     st.rerun()

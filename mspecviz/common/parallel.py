@@ -18,16 +18,16 @@ def run_tasks(
     # Ensure the number of workers is between 1 and the number of tasks
     workers = max(1, min(workers, len(tasks)))
 
-    def _as_args_tuple(t):
-        return t if isinstance(t, tuple) else (t,)
+    def _as_args_tuple(task):
+        return task if isinstance(task, tuple) else (task,)
 
     # Sequential execution for a single worker
     if workers == 1:
         for task in tasks:
             try:
                 yield task, True, worker(*_as_args_tuple(task))
-            except Exception as exc:
-                yield task, False, exc
+            except Exception as error:
+                yield task, False, error
         return
 
     # Parallel execution for multiple workers
@@ -38,8 +38,8 @@ def run_tasks(
                 task = future_map[future]
                 try:
                     yield task, True, future.result()
-                except Exception as exc:
-                    yield task, False, exc
+                except Exception as error:
+                    yield task, False, error
         finally:
-            for f in future_map:
-                f.cancel()
+            for future in future_map:
+                future.cancel()

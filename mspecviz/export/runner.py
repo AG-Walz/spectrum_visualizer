@@ -107,9 +107,9 @@ def _write_comparison_summary(
     except ImportError:
         if on_warning:
             on_warning("openpyxl not installed -- skipping XLSX export")
-    except Exception as e:
+    except Exception as error:
         if on_warning:
-            on_warning(f"XLSX export failed: {e}")
+            on_warning(f"XLSX export failed: {error}")
 
 
 def _count_written(result: ComparisonResult) -> int:
@@ -123,18 +123,18 @@ def _count_written(result: ComparisonResult) -> int:
 def _resolve_format_dirs(
     root_dir: Path, export_formats: List[str],
 ) -> Tuple[Dict[str, str], str]:
-    """Return ``(fmt_dirs, html_dir)`` without creating any folders.
+    """Return ``(format_dirs, html_dir)`` without creating any folders.
 
     ``build_plot_tasks`` uses the paths verbatim; ``process_single_task``
     creates subfolders lazily when it writes a file, so we don't leave
     empty format folders behind for plots that weren't generated.
     """
-    fmt_dirs: Dict[str, str] = {}
-    for fmt in ("png", "svg", "pdf"):
-        if fmt in export_formats:
-            fmt_dirs[fmt] = str(root_dir / fmt)
+    format_dirs: Dict[str, str] = {}
+    for output_format in ("png", "svg", "pdf"):
+        if output_format in export_formats:
+            format_dirs[output_format] = str(root_dir / output_format)
     html_dir = str(root_dir / "html") if "html" in export_formats else ""
-    return fmt_dirs, html_dir
+    return format_dirs, html_dir
 
 
 def _plot_worker(task):
@@ -157,10 +157,10 @@ def _record_plot_result(
 ) -> int:
     """Process one ``run_tasks`` outcome; returns count of files written by it."""
     if not ok:
-        msg = f"Plot generation failed: {result}"
-        logger.error(msg)
+        message = f"Plot generation failed: {result}"
+        logger.error(message)
         if callbacks.on_warning:
-            callbacks.on_warning(msg)
+            callbacks.on_warning(message)
         return 0
     written = _count_written(result)
     for path in (result.png_path, result.svg_path, result.pdf_path, result.html_path):
@@ -180,14 +180,14 @@ def _run_plot_tasks(
     callbacks: ExportCallbacks,
 ) -> int:
     """Build tasks via :func:`build_plot_tasks` and dispatch through :func:`run_tasks`."""
-    fmt_dirs, html_dir = _resolve_format_dirs(
+    format_dirs, html_dir = _resolve_format_dirs(
         root_dir, _effective_export_formats(plot_settings.export_formats, do_html),
     )
     tasks = build_plot_tasks(
         annotated_queries, reference_store, variant_groups,
         normalize=plot_settings.normalize,
         sanitize_fn=sanitize_filename,
-        fmt_dirs=fmt_dirs,
+        format_dirs=format_dirs,
         figure_size=plot_settings.figure_size,
         export_resolution=plot_settings.export_resolution,
         html_dir=html_dir,

@@ -24,7 +24,7 @@ def _build_mzml_lookup(mzml_paths: Optional[List[str]]) -> Dict[str, str]:
     """Map ``basename.lower() → str(path)`` for the optional mzML candidate list."""
     if not mzml_paths:
         return {}
-    return {Path(p).name.lower(): str(p) for p in mzml_paths}
+    return {Path(path).name.lower(): str(path) for path in mzml_paths}
 
 
 def _merge_worker_matches(
@@ -76,7 +76,7 @@ def search_peptides_in_idxmls(
     Returns:
         Dict mapping variant_key -> VariantGroup
     """
-    target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
+    target_set: Set[str] = {peptide.strip().upper() for peptide in target_peptides if peptide.strip()}
     if not target_set:
         if error_callback:
             error_callback("No valid target peptides provided")
@@ -85,7 +85,7 @@ def search_peptides_in_idxmls(
 
     mzml_by_name = _build_mzml_lookup(mzml_paths)
     total_files = len(idxml_paths)
-    tasks = [(p, Path(p).name, target_set, mzml_by_name) for p in idxml_paths]
+    tasks = [(path, Path(path).name, target_set, mzml_by_name) for path in idxml_paths]
 
     if workers > 1:
         logger.info(f"Parallel idXML search: {total_files} files, {workers} workers")
@@ -195,8 +195,8 @@ def summarize_search_results(variant_groups: Dict[str, VariantGroup]) -> pl.Lazy
     """
     rows = []
     for row_id, (variant_key, variant_group) in enumerate(variant_groups.items()):
-        idxml_files = set(m.idxml_file for m in variant_group.matches)
-        unresolved = sum(1 for m in variant_group.matches if not m.mzml_filename)
+        idxml_files = {match.idxml_file for match in variant_group.matches}
+        unresolved = sum(1 for match in variant_group.matches if not match.mzml_filename)
         rows.append({
             "id": row_id,
             "base_sequence": variant_group.base_sequence,

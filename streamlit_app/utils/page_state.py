@@ -69,57 +69,57 @@ def save_analysis_cache() -> None:
     # 3. psm_lookup (dict) -> JSON
     psm_lookup = st.session_state.get(get_state_key("psm_lookup"))
     if psm_lookup is not None:
-        with open(cache_dir / "psm_lookup.json", "w") as f:
-            json.dump(psm_lookup, f)
+        with open(cache_dir / "psm_lookup.json", "w") as handle:
+            json.dump(psm_lookup, handle)
 
     # 4. Complex objects -> pickle
     for key in _PICKLE_KEYS:
         cached_value = st.session_state.get(get_state_key(key))
         if cached_value is not None:
-            with open(cache_dir / f"{key}.pkl", "wb") as f:
-                pickle.dump(cached_value, f, protocol=pickle.HIGHEST_PROTOCOL)
+            with open(cache_dir / f"{key}.pkl", "wb") as handle:
+                pickle.dump(cached_value, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
     # 5. Metadata marker
-    meta = {
+    metadata = {
         "saved_at": datetime.now().isoformat(),
         "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
     }
-    with open(cache_dir / "meta.json", "w") as f:
-        json.dump(meta, f)
+    with open(cache_dir / "meta.json", "w") as handle:
+        json.dump(metadata, handle)
 
     logger.info("Analysis cache saved to %s", cache_dir)
 
 
 @st.cache_resource(show_spinner="Restoring analysis from cache...")
-def _read_analysis_cache(cache_dir_str: str, _cache_mtime: float):
+def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
     """Read all analysis cache files from disk (cached across sessions/users)."""
     cache_dir = Path(cache_dir_str)
-    data = {}
+    cached_data: dict = {}
 
     for key in _LAZYFRAME_KEYS:
-        p = cache_dir / f"{key}.parquet"
-        if p.exists():
-            data[key] = pl.scan_parquet(p)
+        parquet_path = cache_dir / f"{key}.parquet"
+        if parquet_path.exists():
+            cached_data[key] = pl.scan_parquet(parquet_path)
 
     comparison_path = cache_dir / "comparison_frame.parquet"
     if comparison_path.exists():
-        data["comparison_frame"] = pd.read_parquet(comparison_path)
+        cached_data["comparison_frame"] = pd.read_parquet(comparison_path)
 
     lookup_path = cache_dir / "psm_lookup.json"
     if lookup_path.exists():
-        with open(lookup_path, "r") as f:
-            data["psm_lookup"] = json.load(f)
+        with open(lookup_path, "r") as handle:
+            cached_data["psm_lookup"] = json.load(handle)
 
     for key in _PICKLE_KEYS:
-        pkl_path = cache_dir / f"{key}.pkl"
-        if pkl_path.exists():
-            with open(pkl_path, "rb") as f:
-                data[key] = pickle.load(f)
+        pickle_path = cache_dir / f"{key}.pkl"
+        if pickle_path.exists():
+            with open(pickle_path, "rb") as handle:
+                cached_data[key] = pickle.load(handle)
 
-    with open(cache_dir / "meta.json", "r") as f:
-        data["_meta"] = json.load(f)
+    with open(cache_dir / "meta.json", "r") as handle:
+        cached_data["_meta"] = json.load(handle)
 
-    return data
+    return cached_data
 
 
 def load_analysis_cache() -> bool:
@@ -131,22 +131,22 @@ def load_analysis_cache() -> bool:
         return False
 
     try:
-        mtime = meta_path.stat().st_mtime
-        data = _read_analysis_cache(str(cache_dir), mtime)
+        modification_time = meta_path.stat().st_mtime
+        cached_data = _read_analysis_cache(str(cache_dir), modification_time)
 
-        for key in list(_LAZYFRAME_KEYS) + ["comparison_frame", "psm_lookup"] + list(_PICKLE_KEYS):
-            if key in data:
-                st.session_state[get_state_key(key)] = data[key]
+        for key in (*_LAZYFRAME_KEYS, "comparison_frame", "psm_lookup", *_PICKLE_KEYS):
+            if key in cached_data:
+                st.session_state[get_state_key(key)] = cached_data[key]
 
-        meta = data.get("_meta", {})
-        st.session_state[get_state_key("cache_version")] = meta.get("cache_version", 1)
+        metadata = cached_data.get("_meta", {})
+        st.session_state[get_state_key("cache_version")] = metadata.get("cache_version", 1)
         st.session_state[get_state_key("data_ready")] = True
 
         logger.info("Analysis cache restored from %s", cache_dir)
         return True
 
-    except Exception as e:
-        logger.warning("Failed to restore analysis cache: %s", e)
+    except Exception as error:
+        logger.warning("Failed to restore analysis cache: %s", error)
         return False
 
 
@@ -176,16 +176,17 @@ def list_subdirectories(path: str) -> list:
 @st.cache_data(ttl=10)
 def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files: int = 5000) -> list:
     try:
-        files = []
-        for ext in extensions:
-            gen = Path(path).rglob(f"*{ext}") if recursive else Path(path).glob(f"*{ext}")
-            for f in gen:
-                files.append(f)
+        files: list = []
+        for extension in extensions:
+            iterator = (Path(path).rglob(f"*{extension}") if recursive
+                        else Path(path).glob(f"*{extension}"))
+            for found_path in iterator:
+                files.append(found_path)
                 if len(files) >= _max_files:
                     break
             if len(files) >= _max_files:
                 break
-        return sorted(str(f) for f in files)
+        return sorted(str(found_path) for found_path in files)
     except (PermissionError, OSError):
         return []
 

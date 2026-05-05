@@ -1,6 +1,6 @@
 """Peptide-search data structures (``PeptideMatch``, ``VariantGroup``) + pickle-safe helper."""
 import importlib
-from dataclasses import dataclass, field
+from dataclasses import astuple, dataclass, field
 from typing import List
 
 
@@ -48,10 +48,10 @@ def format_inline_sequence(base_sequence: str, modification_key: str) -> str:
     prefix_mods, suffix_mods, insertions = _parse_modification_key(modification_key)
 
     parts: list[str] = list(prefix_mods)
-    for i, aa in enumerate(base_sequence):
-        parts.append(aa)
-        if (pos := i + 1) in insertions:
-            parts.extend(insertions[pos])
+    for index, amino_acid in enumerate(base_sequence):
+        parts.append(amino_acid)
+        if (position := index + 1) in insertions:
+            parts.extend(insertions[position])
     parts.extend(suffix_mods)
     return "".join(parts)
 
@@ -79,13 +79,9 @@ class PeptideMatch:
     idxml_resolved_path: str = ""  # Full path to the source idXML file
 
     def __reduce__(self):
-        """Custom pickle: always resolve via canonical module path."""
-        return (_rebuild_peptide_match, (
-            self.peptidoform, self.base_sequence, self.spectrum_id,
-            self.charge, self.score, self.idxml_file,
-            self.mzml_filename, self.id_merge_index,
-            self.mzml_resolved_path, self.idxml_resolved_path,
-        ))
+        """Custom pickle: always resolve via canonical module path so Streamlit
+        reloads don't break unpickling. Field-addition-proof via ``astuple``."""
+        return (_rebuild_peptide_match, astuple(self))
 
 
 @dataclass

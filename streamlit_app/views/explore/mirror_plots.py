@@ -30,6 +30,7 @@ from mspecviz.pipeline import (
     format_spectrum_labels,
 )
 from mspecviz.plotting import create_plotly_mirror_plot
+from mspecviz.spectra.loader_models import source_label
 from mspecviz.spectra.mzml_native_ids import _extract_id_number
 
 
@@ -43,7 +44,7 @@ def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: d
 def _picker_row(spec, score) -> dict:
     """Translate one ``LoadedSpectrum`` into the columns the Tables display."""
     return {
-        "mzml": spec.source_label,
+        "mzml": source_label(spec),
         "scan": _extract_id_number(spec.spectrum_id),
         "rt": float(spec.rt) if spec.rt is not None else None,
         "charge": int(spec.precursor_charge or 0),
@@ -144,7 +145,7 @@ def _get_picker_state_manager() -> StateManager:
     return st.session_state["mspecviz_mirror_picker_sm"]
 
 
-def _clear_picker_selections(sm: StateManager) -> None:
+def _clear_picker_selections(state_manager: StateManager) -> None:
     """Reset both StateManager keys AND Tabulator's component-local trackers.
 
     ``regenerate_cache=True`` only rewrites the parquet cache — Tabulator's
@@ -152,20 +153,22 @@ def _clear_picker_selections(sm: StateManager) -> None:
     them explicitly here. Without this the previously-clicked row would stay
     visually highlighted after a peptide switch.
     """
-    sm.clear_selection("selected_ref_row")
-    sm.clear_selection("selected_query_psm")
-    for tracker in ("_svc_table_last_selection", "_svc_table_last_sort_filter"):
-        d = st.session_state.get(tracker, {})
-        d.pop("mirror_ref_picker", None)
-        d.pop("mirror_query_picker", None)
+    state_manager.clear_selection("selected_ref_row")
+    state_manager.clear_selection("selected_query_psm")
+    for tracker_key in ("_svc_table_last_selection", "_svc_table_last_sort_filter"):
+        cache_dict = st.session_state.get(tracker_key, {})
+        cache_dict.pop("mirror_ref_picker", None)
+        cache_dict.pop("mirror_query_picker", None)
 
 
 def _render_metrics_expander(metrics: dict) -> None:
     """Render the per-comparison metrics table inside an expander."""
     with st.expander("Comparison Metrics", expanded=False):
         metric_data = {
-            METRIC_SHORT_TO_DISPLAY[k]: f"{v:.4f}" if not (isinstance(v, float) and v != v) else "N/A"
-            for k, v in metrics.items() if k in METRIC_SHORT_TO_DISPLAY
+            METRIC_SHORT_TO_DISPLAY[key]: (
+                f"{value:.4f}" if not (isinstance(value, float) and value != value) else "N/A"
+            )
+            for key, value in metrics.items() if key in METRIC_SHORT_TO_DISPLAY
         }
         metric_data["Shared Ions"] = str(metrics.get("shared", 0))
         metric_data["Annotated (Query)"] = str(metrics.get("ann_q", 0))
@@ -190,30 +193,30 @@ def _render_mirror_pair(query_spectrum, query_frame,
 
 def _render_picker_tables(
     ref_frame: pl.LazyFrame, query_frame: pl.LazyFrame,
-    cache_path: str, sm: StateManager,
+    cache_path: str, state_manager: StateManager,
 ) -> None:
-    """Render the two side-by-side openms_insight Tables wired to *sm*."""
-    cols = _picker_column_definitions()
-    col_left, col_right = st.columns(2)
+    """Render the two side-by-side openms_insight Tables wired to *state_manager*."""
+    columns = _picker_column_definitions()
+    left_column, right_column = st.columns(2)
     # default_row=-1 disables Tabulator's auto-selection on first render; without
     # it the gate "render plot only when both selections exist" is bypassed
     # immediately because Table eagerly fires interactivity for row 0.
-    with col_left:
+    with left_column:
         st.subheader("Reference")
         Table(
             cache_id="mirror_ref_picker", data=ref_frame, cache_path=cache_path,
-            column_definitions=cols, index_field="id", regenerate_cache=True,
+            column_definitions=columns, index_field="id", regenerate_cache=True,
             default_row=-1,
             interactivity={"selected_ref_row": "id"},
-        )(key="mirror_ref_picker", state_manager=sm)
-    with col_right:
+        )(key="mirror_ref_picker", state_manager=state_manager)
+    with right_column:
         st.subheader("Experimental")
         Table(
             cache_id="mirror_query_picker", data=query_frame, cache_path=cache_path,
-            column_definitions=cols, index_field="psm_id", regenerate_cache=True,
+            column_definitions=columns, index_field="psm_id", regenerate_cache=True,
             default_row=-1,
             interactivity={"selected_query_psm": "psm_id"},
-        )(key="mirror_query_picker", state_manager=sm)
+        )(key="mirror_query_picker", state_manager=state_manager)
 
 
 @st.fragment
@@ -231,40 +234,42 @@ def mirror_plots_fragment(params: dict):
     eligible = _eligible_variants(variant_groups, reference_store, psm_to_vk)
 
     has_query = set(psm_to_vk.values())
-    queryful = sum(1 for vk in variant_groups if vk in has_query)
+    queryful = sum(1 for variant_key in variant_groups if variant_key in has_query)
     hidden = queryful - len(eligible)
     if hidden:
         st.caption(
             f"{hidden} peptide(s) hidden — no reference / experimental pair available."
         )
     if not eligible:
-        n_q = len(annotated_queries)
-        n_r = sum(len(v) for v in reference_store.values())
+        query_count = len(annotated_queries)
+        reference_count = sum(len(refs) for refs in reference_store.values())
         st.info(
             f"No peptides have both a reference and an experimental spectrum "
-            f"({n_q} queries / {n_r} references loaded)."
+            f"({query_count} queries / {reference_count} references loaded)."
         )
         return
 
-    sel_key = f"{STATE_PREFIX}_mirror_chosen_variant"
-    if st.session_state.get(sel_key) not in eligible:
-        st.session_state[sel_key] = eligible[0]
+    selectbox_key = f"{STATE_PREFIX}_mirror_chosen_variant"
+    if st.session_state.get(selectbox_key) not in eligible:
+        st.session_state[selectbox_key] = eligible[0]
     chosen = st.selectbox(
         "Peptide", options=eligible,
-        format_func=lambda vk: variant_groups[vk].display_label,
-        key=sel_key,
+        format_func=lambda variant_key: variant_groups[variant_key].display_label,
+        key=selectbox_key,
     )
 
-    sm = _get_picker_state_manager()
-    last_key = f"{STATE_PREFIX}_mirror_last_variant"
-    if st.session_state.get(last_key) != chosen:
-        _clear_picker_selections(sm)
-        st.session_state[last_key] = chosen
+    state_manager = _get_picker_state_manager()
+    last_variant_key = f"{STATE_PREFIX}_mirror_last_variant"
+    if st.session_state.get(last_variant_key) != chosen:
+        _clear_picker_selections(state_manager)
+        st.session_state[last_variant_key] = chosen
 
     ref_frame, query_frame = _build_picker_frames(
         chosen, annotated_queries, reference_store, psm_to_vk,
     )
-    _render_picker_tables(ref_frame, query_frame, _resolve_picker_cache_path(params), sm)
+    _render_picker_tables(
+        ref_frame, query_frame, _resolve_picker_cache_path(params), state_manager,
+    )
 
     # openms_insight's bridge auto-fills both selection keys with the first
     # row's value on first render (bridge.py:694-697 — runs unconditionally
@@ -272,7 +277,7 @@ def mirror_plots_fragment(params: dict):
     # first ref / first query of the chosen peptide; clicking either table
     # swaps just that side. The None-checks below are defensive — Vue isn't
     # running under AppTest, so the auto-fill may not fire there.
-    state = sm.get_state_for_vue()
+    state = state_manager.get_state_for_vue()
     ref_id = state.get("selected_ref_row")
     query_psm = state.get("selected_query_psm")
     if ref_id is None or query_psm is None:

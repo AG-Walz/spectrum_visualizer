@@ -80,8 +80,8 @@ def file_selection_fragment():
     for kind, state_key in [("idXML", 'selected_idxmls'), ("mzML", 'selected_mzmls')]:
         try:
             ensure_unique_basenames(st.session_state.get(state_key, []), kind)
-        except DuplicateBasenameError as exc:
-            st.error(str(exc))
+        except DuplicateBasenameError as error:
+            st.error(str(error))
 
     save_params(params)
 

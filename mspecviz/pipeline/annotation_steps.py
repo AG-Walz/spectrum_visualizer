@@ -16,7 +16,7 @@ from mspecviz.annotation.peak_matching import (
     prepare_spectrum_for_plot,
 )
 from mspecviz.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
-from mspecviz.spectra.loader_models import LoadedSpectrum
+from mspecviz.spectra.loader_models import LoadedSpectrum, source_label
 
 logger = logging.getLogger("mspecviz.pipeline")
 
@@ -123,8 +123,8 @@ def build_comparison_row(psm_id, result, query_frame, reference_spectrum, refere
         "Peptide": result.base_sequence,
         "Modification": result.modification_key,
         "Charge": result.query_spectrum.precursor_charge,
-        "Query": result.query_spectrum.source_label,
-        "Reference": reference_spectrum.source_label,
+        "Query": source_label(result.query_spectrum),
+        "Reference": source_label(reference_spectrum),
         "query_spectrum_id": result.query_spectrum.spectrum_id,
         "ref_spectrum_id": reference_spectrum.spectrum_id,
         "query_rt": result.query_spectrum.rt,

@@ -94,8 +94,8 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
                 error_callback(f"Worker crashed loading {kind} {display_name}: {result}")
             continue
         if error_callback:
-            for err in result.errors:
-                error_callback(err)
+            for error in result.errors:
+                error_callback(error)
         all_results.append(result)
         if on_file_complete:
             on_file_complete(result.display_name, result.loaded_count, result.not_found_count)
@@ -123,17 +123,18 @@ def _filter_already_loaded(
     skip_ids: set,
 ) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
     """Drop any (variant_key, spectrum_id) pairs already present in *skip_ids*."""
-    before = sum(len(m) for m in mzml_to_matches.values())
+    before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
-        pk: [(m, vk) for m, vk in ms if (vk, m.spectrum_id) not in skip_ids]
-        for pk, ms in mzml_to_matches.items()
+        path_key: [(match, variant_key) for match, variant_key in matches
+                   if (variant_key, match.spectrum_id) not in skip_ids]
+        for path_key, matches in mzml_to_matches.items()
     }
-    filtered = {k: v for k, v in filtered.items() if v}
-    skipped = before - sum(len(m) for m in filtered.values())
+    filtered = {path_key: matches for path_key, matches in filtered.items() if matches}
+    skipped = before - sum(len(matches) for matches in filtered.values())
     if skipped > 0:
         logger.info(
             f"Resume: skipping {skipped} cached spectra, "
-            f"{sum(len(v) for v in filtered.values())} remaining"
+            f"{sum(len(matches) for matches in filtered.values())} remaining"
         )
     return filtered
 
@@ -143,16 +144,17 @@ def _collect_reference_spectra(
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[LoadedSpectrum]]:
     """Bucket reference spectra by variant_key and fire the per-variant callback."""
-    reference_spectra: Dict[str, List[LoadedSpectrum]] = {k: [] for k in variant_groups}
-    for res in ref_results:
-        for variant_key, spec in res.loaded:
-            reference_spectra[variant_key].append(spec)
+    reference_spectra: Dict[str, List[LoadedSpectrum]] = {variant_key: [] for variant_key in variant_groups}
+    for result in ref_results:
+        for variant_key, spectrum in result.loaded:
+            reference_spectra[variant_key].append(spectrum)
     if on_reference_loaded:
         for variant_key, references in reference_spectra.items():
             if references:
                 on_reference_loaded(variant_key, len(references))
     logger.info(
-        f"References loaded: {sum(len(v) for v in reference_spectra.values())} spectra"
+        f"References loaded: "
+        f"{sum(len(refs) for refs in reference_spectra.values())} spectra"
     )
     return reference_spectra
 
@@ -166,8 +168,8 @@ def _stream_query_results(
     """Fire ``on_query_ready`` once per loaded query spectrum."""
     if not on_query_ready:
         return
-    for res in query_results:
-        for variant_key, loaded in res.loaded:
+    for result in query_results:
+        for variant_key, loaded in result.loaded:
             variant_group = variant_groups[variant_key]
             on_query_ready(StreamingResult(
                 query_spectrum=loaded,

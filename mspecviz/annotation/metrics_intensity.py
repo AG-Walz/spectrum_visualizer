@@ -18,29 +18,18 @@ def _get_matching_intensities(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
 ) -> Tuple[np.ndarray, np.ndarray, List[str]]:
+    """Find overlapping annotated ions; returns ``(q_int, r_int, shared_labels)``.
+
+    Within each spectrum, multiple peaks may share an annotation (e.g. isotopes
+    or charge states with the same string label). We collapse to the brightest
+    per label, then keep only labels present in both spectra.
     """
-    Find overlapping annotated ions and return their intensity arrays.
-
-    Returns:
-        (query_intensities, reference_intensities, shared_labels)
-    """
-    query_annotated = query_frame[query_frame["is_annotated"]].copy()
-    reference_annotated = reference_frame[reference_frame["is_annotated"]].copy()
-
-    if query_annotated.empty or reference_annotated.empty:
-        return np.array([]), np.array([]), []
-
-    query_intensity_by_label = query_annotated.groupby("annotation")["intensity"].max().to_dict()
-    reference_intensity_by_label = reference_annotated.groupby("annotation")["intensity"].max().to_dict()
-
-    shared = sorted(set(query_intensity_by_label.keys()) & set(reference_intensity_by_label.keys()))
+    query_max = query_frame[query_frame["is_annotated"]].groupby("annotation")["intensity"].max()
+    reference_max = reference_frame[reference_frame["is_annotated"]].groupby("annotation")["intensity"].max()
+    shared = sorted(set(query_max.index) & set(reference_max.index))
     if not shared:
         return np.array([]), np.array([]), []
-
-    query_intensities = np.array([query_intensity_by_label[label] for label in shared])
-    reference_intensities = np.array([reference_intensity_by_label[label] for label in shared])
-
-    return query_intensities, reference_intensities, shared
+    return query_max.reindex(shared).to_numpy(), reference_max.reindex(shared).to_numpy(), shared
 
 
 def _r2_from_arrays(
@@ -50,8 +39,7 @@ def _r2_from_arrays(
     """R^2 from pre-computed matched intensity arrays."""
     if len(query_intensities) < 2:
         return float("nan")
-    _, _, r_value, _, _ = linregress(query_intensities, reference_intensities)
-    return float(r_value ** 2)
+    return float(linregress(query_intensities, reference_intensities).rvalue ** 2)
 
 
 def _cosine_from_arrays(
@@ -105,8 +93,7 @@ def compute_r2_binned(
     if shared_mask.sum() < 2:
         return float("nan")
 
-    _, _, r_value, _, _ = linregress(query_sums[shared_mask], reference_sums[shared_mask])
-    return float(r_value ** 2)
+    return float(linregress(query_sums[shared_mask], reference_sums[shared_mask]).rvalue ** 2)
 
 
 def compute_cosine_similarity(
