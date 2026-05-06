@@ -83,7 +83,7 @@ def test_mirror_picker_renders_when_state_seeded():
     with open(SETTINGS_PATH, "r") as f:
         at.session_state.settings = json.load(f)
     _seed_mirror_picker_state(at)
-    # Default radio is "Interactive Explorer"; switch to "Mirror Plots" so our
+    # Default radio is "Spectrum Explorer"; switch to "Mirror Plots" so our
     # fragment is the one that renders.
     at.session_state[f"{STATE_PREFIX}_explore_mode"] = "Mirror Plots"
 

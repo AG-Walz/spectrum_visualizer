@@ -27,11 +27,18 @@ _EMPTY_COLUMNS = ["mz", "intensity", "annotation", "ion_type", "charge", "is_ann
 # FragmentAnnotation.ion_type identifies the ion class. Koina annotation strings
 # follow the same convention ("y3+1", "b5++"). The six fragment letters keep
 # their letter so user filters like ['b', 'y'] match the dataframe column;
-# uppercase 'I' and lowercase 'p' map to readable bucket names.
+# uppercase 'I', lowercase 'p', lowercase 'm' map to readable bucket names.
+# Neutral losses (e.g. ``b3-H2O``) are intentionally NOT a separate bucket —
+# spectrum_utils' own colour scheme inherits the parent ion's colour for them
+# (see ``spectrum_utils/plot.py:117`` ``colors.get(ion_type[0])``).
 _BUCKET_FROM_PREFIX = {
     "a": "a", "b": "b", "c": "c", "x": "x", "y": "y", "z": "z",
-    "I": "immonium", "p": "precursor",
+    "I": "immonium", "p": "precursor", "m": "internal",
 }
+
+# UI / settings name → spectrum_utils single-letter ion-type identifier.
+# Only entries whose UI name doesn't already match the letter need a mapping.
+_ION_TYPE_LETTER = {"internal": "m"}
 
 
 def get_ion_type(annotation: str) -> str:
@@ -40,8 +47,11 @@ def get_ion_type(annotation: str) -> str:
 
 
 def _ion_types_to_string(ion_types: List[str]) -> str:
-    """Pack ion_types list (e.g. ['b', 'y']) into spectrum_utils' single-string form ('by')."""
-    return "".join(t for t in ion_types if t in ("a", "b", "c", "x", "y", "z"))
+    """Pack ion_types list (e.g. ``['b', 'y', 'internal']``) into spectrum_utils'
+    single-string form (``'bym'``)."""
+    letters = [t for t in ion_types if t in ("a", "b", "c", "x", "y", "z")]
+    letters.extend(_ION_TYPE_LETTER[t] for t in ion_types if t in _ION_TYPE_LETTER)
+    return "".join(letters)
 
 
 def _empty_annotated_frame(mz, intensity) -> pd.DataFrame:
@@ -77,7 +87,8 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
             flags.append(False)
             continue
         fa = fa_list[0]
-        annotations.append(f"{fa.ion_type}+{fa.charge}")
+        loss_suffix = f"-{fa.neutral_loss}" if fa.neutral_loss else ""
+        annotations.append(f"{fa.ion_type}{loss_suffix}+{fa.charge}")
         ion_types.append(get_ion_type(fa.ion_type))
         charges.append(int(fa.charge))
         flags.append(True)

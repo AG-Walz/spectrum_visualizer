@@ -86,11 +86,11 @@ def render():
         return
 
     explore_mode = st.radio(
-        "View mode", options=["Interactive Explorer", "Mirror Plots", "Comparison Metrics"],
+        "View mode", options=["Spectrum Explorer", "Mirror Plots", "Comparison Metrics"],
         horizontal=True, key=f"{STATE_PREFIX}_explore_mode"
     )
 
-    if explore_mode == "Interactive Explorer":
+    if explore_mode == "Spectrum Explorer":
         render_explorer(params)
     elif explore_mode == "Mirror Plots":
         mirror_plots_fragment(params)

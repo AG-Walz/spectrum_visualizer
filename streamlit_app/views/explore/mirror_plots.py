@@ -201,22 +201,26 @@ def _render_picker_tables(
     # default_row=-1 disables Tabulator's auto-selection on first render; without
     # it the gate "render plot only when both selections exist" is bypassed
     # immediately because Table eagerly fires interactivity for row 0.
+    # Experimental on the left, reference on the right — matches the mirror
+    # plot convention where the experimental query is the upper trace.
     with left_column:
-        st.subheader("Reference")
-        Table(
-            cache_id="mirror_ref_picker", data=ref_frame, cache_path=cache_path,
-            column_definitions=columns, index_field="id", regenerate_cache=True,
-            default_row=-1,
-            interactivity={"selected_ref_row": "id"},
-        )(key="mirror_ref_picker", state_manager=state_manager)
-    with right_column:
         st.subheader("Experimental")
+        st.caption("Upper spectrum in the mirror plot below.")
         Table(
             cache_id="mirror_query_picker", data=query_frame, cache_path=cache_path,
             column_definitions=columns, index_field="psm_id", regenerate_cache=True,
             default_row=-1,
             interactivity={"selected_query_psm": "psm_id"},
         )(key="mirror_query_picker", state_manager=state_manager)
+    with right_column:
+        st.subheader("Reference")
+        st.caption("Lower spectrum in the mirror plot below.")
+        Table(
+            cache_id="mirror_ref_picker", data=ref_frame, cache_path=cache_path,
+            column_definitions=columns, index_field="id", regenerate_cache=True,
+            default_row=-1,
+            interactivity={"selected_ref_row": "id"},
+        )(key="mirror_ref_picker", state_manager=state_manager)
 
 
 @st.fragment

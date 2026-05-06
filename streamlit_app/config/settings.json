@@ -21,7 +21,7 @@
     ]
   },
   "ion_types": {
-    "available": ["a", "b", "c", "x", "y", "z", "precursor", "immonium"]
+    "available": ["a", "b", "c", "x", "y", "z", "internal", "precursor", "immonium"]
   },
   "mz_tolerance": {
     "unit": "Da"
@@ -39,14 +39,15 @@
     "subdirectory": ".mspecviz_cache"
   },
   "ion_colors": {
-    "a": "#FFCC00",
-    "b": "#0066CC",
-    "c": "#00CC66",
-    "x": "#CC6600",
-    "y": "#CC0000",
-    "z": "#6600CC",
-    "precursor": "#8B008B",
-    "immonium": "#00CED1",
-    "unannotated": "#AAAAAA"
+    "a": "#388E3C",
+    "b": "#1976D2",
+    "c": "#00796B",
+    "x": "#7B1FA2",
+    "y": "#D32F2F",
+    "z": "#F57C00",
+    "internal": "#FBC02D",
+    "precursor": "#512DA8",
+    "immonium": "#455A64",
+    "unannotated": "#9E9E9E"
   }
 }
