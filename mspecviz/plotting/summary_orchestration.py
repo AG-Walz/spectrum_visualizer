@@ -20,7 +20,6 @@ from mspecviz.plotting._summary_shared import (
 )
 from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
 from mspecviz.plotting.summary_ridgeline import plot_ridgeline
-from mspecviz.search.models import format_inline_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -49,16 +48,15 @@ def prepare_summary_data(
             f"{[c for c in raw_frame.columns if c in METRIC_COLUMNS]}"
         )
 
-    # Build peptidoform label
+    # Build peptidoform label. ``Modification`` already stores the canonical
+    # ``Peptidoform.modified_sequence`` (e.g. ``"PEPTM[Ox]IDEK"``) for modified
+    # PSMs, or ``""``/``"(unmodified)"`` for unmodified — fall back to the bare
+    # peptide in those cases.
     modification = raw_frame["Modification"].fillna("").astype(str)
-    raw_frame["peptidoform"] = (
-        raw_frame.apply(
-            lambda row: format_inline_sequence(row["Peptide"], modification[row.name]),
-            axis=1,
-        )
-        + "/"
-        + raw_frame["Charge"].astype(str)
+    inline = modification.mask(
+        modification.isin(["", "(unmodified)"]), raw_frame["Peptide"].astype(str),
     )
+    raw_frame["peptidoform"] = inline + "/" + raw_frame["Charge"].astype(str)
 
     raw_frame = raw_frame.dropna(subset=[metric]).copy()
 

@@ -15,7 +15,8 @@ import polars as pl
 import pytest
 
 from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
-from mspecviz.search import PeptideMatch, VariantGroup
+from mspecviz.search import VariantGroup
+from tests.conftest import make_peptide_match
 from mspecviz.spectra import LoadedSpectrum
 from streamlit_app.views.export.pipeline import _run_export
 
@@ -71,25 +72,23 @@ def _make_comparison_frame():
 
 
 def _make_variant_groups():
-    match = PeptideMatch(
-        peptidoform="PEPTIDEK/2", base_sequence="PEPTIDEK",
-        spectrum_id="index=1", charge=2, score=0.95,
+    psm = make_peptide_match(
+        peptidoform="PEPTIDEK/2", spectrum_id="index=1", charge=2, score=0.95,
         idxml_file="test.idXML", mzml_filename="query.mzML",
-        id_merge_index=-1,
     )
     variant_group = VariantGroup(
         base_sequence="PEPTIDEK",
-        modification_key=None,
+        modification_key="",
         display_label="PEPTIDEK (unmodified)",
-        matches=[match],
+        matches=[psm],
     )
-    return {"PEPTIDEK|(unmodified)": variant_group}
+    return {"PEPTIDEK": variant_group}
 
 
 def _make_psm_lazyframe():
     return pl.DataFrame({
         "id": [0],
-        "variant_key": ["PEPTIDEK|(unmodified)"],
+        "variant_key": ["PEPTIDEK"],
         "base_sequence": ["PEPTIDEK"],
         "modification": ["(unmodified)"],
         "display_label": ["PEPTIDEK (unmodified)"],
@@ -111,7 +110,7 @@ def _build_session_state(tmp_path):
 
     return {
         "peptide_mirror.annotated_queries": {0: (query_spectrum, query_frame)},
-        "peptide_mirror.reference_store": {"PEPTIDEK|(unmodified)": [(reference_spectrum, reference_frame)]},
+        "peptide_mirror.reference_store": {"PEPTIDEK": [(reference_spectrum, reference_frame)]},
         "peptide_mirror.variant_groups": _make_variant_groups(),
         "peptide_mirror.comparison_frame": _make_comparison_frame(),
         "peptide_mirror.psm_frame": _make_psm_lazyframe(),

@@ -7,7 +7,8 @@ phase ordering, callbacks) lives in ``mspecviz.spectra.loader_orchestration``.
 import logging
 from typing import List, Tuple
 
-from mspecviz.search.models import PeptideMatch
+from psm_utils import PSM
+
 from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum
 from mspecviz.spectra.mzml_lookup import find_spectrum_index, open_indexed_mzml_fast
 
@@ -25,49 +26,50 @@ def _resolve_precursor(spectrum, default_charge: int) -> Tuple[float, int]:
 
 
 def _build_loaded_spectrum(
-    spectrum, match: "PeptideMatch", display_name: str, is_reference: bool,
+    spectrum, psm: PSM, display_name: str, is_reference: bool,
 ) -> LoadedSpectrum:
     """Wrap a pyopenms ``MSSpectrum`` in our ``LoadedSpectrum`` dataclass."""
     mz_array, intensity_array = spectrum.get_peaks()
-    precursor_mz, precursor_charge = _resolve_precursor(spectrum, match.charge)
+    psm_charge = psm.get_precursor_charge() or 0
+    precursor_mz, precursor_charge = _resolve_precursor(spectrum, psm_charge)
     return LoadedSpectrum(
-        spectrum_id=match.spectrum_id,
+        spectrum_id=psm.spectrum_id,
         mz=mz_array,
         intensity=intensity_array,
         precursor_mz=precursor_mz,
         precursor_charge=precursor_charge,
-        peptidoform=match.peptidoform,
-        base_sequence=match.base_sequence,
+        peptidoform=psm.peptidoform.modified_sequence,
+        base_sequence=psm.peptidoform.sequence.upper(),
         source_file=display_name,
         is_reference=is_reference,
         rt=spectrum.getRT(),
-        match=match,
+        match=psm,
     )
 
 
 def _load_one_match(
     indexed_exp, id_to_index: dict, n_spectra: int,
-    match: "PeptideMatch", variant_key: str,
+    psm: PSM, variant_key: str,
     display_name: str, is_reference: bool,
 ) -> Tuple[Tuple[str, LoadedSpectrum] | None, str | None]:
     """Resolve and read a single match; returns ``(loaded_pair, error_msg)``."""
     try:
-        spectrum_index = find_spectrum_index(match.spectrum_id, id_to_index, n_spectra)
+        spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
         if spectrum_index is None:
-            return None, f"Spectrum not found: {match.spectrum_id} in {display_name}"
+            return None, f"Spectrum not found: {psm.spectrum_id} in {display_name}"
         spectrum = indexed_exp.getSpectrum(spectrum_index)
         loaded = (variant_key, _build_loaded_spectrum(
-            spectrum, match, display_name, is_reference,
+            spectrum, psm, display_name, is_reference,
         ))
         return loaded, None
     except Exception as error:
-        return None, f"Error loading {match.spectrum_id}: {error}"
+        return None, f"Error loading {psm.spectrum_id}: {error}"
 
 
 def _load_spectra_from_mzml(
     mzml_path_str: str,
     display_name: str,
-    matches_for_file: List[Tuple["PeptideMatch", str]],
+    matches_for_file: List[Tuple[PSM, str]],
     is_reference: bool,
 ) -> LoadResult:
     """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
@@ -77,14 +79,14 @@ def _load_spectra_from_mzml(
     not_found_count = 0
 
     try:
-        needed_ids = [match.spectrum_id for match, _ in matches_for_file]
+        needed_ids = [psm.spectrum_id for psm, _ in matches_for_file]
         indexed_exp, id_to_index = open_indexed_mzml_fast(mzml_path_str, needed_ids=needed_ids)
         n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
-        for match, variant_key in matches_for_file:
+        for psm, variant_key in matches_for_file:
             pair, error = _load_one_match(
                 indexed_exp, id_to_index, n_spectra,
-                match, variant_key, display_name, is_reference,
+                psm, variant_key, display_name, is_reference,
             )
             if pair is not None:
                 loaded.append(pair)

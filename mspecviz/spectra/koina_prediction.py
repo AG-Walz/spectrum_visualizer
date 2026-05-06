@@ -9,12 +9,13 @@ useful for quantitative comparison against experimental spectra.
 Used as a fallback reference when no experimental reference mzML is available.
 """
 import logging
-from typing import Dict, Optional
+from typing import Optional
 
 import pandas as pd
 from psm_utils import Peptidoform
 
-from mspecviz.common.defaults import DEFAULTS
+# KOINA_MODELS / INSTRUMENT_TYPES sourced from defaults (single catalogue).
+from mspecviz.common.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 
 logger = logging.getLogger(__name__)
 
@@ -23,29 +24,6 @@ try:
     KOINA_AVAILABLE = True
 except ImportError:
     KOINA_AVAILABLE = False
-
-KOINA_MODELS: Dict[str, str] = {
-    # MS2PIP family
-    "MS2PIP TimsTOF 2024": "ms2pip_timsTOF2024",
-    "MS2PIP HCD 2021": "ms2pip_HCD2021",
-    "MS2PIP Immuno HCD": "ms2pip_Immuno_HCD",
-    "MS2PIP TTOF5600": "ms2pip_TTOF5600",
-    "MS2PIP CID TMT": "ms2pip_CID_TMT",
-    "MS2PIP iTRAQ Phospho": "ms2pip_iTRAQphospho",
-    # Prosit family
-    "Prosit 2019": "Prosit_2019_intensity",
-    "Prosit 2020 HCD": "Prosit_2020_intensity_HCD",
-    "Prosit 2020 CID": "Prosit_2020_intensity_CID",
-    "Prosit 2020 TMT": "Prosit_2020_intensity_TMT",
-    "Prosit 2023 timsTOF": "Prosit_2023_intensity_timsTOF",
-    # AlphaPept / PeptDeep
-    "AlphaPept Generic": "AlphaPept_ms2_generic",
-    # Other
-    "UniSpec": "UniSpec",
-    "PredFull": "PredFull",
-}
-
-INSTRUMENT_TYPES = ["QE", "LUMOS", "TIMSTOF", "SCIEXTOF"]
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:

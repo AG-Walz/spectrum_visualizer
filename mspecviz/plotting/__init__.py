@@ -20,10 +20,7 @@ from mspecviz.plotting.summary_orchestration import (
     prepare_summary_data,
 )
 from mspecviz.plotting.summary_ridgeline import plot_ridgeline
-from mspecviz.plotting.worker_execution import (
-    process_single_task,
-    run_parallel_comparisons,
-)
+from mspecviz.plotting.worker_execution import process_single_task
 from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
 
 __all__ = [
@@ -43,5 +40,4 @@ __all__ = [
     "ComparisonResult",
     "ComparisonTask",
     "process_single_task",
-    "run_parallel_comparisons",
 ]

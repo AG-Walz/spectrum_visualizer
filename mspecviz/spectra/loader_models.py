@@ -10,7 +10,7 @@ from typing import List, Optional, Tuple, TYPE_CHECKING
 import numpy as np
 
 if TYPE_CHECKING:  # avoid circular import at runtime
-    from mspecviz.search.models import PeptideMatch
+    from psm_utils import PSM
 
 
 @dataclass
@@ -26,7 +26,7 @@ class LoadedSpectrum:
     source_file: str
     is_reference: bool = False
     rt: float = 0.0
-    match: Optional["PeptideMatch"] = None
+    match: Optional["PSM"] = None
 
 
 def source_label(spectrum) -> str:

@@ -3,11 +3,22 @@ from collections import Counter
 from pathlib import Path
 from typing import Iterable, List
 
-
 class DuplicateBasenameError(ValueError):
     """Two or more selected files share the same basename — refuse to start."""
 
 
+def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
+    """Raise :class:`DuplicateBasenameError` if any two ``paths`` share a basename."""
+    duplicates = sorted(
+        name for name, count in Counter(Path(path).name for path in paths).items()
+        if count > 1
+    )
+    if duplicates:
+        raise DuplicateBasenameError(
+            f"Two or more selected {kind} files share the same basename: "
+            f"{duplicates}. Rename or symlink so every {kind} basename is unique."
+        )
+    
 def parse_peptide_list(text: str) -> List[str]:
     """Parse newline-separated peptide list, uppercased and stripped."""
     return [line.strip().upper() for line in text.splitlines() if line.strip()]
@@ -25,15 +36,3 @@ def format_time(seconds: float) -> str:
     minutes = int((seconds % 3600) // 60)
     return f"{hours}h {minutes}m"
 
-
-def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
-    """Raise :class:`DuplicateBasenameError` if any two ``paths`` share a basename."""
-    duplicates = sorted(
-        name for name, count in Counter(Path(path).name for path in paths).items()
-        if count > 1
-    )
-    if duplicates:
-        raise DuplicateBasenameError(
-            f"Two or more selected {kind} files share the same basename: "
-            f"{duplicates}. Rename or symlink so every {kind} basename is unique."
-        )

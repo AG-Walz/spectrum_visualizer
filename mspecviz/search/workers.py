@@ -6,57 +6,32 @@ from typing import Dict, Optional, Set, Tuple
 
 from psm_utils.io.idxml import IdXMLReader
 
-from mspecviz.search.idxml_parsing import modification_key_from_peptidoform
-from mspecviz.search.models import PeptideMatch
-
 logger = logging.getLogger(__name__)
 
 
-def _build_match_from_psm(
-    psm,
-    idxml_path: str,
-    idxml_name: str,
-    mzml_by_name: Dict[str, str],
-) -> Optional[Tuple[str, PeptideMatch]]:
-    """Build a (variant_key, PeptideMatch) from a psm_utils PSM, or None.
-
-    ``mzml_by_name`` maps lowercase basename → full path. The unique-basename
-    invariant (enforced at input) makes this lookup unambiguous.
-    """
-    base_seq = psm.peptidoform.sequence.upper()
-
-    mzml_filename = (psm.run + ".mzML") if psm.run else ""
-    resolved_path = mzml_by_name.get(mzml_filename.lower(), "") if mzml_filename else ""
-
-    mod_key = modification_key_from_peptidoform(psm.peptidoform)
-    variant_key = f"{base_seq}|{mod_key}" if mod_key else base_seq
-
-    match = PeptideMatch(
-        peptidoform=psm.peptidoform.proforma.split("/")[0],
-        base_sequence=base_seq,
-        spectrum_id=psm.spectrum_id or "",
-        charge=psm.get_precursor_charge() or 0,
-        score=psm.score or 0.0,
-        idxml_file=idxml_name,
-        mzml_filename=mzml_filename,
-        id_merge_index=-1,
-        mzml_resolved_path=resolved_path,
-        idxml_resolved_path=idxml_path,
-    )
-    return variant_key, match
+def _enrich_with_metadata(
+    psm, idxml_path: str, idxml_name: str, mzml_by_stem: Dict[str, str],
+) -> None:
+    """Stuff mspecviz-specific resolution metadata into ``psm.metadata`` in place."""
+    psm.metadata["idxml_file"] = idxml_name
+    psm.metadata["idxml_resolved_path"] = str(idxml_path)
+    if psm.run:
+        resolved = mzml_by_stem.get(psm.run.lower(), "")
+        if resolved:
+            psm.metadata["mzml_resolved_path"] = resolved
 
 
 def _process_psm_against_targets(
     psm, idxml_path: str, idxml_name: str,
-    target_set: Set[str], mzml_by_name: Dict[str, str], matches: list,
+    target_set: Set[str], mzml_by_stem: Dict[str, str], matches: list,
 ) -> None:
-    """Append the PSM's ``(variant_key, PeptideMatch)`` to *matches* if it targets a peptide."""
+    """Append ``(variant_key, psm)`` to *matches* if the PSM targets a peptide."""
     try:
         if psm.peptidoform.sequence.upper() not in target_set:
             return
-        built = _build_match_from_psm(psm, idxml_path, idxml_name, mzml_by_name)
-        if built is not None:
-            matches.append(built)
+        _enrich_with_metadata(psm, idxml_path, idxml_name, mzml_by_stem)
+        variant_key = psm.peptidoform.modified_sequence
+        matches.append((variant_key, psm))
     except Exception as error:
         logger.debug(f"Error processing PSM: {error}")
 
@@ -91,7 +66,7 @@ def _search_single_idxml(
     idxml_path: str,
     idxml_name: str,
     target_set: Set[str],
-    mzml_by_name: Dict[str, str],
+    mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
     """Worker: scan one idXML for target peptides via psm_utils PSM iteration."""
     matches: list = []
@@ -107,7 +82,7 @@ def _search_single_idxml(
         psms, psms_read, parse_error = _iterate_psms_safely(reader, idxml_name)
         for psm in psms:
             _process_psm_against_targets(
-                psm, idxml_path, idxml_name, target_set, mzml_by_name, matches,
+                psm, idxml_path, idxml_name, target_set, mzml_by_stem, matches,
             )
 
         if parse_error is not None:

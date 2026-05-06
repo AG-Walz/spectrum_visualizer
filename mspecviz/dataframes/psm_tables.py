@@ -66,7 +66,7 @@ def build_psm_table(
 ) -> Tuple[pl.LazyFrame, Dict[str, int]]:
     """Build the PSM-level LazyFrame + ``psm_lookup`` for the openms_insight Table.
 
-    Each PeptideMatch gets a stable integer ``id``; ``psm_lookup`` maps
+    Each ``psm_utils.PSM`` gets a stable integer ``id``; ``psm_lookup`` maps
     ``spectrum_lookup_key()`` (``"{spectrum_id}|{peptidoform}"``) → that id so
     downstream frames can link peaks/sequences back to the right row.
     """
@@ -75,9 +75,10 @@ def build_psm_table(
     psm_id = 0
 
     for variant_key, variant_group in variant_groups.items():
-        for match in variant_group.matches:
+        for psm in variant_group.matches:
+            peptidoform_str = psm.peptidoform.modified_sequence
             # Key must match spectrum_lookup_key() in spectrum_loader
-            key = f"{match.spectrum_id}|{match.peptidoform}"
+            key = f"{psm.spectrum_id}|{peptidoform_str}"
             psm_lookup[key] = psm_id
             rows.append({
                 "id": psm_id,
@@ -85,12 +86,12 @@ def build_psm_table(
                 "base_sequence": variant_group.base_sequence,
                 "modification": variant_group.modification_key or "(unmodified)",
                 "display_label": variant_group.display_label,
-                "peptidoform": match.peptidoform,
-                "charge": match.charge,
-                "score": float(match.score),
-                "source_file": match.mzml_filename or "",
-                "spectrum_id": match.spectrum_id,
-                "idxml_file": match.idxml_file,
+                "peptidoform": peptidoform_str,
+                "charge": psm.get_precursor_charge() or 0,
+                "score": float(psm.score) if psm.score is not None else 0.0,
+                "source_file": psm.run or "",
+                "spectrum_id": psm.spectrum_id,
+                "idxml_file": psm.metadata.get("idxml_file", ""),
             })
             psm_id += 1
 

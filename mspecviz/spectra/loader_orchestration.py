@@ -9,8 +9,10 @@ import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
+from psm_utils import PSM
+
 from mspecviz.common.parallel import run_tasks
-from mspecviz.search.models import PeptideMatch, VariantGroup
+from mspecviz.search.models import VariantGroup
 from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum, StreamingResult
 from mspecviz.spectra.loader_workers import _load_spectra_from_mzml
 
@@ -20,35 +22,37 @@ logger = logging.getLogger(__name__)
 def build_mzml_to_matches_map(
     variant_groups: Dict[str, VariantGroup],
     available_mzml_paths: Dict[str, Path],
-) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
-    """Map each mzML path key to the list of (match, variant_key) pairs to load.
+) -> Dict[str, List[Tuple[PSM, str]]]:
+    """Map each mzML path key to the list of ``(psm, variant_key)`` pairs to load.
 
-    Prefers ``mzml_resolved_path`` when set, then falls back to a bare-name
-    lookup. The unique-basename invariant (enforced at input) guarantees the
-    fallback is unambiguous.
+    Prefers ``psm.metadata["mzml_resolved_path"]`` when set, then falls back to
+    a stem-based lookup against ``psm.run`` (the canonical run name psm_utils
+    parses from the idXML's ``spectra_data``). The unique-basename invariant
+    enforced at input makes the fallback unambiguous.
     """
-    name_to_key: Dict[str, str] = {
-        path.name.lower(): key for key, path in available_mzml_paths.items()
+    stem_to_key: Dict[str, str] = {
+        path.stem.lower(): key for key, path in available_mzml_paths.items()
     }
 
-    mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]] = {}
+    mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
 
     for variant_key, variant_group in variant_groups.items():
-        for match in variant_group.matches:
-            if not match.mzml_filename:
+        for psm in variant_group.matches:
+            if not psm.run:
                 continue
 
             path_key = None
-            if match.mzml_resolved_path:
-                resolved_key = str(Path(match.mzml_resolved_path).resolve()).lower()
+            resolved = psm.metadata.get("mzml_resolved_path", "")
+            if resolved:
+                resolved_key = str(Path(resolved).resolve()).lower()
                 if resolved_key in available_mzml_paths:
                     path_key = resolved_key
 
             if path_key is None:
-                path_key = name_to_key.get(match.mzml_filename.lower())
+                path_key = stem_to_key.get(psm.run.lower())
 
             if path_key:
-                mzml_to_matches.setdefault(path_key, []).append((match, variant_key))
+                mzml_to_matches.setdefault(path_key, []).append((psm, variant_key))
 
     return mzml_to_matches
 
@@ -119,14 +123,14 @@ def _split_reference_and_query_keys(
 
 
 def _filter_already_loaded(
-    mzml_to_matches: Dict[str, List[Tuple[PeptideMatch, str]]],
+    mzml_to_matches: Dict[str, List[Tuple[PSM, str]]],
     skip_ids: set,
-) -> Dict[str, List[Tuple[PeptideMatch, str]]]:
+) -> Dict[str, List[Tuple[PSM, str]]]:
     """Drop any (variant_key, spectrum_id) pairs already present in *skip_ids*."""
     before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
-        path_key: [(match, variant_key) for match, variant_key in matches
-                   if (variant_key, match.spectrum_id) not in skip_ids]
+        path_key: [(psm, variant_key) for psm, variant_key in matches
+                   if (variant_key, psm.spectrum_id) not in skip_ids]
         for path_key, matches in mzml_to_matches.items()
     }
     filtered = {path_key: matches for path_key, matches in filtered.items() if matches}

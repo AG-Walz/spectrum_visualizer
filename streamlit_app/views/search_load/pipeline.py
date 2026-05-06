@@ -44,7 +44,8 @@ def _show_search_results_summary(results, error_messages, tracker, params: dict)
 
     unresolved = sum(
         1 for variant_group in results.values()
-        for match in variant_group.matches if not match.mzml_filename
+        for psm in variant_group.matches
+        if not psm.metadata.get("mzml_resolved_path")
     )
     if unresolved > 0:
         st.warning(f"{unresolved} PSMs could not be mapped to mzML files")

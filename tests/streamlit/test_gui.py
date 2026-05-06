@@ -65,7 +65,7 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
                                 rt=12.5, match=match, **spec_kwargs)
     ref_spec = LoadedSpectrum(spectrum_id="scan=10", source_file="ref.mzML",
                               rt=11.0, is_reference=True, **spec_kwargs)
-    variant_key = "PEPTIDEK|"
+    variant_key = "PEPTIDEK"
     variant_groups = {variant_key: VariantGroup(
         base_sequence="PEPTIDEK", modification_key="", display_label="PEPTIDEK",
         matches=[match],

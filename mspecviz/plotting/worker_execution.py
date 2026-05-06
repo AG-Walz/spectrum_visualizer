@@ -6,9 +6,8 @@ Task/result dataclasses live in ``worker_tasks`` so lightweight callers can
 construct tasks without pulling matplotlib.
 """
 import logging
-from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -181,47 +180,3 @@ def _save_task_html(task: ComparisonTask) -> str:
         return ""
 
 
-def run_parallel_comparisons(
-    tasks: List[ComparisonTask],
-    workers: int = 4,
-    on_task_complete: Optional[Callable] = None,
-) -> List[ComparisonResult]:
-    """Run tasks via ProcessPoolExecutor (workers=1 for sequential fallback)."""
-    if not tasks:
-        return []
-
-    workers = max(1, min(workers, len(tasks)))
-    total = len(tasks)
-    results: List[ComparisonResult] = []
-
-    if workers == 1:
-        for i, task in enumerate(tasks):
-            result = process_single_task(task)
-            results.append(result)
-            if on_task_complete:
-                on_task_complete(result, i + 1, total)
-    else:
-        with ProcessPoolExecutor(max_workers=workers) as pool:
-            future_map = {
-                pool.submit(process_single_task, task): task
-                for task in tasks
-            }
-
-            completed = 0
-            for future in as_completed(future_map):
-                completed += 1
-                try:
-                    result = future.result()
-                except Exception as error:
-                    task = future_map[future]
-                    result = ComparisonResult(
-                        task_id=task.task_id,
-                        task_type=task.task_type,
-                        success=False,
-                        error=f"Process error: {error}",
-                    )
-                results.append(result)
-                if on_task_complete:
-                    on_task_complete(result, completed, total)
-
-    return results

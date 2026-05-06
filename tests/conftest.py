@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mspecviz.search import PeptideMatch
+from psm_utils import PSM, Peptidoform
 
 # Ensure project root is on sys.path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -57,16 +57,29 @@ def app_settings():
         return json.load(f)
 
 
-def make_peptide_match(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
+def make_peptide_match(peptidoform="PEPTIDEK", base_seq=None,
                        spectrum_id="index=1", charge=2, score=0.95,
                        idxml_file="test.idXML", mzml_filename="test.mzML"):
-    """Create a PeptideMatch for testing. Importable via ``from tests.conftest import ...``."""
-    return PeptideMatch(
-        peptidoform=peptidoform, base_sequence=base_seq,
-        spectrum_id=spectrum_id, charge=charge, score=score,
-        idxml_file=idxml_file, mzml_filename=mzml_filename,
-        id_merge_index=-1,
+    """Create a ``psm_utils.PSM`` for testing. Importable via ``from tests.conftest import ...``.
+
+    Kept under the legacy name ``make_peptide_match`` so existing tests don't
+    need to change. ``base_seq`` and ``mzml_filename`` are accepted (and
+    ignored, except that the ``mzml_filename`` stem becomes ``psm.run``) for
+    backward compatibility with existing call sites.
+    """
+    del base_seq  # PSM derives base sequence from peptidoform.sequence
+    proforma = peptidoform if "/" in peptidoform else f"{peptidoform}/{charge}"
+    run_name = mzml_filename.rsplit(".", 1)[0] if mzml_filename else ""
+    psm = PSM(
+        peptidoform=Peptidoform(proforma),
+        spectrum_id=spectrum_id,
+        run=run_name,
+        score=score,
     )
+    psm.metadata["idxml_file"] = idxml_file
+    if mzml_filename:
+        psm.metadata["mzml_resolved_path"] = f"/tmp/{mzml_filename}"
+    return psm
 
 
 @pytest.fixture

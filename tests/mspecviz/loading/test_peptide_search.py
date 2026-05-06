@@ -1,12 +1,13 @@
-"""Tests for peptide_search helper functions: abbreviate_modification, format_inline_sequence,
-and summarize_search_results (returns pl.LazyFrame).
+"""Tests for peptide_search helpers: ``abbreviate_modification``,
+``display_label``, and ``summarize_search_results`` (returns ``pl.LazyFrame``).
 """
 import pytest
 import polars as pl
+from psm_utils import Peptidoform
 
 from mspecviz.search import (
     abbreviate_modification,
-    format_inline_sequence,
+    display_label,
     get_unique_peptides_from_idxmls,
     MOD_ABBREVIATIONS,
     search_peptides_in_idxmls,
@@ -17,7 +18,7 @@ from tests.conftest import make_peptide_match
 
 
 class TestAbbreviateModification:
-    """Tests for abbreviate_modification()."""
+    """Tests for ``abbreviate_modification()``."""
 
     def test_known_modifications(self):
         assert abbreviate_modification("Oxidation") == "Ox"
@@ -34,47 +35,44 @@ class TestAbbreviateModification:
             assert abbreviate_modification(mod_name) == abbrev
 
 
-class TestFormatInlineSequence:
-    """Tests for format_inline_sequence()."""
+class TestDisplayLabel:
+    """Tests for ``display_label()`` — the psm_utils-backed peptidoform renderer."""
 
-    def test_no_modification(self):
-        assert format_inline_sequence("PEPTIDEK", "") == "PEPTIDEK"
+    def test_unmodified(self):
+        assert display_label(Peptidoform("PEPTIDEK")) == "PEPTIDEK"
 
-    def test_single_modification(self):
-        result = format_inline_sequence("PEPTMDEK", "M5[Ox]")
-        assert result == "PEPTM[Ox]DEK"
+    def test_single_residue_modification(self):
+        assert display_label(Peptidoform("PEPTM[Oxidation]DEK")) == "PEPTM[Ox]DEK"
 
     def test_multiple_modifications(self):
-        result = format_inline_sequence("PEPTMSEK", "M5[Ox]|S6[Ph]")
+        result = display_label(Peptidoform("PEPTM[Oxidation]S[Phospho]EK"))
         assert result == "PEPTM[Ox]S[Ph]EK"
 
     def test_nterm_modification(self):
-        result = format_inline_sequence("PEPTIDEK", "NTerm[Ac]")
-        assert result == "[Ac]PEPTIDEK"
+        # ProForma terminal mods include the dash separator: ``[Ac]-PEPTIDEK``.
+        result = display_label(Peptidoform("[Acetyl]-PEPTIDEK"))
+        assert result == "[Ac]-PEPTIDEK"
 
     def test_cterm_modification(self):
-        result = format_inline_sequence("PEPTIDEK", "CTerm[Ac]")
-        assert result == "PEPTIDEK[Ac]"
-
-    def test_nterm_and_residue_modification(self):
-        result = format_inline_sequence("PEPTMDEK", "NTerm[Ac]|M5[Ox]")
-        assert result == "[Ac]PEPTM[Ox]DEK"
-
-    def test_modification_at_first_position(self):
-        result = format_inline_sequence("MPEPTIDEK", "M1[Ox]")
-        assert result == "M[Ox]PEPTIDEK"
-
-    def test_modification_at_last_position(self):
-        result = format_inline_sequence("PEPTIDEK", "K8[Ac]")
-        assert result == "PEPTIDEK[Ac]"
+        result = display_label(Peptidoform("PEPTIDEK-[Acetyl]"))
+        assert result == "PEPTIDEK-[Ac]"
 
     def test_unknown_mod_keeps_full_name(self):
-        result = format_inline_sequence("PEPTMDEK", "M5[SomeUnknownMod]")
-        assert result == "PEPTM[SomeUnknownMod]DEK"
+        assert display_label(Peptidoform("PEPTM[UNIMOD:35]DEK")) == "PEPTM[UNIMOD:35]DEK"
+
+    def test_strips_charge(self):
+        # display_label uses .modified_sequence, which already drops the charge.
+        assert display_label(Peptidoform("PEPTIDEK/2")) == "PEPTIDEK"
+
+    def test_does_not_mutate_caller(self):
+        peptidoform = Peptidoform("PEPTM[Oxidation]DEK")
+        _ = display_label(peptidoform)
+        # Original should be untouched (rebuild-from-proforma trick).
+        assert peptidoform.proforma == "PEPTM[Oxidation]DEK"
 
 
 class TestSummarizeSearchResults:
-    """Tests for summarize_search_results() which returns pl.LazyFrame."""
+    """Tests for ``summarize_search_results()`` which returns ``pl.LazyFrame``."""
 
     def test_returns_lazyframe(self):
         variant_group = VariantGroup(
@@ -130,7 +128,7 @@ class TestSummarizeSearchResults:
             base_sequence="AAAVAAAK",
             modification_key="",
             display_label="AAAVAAAK",
-            matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK")],
+            matches=[make_peptide_match(peptidoform="AAAVAAAK")],
         )
         result = summarize_search_results({"PEPTIDEK": variant_group1, "AAAVAAAK": variant_group2})
         df = result.collect()
@@ -158,10 +156,10 @@ class TestSearchWithRealData:
     def test_each_variant_has_one_psm_with_valid_fields(self, search_results):
         for key, variant_group in search_results.items():
             assert len(variant_group.matches) == 1
-            match = variant_group.matches[0]
-            assert match.peptidoform is not None
-            assert match.spectrum_id is not None
-            assert match.charge > 0
+            psm = variant_group.matches[0]
+            assert psm.peptidoform is not None
+            assert psm.spectrum_id is not None
+            assert (psm.get_precursor_charge() or 0) > 0
 
     def test_get_unique_peptides(self, idxml_path):
         peptides = get_unique_peptides_from_idxmls([idxml_path])

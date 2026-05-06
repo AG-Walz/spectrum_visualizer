@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Set
 import polars as pl
 
 from mspecviz.common.parallel import run_tasks
-from mspecviz.search.models import VariantGroup, format_inline_sequence
+from mspecviz.search.models import VariantGroup, display_label
 from mspecviz.search.workers import (
     _scan_single_idxml_peptides,
     _search_single_idxml,
@@ -21,10 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def _build_mzml_lookup(mzml_paths: Optional[List[str]]) -> Dict[str, str]:
-    """Map ``basename.lower() → str(path)`` for the optional mzML candidate list."""
+    """Map ``stem.lower() → str(path)`` for the optional mzML candidate list.
+
+    Keyed by stem (not full filename) to match ``psm_utils.PSM.run``, which
+    psm_utils' ``IdXMLReader`` populates as ``Path(spectra_data[i]).stem``.
+    """
     if not mzml_paths:
         return {}
-    return {Path(path).name.lower(): str(path) for path in mzml_paths}
+    return {Path(path).stem.lower(): str(path) for path in mzml_paths}
 
 
 def _merge_worker_matches(
@@ -33,15 +37,16 @@ def _merge_worker_matches(
 ) -> int:
     """Fold one worker's ``(matches, errors)`` into *variant_groups*; return new-PSM count."""
     new_psms = 0
-    for variant_key, match in worker_matches:
-        mod_key = variant_key.split("|", 1)[1] if "|" in variant_key else ""
+    for variant_key, psm in worker_matches:
         if variant_key not in variant_groups:
+            base_sequence = psm.peptidoform.sequence.upper()
+            label = display_label(psm.peptidoform)
             variant_groups[variant_key] = VariantGroup(
-                base_sequence=match.base_sequence,
-                modification_key=mod_key,
-                display_label=format_inline_sequence(match.base_sequence, mod_key),
+                base_sequence=base_sequence,
+                modification_key=label if label != base_sequence else "",
+                display_label=label,
             )
-        variant_groups[variant_key].matches.append(match)
+        variant_groups[variant_key].matches.append(psm)
         new_psms += 1
     for error_message in worker_errors:
         if error_callback:
@@ -59,9 +64,11 @@ def search_peptides_in_idxmls(
     workers: int = 1,
 ) -> Dict[str, VariantGroup]:
     """
-    Search for target peptides across multiple idXML files using PyOpenMS.
+    Search for target peptides across multiple idXML files using ``psm_utils``.
 
-    Extracts all metadata needed for mzML resolution including id_merge_index.
+    Returns one ``VariantGroup`` per (base_sequence + modification state)
+    combination, each holding the matching ``psm_utils.PSM`` instances with
+    mspecviz-specific resolution metadata stuffed into ``PSM.metadata``.
 
     Args:
         idxml_paths: List of idXML file paths to search. Basenames must be
@@ -195,8 +202,11 @@ def summarize_search_results(variant_groups: Dict[str, VariantGroup]) -> pl.Lazy
     """
     rows = []
     for row_id, (variant_key, variant_group) in enumerate(variant_groups.items()):
-        idxml_files = {match.idxml_file for match in variant_group.matches}
-        unresolved = sum(1 for match in variant_group.matches if not match.mzml_filename)
+        idxml_files = {psm.metadata.get("idxml_file", "") for psm in variant_group.matches}
+        unresolved = sum(
+            1 for psm in variant_group.matches
+            if not psm.metadata.get("mzml_resolved_path")
+        )
         rows.append({
             "id": row_id,
             "base_sequence": variant_group.base_sequence,
