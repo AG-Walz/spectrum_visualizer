@@ -1,19 +1,19 @@
 """
 Schema-level tests for ``mspecviz.dataframes``.
 
-Covers ``validate_dataframe`` (column / dtype validation) and the
-``_proforma_to_openms_str`` peptidoform string converter. Builder-level
+Covers schema-equality checks (polars-native via ``frame.collect_schema()``)
+and the ``_proforma_to_openms_str`` peptidoform string converter. Builder-level
 behaviour (``build_psm_table``, ``build_peaks_dataframe``, ...) lives in
-``test_insight_dataframes_builders.py``.
+``test_insight_frames_builders.py``.
 """
 import polars as pl
 import pytest
 
-from mspecviz.dataframes import PEAKS_SCHEMA, validate_dataframe
+from mspecviz.dataframes import PEAKS_SCHEMA
 from mspecviz.dataframes.insight_frames import _proforma_to_openms_str
 
 
-class TestValidateDataframe:
+class TestSchemaEquality:
     @pytest.mark.parametrize("columns, expected", [
         # Valid schema
         ({"x": pl.Series([1.0], dtype=pl.Float32),
@@ -43,11 +43,11 @@ class TestValidateDataframe:
     ], ids=["valid", "missing_columns", "wrong_type", "extra_columns"])
     def test_schema_validation(self, columns, expected):
         df = pl.DataFrame(columns)
-        assert validate_dataframe(df.lazy(), PEAKS_SCHEMA, "test") is expected
+        assert (dict(df.lazy().collect_schema()) == PEAKS_SCHEMA) is expected
 
     def test_empty_dataframe_valid(self):
         df = pl.DataFrame(schema=PEAKS_SCHEMA)
-        assert validate_dataframe(df.lazy(), PEAKS_SCHEMA, "test") is True
+        assert dict(df.lazy().collect_schema()) == PEAKS_SCHEMA
 
 
 class TestProformaToOpenmsStr:

@@ -5,7 +5,6 @@ component, plus the ``psm_lookup`` dict that downstream peaks/sequence builders
 use to link peaks to their originating PSM.
 """
 import logging
-from typing import Dict, List, Tuple
 
 import polars as pl
 from psm_utils import PSMList
@@ -13,7 +12,7 @@ from psm_utils import PSMList
 logger = logging.getLogger(__name__)
 
 
-PSM_TABLE_SCHEMA: Dict[str, pl.DataType] = {
+PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
     "id": pl.Int32,
     "variant_key": pl.String,
     "base_sequence": pl.String,
@@ -28,31 +27,7 @@ PSM_TABLE_SCHEMA: Dict[str, pl.DataType] = {
 }
 
 
-def validate_dataframe(frame: pl.LazyFrame, schema: dict, name: str) -> bool:
-    """Check that a LazyFrame matches the expected schema, logging mismatches."""
-    actual_schema = frame.collect_schema()
-    valid = True
-
-    for col_name, expected_dtype in schema.items():
-        if col_name not in actual_schema:
-            logger.warning(f"{name}: missing column '{col_name}' (expected {expected_dtype})")
-            valid = False
-        elif actual_schema[col_name] != expected_dtype:
-            logger.warning(
-                f"{name}: column '{col_name}' has type {actual_schema[col_name]}, "
-                f"expected {expected_dtype}"
-            )
-            valid = False
-
-    extra_cols = set(actual_schema.keys()) - set(schema.keys())
-    if extra_cols:
-        logger.warning(f"{name}: unexpected extra columns: {extra_cols}")
-        valid = False
-
-    return valid
-
-
-def _enforce_schema(df: pl.DataFrame, schema: Dict[str, pl.DataType]) -> pl.DataFrame:
+def _enforce_schema(df: pl.DataFrame, schema: dict[str, pl.DataType]) -> pl.DataFrame:
     """Cast all columns to the types declared in *schema*."""
     return df.with_columns([
         pl.col(name).cast(dtype) for name, dtype in schema.items()
@@ -61,8 +36,8 @@ def _enforce_schema(df: pl.DataFrame, schema: Dict[str, pl.DataType]) -> pl.Data
 
 
 def build_psm_table(
-    variant_groups: Dict[str, PSMList],
-) -> Tuple[pl.LazyFrame, Dict[str, int]]:
+    variant_groups: dict[str, PSMList],
+) -> tuple[pl.LazyFrame, dict[str, int]]:
     """Build the PSM-level LazyFrame + ``psm_lookup`` for the openms_insight Table.
 
     Each ``psm_utils.PSM`` gets a stable integer ``id``; ``psm_lookup`` maps
@@ -71,30 +46,26 @@ def build_psm_table(
     level fields (base_sequence, modification, display_label) are computed once
     per group from the first PSM and reused across the group's rows.
     """
-    rows: List[dict] = []
-    psm_lookup: Dict[str, int] = {}
+    rows: list[dict] = []
+    psm_lookup: dict[str, int] = {}
     psm_id = 0
 
     for variant_key, psm_list in variant_groups.items():
         if not psm_list:
             continue
-        first = psm_list[0]
-        base_sequence = first.peptidoform.sequence.upper()
+        base_sequence = psm_list[0].peptidoform.sequence.upper()
         modification = variant_key if variant_key != base_sequence else "(unmodified)"
-        # display_label uses canonical Peptidoform.modified_sequence (= variant_key).
-        label = variant_key
 
         for psm in psm_list:
             peptidoform_str = psm.peptidoform.modified_sequence
             # Key must match spectrum_lookup_key() in spectrum_loader
-            key = f"{psm.spectrum_id}|{peptidoform_str}"
-            psm_lookup[key] = psm_id
+            psm_lookup[f"{psm.spectrum_id}|{peptidoform_str}"] = psm_id
             rows.append({
                 "id": psm_id,
                 "variant_key": variant_key,
                 "base_sequence": base_sequence,
                 "modification": modification,
-                "display_label": label,
+                "display_label": variant_key,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,
                 "score": float(psm.score) if psm.score is not None else 0.0,
@@ -104,9 +75,6 @@ def build_psm_table(
             })
             psm_id += 1
 
-    if not rows:
-        return pl.DataFrame(schema=PSM_TABLE_SCHEMA).lazy(), psm_lookup
-
-    df = _enforce_schema(pl.DataFrame(rows), PSM_TABLE_SCHEMA)
+    df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
     logger.info(f"PSM table: {len(rows)} rows across {len(variant_groups)} variants")
-    return df.lazy(), psm_lookup
+    return df, psm_lookup

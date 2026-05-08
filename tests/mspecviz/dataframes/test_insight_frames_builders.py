@@ -21,7 +21,6 @@ from mspecviz.dataframes import (
     build_psm_table,
     build_sequence_dataframe,
     save_to_parquet,
-    validate_dataframe,
 )
 from psm_utils import PSMList
 
@@ -69,7 +68,7 @@ class TestBuildPsmTable:
         frame, lookup = build_psm_table(variant_groups)
         assert isinstance(frame, pl.LazyFrame)
         assert isinstance(lookup, dict)
-        assert validate_dataframe(frame, PSM_TABLE_SCHEMA, "PSM table")
+        assert dict(frame.collect_schema()) == PSM_TABLE_SCHEMA
         df = frame.collect()
         assert len(df) == 2
         assert set(lookup.keys()) == {"index=1|PEPTIDEK", "index=2|PEPTIDEK"}
@@ -97,7 +96,7 @@ class TestBuildPeaksDataframe:
         annotated = [(0, _make_annotated_frame(n_peaks=5))]
         frame = build_peaks_dataframe(annotated)
         assert isinstance(frame, pl.LazyFrame)
-        assert validate_dataframe(frame, PEAKS_SCHEMA, "Peaks")
+        assert dict(frame.collect_schema()) == PEAKS_SCHEMA
         df = frame.collect()
         assert len(df) == 5
         # First 4 peaks are annotated (highlight=1), last is not (highlight=0)
@@ -126,7 +125,7 @@ class TestBuildSequenceDataframe:
         ]
         frame = build_sequence_dataframe(spectra)
         assert isinstance(frame, pl.LazyFrame)
-        assert validate_dataframe(frame, SEQUENCE_SCHEMA, "Sequence")
+        assert dict(frame.collect_schema()) == SEQUENCE_SCHEMA
         assert len(frame.collect()) == 2
 
     def test_empty_input(self):
@@ -144,7 +143,7 @@ class TestBuildHeatmapDataframe:
         spectra = [_make_loaded_spectrum(n_peaks=10)]
         frame = build_heatmap_dataframe(spectra)
         assert isinstance(frame, pl.LazyFrame)
-        assert validate_dataframe(frame, HEATMAP_SCHEMA, "Heatmap")
+        assert dict(frame.collect_schema()) == HEATMAP_SCHEMA
         assert len(frame.collect()) == 10
 
     def test_empty_input(self):
@@ -197,7 +196,7 @@ class TestBuildFromRealData:
 
     def test_build_psm_table_real(self, variant_groups):
         psm_frame, lookup = build_psm_table(variant_groups)
-        assert validate_dataframe(psm_frame, PSM_TABLE_SCHEMA, "psm")
+        assert dict(psm_frame.collect_schema()) == PSM_TABLE_SCHEMA
         df = psm_frame.collect()
         assert len(df) == 2
         assert len(lookup) == 2
@@ -233,9 +232,9 @@ class TestBuildFromRealData:
         sequence_frame = build_sequence_dataframe([(psm_id, spectrum) for psm_id, spectrum, _ in annotated])
         heatmap_frame = build_heatmap_dataframe([spectrum for _, spectrum, _ in annotated])
 
-        assert validate_dataframe(peaks_frame, PEAKS_SCHEMA, "peaks")
-        assert validate_dataframe(sequence_frame, SEQUENCE_SCHEMA, "sequence")
-        assert validate_dataframe(heatmap_frame, HEATMAP_SCHEMA, "heatmap")
+        assert dict(peaks_frame.collect_schema()) == PEAKS_SCHEMA
+        assert dict(sequence_frame.collect_schema()) == SEQUENCE_SCHEMA
+        assert dict(heatmap_frame.collect_schema()) == HEATMAP_SCHEMA
 
         peaks_collected = peaks_frame.collect()
         assert len(peaks_collected) == 373

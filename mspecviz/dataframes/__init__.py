@@ -8,7 +8,6 @@ from mspecviz.dataframes.psm_tables import (
     PSM_TABLE_SCHEMA,
     _enforce_schema,
     build_psm_table,
-    validate_dataframe,
 )
 from mspecviz.dataframes.insight_frames import (
     HEATMAP_SCHEMA,
@@ -26,7 +25,6 @@ __all__ = [
     "PSM_TABLE_SCHEMA",
     "_enforce_schema",
     "build_psm_table",
-    "validate_dataframe",
     # insight_frames
     "HEATMAP_SCHEMA",
     "PEAKS_SCHEMA",
