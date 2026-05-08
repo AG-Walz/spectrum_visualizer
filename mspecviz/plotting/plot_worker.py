@@ -2,26 +2,19 @@
 
 Main process annotates spectra, worker pool runs ``process_single_task()``
 (metrics + matplotlib/plotly), main process collects ``ComparisonResults``.
-Task/result dataclasses live in ``worker_tasks`` so lightweight callers can
-construct tasks without pulling matplotlib.
+Task/result dataclasses live in ``plot_task_dataclasses`` so lightweight
+callers can construct tasks without pulling matplotlib.
 """
 import logging
 from pathlib import Path
-from typing import Dict, Tuple
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mspecviz.annotation.comparison_metrics import compute_all_metrics, format_metrics_text
-from mspecviz.plotting.mirror_matplotlib import (
-    create_mirror_plot,
-    create_single_spectrum_plot,
-)
-from mspecviz.plotting.mirror_plotly import (
-    create_plotly_mirror_plot,
-    create_plotly_single_plot,
-)
+from mspecviz.plotting.mirror_matplotlib import create_mirror_plot, create_single_spectrum_plot
+from mspecviz.plotting.mirror_plotly import create_plotly_mirror_plot, create_plotly_single_plot
 from mspecviz.plotting.plot_task_dataclasses import ComparisonResult, ComparisonTask
 
 logger = logging.getLogger(__name__)
@@ -39,74 +32,46 @@ def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
     }
 
 
-def _render_mirror_figure(task: ComparisonTask, metrics: dict):
-    """Build the matplotlib mirror figure for a task (caller closes the figure)."""
-    metrics_text = task.metrics_text or format_metrics_text(metrics)
-    return create_mirror_plot(
-        upper_spectrum=task.query_frame,
-        lower_spectrum=task.reference_frame,
-        upper_label=task.query_label,
-        lower_label=task.reference_label,
-        title=task.plot_title,
-        metrics_text=metrics_text,
-        figure_size=task.figure_size,
-        export_resolution=task.export_resolution,
-        normalize=task.normalize,
-    )
-
-
-def _render_single_figure(task: ComparisonTask):
-    """Build the matplotlib single-spectrum figure for a task."""
-    return create_single_spectrum_plot(
-        spectrum=task.query_frame,
-        title=task.plot_title,
-        label=task.query_label,
-        figure_size=task.figure_size,
-        export_resolution=task.export_resolution,
-        normalize=task.normalize,
-    )
-
-
-def _save_static_and_close(fig, task: ComparisonTask) -> Tuple[str, str, str]:
-    """Save *fig* via ``_save_task_figure`` then close + delete it."""
-    png_path, svg_path, pdf_path = _save_task_figure(fig, task)
-    plt.close(fig)
-    del fig
-    return png_path, svg_path, pdf_path
-
-
-def _process_mirror_task(task: ComparisonTask) -> Tuple[dict, Tuple[str, str, str], str]:
-    """Run the mirror branch: metrics + (optional) static + (optional) HTML."""
-    metrics = compute_all_metrics(task.query_frame, task.reference_frame)
-    summary_row = _build_summary_row(task, metrics)
-    paths = ("", "", "")
-    if not task.skip_plot:
-        fig = _render_mirror_figure(task, metrics)
-        paths = _save_static_and_close(fig, task)
-    html_path = _save_task_html(task) if task.html_plot_path else ""
-    return summary_row, paths, html_path
-
-
-def _process_single_task_branch(task: ComparisonTask) -> Tuple[Tuple[str, str, str], str]:
-    """Run the single-spectrum branch: optional static + optional HTML."""
-    paths = ("", "", "")
-    if not task.skip_plot:
-        fig = _render_single_figure(task)
-        paths = _save_static_and_close(fig, task)
-    html_path = _save_task_html(task) if task.html_plot_path else ""
-    return paths, html_path
-
-
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
-    """Worker: compute metrics, create figure, save to disk. Skips plot if skip_plot is set."""
+    """Worker: compute metrics, render figure, save to disk. Skips plot if ``skip_plot`` is set."""
     try:
+        is_mirror = task.task_type == "mirror" and task.reference_frame is not None
         summary_row = None
         png_path = svg_path = pdf_path = html_path = ""
 
-        if task.task_type == "mirror" and task.reference_frame is not None:
-            summary_row, (png_path, svg_path, pdf_path), html_path = _process_mirror_task(task)
-        elif not task.skip_plot:
-            (png_path, svg_path, pdf_path), html_path = _process_single_task_branch(task)
+        # Mirror tasks always compute metrics + summary row, even if skip_plot.
+        metrics = None
+        if is_mirror:
+            metrics = compute_all_metrics(task.query_frame, task.reference_frame)
+            summary_row = _build_summary_row(task, metrics)
+
+        if not task.skip_plot:
+            if is_mirror:
+                fig = create_mirror_plot(
+                    upper_spectrum=task.query_frame,
+                    lower_spectrum=task.reference_frame,
+                    upper_label=task.query_label,
+                    lower_label=task.reference_label,
+                    title=task.plot_title,
+                    metrics_text=task.metrics_text or format_metrics_text(metrics),
+                    figure_size=task.figure_size,
+                    export_resolution=task.export_resolution,
+                    normalize=task.normalize,
+                )
+            else:
+                fig = create_single_spectrum_plot(
+                    spectrum=task.query_frame,
+                    title=task.plot_title,
+                    label=task.query_label,
+                    figure_size=task.figure_size,
+                    export_resolution=task.export_resolution,
+                    normalize=task.normalize,
+                )
+            png_path, svg_path, pdf_path = _save_task_figure(fig, task)
+            plt.close(fig)
+
+        if task.html_plot_path:
+            html_path = _save_task_html(task)
 
         return ComparisonResult(
             task_id=task.task_id, task_type=task.task_type, success=True,
@@ -121,14 +86,14 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
 
 # Format -> savefig keyword and extension mapping
-_FORMAT_SAVE_KWARGS: Dict[str, dict] = {
+_FORMAT_SAVE_KWARGS: dict[str, dict] = {
     "png": {"format": "png"},
     "svg": {"format": "svg"},
     "pdf": {"format": "pdf"},
 }
 
 
-def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
+def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
     """Save a matplotlib figure to each requested format. Returns (png_path, svg_path, pdf_path)."""
     format_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
     paths = {"png": "", "svg": "", "pdf": ""}
@@ -151,9 +116,6 @@ def _save_task_figure(fig, task: ComparisonTask) -> Tuple[str, str, str]:
 
 def _save_task_html(task: ComparisonTask) -> str:
     """Save interactive Plotly HTML plot. Returns path or "" on failure."""
-    if not task.html_plot_path:
-        return ""
-
     try:
         out = Path(task.html_plot_path)
         out.parent.mkdir(parents=True, exist_ok=True)
@@ -178,5 +140,3 @@ def _save_task_html(task: ComparisonTask) -> str:
     except OSError as error:
         logger.warning(f"HTML plot save failed for task {task.task_id}: {error}")
         return ""
-
-
