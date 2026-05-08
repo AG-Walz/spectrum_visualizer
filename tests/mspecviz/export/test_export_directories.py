@@ -40,9 +40,7 @@ class TestSanitizeFilename:
 class TestFindOrCreateExportDirectory:
     def test_creates_first_run(self, tmp_path):
         settings = {"peptide": "PEPTIDEK", "tolerance": 0.02}
-        root, png, svg, pdf = find_or_create_export_directory(
-            str(tmp_path), "myproject", settings
-        )
+        root = find_or_create_export_directory(str(tmp_path), "myproject", settings)
         # No directories created yet -- only after commit
         assert not root.exists()
         commit_export_directory(root, settings)
@@ -53,56 +51,29 @@ class TestFindOrCreateExportDirectory:
 
     def test_reuses_matching_settings(self, tmp_path):
         settings = {"peptide": "PEPTIDEK", "tolerance": 0.02}
-        root1, _, _, _ = find_or_create_export_directory(
-            str(tmp_path), "proj", settings
-        )
+        root1 = find_or_create_export_directory(str(tmp_path), "proj", settings)
         commit_export_directory(root1, settings)
-        root2, _, _, _ = find_or_create_export_directory(
-            str(tmp_path), "proj", settings
-        )
+        root2 = find_or_create_export_directory(str(tmp_path), "proj", settings)
         # Same run_settings -> same folder number
-        num1 = root1.name.split("_")[1]
-        num2 = root2.name.split("_")[1]
-        assert num1 == num2
+        assert root1.name.split("_")[1] == root2.name.split("_")[1]
 
     def test_creates_new_for_different_settings(self, tmp_path):
         settings_a = {"peptide": "PEPTIDEK", "tolerance": 0.02}
         settings_b = {"peptide": "AAAVAAAK", "tolerance": 0.05}
-        root1, _, _, _ = find_or_create_export_directory(
-            str(tmp_path), "proj", settings_a
-        )
+        root1 = find_or_create_export_directory(str(tmp_path), "proj", settings_a)
         commit_export_directory(root1, settings_a)
-        root2, _, _, _ = find_or_create_export_directory(
-            str(tmp_path), "proj", settings_b
-        )
+        root2 = find_or_create_export_directory(str(tmp_path), "proj", settings_b)
         assert root1.name != root2.name
 
     def test_sequential_numbering(self, tmp_path):
         nums = []
         for i in range(3):
             settings = {"run": i}
-            root, _, _, _ = find_or_create_export_directory(
-                str(tmp_path), "proj", settings
-            )
+            root = find_or_create_export_directory(str(tmp_path), "proj", settings)
             commit_export_directory(root, settings)
-            # Extract the 3-digit number from folder name
-            parts = root.name.split("_")
-            nums.append(int(parts[1]))
+            nums.append(int(root.name.split("_")[1]))
         assert sorted(nums) == [1, 2, 3]
 
-    def test_returns_four_paths(self, tmp_path):
-        result = find_or_create_export_directory(
-            str(tmp_path), "proj", {"x": 1}
-        )
-        assert len(result) == 4
-        for p in result:
-            assert isinstance(p, Path)
-
-    def test_png_dir_not_precreated(self, tmp_path):
-        # Format subdirectories are created lazily on first write, not upfront
-        root, png_dir, _, _ = find_or_create_export_directory(
-            str(tmp_path), "proj", {"x": 1}
-        )
-        commit_export_directory(root, {"x": 1})
-        assert not png_dir.exists()
-        assert png_dir.name == "png"
+    def test_returns_path(self, tmp_path):
+        result = find_or_create_export_directory(str(tmp_path), "proj", {"x": 1})
+        assert isinstance(result, Path)

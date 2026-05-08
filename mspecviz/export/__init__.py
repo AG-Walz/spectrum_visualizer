@@ -3,7 +3,7 @@
 Both frontends call :func:`run_export` with their own progress callbacks;
 every file layout decision (directory versioning, format subdirs, parquet
 names, CSV/XLSX naming, plot task dispatch, summary plots) lives here so
-the two fronends produce byte-identical outputs given the same inputs.
+the two frontends produce byte-identical outputs given the same inputs.
 """
 from mspecviz.export.export_pipeline import (
     ExportCallbacks,

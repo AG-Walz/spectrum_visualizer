@@ -70,7 +70,6 @@ def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
     The same physical spectrum may appear with different peptidoforms across
     PSMs, and spectrum IDs alone can collide across mzML files. Pair the key
     with ``build_psm_table()``'s ``psm_lookup`` dict to resolve ``psm_id`` when
-    building peaks and sequence DataFrames. Module-level (not a method) for
-    the same Streamlit auto-reload reason as :func:`source_label`.
+    building peaks and sequence DataFrames.
     """
     return f"{spec.spectrum_id}|{spec.peptidoform}"

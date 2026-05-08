@@ -1,5 +1,4 @@
 """Ridgeline / Joy plot: stacked KDE densities + count sidebar."""
-from typing import Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -18,7 +17,7 @@ from mspecviz.plotting._summary_shared import (
 )
 
 
-def _draw_histogram_row(ax, values, y_base: float, color, overlap: float) -> None:
+def _draw_histogram_row(ax, values, y_base: float, color) -> None:
     """Fallback for variants with too few points to KDE: draw a small histogram."""
     counts_h, edges = np.histogram(values, bins=20, range=(0, 1))
     density = counts_h / (counts_h.max() + 1e-9) * 0.4
@@ -43,63 +42,13 @@ def _draw_kde_row(ax, values, y_base: float, color, median: float,
               linewidth=0.8, linestyle="--", alpha=0.6, zorder=z_order + 2)
 
 
-def _draw_ridgeline_axis(ax_ridge, raw_frame, aggregated_frame, metric: str,
-                         y_offsets, overlap: float, cmap, norm) -> None:
-    """Populate the main (left) axis with one density per variant."""
-    labels = aggregated_frame["peptidoform"].values
-    medians = aggregated_frame["median"].values
-    x_grid = np.linspace(0, 1, 300)
-    variant_count = len(aggregated_frame)
-
-    for i in range(variant_count - 1, -1, -1):
-        values = raw_frame.loc[
-            raw_frame["peptidoform"] == labels[i], metric,
-        ].dropna().values
-        y_base = y_offsets[i]
-        color = cmap(norm(medians[i]))
-        if len(values) < 5:
-            _draw_histogram_row(ax_ridge, values, y_base, color, overlap)
-        else:
-            _draw_kde_row(ax_ridge, values, y_base, color, medians[i],
-                          x_grid, z_order=variant_count - i)
-
-    ax_ridge.set_yticks(y_offsets)
-    ax_ridge.set_yticklabels(labels, fontsize=8)
-    ax_ridge.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    ax_ridge.set_xlim(-0.02, 1.02)
-    for side in ("top", "right", "left"):
-        ax_ridge.spines[side].set_visible(False)
-    ax_ridge.tick_params(axis="y", length=0)
-
-
-def _draw_count_sidebar(ax_bar, aggregated_frame, y_offsets, overlap: float) -> None:
-    """Populate the right-hand horizontal-bar sidebar with per-variant counts."""
-    counts = aggregated_frame["count"].values
-    bar_y = y_offsets + overlap * 0.25
-    ax_bar.barh(bar_y, counts, height=overlap * 0.7,
-                color=SUMMARY_COLORS["bar"], alpha=0.7,
-                edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5)
-    ax_bar.set_xlabel("Count", fontsize=10, fontweight="bold")
-    ax_bar.tick_params(axis="y", left=False, labelleft=False)
-    _style_ax(ax_bar)
-
-
-def _add_median_colorbar(fig, cmap, norm, metric: str) -> None:
-    """Add the bottom horizontal colorbar that legendises the median scale."""
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
-    cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])
-    cbar = fig.colorbar(sm, cax=cbar_ax, orientation="horizontal")
-    cbar.set_label(f"Median {_metric_label(metric)}", fontsize=9)
-
-
 def plot_ridgeline(
     raw_frame: pd.DataFrame,
     aggregated_frame: pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
-    figure_size: Tuple[float, float] = None,
+    figure_size: tuple[float, float] | None = None,
     export_resolution: int = 300,
-    title: str = None,
+    title: str | None = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
     variant_count = len(aggregated_frame)
@@ -116,15 +65,47 @@ def plot_ridgeline(
     norm = plt.Normalize(vmin=0.0, vmax=1.0)
     y_offsets = np.arange(variant_count) * overlap
 
-    _draw_ridgeline_axis(ax_ridge, raw_frame, aggregated_frame, metric,
-                         y_offsets, overlap, cmap, norm)
-    _draw_count_sidebar(ax_bar, aggregated_frame, y_offsets, overlap)
+    # Per-variant KDE/histogram on the main axis (pre-group once for O(N) lookup)
+    labels = aggregated_frame["peptidoform"].values
+    medians = aggregated_frame["median"].values
+    x_grid = np.linspace(0, 1, 300)
+    groups = {pep: g[metric].dropna().values
+              for pep, g in raw_frame.groupby("peptidoform", sort=False)}
+    for i in range(variant_count - 1, -1, -1):
+        values = groups.get(labels[i], np.array([]))
+        y_base = y_offsets[i]
+        color = cmap(norm(medians[i]))
+        if len(values) < 5:
+            _draw_histogram_row(ax_ridge, values, y_base, color)
+        else:
+            _draw_kde_row(ax_ridge, values, y_base, color, medians[i],
+                          x_grid, z_order=variant_count - i)
+    ax_ridge.set_yticks(y_offsets)
+    ax_ridge.set_yticklabels(labels, fontsize=8)
+    ax_ridge.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
+    ax_ridge.set_xlim(-0.02, 1.02)
+    for side in ("top", "right", "left"):
+        ax_ridge.spines[side].set_visible(False)
+    ax_ridge.tick_params(axis="y", length=0)
+
+    # Count sidebar (right axis)
+    counts = aggregated_frame["count"].values
+    ax_bar.barh(y_offsets + overlap * 0.25, counts, height=overlap * 0.7,
+                color=SUMMARY_COLORS["bar"], alpha=0.7,
+                edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5)
+    ax_bar.set_xlabel("Count", fontsize=10, fontweight="bold")
+    ax_bar.tick_params(axis="y", left=False, labelleft=False)
+    _style_ax(ax_bar)
+
+    # Median colorbar (bottom)
+    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    sm.set_array([])
+    cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])
+    fig.colorbar(sm, cax=cbar_ax, orientation="horizontal").set_label(
+        f"Median {_metric_label(metric)}", fontsize=9,
+    )
 
     if title:
-        fig.subplots_adjust(left=0.20, top=0.92, bottom=0.14, wspace=0.05)
         fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-    else:
-        fig.subplots_adjust(left=0.20, top=0.97, bottom=0.14, wspace=0.05)
-
-    _add_median_colorbar(fig, cmap, norm, metric)
+    fig.subplots_adjust(left=0.20, top=0.92 if title else 0.97, bottom=0.14)
     return fig

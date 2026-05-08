@@ -1,11 +1,10 @@
 """Per-query annotation phases used by ``process_query_result``.
 
 Each phase is a small helper: annotate the query, cache references, attempt a
-Koina fallback, build metric rows. Extracted so ``orchestration.py`` stays
+Koina fallback, build metric rows. Extracted so ``query_processing`` stays
 readable and each phase can be unit-tested independently.
 """
-import logging
-from typing import Any, Dict, List
+from typing import Any
 
 import numpy as np
 from psm_utils import Peptidoform
@@ -15,15 +14,17 @@ from mspecviz.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
+from mspecviz.common.defaults import DEFAULTS
 from mspecviz.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
 from mspecviz.spectra.loaded_spectrum import LoadedSpectrum, source_label
 
-logger = logging.getLogger("mspecviz.pipeline")
 
-
-def get_koina_prediction(peptidoform, charge, annotation_kwargs,
-                         koina_model="ms2pip_timsTOF2024",
-                         koina_collision_energy=35, koina_instrument_type="TIMSTOF"):
+def get_koina_prediction(
+    peptidoform, charge, annotation_kwargs,
+    koina_model: str = DEFAULTS.koina_model,
+    koina_collision_energy: int = DEFAULTS.koina_collision_energy,
+    koina_instrument_type: str = DEFAULTS.koina_instrument_type,
+):
     """Get Koina AI prediction and annotate as reference spectrum.
 
     Returns ``(LoadedSpectrum, annotated_frame)`` tuple or ``None``.
@@ -41,19 +42,14 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     if predicted_frame is None or predicted_frame.empty:
         return None
 
-    mz_arr = predicted_frame["mz"].values.astype(np.float64)
-    int_arr = predicted_frame["intensity"].values.astype(np.float64)
-
-    base_seq = Peptidoform(peptidoform.split("/")[0]).sequence
-
     reference_spectrum = LoadedSpectrum(
         spectrum_id="koina_prediction",
-        mz=mz_arr,
-        intensity=int_arr,
+        mz=predicted_frame["mz"].to_numpy(dtype=np.float64),
+        intensity=predicted_frame["intensity"].to_numpy(dtype=np.float64),
         precursor_mz=0.0,
         precursor_charge=charge,
         peptidoform=peptidoform,
-        base_sequence=base_seq,
+        base_sequence=Peptidoform(peptidoform).sequence,
         rt=0.0,
         source_file=f"Koina:{koina_model}",
         is_reference=True,
@@ -64,8 +60,8 @@ def get_koina_prediction(peptidoform, charge, annotation_kwargs,
     return (reference_spectrum, reference_frame)
 
 
-def _annotate_query_spectrum(result, annotation_kwargs, psm_id):
-    """Phase 1 of ``process_query_result``: annotate the query spectrum."""
+def _annotate_query_spectrum(result, annotation_kwargs):
+    """Annotate the query spectrum (peaks + theoretical fragments)."""
     return prepare_spectrum_for_plot(
         result.query_spectrum.mz,
         result.query_spectrum.intensity,
@@ -76,7 +72,7 @@ def _annotate_query_spectrum(result, annotation_kwargs, psm_id):
 
 
 def _cache_reference_spectra(result, reference_store, annotation_kwargs):
-    """Phase 2: annotate and cache references for this variant (once)."""
+    """Annotate and cache reference spectra for this variant (once)."""
     variant_key = result.variant_key
     if variant_key in reference_store or not result.reference_spectra:
         return
@@ -93,7 +89,7 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
 
 def _try_koina_fallback(result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
-    """Phase 3: if no experimental references, try a Koina AI prediction. Returns the ref list."""
+    """If no experimental references, try a Koina AI prediction. Returns the ref list."""
     variant_key = result.variant_key
     references = reference_store.get(variant_key, [])
     if references:
@@ -112,13 +108,13 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
     return references
 
 
-def build_comparison_row(psm_id, result, query_frame, reference_spectrum, reference_frame, metrics):
+def build_comparison_row(psm_id, result, reference_spectrum, reference_frame, metrics):
     """Build a single comparison row dict from query/reference pair.
 
     *result* is a ``QueryResult`` from ``load_spectra_streaming``.
     *metrics* is the dict returned by ``compute_all_metrics``.
     """
-    row: Dict[str, Any] = {
+    row: dict[str, Any] = {
         "psm_id": psm_id,
         "Peptide": result.query_spectrum.base_sequence,
         "Modification": result.variant_key if result.variant_key != result.query_spectrum.base_sequence else "",
@@ -139,11 +135,11 @@ def build_comparison_row(psm_id, result, query_frame, reference_spectrum, refere
 
 
 def _build_metric_rows(psm_id, result, query_frame, references):
-    """Phase 4: compute metrics + build summary rows for each query/ref pair."""
-    rows: List[Dict[str, Any]] = []
+    """Compute metrics + build summary rows for each query/ref pair."""
+    rows: list[dict[str, Any]] = []
     for reference_spectrum, reference_frame in references:
         metrics = compute_all_metrics(query_frame, reference_frame)
         rows.append(build_comparison_row(
-            psm_id, result, query_frame, reference_spectrum, reference_frame, metrics,
+            psm_id, result, reference_spectrum, reference_frame, metrics,
         ))
     return rows
