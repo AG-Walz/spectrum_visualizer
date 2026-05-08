@@ -47,25 +47,6 @@ def _build_loaded_spectrum(
     )
 
 
-def _load_one_match(
-    indexed_exp, id_to_index: dict, n_spectra: int,
-    psm: PSM, variant_key: str,
-    display_name: str, is_reference: bool,
-) -> Tuple[Tuple[str, LoadedSpectrum] | None, str | None]:
-    """Resolve and read a single match; returns ``(loaded_pair, error_msg)``."""
-    try:
-        spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
-        if spectrum_index is None:
-            return None, f"Spectrum not found: {psm.spectrum_id} in {display_name}"
-        spectrum = indexed_exp.getSpectrum(spectrum_index)
-        loaded = (variant_key, _build_loaded_spectrum(
-            spectrum, psm, display_name, is_reference,
-        ))
-        return loaded, None
-    except Exception as error:
-        return None, f"Error loading {psm.spectrum_id}: {error}"
-
-
 def _load_spectra_from_mzml(
     mzml_path_str: str,
     display_name: str,
@@ -75,8 +56,6 @@ def _load_spectra_from_mzml(
     """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
     loaded: List[Tuple[str, LoadedSpectrum]] = []
     errors: List[str] = []
-    loaded_count = 0
-    not_found_count = 0
 
     try:
         needed_ids = [psm.spectrum_id for psm, _ in matches_for_file]
@@ -84,17 +63,17 @@ def _load_spectra_from_mzml(
         n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
         for psm, variant_key in matches_for_file:
-            pair, error = _load_one_match(
-                indexed_exp, id_to_index, n_spectra,
-                psm, variant_key, display_name, is_reference,
-            )
-            if pair is not None:
-                loaded.append(pair)
-                loaded_count += 1
-            else:
-                not_found_count += 1
-                if error:
-                    errors.append(error)
+            try:
+                spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
+                if spectrum_index is None:
+                    errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
+                    continue
+                spectrum = indexed_exp.getSpectrum(spectrum_index)
+                loaded.append((variant_key, _build_loaded_spectrum(
+                    spectrum, psm, display_name, is_reference,
+                )))
+            except Exception as error:
+                errors.append(f"Error loading {psm.spectrum_id}: {error}")
 
     except Exception as error:
         errors.append(f"Error opening {display_name}: {error}")
@@ -103,7 +82,7 @@ def _load_spectra_from_mzml(
         display_name=display_name,
         is_reference=is_reference,
         loaded=loaded,
-        loaded_count=loaded_count,
-        not_found_count=not_found_count,
+        loaded_count=len(loaded),
+        not_found_count=len(matches_for_file) - len(loaded),
         errors=errors,
     )
