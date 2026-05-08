@@ -27,13 +27,14 @@ from mspecviz.spectra.mzml_lookup import (
     open_indexed_mzml_fast,
 )
 from mspecviz.spectra.mzml_native_ids import (
-    ANY_DIGITS_RE,
+    BARE_DIGITS_PATTERN,
     INDEX_TAG,
-    NATIVE_ID_NUM_RE,
+    NATIVE_ID_NUMBER_PATTERN,
     NATIVE_ID_TAGS,
     SCAN_TAG,
     SPECTRUM_TAG,
     clean_spectrum_id,
+    extract_id_number,
 )
 
 __all__ = [
@@ -48,13 +49,14 @@ __all__ = [
     # mzml_workers
     "_load_spectra_from_mzml",
     # mzml_native_ids
-    "ANY_DIGITS_RE",
+    "BARE_DIGITS_PATTERN",
     "INDEX_TAG",
-    "NATIVE_ID_NUM_RE",
+    "NATIVE_ID_NUMBER_PATTERN",
     "NATIVE_ID_TAGS",
     "SCAN_TAG",
     "SPECTRUM_TAG",
     "clean_spectrum_id",
+    "extract_id_number",
     # mzml_lookup
     "find_spectrum_index",
     "open_indexed_mzml_fast",

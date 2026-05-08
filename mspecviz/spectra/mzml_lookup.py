@@ -12,13 +12,13 @@ from typing import Dict, List, Optional, Tuple
 import pyopenms as oms
 
 from mspecviz.spectra.mzml_native_ids import (
-    ANY_DIGITS_RE,
+    BARE_DIGITS_PATTERN,
     INDEX_TAG,
-    NATIVE_ID_NUM_RE,
+    NATIVE_ID_NUMBER_PATTERN,
     SCAN_TAG,
     SPECTRUM_TAG,
-    _extract_id_number,
     clean_spectrum_id,
+    extract_id_number,
 )
 
 logger = logging.getLogger(__name__)
@@ -33,7 +33,7 @@ def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tu
         return "unknown", 0
     first_id = indexed_exp.getSpectrum(0).getNativeID()
     if INDEX_TAG in first_id:
-        first_number = _extract_id_number(first_id)
+        first_number = extract_id_number(first_id)
         return "index", (first_number if first_number is not None else 0)
     if SCAN_TAG in first_id:
         return "scan", 0
@@ -55,7 +55,7 @@ def _try_candidate_indices(
         if clean_id != clean_spectrum_id(check_id):
             continue
         id_to_index[clean_id] = candidate_index
-        check_number = _extract_id_number(check_id)
+        check_number = extract_id_number(check_id)
         if check_number is not None:
             id_to_index[f"_num_{check_number}"] = candidate_index
         return True
@@ -74,7 +74,7 @@ def _binary_search_for_number(
             mid_id = indexed_exp.getSpectrum(mid).getNativeID()
         except Exception:
             return False
-        mid_number = _extract_id_number(mid_id)
+        mid_number = extract_id_number(mid_id)
         if mid_number is None:
             return False
         if mid_number == target_number:
@@ -94,7 +94,7 @@ def _resolve_targeted_id(
 ) -> bool:
     """Resolve one needed spectrum ID via off-by-one probe then binary search."""
     clean_id = clean_spectrum_id(spectrum_id)
-    extracted_number = _extract_id_number(clean_id)
+    extracted_number = extract_id_number(clean_id)
     if extracted_number is None:
         return False
     candidates = []
@@ -131,7 +131,7 @@ def _build_full_scan_index(
         except Exception:
             continue
         id_to_index[native_id] = index
-        number_match = ANY_DIGITS_RE.search(native_id)
+        number_match = BARE_DIGITS_PATTERN.search(native_id)
         if number_match:
             id_to_index[f"_num_{number_match.group(1)}"] = index
 
@@ -199,7 +199,7 @@ def find_spectrum_index(
         return id_to_index[clean_id]
 
     # Strategy 2: structured ID with (scan|index|spectrum)=N
-    scan_match = NATIVE_ID_NUM_RE.search(clean_id)
+    scan_match = NATIVE_ID_NUMBER_PATTERN.search(clean_id)
     if scan_match:
         extracted_number = int(scan_match.group(1))
 
@@ -213,7 +213,7 @@ def find_spectrum_index(
             return id_to_index[number_key]
 
     # Strategy 3: bare number fallback
-    number_match = ANY_DIGITS_RE.search(clean_id)
+    number_match = BARE_DIGITS_PATTERN.search(clean_id)
     if number_match:
         extracted_number = int(number_match.group(1))
         number_key = f"_num_{extracted_number}"

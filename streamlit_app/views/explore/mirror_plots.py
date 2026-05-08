@@ -31,7 +31,7 @@ from mspecviz.pipeline import (
 )
 from mspecviz.plotting import create_plotly_mirror_plot
 from mspecviz.spectra.loaded_spectrum import source_label
-from mspecviz.spectra.mzml_native_ids import _extract_id_number
+from mspecviz.spectra.mzml_native_ids import extract_id_number
 
 
 def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: dict) -> list:
@@ -45,7 +45,7 @@ def _picker_row(spec, score) -> dict:
     """Translate one ``LoadedSpectrum`` into the columns the Tables display."""
     return {
         "mzml": source_label(spec),
-        "scan": _extract_id_number(spec.spectrum_id),
+        "scan": extract_id_number(spec.spectrum_id),
         "rt": float(spec.rt) if spec.rt is not None else None,
         "charge": int(spec.precursor_charge or 0),
         "score": score,
