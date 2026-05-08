@@ -1,5 +1,4 @@
 """Classic dual-axis summary plot: horizontal count bars + metric boxplots."""
-from typing import Tuple
 
 import matplotlib
 matplotlib.use("Agg")
@@ -18,16 +17,6 @@ from mspecviz.plotting._summary_shared import (
     _style_ax,
     _subsample_group,
 )
-
-
-def _draw_count_bars(ax, aggregated_frame, y_pos) -> None:
-    """Draw the horizontal count bars on the bottom-axis."""
-    ax.barh(y_pos, aggregated_frame["count"].values, height=0.65,
-            color=SUMMARY_COLORS["bar"], alpha=0.55,
-            edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5, zorder=1)
-    ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
-    ax.invert_yaxis()
-    _style_ax(ax, remove_top=False)
 
 
 def _draw_variant_boxplot(ax2, values, position: int) -> None:
@@ -59,39 +48,13 @@ def _draw_variant_boxplot(ax2, values, position: int) -> None:
     )
 
 
-def _draw_boxplots(ax2, raw_frame, labels, metric: str, title: str | None) -> None:
-    """Draw the metric boxplots (one per variant) on the twin axis."""
-    for i, peptidoform in enumerate(labels):
-        values = _subsample_group(raw_frame[raw_frame["peptidoform"] == peptidoform], metric)
-        _draw_variant_boxplot(ax2, values, i)
-
-    if not title:
-        ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    ax2.set_xlim(-0.05, 1.05)
-    ax2.spines["bottom"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
-
-
-def _add_dual_axis_legend(ax, metric: str) -> None:
-    """Add the bottom-left legend tying bar color → count, box → metric."""
-    legend_elements = [
-        Patch(facecolor=SUMMARY_COLORS["bar"], alpha=0.55,
-              edgecolor=SUMMARY_COLORS["bar_edge"], label="Peptide Count"),
-        Line2D([0], [0], color=SUMMARY_COLORS["box"], marker="s", markersize=6,
-               markerfacecolor=SUMMARY_COLORS["box_fill"], linestyle="-", linewidth=0.8,
-               label=f"{_metric_label(metric)}"),
-    ]
-    ax.legend(handles=legend_elements, loc="upper left",
-              bbox_to_anchor=(0.0, -0.04), fontsize=9, framealpha=0.9, ncol=2)
-
-
 def plot_classic_dual_axis(
     raw_frame: pd.DataFrame,
     aggregated_frame: pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
-    figure_size: Tuple[float, float] = None,
+    figure_size: tuple[float, float] | None = None,
     export_resolution: int = 300,
-    title: str = None,
+    title: str | None = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
@@ -103,16 +66,39 @@ def plot_classic_dual_axis(
     y_pos = np.arange(variant_count)
     labels = aggregated_frame["peptidoform"].values
 
-    _draw_count_bars(ax, aggregated_frame, y_pos)
-    _draw_boxplots(ax.twiny(), raw_frame, labels, metric, title)
+    # Count bars (bottom axis)
+    ax.barh(y_pos, aggregated_frame["count"].values, height=0.65,
+            color=SUMMARY_COLORS["bar"], alpha=0.55,
+            edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5, zorder=1)
+    ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
+    ax.invert_yaxis()
+    _style_ax(ax, remove_top=False)
 
+    # Metric boxplots (twin top axis); pre-group once, look up by peptidoform
+    ax2 = ax.twiny()
+    groups = {pep: group for pep, group in raw_frame.groupby("peptidoform", sort=False)}
+    empty = raw_frame.iloc[:0]
+    for i, peptidoform in enumerate(labels):
+        values = _subsample_group(groups.get(peptidoform, empty), metric)
+        _draw_variant_boxplot(ax2, values, i)
+    if not title:
+        ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
+    ax2.set_xlim(-0.05, 1.05)
+    ax2.spines["bottom"].set_visible(False)
+    ax2.spines["right"].set_visible(False)
+
+    # Y-axis ticks + legend
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=8)
-    _add_dual_axis_legend(ax, metric)
+    ax.legend(handles=[
+        Patch(facecolor=SUMMARY_COLORS["bar"], alpha=0.55,
+              edgecolor=SUMMARY_COLORS["bar_edge"], label="Peptide Count"),
+        Line2D([0], [0], color=SUMMARY_COLORS["box"], marker="s", markersize=6,
+               markerfacecolor=SUMMARY_COLORS["box_fill"], linestyle="-", linewidth=0.8,
+               label=_metric_label(metric)),
+    ], loc="upper left", bbox_to_anchor=(0.0, -0.04), fontsize=9, framealpha=0.9, ncol=2)
 
     if title:
         fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-        fig.subplots_adjust(left=0.22, top=0.92)
-    else:
-        fig.subplots_adjust(left=0.22, top=0.96)
+    fig.subplots_adjust(left=0.22, top=0.92 if title else 0.96)
     return fig
