@@ -18,18 +18,12 @@ ANN_OFFSET = 0.03
 MZ_WINDOW_PADDING = 50
 
 
-def _ensure_plot_columns(df: pd.DataFrame) -> pd.DataFrame:
-    """Return df with the columns the prep pipeline expects, adding ``"unannotated"`` fallbacks."""
-    for col in ("annotation", "ion_type"):
-        if col not in df.columns:
-            df = df.copy()
-            df[col] = "unannotated"
-    return df
-
-
 def _prepare_spectrum_data(df: pd.DataFrame, normalize: bool = True) -> pd.DataFrame:
     """Prepare spectrum DataFrame for plotting (shared by Plotly and Matplotlib)."""
-    df = _ensure_plot_columns(df.copy())
+    df = df.copy()
+    for col in ("annotation", "ion_type"):
+        if col not in df.columns:
+            df[col] = "unannotated"
     if normalize and not df.empty:
         max_intensity = df["intensity"].max()
         if max_intensity and max_intensity > 0:

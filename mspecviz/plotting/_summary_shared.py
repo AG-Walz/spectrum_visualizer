@@ -46,14 +46,16 @@ def _subsample_group(group_frame, metric, max_n=MAX_SCATTER_PER_GROUP, seed=42):
     return rng.choice(vals, size=max_n, replace=False)
 
 
+_METRIC_LABELS = {
+    "R\u00b2 match": "R\u00b2 (match)",
+    "R\u00b2 binned": "R\u00b2 (binned)",
+    "Cosine": "Cosine similarity",
+    "Entropy": "Spectral entropy similarity",
+    "Dice": "Dice coefficient",
+    "Jaccard": "Jaccard index",
+    "SharedRatio": "Shared peak ratio",
+}
+
+
 def _metric_label(metric: str) -> str:
-    labels = {
-        "R\u00b2 match": "R\u00b2 (match)",
-        "R\u00b2 binned": "R\u00b2 (binned)",
-        "Cosine": "Cosine similarity",
-        "Entropy": "Spectral entropy similarity",
-        "Dice": "Dice coefficient",
-        "Jaccard": "Jaccard index",
-        "SharedRatio": "Shared peak ratio",
-    }
-    return labels.get(metric, metric)
+    return _METRIC_LABELS.get(metric, metric)

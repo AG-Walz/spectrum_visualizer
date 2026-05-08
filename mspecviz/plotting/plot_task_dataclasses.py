@@ -5,7 +5,7 @@ Kept separate from ``worker_execution`` so they remain lightweight to import
 tasks — e.g. the CLI builder in ``mspecviz.pipeline``.
 """
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Optional
 
 import pandas as pd
 
@@ -34,8 +34,8 @@ class ComparisonTask:
     pdf_dir: str = ""
 
     # Plot/export parameters
-    export_formats: List[str] = field(default_factory=lambda: ["png"])
-    figure_size: Tuple[int, int] = (12, 8)
+    export_formats: list[str] = field(default_factory=lambda: ["png"])
+    figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
     normalize: bool = True
 
@@ -74,4 +74,4 @@ class ComparisonResult:
     html_path: str = ""
 
     # Dict with metrics for summary CSV (only for mirror tasks)
-    summary_row: Optional[Dict] = None
+    summary_row: Optional[dict] = None

@@ -3,8 +3,6 @@
 Used for Streamlit display and HTML export. Shares data-prep with the
 Matplotlib backend via ``_mirror_shared``.
 """
-from typing import Optional
-
 import pandas as pd
 import plotly.graph_objects as go
 
@@ -15,16 +13,10 @@ from mspecviz.plotting._mirror_shared import (
 )
 
 
-def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float,
-                                label: str, show_annotations: bool = True):
-    """Add Plotly scatter traces and annotation labels for one spectrum.
+def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float, label: str):
+    """Add Plotly stem traces and per-peak annotation labels for one spectrum.
 
-    Args:
-        fig: plotly Figure to add traces to.
-        df: prepared DataFrame (must already have '_color' column).
-        y_multiplier: +1 for upper/single spectrum, -1 for lower (mirror).
-        label: hover label prefix (e.g. "Query", "Reference", or "").
-        show_annotations: whether to add text annotations on peaks.
+    ``y_multiplier`` is +1 for upper/single, -1 for lower (mirror).
     """
     hover_prefix = f"{label}<br>" if label else ""
 
@@ -43,17 +35,16 @@ def _add_plotly_spectrum_traces(fig, df: pd.DataFrame, y_multiplier: float,
                 showlegend=False,
             ))
 
-        if show_annotations:
-            yshift = 10 if y_multiplier > 0 else -10
-            for _, peak in group[ann_mask].iterrows():
-                fig.add_annotation(
-                    x=peak["mz"],
-                    y=y_multiplier * peak["intensity"],
-                    text=peak["annotation"],
-                    showarrow=False,
-                    font=dict(size=8, color=color),
-                    yshift=yshift,
-                )
+        yshift = 10 if y_multiplier > 0 else -10
+        for _, peak in group[ann_mask].iterrows():
+            fig.add_annotation(
+                x=peak["mz"],
+                y=y_multiplier * peak["intensity"],
+                text=peak["annotation"],
+                showarrow=False,
+                font=dict(size=8, color=color),
+                yshift=yshift,
+            )
 
 
 def _add_mirror_center_line(fig, upper_spectrum: pd.DataFrame,
@@ -113,40 +104,51 @@ def _add_metrics_overlay(fig, metrics_text: str) -> None:
     )
 
 
+def _create_spectrum_figure(
+    spectra: list[tuple[pd.DataFrame, str, float]],
+    *, title: str, normalize: bool, height: int,
+    mirror: bool, metrics_text: str | None = None,
+) -> go.Figure:
+    """Build a Plotly figure; ``spectra`` is ``[(df, label, y_multiplier)]``."""
+    fig = go.Figure()
+    for df, label, y_mult in spectra:
+        if not df.empty:
+            _add_plotly_spectrum_traces(
+                fig, _prepare_spectrum_data(df, normalize=normalize),
+                y_multiplier=y_mult, label=label,
+            )
+        if label:
+            _add_corner_label(fig, label, top=(y_mult > 0))
+    if mirror:
+        _add_mirror_center_line(fig, spectra[0][0], spectra[1][0])
+    _apply_spectrum_layout(fig, title, normalize, height)
+    if normalize and mirror:
+        fig.update_yaxes(range=[-1.25, 1.25],
+                         tickvals=[-1.0, -0.5, 0, 0.5, 1.0],
+                         ticktext=["1.0", "0.5", "0", "0.5", "1.0"])
+    elif normalize:
+        fig.update_yaxes(range=[0, 1.15])
+    if metrics_text:
+        _add_metrics_overlay(fig, metrics_text)
+    return fig
+
+
 def create_plotly_mirror_plot(
     upper_spectrum: pd.DataFrame,
     lower_spectrum: pd.DataFrame,
     title: str = "Mirror Plot",
     upper_label: str = "Query",
     lower_label: str = "Reference",
-    metrics_text: Optional[str] = None,
+    metrics_text: str | None = None,
     normalize: bool = True,
     height: int = 600,
-):
+) -> go.Figure:
     """Render an interactive Plotly mirror plot (query on top, reference below)."""
-    fig = go.Figure()
-
-    if not upper_spectrum.empty:
-        upper_frame = _prepare_spectrum_data(upper_spectrum, normalize=normalize)
-        _add_plotly_spectrum_traces(fig, upper_frame, y_multiplier=1.0,
-                                    label=upper_label, show_annotations=True)
-    if not lower_spectrum.empty:
-        lower_frame = _prepare_spectrum_data(lower_spectrum, normalize=normalize)
-        _add_plotly_spectrum_traces(fig, lower_frame, y_multiplier=-1.0,
-                                    label=lower_label, show_annotations=True)
-
-    _add_mirror_center_line(fig, upper_spectrum, lower_spectrum)
-    _apply_spectrum_layout(fig, title, normalize, height)
-    if normalize:
-        fig.update_yaxes(range=[-1.25, 1.25],
-                         tickvals=[-1.0, -0.5, 0, 0.5, 1.0],
-                         ticktext=["1.0", "0.5", "0", "0.5", "1.0"])
-
-    _add_corner_label(fig, upper_label, top=True)
-    _add_corner_label(fig, lower_label, top=False)
-    if metrics_text:
-        _add_metrics_overlay(fig, metrics_text)
-    return fig
+    return _create_spectrum_figure(
+        [(upper_spectrum, upper_label, 1.0), (lower_spectrum, lower_label, -1.0)],
+        title=title, normalize=normalize, height=height,
+        mirror=True, metrics_text=metrics_text,
+    )
 
 
 def create_plotly_single_plot(
@@ -155,16 +157,10 @@ def create_plotly_single_plot(
     label: str = "",
     normalize: bool = True,
     height: int = 500,
-):
+) -> go.Figure:
     """Create an interactive Plotly single-spectrum plot."""
-    fig = go.Figure()
-    if not spectrum.empty:
-        df = _prepare_spectrum_data(spectrum, normalize=normalize)
-        _add_plotly_spectrum_traces(fig, df, y_multiplier=1.0,
-                                    label=label, show_annotations=True)
-    _apply_spectrum_layout(fig, title, normalize, height)
-    if normalize:
-        fig.update_yaxes(range=[0, 1.15])
-    if label:
-        _add_corner_label(fig, label, top=True)
-    return fig
+    return _create_spectrum_figure(
+        [(spectrum, label, 1.0)],
+        title=title, normalize=normalize, height=height,
+        mirror=False,
+    )
