@@ -1,8 +1,7 @@
 """mzML spectrum-ID indexing with format-aware fast paths.
 
-CRITICAL: mzML ``index=N`` native IDs are not always 0-based — timsTOF/Bruker
-emit 1-based. ``open_indexed_mzml_fast`` auto-detects the offset from the first
-spectrum and ``find_spectrum_index`` applies it; removing this offset logic
+CRITICAL: ``index=N`` native IDs are not always 0-based — Bruker timsTOF emits
+1-based. ``open_indexed_mzml_fast`` auto-detects the offset; removing this
 silently corrupts lookups for Bruker files.
 """
 import logging
@@ -12,9 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import pyopenms as oms
 
 from mspecviz.spectra.mzml_native_ids import (
-    BARE_DIGITS_PATTERN,
     INDEX_TAG,
-    NATIVE_ID_NUMBER_PATTERN,
     SCAN_TAG,
     SPECTRUM_TAG,
     clean_spectrum_id,
@@ -48,10 +45,7 @@ def _try_candidate_indices(
 ) -> bool:
     """Try a small list of candidate array positions; persist the first match."""
     for candidate_index in candidates:
-        try:
-            check_id = indexed_exp.getSpectrum(candidate_index).getNativeID()
-        except Exception:
-            continue
+        check_id = indexed_exp.getSpectrum(candidate_index).getNativeID()
         if clean_id != clean_spectrum_id(check_id):
             continue
         id_to_index[clean_id] = candidate_index
@@ -97,28 +91,12 @@ def _resolve_targeted_id(
     extracted_number = extract_id_number(clean_id)
     if extracted_number is None:
         return False
-    candidates = []
-    if 0 <= extracted_number < n_spectra:
-        candidates.append(extracted_number)
-    if extracted_number > 0 and (extracted_number - 1) < n_spectra:
-        candidates.append(extracted_number - 1)
+    candidates = [c for c in (extracted_number, extracted_number - 1) if 0 <= c < n_spectra]
     if _try_candidate_indices(indexed_exp, clean_id, candidates, id_to_index):
         return True
     return _binary_search_for_number(
         indexed_exp, n_spectra, extracted_number, clean_id, id_to_index,
     )
-
-
-def _build_targeted_index(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, needed_ids: List[str],
-    id_to_index: Dict[str, int],
-) -> int:
-    """Populate *id_to_index* for each needed ID; returns count found."""
-    found = 0
-    for spectrum_id in needed_ids:
-        if _resolve_targeted_id(indexed_exp, n_spectra, spectrum_id, id_to_index):
-            found += 1
-    return found
 
 
 def _build_full_scan_index(
@@ -131,9 +109,9 @@ def _build_full_scan_index(
         except Exception:
             continue
         id_to_index[native_id] = index
-        number_match = BARE_DIGITS_PATTERN.search(native_id)
-        if number_match:
-            id_to_index[f"_num_{number_match.group(1)}"] = index
+        number = extract_id_number(native_id)
+        if number is not None:
+            id_to_index[f"_num_{number}"] = index
 
 
 def open_indexed_mzml_fast(
@@ -164,7 +142,10 @@ def open_indexed_mzml_fast(
         return indexed_exp, id_to_index
 
     if needed_ids and id_format in ("scan", "spectrum"):
-        found = _build_targeted_index(indexed_exp, n_spectra, needed_ids, id_to_index)
+        found = sum(
+            _resolve_targeted_id(indexed_exp, n_spectra, sid, id_to_index)
+            for sid in needed_ids
+        )
         logger.debug(
             f"Targeted lookup: found {found}/{len(needed_ids)} spectra in "
             f"{Path(mzml_path).name}"
@@ -182,47 +163,25 @@ def find_spectrum_index(
     id_to_index: Dict[str, int],
     n_spectra: int,
 ) -> Optional[int]:
-    """Resolve a spectrum ID to its array position via the map from ``open_indexed_mzml_fast``.
-
-    Tries direct lookup, then ``(scan|index|spectrum)=N`` with offset adjustment,
-    then a bare-digit fallback.
-    """
+    """Resolve a spectrum ID to its array position via the map from ``open_indexed_mzml_fast``."""
     clean_id = clean_spectrum_id(spectrum_id)
     if not clean_id:
         return None
-
-    id_format = id_to_index.get("__format__", "unknown")
-    index_offset = id_to_index.get("__index_offset__", 0)
-
-    # Strategy 1: direct lookup
     if clean_id in id_to_index:
         return id_to_index[clean_id]
 
-    # Strategy 2: structured ID with (scan|index|spectrum)=N
-    scan_match = NATIVE_ID_NUMBER_PATTERN.search(clean_id)
-    if scan_match:
-        extracted_number = int(scan_match.group(1))
+    extracted = extract_id_number(clean_id)
+    if extracted is None:
+        return None
 
-        if id_format == "index":
-            array_position = extracted_number - index_offset
-            if 0 <= array_position < n_spectra:
-                return array_position
+    sentinel = id_to_index.get(f"_num_{extracted}")
+    if sentinel is not None:
+        return sentinel
 
-        number_key = f"_num_{extracted_number}"
-        if number_key in id_to_index:
-            return id_to_index[number_key]
-
-    # Strategy 3: bare number fallback
-    number_match = BARE_DIGITS_PATTERN.search(clean_id)
-    if number_match:
-        extracted_number = int(number_match.group(1))
-        number_key = f"_num_{extracted_number}"
-        if number_key in id_to_index:
-            return id_to_index[number_key]
-
-        if id_format == "index":
-            array_position = extracted_number - index_offset
-            if 0 <= array_position < n_spectra:
-                return array_position
+    if id_to_index.get("__format__") == "index":
+        offset = id_to_index.get("__index_offset__", 0)
+        position = extracted - offset
+        if 0 <= position < n_spectra:
+            return position
 
     return None
