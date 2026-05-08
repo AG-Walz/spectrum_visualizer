@@ -11,7 +11,6 @@ Output schema for both paths:
     charge (int), is_annotated (bool)
 """
 import logging
-from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
@@ -20,8 +19,6 @@ from spectrum_utils.spectrum import MsmsSpectrum
 from mspecviz.common.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
-
-_EMPTY_COLUMNS = ["mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"]
 
 # Per spectrum_utils' SUPPORTED_IONS = "?abcxyzIm_prf", the leading character of
 # FragmentAnnotation.ion_type identifies the ion class. Koina annotation strings
@@ -36,21 +33,18 @@ _BUCKET_FROM_PREFIX = {
     "I": "immonium", "p": "precursor", "m": "internal",
 }
 
-# UI / settings name → spectrum_utils single-letter ion-type identifier.
-# Only entries whose UI name doesn't already match the letter need a mapping.
-_ION_TYPE_LETTER = {"internal": "m"}
-
 
 def get_ion_type(annotation: str) -> str:
     """Map a spectrum_utils ion_type or Koina annotation to its colour-bucket key."""
-    return _BUCKET_FROM_PREFIX.get(annotation[:1], "unannotated") if annotation else "unannotated"
+    return _BUCKET_FROM_PREFIX.get(annotation[:1], "unannotated")
 
 
-def _ion_types_to_string(ion_types: List[str]) -> str:
+def _ion_types_to_string(ion_types: list[str]) -> str:
     """Pack ion_types list (e.g. ``['b', 'y', 'internal']``) into spectrum_utils'
     single-string form (``'bym'``)."""
     letters = [t for t in ion_types if t in ("a", "b", "c", "x", "y", "z")]
-    letters.extend(_ION_TYPE_LETTER[t] for t in ion_types if t in _ION_TYPE_LETTER)
+    if "internal" in ion_types:
+        letters.append("m")
     return "".join(letters)
 
 
@@ -73,10 +67,10 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
     spectrum_utils returns ``PeakInterpretation`` per peak, each carrying a list
     of ``FragmentAnnotation`` (multiple matches possible). We keep the first match.
     """
-    annotations: List[str] = []
-    ion_types: List[str] = []
-    charges: List[int] = []
-    flags: List[bool] = []
+    annotations: list[str] = []
+    ion_types: list[str] = []
+    charges: list[int] = []
+    flags: list[bool] = []
 
     for peak_ann in spec.annotation:
         fa_list = peak_ann.fragment_annotations if peak_ann else []
@@ -109,7 +103,7 @@ def annotate_spectrum(
     peptidoform: str,
     charge: int,
     mz_tolerance: float = 0.02,
-    ion_types: Optional[List[str]] = None,
+    ion_types: list[str] | None = None,
     add_neutral_losses: bool = False,
 ) -> pd.DataFrame:
     """Annotate experimental peaks against theoretical fragments of ``peptidoform``.
@@ -118,11 +112,7 @@ def annotate_spectrum(
     """
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
-    if len(mz) == 0:
-        return pd.DataFrame(columns=_EMPTY_COLUMNS)
-
-    ion_types_str = _ion_types_to_string(ion_types)
-    if not ion_types_str:
+    if len(mz) == 0 or not _ion_types_to_string(ion_types):
         return _empty_annotated_frame(mz, intensity)
 
     spec = MsmsSpectrum(
@@ -137,7 +127,7 @@ def annotate_spectrum(
             peptidoform.split("/")[0],   # strip ProForma charge suffix if present
             fragment_tol_mass=mz_tolerance,
             fragment_tol_mode="Da",
-            ion_types=ion_types_str,
+            ion_types=_ion_types_to_string(ion_types),
             neutral_losses=add_neutral_losses,
         )
     except (ValueError, KeyError) as error:
@@ -148,7 +138,7 @@ def annotate_spectrum(
 
 
 def _filter_and_normalize(
-    annotated: pd.DataFrame, ion_types: List[str], normalize: bool,
+    annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
     """Mask peaks whose ion_type isn't in ``ion_types``; optionally scale to max=1."""
     if annotated.empty:
@@ -175,7 +165,7 @@ def prepare_spectrum_for_plot(
     intensity: np.ndarray,
     peptidoform: str,
     charge: int,
-    ion_types: Optional[List[str]] = None,
+    ion_types: list[str] | None = None,
     mz_tolerance: float = 0.02,
     normalize: bool = True,
     add_neutral_losses: bool = False,
@@ -207,7 +197,7 @@ def _parse_koina_charge(annotation: str) -> int:
 
 def prepare_koina_spectrum_for_plot(
     koina_frame: pd.DataFrame,
-    ion_types: Optional[List[str]] = None,
+    ion_types: list[str] | None = None,
     normalize: bool = True,
     **_kwargs,
 ) -> pd.DataFrame:
@@ -224,21 +214,3 @@ def prepare_koina_spectrum_for_plot(
     })
     annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
     return _filter_and_normalize(annotated, ion_types, normalize)
-
-
-def calculate_annotation_stats(annotated_frame: pd.DataFrame) -> Dict:
-    """Return ``{total_peaks, annotated_peaks, coverage, ion_type_counts}``."""
-    total = len(annotated_frame)
-    annotated = int(annotated_frame["is_annotated"].sum()) if "is_annotated" in annotated_frame else 0
-
-    ion_counts: Dict[str, int] = {}
-    if "ion_type" in annotated_frame:
-        counts = annotated_frame[annotated_frame["ion_type"] != "unannotated"]["ion_type"].value_counts()
-        ion_counts = counts.to_dict()
-
-    return {
-        "total_peaks": total,
-        "annotated_peaks": annotated,
-        "coverage": annotated / total if total > 0 else 0,
-        "ion_type_counts": ion_counts,
-    }

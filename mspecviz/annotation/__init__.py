@@ -5,7 +5,6 @@ Re-exports the public API of the three submodules so callers can keep using
 """
 from mspecviz.annotation.peak_matching import (
     annotate_spectrum,
-    calculate_annotation_stats,
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
@@ -28,7 +27,6 @@ from mspecviz.annotation.comparison_metrics import (
 __all__ = [
     # peak_matching
     "annotate_spectrum",
-    "calculate_annotation_stats",
     "prepare_koina_spectrum_for_plot",
     "prepare_spectrum_for_plot",
     # metrics_intensity
