@@ -165,7 +165,6 @@ def _collect_reference_spectra(
 def _stream_query_results(
     query_results: List[LoadResult],
     reference_spectra: Dict[str, List[LoadedSpectrum]],
-    variant_groups: Dict[str, PSMList],
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
     """Fire ``on_query_ready`` once per loaded query spectrum."""
@@ -173,14 +172,10 @@ def _stream_query_results(
         return
     for result in query_results:
         for variant_key, loaded in result.loaded:
-            first_psm = variant_groups[variant_key][0]
-            base_sequence = first_psm.peptidoform.sequence.upper()
             on_query_ready(StreamingResult(
                 query_spectrum=loaded,
                 reference_spectra=reference_spectra[variant_key],
                 variant_key=variant_key,
-                base_sequence=base_sequence,
-                modification_key=variant_key if variant_key != base_sequence else "",
             ))
 
 
@@ -230,7 +225,7 @@ def load_spectra_streaming(
         query_tasks, False, effective_workers,
         on_file_start, on_file_complete, error_callback,
     )
-    _stream_query_results(query_results, reference_spectra, variant_groups, on_query_ready)
+    _stream_query_results(query_results, reference_spectra, on_query_ready)
 
     logger.info("Query streaming complete")
     return reference_spectra

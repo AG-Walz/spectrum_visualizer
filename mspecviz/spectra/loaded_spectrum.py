@@ -15,7 +15,7 @@ if TYPE_CHECKING:  # avoid circular import at runtime
 
 @dataclass
 class LoadedSpectrum:
-    """A loaded spectrum with metadata."""
+    """A loaded spectrum; fields duplicating ``match.*`` exist so Koina refs (``match=None``) carry the same shape."""
     spectrum_id: str
     mz: np.ndarray
     intensity: np.ndarray
@@ -42,12 +42,10 @@ def source_label(spectrum) -> str:
 
 @dataclass
 class StreamingResult:
-    """Result from streaming spectrum loader - one query spectrum with its matching references."""
+    """One query spectrum with its variant key and matching reference spectra."""
     query_spectrum: LoadedSpectrum
     reference_spectra: List[LoadedSpectrum]
     variant_key: str
-    base_sequence: str
-    modification_key: str
 
 
 @dataclass
@@ -72,6 +70,7 @@ def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
     The same physical spectrum may appear with different peptidoforms across
     PSMs, and spectrum IDs alone can collide across mzML files. Pair the key
     with ``build_psm_table()``'s ``psm_lookup`` dict to resolve ``psm_id`` when
-    building peaks and sequence DataFrames.
+    building peaks and sequence DataFrames. Module-level (not a method) for
+    the same Streamlit auto-reload reason as :func:`source_label`.
     """
     return f"{spec.spectrum_id}|{spec.peptidoform}"

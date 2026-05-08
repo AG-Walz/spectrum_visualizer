@@ -120,8 +120,8 @@ def build_comparison_row(psm_id, result, query_frame, reference_spectrum, refere
     """
     row: Dict[str, Any] = {
         "psm_id": psm_id,
-        "Peptide": result.base_sequence,
-        "Modification": result.modification_key,
+        "Peptide": result.query_spectrum.base_sequence,
+        "Modification": result.variant_key if result.variant_key != result.query_spectrum.base_sequence else "",
         "Charge": result.query_spectrum.precursor_charge,
         "Query": source_label(result.query_spectrum),
         "Reference": source_label(reference_spectrum),
