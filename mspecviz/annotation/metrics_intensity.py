@@ -17,19 +17,20 @@ logger = logging.getLogger(__name__)
 def _get_matching_intensities(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
-) -> tuple[np.ndarray, np.ndarray, list[str]]:
-    """Find overlapping annotated ions; returns ``(q_int, r_int, shared_labels)``.
+) -> tuple[np.ndarray, np.ndarray]:
+    """Find overlapping annotated ions; returns ``(q_int, r_int)``.
 
     Within each spectrum, multiple peaks may share an annotation (e.g. isotopes
     or charge states with the same string label). We collapse to the brightest
-    per label, then keep only labels present in both spectra.
+    per label, then keep only labels present in both spectra. ``len(q_int)``
+    gives the number of shared annotations.
     """
     query_max = query_frame[query_frame["is_annotated"]].groupby("annotation")["intensity"].max()
     reference_max = reference_frame[reference_frame["is_annotated"]].groupby("annotation")["intensity"].max()
     shared = sorted(set(query_max.index) & set(reference_max.index))
     if not shared:
-        return np.array([]), np.array([]), []
-    return query_max.reindex(shared).to_numpy(), reference_max.reindex(shared).to_numpy(), shared
+        return np.array([]), np.array([])
+    return query_max.reindex(shared).to_numpy(), reference_max.reindex(shared).to_numpy()
 
 
 def _r2_from_arrays(query_intensities: np.ndarray, reference_intensities: np.ndarray) -> float:
@@ -48,7 +49,7 @@ def _cosine_from_arrays(query_intensities: np.ndarray, reference_intensities: np
 
 def compute_r2_matching(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
     """R^2 (matching) -- LinearRegression R^2 on matching annotated ion intensities."""
-    query_intensities, reference_intensities, _ = _get_matching_intensities(query_frame, reference_frame)
+    query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     return _r2_from_arrays(query_intensities, reference_intensities)
 
 
@@ -81,5 +82,5 @@ def compute_r2_binned(
 
 def compute_cosine_similarity(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
     """Cosine similarity on matching annotated ion intensities."""
-    query_intensities, reference_intensities, _ = _get_matching_intensities(query_frame, reference_frame)
+    query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     return _cosine_from_arrays(query_intensities, reference_intensities)

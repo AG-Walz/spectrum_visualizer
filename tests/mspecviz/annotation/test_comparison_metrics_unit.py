@@ -15,12 +15,8 @@ from mspecviz.annotation import (
     compute_cosine_similarity,
     compute_r2_binned,
     compute_r2_matching,
-    compute_shared_peak_dice,
-    compute_shared_peak_jaccard,
-    compute_shared_peak_ratio,
     compute_spectral_entropy_similarity,
     format_metrics_text,
-    shorten_filenames,
 )
 
 
@@ -64,35 +60,9 @@ def _partial_overlap_pair():
     return q, r
 
 
-class TestShortenFilenames:
-    @pytest.mark.parametrize("filenames, check", [
-        ([], lambda r: r == []),
-        (["Experiment_batch1_sample_A.mzML"],
-         lambda r: r == ["Experiment_batch1_sample_A"]),
-        (["alpha.mzML", "beta.mzML"],
-         lambda r: r == ["alpha", "beta"]),
-        (["same_name.mzML", "same_name.mzML"],
-         lambda r: r == ["same_name", "same_name"]),
-    ], ids=["empty", "single_file", "no_common_parts", "all_common_fallback"])
-    def test_basic_cases(self, filenames, check):
-        assert check(shorten_filenames(filenames))
-
-    def test_common_prefix_suffix_produces_distinct_results(self):
-        filenames = [
-            "Experiment_batch1_sample_A.mzML",
-            "Experiment_batch1_sample_B.mzML",
-        ]
-        result = shorten_filenames(filenames)
-        assert len(result) == 2
-        assert result[0] != result[1]
-
-
 @pytest.mark.parametrize("metric_fn, identical_val, disjoint_val", [
     (compute_r2_matching, 1.0, float("nan")),
     (compute_cosine_similarity, 1.0, float("nan")),
-    (compute_shared_peak_dice, 1.0, 0.0),
-    (compute_shared_peak_jaccard, 1.0, 0.0),
-    (compute_shared_peak_ratio, 1.0, 0.0),
 ])
 class TestMetricBehavior:
     def test_identical_returns_perfect(self, metric_fn, identical_val, disjoint_val):
@@ -153,12 +123,28 @@ class TestSpectralEntropy:
         assert math.isnan(val)
 
 
-class TestSharedPeakDice:
+class TestSetMetricsViaComputeAll:
+    """Set metrics (Dice/Jaccard/ShR) are exposed via ``compute_all_metrics`` only."""
+
+    def test_identical_returns_perfect(self):
+        q, r = _identical_pair()
+        m = compute_all_metrics(q, r)
+        assert m["Dice"] == pytest.approx(1.0, abs=1e-6)
+        assert m["Jacc"] == pytest.approx(1.0, abs=1e-6)
+        assert m["ShR"] == pytest.approx(1.0, abs=1e-6)
+
+    def test_disjoint_returns_zero(self):
+        q, r = _disjoint_pair()
+        m = compute_all_metrics(q, r)
+        assert m["Dice"] == 0.0
+        assert m["Jacc"] == 0.0
+        assert m["ShR"] == 0.0
+
     def test_no_annotations(self):
         q = _make_df([100], [1.0], ["unannotated"])
         r = _make_df([100], [1.0], ["unannotated"])
-        val = compute_shared_peak_dice(q, r)
-        assert math.isnan(val)
+        m = compute_all_metrics(q, r)
+        assert math.isnan(m["Dice"])
 
 
 class TestComputeAllMetrics:

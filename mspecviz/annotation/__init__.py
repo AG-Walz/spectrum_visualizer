@@ -16,12 +16,8 @@ from mspecviz.annotation.metrics_intensity import (
 from mspecviz.annotation.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
-    compute_shared_peak_dice,
-    compute_shared_peak_jaccard,
-    compute_shared_peak_ratio,
     compute_spectral_entropy_similarity,
     format_metrics_text,
-    shorten_filenames,
 )
 
 __all__ = [
@@ -36,10 +32,6 @@ __all__ = [
     # comparison_metrics
     "METRIC_SHORT_TO_DISPLAY",
     "compute_all_metrics",
-    "compute_shared_peak_dice",
-    "compute_shared_peak_jaccard",
-    "compute_shared_peak_ratio",
     "compute_spectral_entropy_similarity",
     "format_metrics_text",
-    "shorten_filenames",
 ]
