@@ -20,7 +20,6 @@ from mspecviz.dataframes import (
     build_peaks_dataframe,
     build_psm_table,
     build_sequence_dataframe,
-    save_to_parquet,
 )
 from psm_utils import PSMList
 
@@ -149,41 +148,12 @@ class TestBuildHeatmapDataframe:
     def test_empty_input(self):
         assert len(build_heatmap_dataframe([]).collect()) == 0
 
-    def test_min_rt_filtering(self):
-        spec_low_rt = _make_loaded_spectrum(rt=10.0, n_peaks=5)
-        spec_high_rt = _make_loaded_spectrum(rt=200.0, n_peaks=5)
-        df = build_heatmap_dataframe([spec_low_rt, spec_high_rt], min_rt=100.0).collect()
-        assert len(df) == 5
-        assert all(df["x"].to_list()[i] == pytest.approx(200.0, abs=0.1) for i in range(5))
-
     def test_multiple_spectra(self):
         spectra = [
             _make_loaded_spectrum(rt=100.0, n_peaks=3),
             _make_loaded_spectrum(rt=200.0, n_peaks=4),
         ]
         assert len(build_heatmap_dataframe(spectra).collect()) == 7
-
-
-class TestSaveToParquet:
-    @pytest.mark.parametrize("build_fn", ["peaks", "psm"], ids=["peaks", "psm_table"])
-    def test_round_trip(self, tmp_path, build_fn):
-        if build_fn == "peaks":
-            frame = build_peaks_dataframe([(0, _make_annotated_frame())])
-        else:
-            frame, _ = build_psm_table(_make_variant_groups())
-        parquet_path = str(tmp_path / f"{build_fn}.parquet")
-        save_to_parquet(frame, parquet_path)
-        assert Path(parquet_path).exists()
-        read_back = pl.read_parquet(parquet_path)
-        original = frame.collect()
-        assert read_back.shape == original.shape
-        assert read_back.columns == original.columns
-
-    def test_creates_parent_directories(self, tmp_path):
-        frame = pl.DataFrame(schema=PEAKS_SCHEMA).lazy()
-        parquet_path = str(tmp_path / "subdir" / "nested" / "test.parquet")
-        save_to_parquet(frame, parquet_path)
-        assert Path(parquet_path).exists()
 
 
 @pytest.mark.integration

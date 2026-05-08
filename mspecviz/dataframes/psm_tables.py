@@ -27,14 +27,6 @@ PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
 }
 
 
-def _enforce_schema(df: pl.DataFrame, schema: dict[str, pl.DataType]) -> pl.DataFrame:
-    """Cast all columns to the types declared in *schema*."""
-    return df.with_columns([
-        pl.col(name).cast(dtype) for name, dtype in schema.items()
-        if name in df.columns
-    ])
-
-
 def build_psm_table(
     variant_groups: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
