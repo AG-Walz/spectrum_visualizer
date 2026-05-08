@@ -1,36 +1,21 @@
 """Peptide search across idXML files.
 
-Re-exports the public API of the four submodules so callers can keep using
-``from mspecviz.search import ...`` without caring which file a name lives in.
-:class:`psm_utils.PSM` is also re-exported under the name ``PSM`` (it replaces
-the former local ``PeptideMatch`` dataclass).
+Re-exports the public API of both submodules so callers can keep using
+``from mspecviz.search import ...`` without calling the exacth files.
 """
-from psm_utils import PSM
+from psm_utils import PSM, PSMList
 
-from mspecviz.search.idxml_parsing import (
-    MOD_ABBREVIATIONS,
-    abbreviate_modification,
-)
-from mspecviz.search.models import (
-    VariantGroup,
-    display_label,
-)
-from mspecviz.search.orchestration import (
+from mspecviz.search.peptide_search import (
     get_unique_peptides_from_idxmls,
     search_peptides_in_idxmls,
     summarize_search_results,
 )
-from mspecviz.search.workers import count_psms_per_peptide
+from mspecviz.search.idxml_workers import count_psms_per_peptide
 
 __all__ = [
-    # psm_utils re-export (replacement for the deleted PeptideMatch)
+    # psm_utils re-exports (replacements for the deleted PeptideMatch / VariantGroup)
     "PSM",
-    # idxml_parsing
-    "MOD_ABBREVIATIONS",
-    "abbreviate_modification",
-    # models
-    "VariantGroup",
-    "display_label",
+    "PSMList",
     # orchestration
     "get_unique_peptides_from_idxmls",
     "search_peptides_in_idxmls",

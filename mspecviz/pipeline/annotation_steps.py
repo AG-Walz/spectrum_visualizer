@@ -10,13 +10,13 @@ from typing import Any, Dict, List
 import numpy as np
 from psm_utils import Peptidoform
 
-from mspecviz.annotation.metrics_set import METRIC_SHORT_TO_DISPLAY, compute_all_metrics
+from mspecviz.annotation.comparison_metrics import METRIC_SHORT_TO_DISPLAY, compute_all_metrics
 from mspecviz.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
 from mspecviz.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
-from mspecviz.spectra.loader_models import LoadedSpectrum, source_label
+from mspecviz.spectra.loaded_spectrum import LoadedSpectrum, source_label
 
 logger = logging.getLogger("mspecviz.pipeline")
 

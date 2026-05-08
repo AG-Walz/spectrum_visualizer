@@ -18,10 +18,10 @@ if __name__ == '__main__':
     views = Path(__file__).parent / "views"
     pages = {
         str(st.session_state.settings["app_name"]): [
-            st.Page(views / "setup.py", title="Setup", icon="⚙️"),
-            st.Page(views / "search_load" / "page.py", title="Search & Load", icon="🔍", url_path="search-load"),
-            st.Page(views / "explore" / "page.py", title="Explore", icon="🔬", url_path="explore"),
-            st.Page(views / "export" / "page.py", title="Export", icon="📦", url_path="export"),
+            st.Page(views / "setup_page.py", title="Setup", icon="⚙️"),
+            st.Page(views / "search_load" / "search_load_page.py", title="Search & Load", icon="🔍", url_path="search-load"),
+            st.Page(views / "explore" / "explore_page.py", title="Explore", icon="🔬", url_path="explore"),
+            st.Page(views / "export" / "export_page.py", title="Export", icon="📦", url_path="export"),
         ],
     }
 

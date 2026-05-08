@@ -10,7 +10,7 @@ from psm_utils import Peptidoform
 from psm_utils.peptidoform import PeptidoformException
 
 from mspecviz.dataframes.psm_tables import _enforce_schema
-from mspecviz.spectra.loader_models import LoadedSpectrum
+from mspecviz.spectra.loaded_spectrum import LoadedSpectrum
 
 logger = logging.getLogger(__name__)
 

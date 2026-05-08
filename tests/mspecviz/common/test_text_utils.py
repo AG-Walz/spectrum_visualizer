@@ -1,7 +1,7 @@
 """Unit tests for mspecviz/common/text_utils.py"""
 import pytest
 
-from mspecviz.common.text_utils import (
+from mspecviz.common.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
     format_time,

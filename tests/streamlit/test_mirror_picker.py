@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import numpy as np
 
-from mspecviz.search.models import VariantGroup
-from mspecviz.spectra.loader_models import LoadedSpectrum
+from psm_utils import PSMList
+
+from mspecviz.spectra.loaded_spectrum import LoadedSpectrum
 from streamlit_app.views.explore.mirror_plots import (
     _build_picker_frames,
     _eligible_variants,
@@ -36,31 +37,32 @@ def _spec(source_file: str, spectrum_id: str, charge: int = 2,
     )
 
 
-def _vg(label: str = "PEPTIDEK") -> VariantGroup:
-    return VariantGroup(base_sequence="PEPTIDEK", modification_key="", display_label=label)
+def _empty_plist() -> PSMList:
+    """Build an empty PSMList — picker tests only need the dict-key shape."""
+    return PSMList(psm_list=[])
 
 
 class TestEligibleVariants:
     def test_keeps_variants_with_both_query_and_reference(self):
-        variant_groups = {"PEPTIDEK": _vg(), "OTHER": _vg()}
+        variant_groups = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
         psm_to_vk = {0: "PEPTIDEK"}
         assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == ["PEPTIDEK"]
 
     def test_drops_variant_with_no_reference(self):
-        variant_groups = {"PEPTIDEK": _vg()}
+        variant_groups = {"PEPTIDEK": _empty_plist()}
         reference_store: dict = {}
         psm_to_vk = {0: "PEPTIDEK"}
         assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == []
 
     def test_drops_variant_with_no_query(self):
-        variant_groups = {"PEPTIDEK": _vg()}
+        variant_groups = {"PEPTIDEK": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
         psm_to_vk: dict = {}
         assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == []
 
     def test_preserves_variant_groups_order(self):
-        variant_groups = {"AAA": _vg("AAA"), "BBB": _vg("BBB"), "CCC": _vg("CCC")}
+        variant_groups = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
         reference_store = {vk: [(_spec("ref.mzML", "scan=1", is_ref=True), None)]
                            for vk in variant_groups}
         psm_to_vk = {0: "AAA", 1: "BBB", 2: "CCC"}

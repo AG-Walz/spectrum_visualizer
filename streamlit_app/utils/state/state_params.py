@@ -2,7 +2,7 @@
 Workspace ``params.json`` I/O — load and save widget state per workspace.
 
 Pure I/O only: no Streamlit widgets. The sidebar / page-setup helpers that
-surface these values live in :mod:`streamlit_app.utils.state.sidebar`.
+surface these values live in :mod:`streamlit_app.utils.state.state_sidebar`.
 
 Tunable defaults are owned by :data:`mspecviz.common.defaults.DEFAULTS`.
 When a key is missing from ``params.json``, callers should fall back to
@@ -18,7 +18,7 @@ from typing import Any
 
 import streamlit as st
 
-from streamlit_app.utils.state.core import _persisted_key
+from streamlit_app.utils.state.state_core import _persisted_key
 
 
 # Canonical list of workspace params persisted in ``params.json``.

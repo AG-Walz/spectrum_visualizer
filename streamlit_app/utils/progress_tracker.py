@@ -13,7 +13,7 @@ from typing import Iterator
 
 import streamlit as st
 
-from mspecviz.common.text_utils import format_time
+from mspecviz.common.helpers import format_time
 
 
 class ProgressTracker:

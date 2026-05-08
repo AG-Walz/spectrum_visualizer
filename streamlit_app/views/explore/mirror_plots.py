@@ -30,7 +30,7 @@ from mspecviz.pipeline import (
     format_spectrum_labels,
 )
 from mspecviz.plotting import create_plotly_mirror_plot
-from mspecviz.spectra.loader_models import source_label
+from mspecviz.spectra.loaded_spectrum import source_label
 from mspecviz.spectra.mzml_native_ids import _extract_id_number
 
 
@@ -258,7 +258,7 @@ def mirror_plots_fragment(params: dict):
         st.session_state[selectbox_key] = eligible[0]
     chosen = st.selectbox(
         "Peptide", options=eligible,
-        format_func=lambda variant_key: variant_groups[variant_key].display_label,
+        format_func=lambda variant_key: variant_key,
         key=selectbox_key,
     )
 

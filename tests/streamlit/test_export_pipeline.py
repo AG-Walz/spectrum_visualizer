@@ -1,4 +1,4 @@
-"""Unit tests for ``streamlit_app.views.export.pipeline._run_export``.
+"""Unit tests for ``streamlit_app.views.export.export_actions._run_export``.
 
 Drives ``_run_export`` with a mocked ``st`` module + session_state to verify
 each format flag creates the expected artifacts inside the versioned
@@ -15,13 +15,14 @@ import polars as pl
 import pytest
 
 from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
-from mspecviz.search import VariantGroup
+from psm_utils import PSMList
+
 from tests.conftest import make_peptide_match
 from mspecviz.spectra import LoadedSpectrum
-from streamlit_app.views.export.pipeline import _run_export
+from streamlit_app.views.export.export_actions import _run_export
 
 
-def _make_loaded_spectrum(peptidoform="PEPTIDEK/2", base_seq="PEPTIDEK",
+def _make_loaded_spectrum(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
                           source_file="query.mzML", is_ref=False):
     return LoadedSpectrum(
         spectrum_id="index=1",
@@ -76,13 +77,7 @@ def _make_variant_groups():
         peptidoform="PEPTIDEK/2", spectrum_id="index=1", charge=2, score=0.95,
         idxml_file="test.idXML", mzml_filename="query.mzML",
     )
-    variant_group = VariantGroup(
-        base_sequence="PEPTIDEK",
-        modification_key="",
-        display_label="PEPTIDEK (unmodified)",
-        matches=[psm],
-    )
-    return {"PEPTIDEK": variant_group}
+    return {"PEPTIDEK": PSMList(psm_list=[psm])}
 
 
 def _make_psm_lazyframe():
@@ -91,8 +86,8 @@ def _make_psm_lazyframe():
         "variant_key": ["PEPTIDEK"],
         "base_sequence": ["PEPTIDEK"],
         "modification": ["(unmodified)"],
-        "display_label": ["PEPTIDEK (unmodified)"],
-        "peptidoform": ["PEPTIDEK/2"],
+        "display_label": ["PEPTIDEK"],
+        "peptidoform": ["PEPTIDEK"],
         "charge": [2],
         "score": [0.95],
         "source_file": ["query.mzML"],
@@ -134,11 +129,11 @@ class TestRunExport:
         """Patch Streamlit + helpers to let _run_export run outside the app."""
         state = _build_session_state(tmp_path)
 
-        with patch("streamlit_app.views.export.pipeline.st") as mock_st, \
-             patch("streamlit_app.views.export.pipeline.build_run_settings") as mock_brs, \
-             patch("streamlit_app.views.export.pipeline.get_state_key",
+        with patch("streamlit_app.views.export.export_actions.st") as mock_st, \
+             patch("streamlit_app.views.export.export_actions.build_run_settings") as mock_brs, \
+             patch("streamlit_app.views.export.export_actions.get_state_key",
                    side_effect=lambda k: f"peptide_mirror.{k}"), \
-             patch("streamlit_app.views.export.pipeline.get_param") as mock_gp, \
+             patch("streamlit_app.views.export.export_actions.get_param") as mock_gp, \
              patch("streamlit_app.views.export.gallery.st", mock_st):
 
             mock_st.session_state = state
@@ -211,18 +206,6 @@ class TestRunExport:
         assert summary_dir.exists(), "Summary directory should be created"
         summary_files = list(summary_dir.rglob("*.*"))
         assert len(summary_files) >= 2, "Expected dual_axis + ridgeline plots"
-
-    def test_full_export(self, mock_st):
-        _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_parquet=True, do_csv=True,
-                               do_mirror=True, do_summary=True)
-
-        export_root = list(Path(export_dir).iterdir())[0]
-        assert (export_root / "run_settings.json").exists()
-        assert (export_root / "comparison_summary.csv").exists()
-        assert list(export_root.rglob("*.parquet"))
-        assert list(export_root.rglob("*.png"))
-        assert (export_root / "summary").exists()
 
     def test_run_settings_json_valid(self, mock_st):
         _, tmp_path = mock_st

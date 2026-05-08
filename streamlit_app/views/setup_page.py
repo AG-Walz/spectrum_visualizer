@@ -12,7 +12,7 @@ from streamlit_app.utils.page_state import restore_analysis_if_needed
 from streamlit_app.views.widgets.file_browser import render_directory_browser
 from streamlit_app.views.widgets.peptide_input import render_peptide_input
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.text_utils import (
+from mspecviz.common.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
 )

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import streamlit as st
 
-from streamlit_app.utils.state.core import PROJECT_ROOT
+from streamlit_app.utils.state.state_core import PROJECT_ROOT
 
 
 def is_safe_workspace_name(name: str) -> bool:

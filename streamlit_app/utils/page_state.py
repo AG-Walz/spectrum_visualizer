@@ -29,7 +29,7 @@ from streamlit_app.utils.state import (
     load_params,
 )
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.text_utils import parse_peptide_list
+from mspecviz.common.helpers import parse_peptide_list
 
 logger = logging.getLogger(__name__)
 

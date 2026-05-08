@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from mspecviz.export.directories import (
+from mspecviz.export.export_directories import (
     find_or_create_export_directory,
     commit_export_directory,
     sanitize_filename,

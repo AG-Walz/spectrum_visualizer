@@ -2,25 +2,24 @@
 
 Coordinates reference-first ordering so downstream consumers can compute
 query/reference metrics as each query arrives. The per-file worker itself
-lives in ``mspecviz.spectra.loader_workers``; parallel/sequential dispatch
-lives in ``mspecviz.common.parallel``.
+lives in ``mspecviz.spectra.mzml_workers``; parallel/sequential dispatch
+lives in ``mspecviz.common.task_dispatch``.
 """
 import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
-from psm_utils import PSM
+from psm_utils import PSM, PSMList
 
-from mspecviz.common.parallel import run_tasks
-from mspecviz.search.models import VariantGroup
-from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum, StreamingResult
-from mspecviz.spectra.loader_workers import _load_spectra_from_mzml
+from mspecviz.common.task_dispatch import run_tasks
+from mspecviz.spectra.loaded_spectrum import LoadResult, LoadedSpectrum, StreamingResult
+from mspecviz.spectra.mzml_workers import _load_spectra_from_mzml
 
 logger = logging.getLogger(__name__)
 
 
 def build_mzml_to_matches_map(
-    variant_groups: Dict[str, VariantGroup],
+    variant_groups: Dict[str, PSMList],
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
     """Map each mzML path key to the list of ``(psm, variant_key)`` pairs to load.
@@ -36,8 +35,8 @@ def build_mzml_to_matches_map(
 
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
 
-    for variant_key, variant_group in variant_groups.items():
-        for psm in variant_group.matches:
+    for variant_key, psm_list in variant_groups.items():
+        for psm in psm_list:
             if not psm.run:
                 continue
 
@@ -144,7 +143,7 @@ def _filter_already_loaded(
 
 
 def _collect_reference_spectra(
-    ref_results: List[LoadResult], variant_groups: Dict[str, VariantGroup],
+    ref_results: List[LoadResult], variant_groups: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[LoadedSpectrum]]:
     """Bucket reference spectra by variant_key and fire the per-variant callback."""
@@ -166,7 +165,7 @@ def _collect_reference_spectra(
 def _stream_query_results(
     query_results: List[LoadResult],
     reference_spectra: Dict[str, List[LoadedSpectrum]],
-    variant_groups: Dict[str, VariantGroup],
+    variant_groups: Dict[str, PSMList],
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
     """Fire ``on_query_ready`` once per loaded query spectrum."""
@@ -174,18 +173,19 @@ def _stream_query_results(
         return
     for result in query_results:
         for variant_key, loaded in result.loaded:
-            variant_group = variant_groups[variant_key]
+            first_psm = variant_groups[variant_key][0]
+            base_sequence = first_psm.peptidoform.sequence.upper()
             on_query_ready(StreamingResult(
                 query_spectrum=loaded,
                 reference_spectra=reference_spectra[variant_key],
                 variant_key=variant_key,
-                base_sequence=variant_group.base_sequence,
-                modification_key=variant_group.modification_key,
+                base_sequence=base_sequence,
+                modification_key=variant_key if variant_key != base_sequence else "",
             ))
 
 
 def load_spectra_streaming(
-    variant_groups: Dict[str, VariantGroup],
+    variant_groups: Dict[str, PSMList],
     mzml_paths: List[Path],
     reference_substring: str = "",
     on_reference_loaded: Optional[Callable[[str, int], None]] = None,

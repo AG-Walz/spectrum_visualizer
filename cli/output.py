@@ -8,7 +8,7 @@ by the pipeline to print the config + completion banners.
 import time
 from pathlib import Path
 
-from mspecviz.common.text_utils import format_time
+from mspecviz.common.helpers import format_time
 
 
 class TerminalProgress:

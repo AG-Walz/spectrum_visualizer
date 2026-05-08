@@ -13,7 +13,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from mspecviz.annotation.metrics_set import compute_all_metrics, format_metrics_text
+from mspecviz.annotation.comparison_metrics import compute_all_metrics, format_metrics_text
 from mspecviz.plotting.mirror_matplotlib import (
     create_mirror_plot,
     create_single_spectrum_plot,
@@ -22,7 +22,7 @@ from mspecviz.plotting.mirror_plotly import (
     create_plotly_mirror_plot,
     create_plotly_single_plot,
 )
-from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
+from mspecviz.plotting.plot_task_dataclasses import ComparisonResult, ComparisonTask
 
 logger = logging.getLogger(__name__)
 

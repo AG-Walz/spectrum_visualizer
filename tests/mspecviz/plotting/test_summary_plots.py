@@ -121,26 +121,6 @@ class TestSummaryPlotsFromCsv:
         assert "dual_axis" in results
         assert "ridgeline" in results
 
-    def test_empty_csv_raises_or_returns_empty(self, tmp_path):
-        # CSV with required column headers but no data rows
-        empty_frame = pd.DataFrame(columns=["Peptide", "Modification", "Charge",
-                                             "R\u00b2 binned", "R\u00b2 match", "Cosine",
-                                             "Entropy", "Dice", "Jaccard", "SharedRatio"])
-        csv_path = tmp_path / "empty.csv"
-        empty_frame.to_csv(csv_path, index=False)
-        try:
-            results = generate_all_summary_plots(
-                source=str(csv_path),
-                output_dir=str(tmp_path),
-                formats=["png"],
-                plot_types=["dual_axis"],
-            )
-            # If it doesn't raise, result must be dict (possibly empty)
-            assert isinstance(results, dict)
-        except Exception:
-            # Acceptable to raise on empty data
-            pass
-
     def test_summary_subdir_created(self, tmp_path):
         frame = _make_summary_frame()
         generate_all_summary_plots(

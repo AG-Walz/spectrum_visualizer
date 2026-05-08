@@ -2,7 +2,7 @@
 
 R\u00b2 (matched + binned) and cosine all rest on aligning intensities of
 shared annotations. The shared helper :func:`_get_matching_intensities` lives
-here; set-based metrics in :mod:`mspecviz.annotation.metrics_set` reuse it.
+here; set-based metrics in :mod:`mspecviz.annotation.comparison_metrics` reuse it.
 """
 import logging
 from typing import List, Tuple

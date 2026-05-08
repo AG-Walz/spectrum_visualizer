@@ -1,7 +1,7 @@
 """Shared export orchestrator: directory versioning, parquets, plots, summaries.
 
 ``run_export`` is the single entry point. Both ``cli.exports`` and
-``streamlit_app.views.export.pipeline`` call it with their own progress
+``streamlit_app.views.export.export_actions`` call it with their own progress
 callbacks so the on-disk layout stays identical across frontends.
 """
 from __future__ import annotations
@@ -13,15 +13,15 @@ from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import pandas as pd
 
-from mspecviz.common.parallel import run_tasks
-from mspecviz.export.directories import sanitize_filename
-from mspecviz.export.directories import (
+from mspecviz.common.task_dispatch import run_tasks
+from mspecviz.export.export_directories import sanitize_filename
+from mspecviz.export.export_directories import (
     commit_export_directory,
     find_or_create_export_directory,
 )
 from mspecviz.pipeline import build_plot_tasks
 from mspecviz.plotting import generate_all_summary_plots, process_single_task
-from mspecviz.plotting.worker_tasks import ComparisonResult
+from mspecviz.plotting.plot_task_dataclasses import ComparisonResult
 
 logger = logging.getLogger(__name__)
 

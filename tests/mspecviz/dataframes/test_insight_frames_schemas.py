@@ -10,7 +10,7 @@ import polars as pl
 import pytest
 
 from mspecviz.dataframes import PEAKS_SCHEMA, validate_dataframe
-from mspecviz.dataframes.visualization_frames import _proforma_to_openms_str
+from mspecviz.dataframes.insight_frames import _proforma_to_openms_str
 
 
 class TestValidateDataframe:

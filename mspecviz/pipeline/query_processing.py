@@ -8,7 +8,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List
 
-from mspecviz.annotation.metrics_set import (
+from mspecviz.annotation.comparison_metrics import (
     compute_all_metrics,
     format_metrics_text,
 )
@@ -18,8 +18,8 @@ from mspecviz.pipeline.annotation_steps import (
     _cache_reference_spectra,
     _try_koina_fallback,
 )
-from mspecviz.plotting.worker_tasks import ComparisonTask
-from mspecviz.spectra.loader_models import source_label, spectrum_lookup_key
+from mspecviz.plotting.plot_task_dataclasses import ComparisonTask
+from mspecviz.spectra.loaded_spectrum import source_label, spectrum_lookup_key
 
 logger = logging.getLogger("mspecviz.pipeline")
 
@@ -53,9 +53,9 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries):
     else:
         items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
 
-    for variant_key, variant_group in variant_groups.items():
-        for match in variant_group.matches:
-            key = f"{match.spectrum_id}|{match.peptidoform}"
+    for variant_key, psm_list in variant_groups.items():
+        for psm in psm_list:
+            key = f"{psm.spectrum_id}|{psm.peptidoform.modified_sequence}"
             for psm_id, spec in items:
                 if spectrum_lookup_key(spec) == key:
                     psm_id_to_variant_key[psm_id] = variant_key

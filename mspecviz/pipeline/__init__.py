@@ -12,7 +12,7 @@ from mspecviz.pipeline.annotation_steps import (
     build_comparison_row,
     get_koina_prediction,
 )
-from mspecviz.pipeline.orchestration import (
+from mspecviz.pipeline.query_processing import (
     build_plot_tasks,
     build_psm_to_variant_mapping,
     format_spectrum_labels,

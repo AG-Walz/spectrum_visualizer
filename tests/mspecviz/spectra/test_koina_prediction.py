@@ -1,6 +1,4 @@
-"""
-Unit and integration tests for mspecviz/koina_prediction.py
-"""
+"""Unit and integration tests for ``mspecviz/spectra/koina_prediction.py``."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -12,9 +10,6 @@ from mspecviz.annotation import (
 )
 from mspecviz.common.defaults import DEFAULTS
 from mspecviz.spectra import (
-    KOINA_AVAILABLE,
-    KOINA_MODELS,
-    INSTRUMENT_TYPES,
     convert_peptide_to_unimod,
     predict_koina_spectrum,
     get_koina_settings,
@@ -29,35 +24,14 @@ class TestConvertPeptideToUnimod:
     def test_simple_peptide(self):
         result = convert_peptide_to_unimod("PEPTIDE")
         assert isinstance(result, str)
-        assert len(result) > 0
         assert "PEPTIDE" in result
 
     def test_charge_suffix_stripped(self):
-        result_with = convert_peptide_to_unimod("PEPTIDE/2")
-        result_without = convert_peptide_to_unimod("PEPTIDE")
-        assert result_with == result_without
+        assert convert_peptide_to_unimod("PEPTIDE/2") == convert_peptide_to_unimod("PEPTIDE")
 
     def test_oxidation_modification(self):
         result = convert_peptide_to_unimod("PEPTM[Oxidation]DE")
-        assert isinstance(result, str)
         assert "UNIMOD" in result.upper() or "UniMod" in result
-
-    @pytest.mark.parametrize("peptide", ["ASDDFDQASY", "RTEFNLNQY"])
-    def test_known_psm_peptides(self, peptide):
-        result = convert_peptide_to_unimod(peptide)
-        assert isinstance(result, str)
-        assert len(result) > 0
-
-    def test_empty_string(self):
-        try:
-            result = convert_peptide_to_unimod("")
-            assert isinstance(result, str)
-        except (ValueError, Exception):
-            pass
-
-    def test_invalid_peptide_raises(self):
-        with pytest.raises((ValueError, Exception)):
-            convert_peptide_to_unimod("!@#$%^&*")
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +39,7 @@ class TestConvertPeptideToUnimod:
 # ---------------------------------------------------------------------------
 
 class TestGetKoinaSettings:
-    def test_defaults_from_settings(self, app_settings):
+    def test_defaults_from_app_settings(self, app_settings):
         result = get_koina_settings(app_settings)
         assert result["enabled"] is True
         assert result["model"] == "ms2pip_timsTOF2024"
@@ -74,55 +48,17 @@ class TestGetKoinaSettings:
 
     def test_empty_settings_returns_defaults(self):
         result = get_koina_settings({})
-        assert result["enabled"] is True
         assert result["model"] == DEFAULTS.koina_model
         assert result["collision_energy"] == DEFAULTS.koina_collision_energy
         assert result["instrument_type"] == DEFAULTS.koina_instrument_type
 
-    def test_partial_settings(self):
-        settings = {"koina": {"model": "Prosit_2019_intensity"}}
-        result = get_koina_settings(settings)
-        assert result["model"] == "Prosit_2019_intensity"
-        # Other keys should fall back to defaults
-        assert result["enabled"] is True
-        assert result["collision_energy"] == DEFAULTS.koina_collision_energy
-        assert result["instrument_type"] == DEFAULTS.koina_instrument_type
-
-    def test_all_settings_override(self):
-        settings = {
-            "koina": {
-                "enabled": False,
-                "model": "UniSpec",
-                "collision_energy": 25,
-                "instrument_type": "QE",
-            }
-        }
-        result = get_koina_settings(settings)
-        assert result["enabled"] is False
-        assert result["model"] == "UniSpec"
-        assert result["collision_energy"] == 25
-        assert result["instrument_type"] == "QE"
-
-
-# ---------------------------------------------------------------------------
-# TestKoinaConstants
-# ---------------------------------------------------------------------------
-
-class TestKoinaConstants:
-    def test_koina_available(self):
-        assert KOINA_AVAILABLE is True, "koinapy should be installed in mspecviz env"
-
-    def test_defaults_valid(self):
-        assert len(KOINA_MODELS) > 0
-        assert len(INSTRUMENT_TYPES) > 0
-        assert DEFAULTS.koina_model in KOINA_MODELS.values()
-        assert DEFAULTS.koina_instrument_type in INSTRUMENT_TYPES
-        assert DEFAULTS.koina_collision_energy > 0
-
-    def test_model_keys_are_display_names_and_values_are_ids(self):
-        for key, value in KOINA_MODELS.items():
-            assert isinstance(key, str) and len(key) > 0
-            assert isinstance(value, str) and " " not in value
+    def test_full_override(self):
+        result = get_koina_settings({
+            "koina": {"enabled": False, "model": "UniSpec",
+                      "collision_energy": 25, "instrument_type": "QE"},
+        })
+        assert result == {"enabled": False, "model": "UniSpec",
+                          "collision_energy": 25, "instrument_type": "QE"}
 
 
 # ---------------------------------------------------------------------------

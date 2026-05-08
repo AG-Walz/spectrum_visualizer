@@ -11,10 +11,10 @@ from streamlit_app.utils.state import (
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.text_utils import parse_peptide_list
+from mspecviz.common.helpers import parse_peptide_list
 from mspecviz.search import summarize_search_results
 
-from streamlit_app.views.search_load.pipeline import (
+from streamlit_app.views.search_load.search_load_actions import (
     run_peptide_search,
     run_search_and_load,
 )
@@ -43,7 +43,7 @@ def search_results_fragment():
         st.subheader("Search Results")
         display_search_results(variant_groups)
 
-        total_matches = sum(len(variant_group.matches) for variant_group in variant_groups.values())
+        total_matches = sum(len(psm_list) for psm_list in variant_groups.values())
         st.success(
             f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
             f"Click **Search & Load Spectra** below to load and annotate them."

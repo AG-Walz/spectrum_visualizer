@@ -14,11 +14,11 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
-from streamlit_app.utils.progress import progress_status
+from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import get_param, get_state_key, save_params
 from streamlit_app.utils.page_state import clear_analysis_cache, save_analysis_cache
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.text_utils import format_time
+from mspecviz.common.helpers import format_time
 from mspecviz.dataframes import (
     build_heatmap_dataframe,
     build_peaks_dataframe,
@@ -38,13 +38,13 @@ def _show_search_results_summary(results, error_messages, tracker, params: dict)
         tracker.finalize("No matches found", state="error")
         return
 
-    total_matches = sum(len(variant_group.matches) for variant_group in results.values())
+    total_matches = sum(len(psm_list) for psm_list in results.values())
     tracker.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
     save_params(params)
 
     unresolved = sum(
-        1 for variant_group in results.values()
-        for psm in variant_group.matches
+        1 for psm_list in results.values()
+        for psm in psm_list
         if not psm.metadata.get("mzml_resolved_path")
     )
     if unresolved > 0:
@@ -223,7 +223,7 @@ def run_search_and_load(params: dict) -> None:
     annotated_queries: list = []
     reference_store: dict = {}
     comparison_rows: list = []
-    total_psms = sum(len(group.matches) for group in variant_groups_copy.values())
+    total_psms = sum(len(plist) for plist in variant_groups_copy.values())
 
     with progress_status(f"Loading {total_psms} spectra...") as tracker:
         _stream_and_annotate(

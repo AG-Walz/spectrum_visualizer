@@ -11,17 +11,17 @@ from mspecviz.spectra.koina_prediction import (
     get_koina_settings,
     predict_koina_spectrum,
 )
-from mspecviz.spectra.loader_models import (
+from mspecviz.spectra.loaded_spectrum import (
     LoadResult,
     LoadedSpectrum,
     StreamingResult,
     spectrum_lookup_key,
 )
-from mspecviz.spectra.loader_orchestration import (
+from mspecviz.spectra.spectrum_streaming import (
     build_mzml_to_matches_map,
     load_spectra_streaming,
 )
-from mspecviz.spectra.loader_workers import _load_spectra_from_mzml
+from mspecviz.spectra.mzml_workers import _load_spectra_from_mzml
 from mspecviz.spectra.mzml_lookup import (
     find_spectrum_index,
     open_indexed_mzml_fast,
@@ -37,15 +37,15 @@ from mspecviz.spectra.mzml_native_ids import (
 )
 
 __all__ = [
-    # loader_models
+    # loaded_spectrum
     "LoadResult",
     "LoadedSpectrum",
     "StreamingResult",
     "spectrum_lookup_key",
-    # loader_orchestration
+    # spectrum_streaming
     "build_mzml_to_matches_map",
     "load_spectra_streaming",
-    # loader_workers
+    # mzml_workers
     "_load_spectra_from_mzml",
     # mzml_native_ids
     "ANY_DIGITS_RE",

@@ -20,7 +20,7 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import apply_run_settings, restore_analysis_if_needed
 
 from streamlit_app.views.export.gallery import _render_plot_gallery
-from streamlit_app.views.export.pipeline import _run_export
+from streamlit_app.views.export.export_actions import _run_export
 
 params = page_setup()
 logger = logging.getLogger(__name__)

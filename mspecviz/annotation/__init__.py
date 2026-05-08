@@ -14,7 +14,7 @@ from mspecviz.annotation.metrics_intensity import (
     compute_r2_binned,
     compute_r2_matching,
 )
-from mspecviz.annotation.metrics_set import (
+from mspecviz.annotation.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     compute_shared_peak_dice,
@@ -35,7 +35,7 @@ __all__ = [
     "compute_cosine_similarity",
     "compute_r2_binned",
     "compute_r2_matching",
-    # metrics_set
+    # comparison_metrics
     "METRIC_SHORT_TO_DISPLAY",
     "compute_all_metrics",
     "compute_shared_peak_dice",

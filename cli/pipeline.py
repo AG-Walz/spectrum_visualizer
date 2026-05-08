@@ -10,7 +10,7 @@ from pathlib import Path
 from cli.config import CLIConfig
 from cli.exports import run_cli_export
 from cli.output import TerminalProgress, print_completion_summary, print_config_summary
-from mspecviz.common.text_utils import (
+from mspecviz.common.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
 )
@@ -68,7 +68,7 @@ def _run_search(config: CLIConfig, quiet: bool):
         for error in errors:
             print(f"  Warning: {error}")
 
-    total_psms = sum(len(g.matches) for g in variant_groups.values())
+    total_psms = sum(len(plist) for plist in variant_groups.values())
     if not quiet:
         print(f"  Found {total_psms} PSMs across {len(variant_groups)} variant(s)\n")
 

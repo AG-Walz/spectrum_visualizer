@@ -2,7 +2,7 @@
 
 Extracted here so that ``summary_dual_axis`` and ``summary_ridgeline`` can
 import from this module without creating a circular dependency with
-``summary_orchestration``.
+``summary_pipeline``.
 """
 import numpy as np
 

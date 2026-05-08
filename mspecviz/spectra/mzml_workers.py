@@ -2,14 +2,14 @@
 
 Only holds the module-level worker that can be shipped across the
 ProcessPoolExecutor boundary. The orchestration logic (map-building,
-phase ordering, callbacks) lives in ``mspecviz.spectra.loader_orchestration``.
+phase ordering, callbacks) lives in ``mspecviz.spectra.spectrum_streaming``.
 """
 import logging
 from typing import List, Tuple
 
 from psm_utils import PSM
 
-from mspecviz.spectra.loader_models import LoadResult, LoadedSpectrum
+from mspecviz.spectra.loaded_spectrum import LoadResult, LoadedSpectrum
 from mspecviz.spectra.mzml_lookup import find_spectrum_index, open_indexed_mzml_fast
 
 logger = logging.getLogger(__name__)

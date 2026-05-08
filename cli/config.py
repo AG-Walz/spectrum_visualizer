@@ -10,7 +10,7 @@ import yaml
 
 from cli.output import TerminalProgress
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.text_utils import parse_peptide_list
+from mspecviz.common.helpers import parse_peptide_list
 from mspecviz.search import get_unique_peptides_from_idxmls
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]

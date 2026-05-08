@@ -8,8 +8,7 @@ import logging
 from typing import Dict, List, Tuple
 
 import polars as pl
-
-from mspecviz.search.models import VariantGroup
+from psm_utils import PSMList
 
 logger = logging.getLogger(__name__)
 
@@ -62,20 +61,30 @@ def _enforce_schema(df: pl.DataFrame, schema: Dict[str, pl.DataType]) -> pl.Data
 
 
 def build_psm_table(
-    variant_groups: Dict[str, VariantGroup],
+    variant_groups: Dict[str, PSMList],
 ) -> Tuple[pl.LazyFrame, Dict[str, int]]:
     """Build the PSM-level LazyFrame + ``psm_lookup`` for the openms_insight Table.
 
     Each ``psm_utils.PSM`` gets a stable integer ``id``; ``psm_lookup`` maps
     ``spectrum_lookup_key()`` (``"{spectrum_id}|{peptidoform}"``) → that id so
-    downstream frames can link peaks/sequences back to the right row.
+    downstream frames can link peaks/sequences back to the right row. Variant-
+    level fields (base_sequence, modification, display_label) are computed once
+    per group from the first PSM and reused across the group's rows.
     """
     rows: List[dict] = []
     psm_lookup: Dict[str, int] = {}
     psm_id = 0
 
-    for variant_key, variant_group in variant_groups.items():
-        for psm in variant_group.matches:
+    for variant_key, psm_list in variant_groups.items():
+        if not psm_list:
+            continue
+        first = psm_list[0]
+        base_sequence = first.peptidoform.sequence.upper()
+        modification = variant_key if variant_key != base_sequence else "(unmodified)"
+        # display_label uses canonical Peptidoform.modified_sequence (= variant_key).
+        label = variant_key
+
+        for psm in psm_list:
             peptidoform_str = psm.peptidoform.modified_sequence
             # Key must match spectrum_lookup_key() in spectrum_loader
             key = f"{psm.spectrum_id}|{peptidoform_str}"
@@ -83,9 +92,9 @@ def build_psm_table(
             rows.append({
                 "id": psm_id,
                 "variant_key": variant_key,
-                "base_sequence": variant_group.base_sequence,
-                "modification": variant_group.modification_key or "(unmodified)",
-                "display_label": variant_group.display_label,
+                "base_sequence": base_sequence,
+                "modification": modification,
+                "display_label": label,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,
                 "score": float(psm.score) if psm.score is not None else 0.0,

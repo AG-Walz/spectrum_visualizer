@@ -14,14 +14,14 @@ from mspecviz.plotting.mirror_plotly import (
     create_plotly_single_plot,
 )
 from mspecviz.plotting.summary_dual_axis import plot_classic_dual_axis
-from mspecviz.plotting.summary_orchestration import (
+from mspecviz.plotting.summary_pipeline import (
     METRIC_COLUMNS,
     generate_all_summary_plots,
     prepare_summary_data,
 )
 from mspecviz.plotting.summary_ridgeline import plot_ridgeline
-from mspecviz.plotting.worker_execution import process_single_task
-from mspecviz.plotting.worker_tasks import ComparisonResult, ComparisonTask
+from mspecviz.plotting.plot_worker import process_single_task
+from mspecviz.plotting.plot_task_dataclasses import ComparisonResult, ComparisonTask
 
 __all__ = [
     # mirror plots

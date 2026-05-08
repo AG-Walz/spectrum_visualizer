@@ -1,12 +1,12 @@
 """
-Regression tests for ``streamlit_app.views.export.page.export_controls_fragment``.
+Regression tests for ``streamlit_app.views.export.export_page.export_controls_fragment``.
 
 Each test here locks in a specific past bug so it can't come back. The main
 export-pipeline tests live in ``test_export_pipeline.py``.
 """
 import inspect
 
-from streamlit_app.views.export.page import export_controls_fragment
+from streamlit_app.views.export.export_page import export_controls_fragment
 
 
 class TestExportControlsBugFix:

@@ -23,20 +23,20 @@ from mspecviz.dataframes import (
     save_to_parquet,
     validate_dataframe,
 )
-from mspecviz.search import VariantGroup, search_peptides_in_idxmls
+from psm_utils import PSMList
+
+from mspecviz.search import search_peptides_in_idxmls
 from mspecviz.spectra import LoadedSpectrum, load_spectra_streaming, spectrum_lookup_key
 
 from tests.conftest import make_peptide_match
 
 
 def _make_variant_groups():
-    """Build a simple dict of variant groups for testing."""
-    variant_group = VariantGroup(
-        base_sequence="PEPTIDEK", modification_key="", display_label="PEPTIDEK",
-        matches=[make_peptide_match(spectrum_id="index=1"),
-                 make_peptide_match(spectrum_id="index=2")],
-    )
-    return {"PEPTIDEK": variant_group}
+    """Build a simple dict of variant groups (Dict[str, PSMList]) for testing."""
+    return {"PEPTIDEK": PSMList(psm_list=[
+        make_peptide_match(spectrum_id="index=1"),
+        make_peptide_match(spectrum_id="index=2"),
+    ])}
 
 
 def _make_annotated_frame(n_peaks=5):
@@ -80,18 +80,13 @@ class TestBuildPsmTable:
         assert len(lookup) == 0
 
     def test_multiple_variants(self):
-        vg1 = VariantGroup(
-            base_sequence="PEPTIDEK", modification_key="",
-            display_label="PEPTIDEK",
-            matches=[make_peptide_match(spectrum_id="index=1")],
-        )
-        vg2 = VariantGroup(
-            base_sequence="AAAVAAAK", modification_key="",
-            display_label="AAAVAAAK",
-            matches=[make_peptide_match(peptidoform="AAAVAAAK", base_seq="AAAVAAAK",
-                                 spectrum_id="index=3")],
-        )
-        frame, lookup = build_psm_table({"PEPTIDEK": vg1, "AAAVAAAK": vg2})
+        groups = {
+            "PEPTIDEK": PSMList(psm_list=[make_peptide_match(spectrum_id="index=1")]),
+            "AAAVAAAK": PSMList(psm_list=[
+                make_peptide_match(peptidoform="AAAVAAAK", spectrum_id="index=3"),
+            ]),
+        }
+        frame, lookup = build_psm_table(groups)
         assert len(frame.collect()) == 2
         assert len(lookup) == 2
 
