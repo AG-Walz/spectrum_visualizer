@@ -4,9 +4,8 @@
 inputs from a YAML config and writing results to a versioned export
 directory — same output format as the Streamlit Export tab.
 
-For the full schema of every flag and YAML key, see
-[../settings/cli.md](../settings/cli.md). For recipes and debugging tips,
-see [recipes.md](recipes.md).
+For the YAML schema, see [../settings/cli.md](../settings/cli.md). For
+recipes and debugging tips, see [recipes.md](recipes.md).
 
 ---
 
@@ -15,32 +14,23 @@ see [recipes.md](recipes.md).
 From the project root:
 
 ```bash
-python -m cli -c cli/config/config_example.yaml
+python -m cli cli/config/config_example.yaml
 ```
 
-The `-c` / `--config` flag is the only required argument. Everything else
-has a default in either the YAML file or `streamlit_app/config/settings.json`.
-
-Useful one-liners:
+A single positional argument: the path to a YAML config file. There are
+no command-line flag overrides — per-run tweaks are made by copying the
+YAML and editing it. The log level is controlled by an environment
+variable:
 
 ```bash
-# Verbose (DEBUG-level logs)
-python -m cli -c my_config.yaml -v
+# Default: INFO (stage headers, per-file logs, progress bars)
+python -m cli my_config.yaml
 
-# Quiet (errors only)
-python -m cli -c my_config.yaml -q
+# Quiet — errors only
+MSPECVIZ_LOG_LEVEL=ERROR python -m cli my_config.yaml
 
-# Override workers for a single run
-python -m cli -c my_config.yaml --workers 8
-
-# Export only DataFrames + CSV (no plots)
-python -m cli -c my_config.yaml --no-plots
-
-# Force Koina off regardless of config
-python -m cli -c my_config.yaml --no-koina
-
-# Custom output directory
-python -m cli -c my_config.yaml --export-directory /tmp/my_exports
+# Verbose — full DEBUG from pyopenms, koinapy, mspecviz.*
+MSPECVIZ_LOG_LEVEL=DEBUG python -m cli my_config.yaml
 ```
 
 ---
@@ -63,59 +53,52 @@ template — copy it and edit the paths.
 
 ---
 
-## Precedence: `DEFAULTS` < YAML < flags
+## Precedence: `DEFAULTS` < YAML
 
-Two override layers, merged by `cli/config_builder.py`:
+Two layers, merged inside `cli/main.py:_load_config`:
 
-1. **`mspecviz/common/defaults.py`** seeds `CLIConfig` with every
-   default.
+1. **`mspecviz/common/defaults.py`** seeds the runtime config with every
+   default plus CLI-only fields (`idxml_files`, `mzml_files`,
+   `peptide_source`, `reference_substring`, `no_plots`).
 2. **YAML file** overrides any seeded value.
-3. **Command-line flags** override both above.
 
-YAML keys and argparse `dest=` names match `CLIConfig` field names
-exactly, so the merge is a direct name-for-name copy — no translation
-table. To change a default for all CLI runs, edit `defaults.py`. To
-change it per run, use YAML. To change it for one invocation, use a
-flag. Adding a new parameter is a one-field edit on `CLIConfig`.
+YAML keys match the field names on the merged config one-for-one — no
+translation table. To change a default for all CLI runs, edit
+`defaults.py`. To change it per run, edit the YAML.
 
 ---
 
 ## Exit codes
 
 | Code | Meaning |
-|---|---|
+| --- | --- |
 | `0` | Pipeline completed successfully. |
-| `1` | Pipeline failed (pyopenms error, Koina unreachable, filesystem I/O, …). Error is logged and the process dies. |
-| `2` | Config error (YAML path missing, YAML not a mapping, required section missing, unknown format in `--formats`). |
+| `1` | Pipeline failed (pyopenms error, Koina unreachable, filesystem I/O, …). Error is logged and the process exits. |
+| `2` | Config error (YAML path missing, YAML not a mapping, required section missing, peptide list empty). |
 
-The test suite uses `test_missing_config_exits_two` to lock down the
-exit-code-2 behaviour, so it's safe to automate against.
+The test suite uses `test_missing_config_exits_two` to lock the
+exit-code behaviour, so it's safe to automate against.
 
 ---
 
 ## Progress output
 
-By default the CLI prints a stage header for each pipeline step and a
-terminal progress bar (`cli.output.TerminalProgress`). With `-q`, only
-stage headers and final error lines are printed. With `-v`, DEBUG logs
-from `pyopenms`, `koinapy`, and internal helpers appear inline.
+Each stage logs a header line, and a `tqdm` progress bar tracks
+file/spectrum/plot completion within the stage. Set
+`MSPECVIZ_LOG_LEVEL=ERROR` to suppress everything except real errors;
+the progress bars stay on by default (they go to stderr).
 
 Typical successful run:
 
-```
-Stage 1/3: Search peptides
-  Searching 1 idXML file... done (2 variants)
-Stage 2/3: Load spectra
-  Streaming 8 mzML files... done (2 queries, 0 references, 2 Koina fallbacks)
-Stage 3/3: Build DataFrames + export
-  PSM table: 2 rows
-  Peaks: 373 rows
-  Writing run_settings.json... done
-  Exporting 2 mirror plots (png)... done
-
-Pipeline Complete:
-  Variants: 2 | PSMs: 2 | Spectra: 2 | Comparisons: 2 | Elapsed: 17s
-  Output: exports/MSpecViz_analysis_001_20260415/
+```text
+[INFO] Step 1: Searching peptides in idXML files
+Searching: 100%|██████████| 1/1 [00:01<00:00,  1.2file/s]
+[INFO] Found 2 PSMs across 2 variants
+[INFO] Step 2: Loading and annotating spectra
+Loading:   100%|██████████| 2/2 [00:14<00:00,  7.1s/spec]
+[INFO] Step 3: Exporting results
+Plots:     100%|██████████| 2/2 [00:02<00:00,  0.9plot/s]
+[INFO] Done in 17.3s. Exported to exports/MSpecViz_analysis_001_20260415
 ```
 
 ---
@@ -126,7 +109,7 @@ The CLI writes to the **same versioned directory structure** as the
 Streamlit Export tab — see [../export/layout.md](../export/layout.md).
 Briefly:
 
-```
+```text
 {export_dir}/{project_name}_{NNN}_{YYYYMMDD}/
     run_settings.json            # canonical snapshot of this run
     comparison_summary.csv       # 1 row per query-reference comparison

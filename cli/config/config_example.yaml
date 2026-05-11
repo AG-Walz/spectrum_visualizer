@@ -1,9 +1,11 @@
-# MSpecViz CLI config — run: python -m cli -c cli/config/config_example.yaml
-# Full reference: docs/cli/usage.md  |  CLI flags: python -m cli --help
+# MSpecViz CLI config — run: python -m cli cli/config/config_example.yaml
+# Full reference: docs/cli/usage.md
 #
-# Every key name below matches a field on CLIConfig (see cli/config.py) and a
-# default in mspecviz/common/defaults.py. Flat snake_case, one name per
-# concept — no translation layer.
+# Every key name below matches a default in mspecviz/common/defaults.py
+# (with CLI-only extras for the inputs section). Flat snake_case, one
+# name per concept — no translation layer. There are no command-line
+# flag overrides; copy this file and edit per-run.
+# Log level: MSPECVIZ_LOG_LEVEL env var (default INFO; ERROR for quiet).
 
 # --- 1. Almost always edit these ---
 
@@ -12,7 +14,7 @@ idxml_files:
 mzml_files:
   - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
 
-# "all" | "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
+# "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
 peptide_source: /mnt/volume/nacho/data/peptide_lists/peptides.txt
 
 # Substring that marks reference mzMLs; leave empty for single-spectrum mode

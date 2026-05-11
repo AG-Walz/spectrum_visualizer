@@ -57,25 +57,25 @@ record of user-edited widget values. Missing keys fall back to
 
 ```
 cli/
-├── __main__.py         # Enables `python -m cli`
-├── main.py             # Argparse + run() entry point
-├── config.py           # CLIConfig dataclass + YAML/peptide loaders
-├── config_builder.py   # 3-layer precedence merge + argparse surface
-├── pipeline.py         # _validate_inputs, _run_search, _run_load, run_pipeline
-├── exports.py          # run_cli_export -> mspecviz.export.run_export (shared with Streamlit)
-├── output.py           # TerminalProgress, log formatting
+├── __main__.py         # Enables `python -m cli <config.yaml>`
+├── main.py             # YAML load + pipeline (search → load → export), tqdm progress
 └── config/             # Example YAML configs
 ```
 
-**Three-layer config merge** (see `cli/config_builder.py`):
+The CLI is YAML-only: invoke `python -m cli <path/to/config.yaml>`. No
+command-line flag overrides — copy the YAML and edit per-run.
 
-1. `streamlit_app/config/settings.json` — app defaults
-2. YAML config file — per-run overrides
-3. argparse flags — single-invocation overrides (highest priority)
+**Two-layer config merge** (see `cli/main.py:_load_config`):
 
-Each layer is a table in `config_builder.py` (`_SETTINGS_DEFAULTS`,
-`_YAML_OVERRIDES`, `_CLI_OVERRIDES`). Adding a new parameter is a
-one-row edit to each relevant table, not three scattered branches.
+1. `mspecviz.common.defaults.DEFAULTS` + a small `_CLI_EXTRAS` dict
+   (CLI-only fields: `idxml_files`, `mzml_files`, `peptide_source`,
+   `reference_substring`, `no_plots`).
+2. YAML file — per-run overrides (last-write-wins via dict-literal
+   unpacking into a `SimpleNamespace`).
+
+Adding a new parameter is a one-field edit on `DEFAULTS` (or
+`_CLI_EXTRAS` for CLI-only inputs) — the YAML key inherits the name
+automatically.
 
 Full reference: [../cli/usage.md](../cli/usage.md).
 

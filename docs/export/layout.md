@@ -7,7 +7,7 @@ What an export directory looks like on disk, how it's versioned, and what
 Implementation references:
 
 - Shared orchestrator (CLI + Streamlit): `mspecviz/export/runner.py`
-- CLI thin wrapper: `cli/exports.py`
+- CLI thin wrapper: `cli/main.py:_run_export`
 - Streamlit thin wrapper: `streamlit_app/views/export/pipeline.py`
 - Versioned directory + fingerprint: `mspecviz/export/directories.py`
 

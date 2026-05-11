@@ -165,14 +165,15 @@ reshuffling data directories.
 2. Run from the project root:
 
    ```bash
-   python -m cli -c cli/config/my_run.yaml
+   python -m cli cli/config/my_run.yaml
    ```
 
-Any field can be overridden on a single invocation with a flag — for
-example `--workers 8 --mz-tolerance 0.05`. See the comment block at the
-bottom of the example YAML, or [docs/cli/usage.md](docs/cli/usage.md) for
-the full CLI reference. See [docs/quickstart.md](docs/quickstart.md) for a
-walkthrough with the bundled test data.
+The CLI is YAML-only — there are no command-line flag overrides. For
+per-run tweaks (different workers, tighter `mz_tolerance`, etc.), copy
+the YAML and edit it. Quiet runs: `MSPECVIZ_LOG_LEVEL=ERROR python -m
+cli …`. See [docs/cli/usage.md](docs/cli/usage.md) for the full CLI
+reference, or [docs/quickstart.md](docs/quickstart.md) for a walkthrough
+with the bundled test data.
 
 ---
 
@@ -207,11 +208,7 @@ MSpecViz/
 │       ├── export/              # Tab 4 — Export
 │       └── widgets/             # File browser, peptide input widget
 ├── cli/                         # Headless runner (imports mspecviz.*)
-│   ├── main.py                  # Entry point
-│   ├── pipeline.py              # Stage orchestration
-│   ├── config.py                # CLIConfig dataclass + loaders
-│   ├── config_builder.py        # 3-layer precedence merger + argparse
-│   ├── exports.py               # DataFrame + plot export
+│   ├── main.py                  # Entry point: YAML load → search → load → export
 │   └── config/                  # Example YAML configs
 ├── tests/                       # Unit + integration + GUI tests (pytest)
 │   ├── cli/                     # CLI integration tests

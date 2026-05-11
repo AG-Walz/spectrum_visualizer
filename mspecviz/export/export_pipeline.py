@@ -1,6 +1,6 @@
 """Shared export orchestrator: directory versioning, parquets, plots, summaries.
 
-``run_export`` is the single entry point. Both ``cli.exports`` and
+``run_export`` is the single entry point. Both ``cli.main`` and
 ``streamlit_app.views.export.export_actions`` call it with their own progress
 callbacks so the on-disk layout stays identical across frontends.
 """

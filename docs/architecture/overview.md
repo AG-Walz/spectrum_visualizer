@@ -33,7 +33,7 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
   YAML / settings.json / widgets
           │
           ▼
-  [ config layer ]            cli/config.py, utils/state/params.py
+  [ config layer ]            cli/main.py:_load_config, utils/state/params.py
           │
           ▼
   [ search ]                  mspecviz.search.search_peptides_in_idxmls

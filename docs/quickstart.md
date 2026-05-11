@@ -55,8 +55,12 @@ Open http://localhost:8501 in your browser.
 To run headlessly without the Streamlit UI, use the CLI from the project root:
 
 ```bash
-python -m cli -c cli/config/config_example.yaml
+python -m cli cli/config/config_example.yaml
 ```
+
+The CLI is YAML-only (no command-line flag overrides) — copy the example
+and edit it for per-run tweaks. Set `MSPECVIZ_LOG_LEVEL=ERROR` for a
+quiet run.
 
 ---
 
@@ -287,5 +291,5 @@ schemas.
 | Koina prediction returns no results | Check network connectivity (Koina uses a remote API). Some models only support specific peptide lengths or charge states. |
 | Slow first run | Normal for large mzML files. Subsequent runs with the same settings reuse existing export directories. |
 | Export fails with permission error | Verify write permissions to the export directory. Check available disk space. |
-| Worker processes crash silently | Re-run with `--workers 1` (CLI) or set the workers slider to 1 in the Setup tab to surface the underlying traceback. |
+| Worker processes crash silently | Re-run with `workers: 1` in the YAML (CLI) or set the workers slider to 1 in the Setup tab to surface the underlying traceback. |
 | Stale results after fixing a bug | Delete `<workspace>/.mspecviz_cache/`. The app does not invalidate its own Parquet cache automatically. See [settings.md#cache](settings.md#cache). |

@@ -1,6 +1,6 @@
 """Single source of truth for ``run_settings.json`` field list and assembly.
 
-Both the CLI (``cli/exports.py``) and the Streamlit Export page need to capture
+Both the CLI (``cli/main.py``) and the Streamlit Export page need to capture
 the user's parameters into ``run_settings.json`` for reproducibility. The
 field list lives here so the two frontends cannot drift; each frontend supplies
 a *getter* callable ``(key, default) -> value`` that knows how to read from its
@@ -15,9 +15,9 @@ ParamGetter = Callable[[str, Any], Any]
 
 
 # Each entry: (run_settings_key, default). Frontends map their internal storage
-# (CLIConfig attribute, Streamlit ``params`` widget key) onto these run_settings
-# keys via their getter — see ``_config_getter`` in ``cli/pipeline.py`` and
-# ``_run_settings_getter`` in ``streamlit_app/utils/page_state.py``.
+# (CLI ``SimpleNamespace`` attribute, Streamlit ``params`` widget key) onto these
+# run_settings keys via their getter — see ``cli/main.py`` and
+# ``streamlit_app/utils/page_state.py``.
 RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
     ("idxml_files",            []),
     ("mzml_files",             []),

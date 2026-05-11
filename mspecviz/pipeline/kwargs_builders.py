@@ -1,9 +1,9 @@
 """Frontend-agnostic kwargs builders for the streaming-annotation pipeline.
 
-Both the CLI (`cli/pipeline.py`) and the Streamlit search-and-load view need to
+Both the CLI (`cli/main.py`) and the Streamlit search-and-load view need to
 pack annotation + Koina settings into the kwargs dicts consumed by
 ``process_query_result``. The two frontends store the same values under
-different keys (CLI uses ``CLIConfig`` attributes; Streamlit uses session
+different shapes (CLI uses a ``SimpleNamespace``; Streamlit uses session
 ``params``). The functions here take a *getter* callable
 ``(key, default) -> value`` so each frontend can supply its own lookup.
 """
