@@ -25,11 +25,13 @@ def _browser_keys(key_prefix: str) -> dict:
 
 
 def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: dict) -> None:
-    """Seed session state for the selection list and current directory."""
+    """Seed session state for the selection list, current directory, and path input."""
     if state_key not in st.session_state:
         st.session_state[state_key] = params.get(state_key, [])
     if keys["dir"] not in st.session_state:
         st.session_state[keys["dir"]] = default_dir
+    if keys["path_input"] not in st.session_state:
+        st.session_state[keys["path_input"]] = st.session_state[keys["dir"]]
 
 
 def _apply_deferred_navigation(keys: dict) -> None:
@@ -37,7 +39,12 @@ def _apply_deferred_navigation(keys: dict) -> None:
     nav_key = keys["nav"]
     if not st.session_state.get(nav_key):
         return
-    st.session_state[keys["dir"]] = st.session_state[nav_key]
+    new_dir = st.session_state[nav_key]
+    st.session_state[keys["dir"]] = new_dir
+    # Sync the path input to the new directory now that navigation fired.
+    # Doing this only on real navigation events (Up/folder buttons) — not on
+    # every rerun — preserves the user's in-progress typing in the path input.
+    st.session_state[keys["path_input"]] = new_dir
     st.session_state[nav_key] = None
     for k in (keys["select_all"], keys["recursive"]):
         st.session_state.pop(k, None)
@@ -47,20 +54,20 @@ def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
     """Render the editable path input plus the parent-directory button."""
     col1, col2 = st.columns([6, 1])
     with col1:
-        # Sync the input widget to current_dir when navigation just changed it,
-        # without rebuilding the widget (rebuilding loses focus/caret state).
-        path_input_key = keys["path_input"]
-        if st.session_state.get(path_input_key) != current_dir:
-            st.session_state[path_input_key] = current_dir
         new_path = st.text_input(
-            "Path", key=path_input_key,
+            "Path", key=keys["path_input"],
             label_visibility="collapsed", placeholder="Enter path...",
         )
-        if new_path != current_dir and Path(new_path).exists() and Path(new_path).is_dir():
-            st.session_state[keys["dir"]] = new_path
-            for k in (keys["select_all"], keys["recursive"]):
-                st.session_state.pop(k, None)
-            st.rerun()
+        # Resolve to absolute so the Up button (parent == current_dir → disabled)
+        # works after typing a relative path like "." or "subdir/". Route the
+        # update through the deferred-nav slot so it can rewrite the visible
+        # path input — Streamlit won't let us touch the widget-bound key
+        # directly after the widget has been instantiated this run.
+        if new_path and new_path != current_dir:
+            resolved = str(Path(new_path).expanduser().resolve())
+            if Path(resolved).is_dir() and resolved != current_dir:
+                st.session_state[keys["nav"]] = resolved
+                st.rerun()
 
     with col2:
         parent = str(Path(current_dir).parent)

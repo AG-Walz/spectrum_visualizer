@@ -44,10 +44,7 @@ def prepare_summary_data(
             f"{[c for c in raw_frame.columns if c in METRIC_COLUMNS]}"
         )
 
-    # Build peptidoform label. ``Modification`` already stores the canonical
-    # ``Peptidoform.modified_sequence`` (e.g. ``"PEPTM[Ox]IDEK"``) for modified
-    # PSMs, or ``""``/``"(unmodified)"`` for unmodified — fall back to the bare
-    # peptide in those cases.
+    # Build peptidoform label
     modification = raw_frame["Modification"].fillna("").astype(str)
     inline = modification.mask(
         modification.isin(["", "(unmodified)"]), raw_frame["Peptide"].astype(str),
@@ -79,10 +76,7 @@ def generate_all_summary_plots(
     formats: list[str] | None = None,
     export_resolution: int = 300,
 ) -> dict[str, dict[str, str]]:
-    """Generate all (or selected) summary plots and save them.
-
-    Returns ``{plot_type: {format: file_path}}``.
-    """
+    """Generate selected summary plots and save them. """
     if plot_types is None:
         plot_types = list(DEFAULTS.summary_plot_types)
     if formats is None:
