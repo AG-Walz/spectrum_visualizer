@@ -17,6 +17,8 @@ dependencies:
   - streamlit>=1.48.0
   - openpyxl
   - pytest
+  - joblib
+  - tqdm
   - pip:
     - psm-utils
     - koinapy
