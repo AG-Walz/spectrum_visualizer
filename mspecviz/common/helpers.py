@@ -24,6 +24,11 @@ def parse_peptide_list(text: str) -> List[str]:
     return [line.strip().upper() for line in text.splitlines() if line.strip()]
 
 
+def is_relative_intensity(mode: str) -> bool:
+    """Whether ``mode`` (``"Relative"`` | ``"Raw"``) requests max-intensity normalisation."""
+    return mode == "Relative"
+
+
 def format_time(seconds: float) -> str:
     """Format seconds as human-readable duration (e.g. ``"2m 30s"``)."""
     if seconds < 60:

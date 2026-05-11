@@ -28,8 +28,11 @@ from streamlit_app.utils.state import (
     get_state_key,
     load_params,
 )
-from mspecviz.common.defaults import DEFAULTS
 from mspecviz.common.helpers import parse_peptide_list
+from mspecviz.export import (
+    RUN_SETTINGS_FIELDS,
+    build_run_settings as _build_run_settings_core,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -194,36 +197,27 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 # ---------------------------------------------------------------------------
 # run_settings.json serialization
 # ---------------------------------------------------------------------------
-# Single source of truth for which params land in run_settings.json.
-# Each entry: (run_settings_key, param_key, default).
-# Tunable defaults resolve via ``DEFAULTS`` (see ``mspecviz.common.defaults``);
-# runtime-state keys (file selections etc.) supply an inline literal default.
-# ``target_peptides`` needs a list<->newline-joined-string conversion, so it
-# is handled separately below.
-RUN_SETTINGS_FIELDS: list[tuple[str, str, object]] = [
-    ("idxml_files",            "selected_idxmls",        []),
-    ("mzml_files",             "selected_mzmls",         []),
-    ("reference_substring",    "reference_substring",    ""),
-    ("ion_types",              "ion_types",              list(DEFAULTS.ion_types)),
-    ("mz_tolerance",           "mz_tolerance",           DEFAULTS.mz_tolerance),
-    ("add_neutral_losses",     "add_neutral_losses",     DEFAULTS.add_neutral_losses),
-    ("intensity_mode",         "intensity_mode",         DEFAULTS.intensity_mode),
-    ("koina_enabled",          "koina_enabled",          DEFAULTS.koina_enabled),
-]
+# The canonical field list lives in ``mspecviz.export.RUN_SETTINGS_FIELDS``.
+# Streamlit stores some of those values under different session keys (e.g.
+# ``idxml_files`` → ``selected_idxmls``) — the map below covers the differences.
+_STREAMLIT_PARAM_KEY_OVERRIDES: dict[str, str] = {
+    "idxml_files": "selected_idxmls",
+    "mzml_files":  "selected_mzmls",
+}
+
+
+def _streamlit_param_key(run_settings_key: str) -> str:
+    """Return the Streamlit session-state key for a run_settings field."""
+    return _STREAMLIT_PARAM_KEY_OVERRIDES.get(run_settings_key, run_settings_key)
 
 
 def build_run_settings() -> dict:
-    """Capture current settings for run_settings.json."""
+    """Capture current Streamlit settings for run_settings.json."""
     params = load_params()
-    run_settings: dict = {
-        rs_key: get_param(params, param_key, default)
-        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
-    }
-    run_settings["peptides"] = parse_peptide_list(get_param(params, "target_peptides", ""))
-    now = datetime.now().isoformat()
-    run_settings["_created_at"] = now
-    run_settings["_last_run"] = now
-    return run_settings
+    return _build_run_settings_core(
+        getter=lambda key, default: get_param(params, _streamlit_param_key(key), default),
+        peptides=parse_peptide_list(get_param(params, "target_peptides", "")),
+    )
 
 
 def apply_run_settings(run_settings: dict):
@@ -233,8 +227,8 @@ def apply_run_settings(run_settings: dict):
     page navigation even after Streamlit reaps the owning widget.
     """
     updates: list[tuple[str, object]] = [
-        (param_key, run_settings.get(rs_key, default))
-        for rs_key, param_key, default in RUN_SETTINGS_FIELDS
+        (_streamlit_param_key(rs_key), run_settings.get(rs_key, default))
+        for rs_key, default in RUN_SETTINGS_FIELDS
     ]
     updates.append(
         ("target_peptides", "\n".join(run_settings.get("peptides", [])))

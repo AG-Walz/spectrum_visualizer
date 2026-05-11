@@ -47,7 +47,6 @@ class PlotSettings:
     figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
     plot_unpaired_queries: bool = False
-    normalize: bool = False
     workers: int = 1
 
 
@@ -135,7 +134,6 @@ def _run_plot_tasks(
     format_dirs, html_dir = _resolve_format_dirs(root_dir, base_formats)
     tasks = build_plot_tasks(
         annotated_queries, reference_store, variant_groups,
-        normalize=plot_settings.normalize,
         sanitize_fn=sanitize_filename,
         format_dirs=format_dirs,
         figure_size=plot_settings.figure_size,
@@ -200,11 +198,10 @@ def run_export(
 ) -> ExportResult:
     """Orchestrate a full export: versioned dir, parquets, CSV/XLSX, plots, summaries.
 
-    Plans (or reuses) ``{project}_{NNN}_{YYYYMMDD}/`` via
-    :func:`find_or_create_export_directory`, writes ``run_settings.json``, then
-    dispatches each optional group in ``selection``. Progress and warnings are
-    surfaced through ``callbacks`` so the CLI can render a terminal bar and
-    Streamlit can render ``st.caption`` / ``st.warning``.
+    Plans (or reuses) ``{project}_{NNN}_{YYYYMMDD}/`` via :func:`find_or_create_export_directory`,
+    writes ``run_settings.json``, then dispatches each optional group in ``selection``.
+    Progress and warnings are surfaced through ``callbacks`` so the CLI can render
+    a terminal bar and Streamlit can render ``st.caption`` / ``st.warning``.
     """
     selection = selection or ExportSelection()
     plot_settings = plot_settings or PlotSettings()

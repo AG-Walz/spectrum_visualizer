@@ -67,27 +67,21 @@ def _search_single_idxml(
     return idxml_name, matches, errors
 
 
+def _iter_base_sequences(idxml_path: str, caller: str):
+    """Yield uppercase base sequences from every PSM in *idxml_path*; warn on parse error."""
+    try:
+        for psm in IdXMLReader(str(idxml_path)):
+            if psm.peptidoform.sequence:
+                yield psm.peptidoform.sequence.upper()
+    except Exception as error:
+        logger.warning(f"{caller} failed for {Path(idxml_path).name}: {error}")
+
+
 def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
     """Count PSMs per base sequence in one idXML; ``{}`` on parse error."""
-    try:
-        return Counter(
-            psm.peptidoform.sequence.upper()
-            for psm in IdXMLReader(str(idxml_path))
-            if psm.peptidoform.sequence
-        )
-    except Exception as error:
-        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {error}")
-        return {}
+    return Counter(_iter_base_sequences(idxml_path, "count_psms_per_peptide"))
 
 
 def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
     """Worker: return ``(idxml_path, {base_sequence, ...})`` for one idXML."""
-    try:
-        return idxml_path, {
-            psm.peptidoform.sequence.upper()
-            for psm in IdXMLReader(str(idxml_path))
-            if psm.peptidoform.sequence
-        }
-    except Exception as error:
-        logger.warning(f"_scan_single_idxml_peptides failed for {Path(idxml_path).name}: {error}")
-        return idxml_path, set()
+    return idxml_path, set(_iter_base_sequences(idxml_path, "_scan_single_idxml_peptides"))

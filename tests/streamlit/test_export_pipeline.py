@@ -66,7 +66,10 @@ def _make_comparison_frame():
         }
         for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
             row[display_name] = 0.85 + i * 0.05
-        for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
+        for count_key in (
+            "query_peak_count", "reference_peak_count",
+            "query_annotation_count", "reference_annotation_count", "shared",
+        ):
             row[count_key] = 5
         rows.append(row)
     return pd.DataFrame(rows)

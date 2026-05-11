@@ -13,11 +13,15 @@ from cli.output import TerminalProgress, print_completion_summary, print_config_
 from mspecviz.common.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
+    is_relative_intensity,
 )
 from mspecviz.dataframes import build_psm_table
-from mspecviz.pipeline import process_query_result
+from mspecviz.pipeline import (
+    build_annotation_kwargs,
+    build_koina_kwargs,
+    run_streaming_annotation,
+)
 from mspecviz.search import search_peptides_in_idxmls
-from mspecviz.spectra import load_spectra_streaming
 
 logger = logging.getLogger("mspecviz.cli")
 
@@ -75,74 +79,39 @@ def _run_search(config: CLIConfig, quiet: bool):
     return variant_groups, total_psms
 
 
-def _build_annotation_kwargs(config: CLIConfig, normalize: bool) -> dict:
-    """Pack annotation params from *config* into a kwargs dict."""
-    return dict(
-        ion_types=config.ion_types,
-        mz_tolerance=config.mz_tolerance,
-        normalize=normalize,
-        add_neutral_losses=config.add_neutral_losses,
-    )
-
-
-def _make_query_ready_callback(
-    config: CLIConfig, psm_lookup, annotation_kwargs, reference_store,
-    annotated_queries: list, comparison_rows: list, progress: "TerminalProgress",
-):
-    """Build the ``on_query_ready`` callback that buffers PSMs + drives the progress bar."""
-    loaded_count = [0]
-
-    def on_query_ready(result):
-        processed = process_query_result(
-            result, psm_lookup, annotation_kwargs, reference_store,
-            koina_enabled=config.koina_enabled,
-            koina_model=config.koina_model,
-            koina_collision_energy=config.koina_collision_energy,
-            koina_instrument_type=config.koina_instrument_type,
-        )
-        if processed is None:
-            return
-        psm_id, query_spectrum, query_frame, comparison_rows_for_psm = processed
-        annotated_queries.append((psm_id, query_spectrum, query_frame))
-        comparison_rows.extend(comparison_rows_for_psm)
-        loaded_count[0] += 1
-        progress.update(loaded_count[0])
-
-    return on_query_ready
+def _config_getter(config: CLIConfig):
+    """Adapter so shared kwargs builders can read from a ``CLIConfig`` attribute."""
+    return lambda key, default: getattr(config, key, default)
 
 
 def _run_load(config: CLIConfig, variant_groups_copy, psm_lookup, total_psms: int, quiet: bool):
-    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows, normalize)``."""
+    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows)``."""
     if not quiet:
         print("Step 2: Loading and annotating spectra...")
 
-    normalize = config.intensity_mode == "Relative"
-    annotation_kwargs = _build_annotation_kwargs(config, normalize)
+    getter = _config_getter(config)
+    annotation_kwargs = build_annotation_kwargs(getter)
+    koina_kwargs = build_koina_kwargs(getter)
 
-    annotated_queries: list = []   # (psm_id, LoadedSpectrum, annotated_frame)
-    reference_store: dict = {}     # variant_key -> [(LoadedSpectrum, annotated_frame)]
-    comparison_rows: list = []
     progress = TerminalProgress("Loading", total_psms, quiet)
-
-    load_spectra_streaming(
+    annotated_queries, reference_store, comparison_rows = run_streaming_annotation(
         variant_groups=variant_groups_copy,
-        mzml_paths=[Path(m) for m in config.mzml_files],
+        mzml_paths=config.mzml_files,
         reference_substring=config.reference_substring,
-        on_reference_loaded=lambda _v, _c: None,
-        on_query_ready=_make_query_ready_callback(
-            config, psm_lookup, annotation_kwargs, reference_store,
-            annotated_queries, comparison_rows, progress,
-        ),
+        psm_lookup=psm_lookup,
+        annotation_kwargs=annotation_kwargs,
+        koina_kwargs=koina_kwargs,
+        workers=config.workers,
+        on_progress=progress.update,
         on_file_start=lambda path, is_reference: logger.info(
             f"Processing {'reference' if is_reference else 'query'}: {Path(path).name}"),
         on_file_complete=lambda path, loaded, total: logger.info(
             f"Completed {Path(path).name}: {loaded}/{total} spectra"),
-        error_callback=lambda error: logger.error(f"Streaming error: {error}"),
-        workers=config.workers,
+        on_error=lambda error: logger.error(f"Streaming error: {error}"),
     )
     progress.finish()
 
-    return annotated_queries, reference_store, comparison_rows, normalize
+    return annotated_queries, reference_store, comparison_rows
 
 
 def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
@@ -163,7 +132,7 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
     variant_groups_copy = copy.deepcopy(variant_groups)
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
 
-    annotated_queries, reference_store, comparison_rows, normalize = _run_load(
+    annotated_queries, reference_store, comparison_rows = _run_load(
         config, variant_groups_copy, psm_lookup, total_psms, quiet,
     )
     if not annotated_queries:
@@ -177,7 +146,7 @@ def run_pipeline(config: CLIConfig, quiet: bool = False) -> int:
 
     result = run_cli_export(
         config, annotated_queries, reference_store, variant_groups_copy,
-        comparison_rows, psm_frame, normalize, quiet,
+        comparison_rows, psm_frame, quiet,
     )
 
     print_completion_summary(

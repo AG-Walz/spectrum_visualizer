@@ -48,128 +48,129 @@ def _identical_pair():
 
 def _disjoint_pair():
     """Two spectra with no overlapping annotations."""
-    q = _make_df([100.0, 200.0], [1.0, 0.5], ["b1", "b2"])
-    r = _make_df([300.0, 400.0], [0.8, 0.4], ["y1", "y2"])
-    return q, r
+    query = _make_df([100.0, 200.0], [1.0, 0.5], ["b1", "b2"])
+    reference = _make_df([300.0, 400.0], [0.8, 0.4], ["y1", "y2"])
+    return query, reference
 
 
 def _partial_overlap_pair():
     """Two spectra sharing some annotations."""
-    q = _make_df([100.0, 200.0, 300.0], [1.0, 0.5, 0.3], ["b1", "b2", "unannotated"])
-    r = _make_df([100.0, 200.0, 400.0], [0.9, 0.6, 0.4], ["b1", "y1", "unannotated"])
-    return q, r
+    query = _make_df([100.0, 200.0, 300.0], [1.0, 0.5, 0.3], ["b1", "b2", "unannotated"])
+    reference = _make_df([100.0, 200.0, 400.0], [0.9, 0.6, 0.4], ["b1", "y1", "unannotated"])
+    return query, reference
 
 
-@pytest.mark.parametrize("metric_fn, identical_val, disjoint_val", [
+@pytest.mark.parametrize("metric_fn, identical_value, disjoint_value", [
     (compute_r2_matching, 1.0, float("nan")),
     (compute_cosine_similarity, 1.0, float("nan")),
 ])
 class TestMetricBehavior:
-    def test_identical_returns_perfect(self, metric_fn, identical_val, disjoint_val):
-        q, r = _identical_pair()
-        val = metric_fn(q, r)
-        if math.isnan(identical_val):
-            assert math.isnan(val)
+    def test_identical_returns_perfect(self, metric_fn, identical_value, disjoint_value):
+        query, reference = _identical_pair()
+        result = metric_fn(query, reference)
+        if math.isnan(identical_value):
+            assert math.isnan(result)
         else:
-            assert val == pytest.approx(identical_val, abs=1e-6)
+            assert result == pytest.approx(identical_value, abs=1e-6)
 
-    def test_disjoint_returns_expected(self, metric_fn, identical_val, disjoint_val):
-        q, r = _disjoint_pair()
-        val = metric_fn(q, r)
-        if math.isnan(disjoint_val):
-            assert math.isnan(val)
+    def test_disjoint_returns_expected(self, metric_fn, identical_value, disjoint_value):
+        query, reference = _disjoint_pair()
+        result = metric_fn(query, reference)
+        if math.isnan(disjoint_value):
+            assert math.isnan(result)
         else:
-            assert val == pytest.approx(disjoint_val, abs=1e-6)
+            assert result == pytest.approx(disjoint_value, abs=1e-6)
 
 
 class TestR2Matching:
     def test_partial_overlap(self):
-        q, r = _partial_overlap_pair()
-        val = compute_r2_matching(q, r)
+        query, reference = _partial_overlap_pair()
+        result = compute_r2_matching(query, reference)
         # Only "b1" is shared -- need >=2 points for regression
-        assert math.isnan(val)
+        assert math.isnan(result)
 
     def test_good_correlation(self):
-        q = _make_df([100, 200, 300], [0.2, 0.5, 1.0], ["b1", "b2", "b3"])
-        r = _make_df([100, 200, 300], [0.25, 0.55, 0.95], ["b1", "b2", "b3"])
-        val = compute_r2_matching(q, r)
-        assert val > 0.9
+        query = _make_df([100, 200, 300], [0.2, 0.5, 1.0], ["b1", "b2", "b3"])
+        reference = _make_df([100, 200, 300], [0.25, 0.55, 0.95], ["b1", "b2", "b3"])
+        result = compute_r2_matching(query, reference)
+        assert result > 0.9
 
 
 class TestR2Binned:
     def test_identical_spectra(self):
-        q, r = _identical_pair()
-        val = compute_r2_binned(q, r)
-        assert val == pytest.approx(1.0, abs=1e-6)
+        query, reference = _identical_pair()
+        result = compute_r2_binned(query, reference)
+        assert result == pytest.approx(1.0, abs=1e-6)
 
     def test_empty_spectrum(self):
-        q = _make_df([], [], [])
-        r = _make_df([100], [1.0], ["b1"])
-        val = compute_r2_binned(q, r)
-        assert math.isnan(val)
+        query = _make_df([], [], [])
+        reference = _make_df([100], [1.0], ["b1"])
+        result = compute_r2_binned(query, reference)
+        assert math.isnan(result)
 
 
 class TestSpectralEntropy:
     def test_identical(self):
-        q, r = _identical_pair()
-        val = compute_spectral_entropy_similarity(q, r)
-        if not math.isnan(val):  # skip if ms_entropy not installed
-            assert val > 0.9
+        query, reference = _identical_pair()
+        result = compute_spectral_entropy_similarity(query, reference)
+        if not math.isnan(result):  # skip if ms_entropy not installed
+            assert result > 0.9
 
     def test_empty(self):
-        q = _make_df([], [], [])
-        r = _make_df([100], [1.0], ["b1"])
-        val = compute_spectral_entropy_similarity(q, r)
-        assert math.isnan(val)
+        query = _make_df([], [], [])
+        reference = _make_df([100], [1.0], ["b1"])
+        result = compute_spectral_entropy_similarity(query, reference)
+        assert math.isnan(result)
 
 
 class TestSetMetricsViaComputeAll:
     """Set metrics (Dice/Jaccard/ShR) are exposed via ``compute_all_metrics`` only."""
 
     def test_identical_returns_perfect(self):
-        q, r = _identical_pair()
-        m = compute_all_metrics(q, r)
-        assert m["Dice"] == pytest.approx(1.0, abs=1e-6)
-        assert m["Jacc"] == pytest.approx(1.0, abs=1e-6)
-        assert m["ShR"] == pytest.approx(1.0, abs=1e-6)
+        query, reference = _identical_pair()
+        metrics = compute_all_metrics(query, reference)
+        assert metrics["Dice"] == pytest.approx(1.0, abs=1e-6)
+        assert metrics["Jacc"] == pytest.approx(1.0, abs=1e-6)
+        assert metrics["ShR"] == pytest.approx(1.0, abs=1e-6)
 
     def test_disjoint_returns_zero(self):
-        q, r = _disjoint_pair()
-        m = compute_all_metrics(q, r)
-        assert m["Dice"] == 0.0
-        assert m["Jacc"] == 0.0
-        assert m["ShR"] == 0.0
+        query, reference = _disjoint_pair()
+        metrics = compute_all_metrics(query, reference)
+        assert metrics["Dice"] == 0.0
+        assert metrics["Jacc"] == 0.0
+        assert metrics["ShR"] == 0.0
 
     def test_no_annotations(self):
-        q = _make_df([100], [1.0], ["unannotated"])
-        r = _make_df([100], [1.0], ["unannotated"])
-        m = compute_all_metrics(q, r)
-        assert math.isnan(m["Dice"])
+        query = _make_df([100], [1.0], ["unannotated"])
+        reference = _make_df([100], [1.0], ["unannotated"])
+        metrics = compute_all_metrics(query, reference)
+        assert math.isnan(metrics["Dice"])
 
 
 class TestComputeAllMetrics:
     def test_returns_all_keys(self):
-        q, r = _identical_pair()
-        m = compute_all_metrics(q, r)
+        query, reference = _identical_pair()
+        metrics = compute_all_metrics(query, reference)
         expected_keys = {
             "R2m", "R2b", "Cos", "Ent", "Dice", "Jacc", "ShR",
-            "total_q", "total_r", "ann_q", "ann_r", "shared",
+            "query_peak_count", "reference_peak_count",
+            "query_annotation_count", "reference_annotation_count", "shared",
         }
-        assert set(m.keys()) == expected_keys
+        assert set(metrics.keys()) == expected_keys
 
     def test_counts_correct(self):
-        q, r = _identical_pair()
-        m = compute_all_metrics(q, r)
-        assert m["total_q"] == 5
-        assert m["ann_q"] == 5
-        assert m["shared"] == 5
+        query, reference = _identical_pair()
+        metrics = compute_all_metrics(query, reference)
+        assert metrics["query_peak_count"] == 5
+        assert metrics["query_annotation_count"] == 5
+        assert metrics["shared"] == 5
 
     def test_partial_counts(self):
-        q, r = _partial_overlap_pair()
-        m = compute_all_metrics(q, r)
-        assert m["ann_q"] == 2   # b1, b2
-        assert m["ann_r"] == 2   # b1, y1
-        assert m["shared"] == 1  # b1
+        query, reference = _partial_overlap_pair()
+        metrics = compute_all_metrics(query, reference)
+        assert metrics["query_annotation_count"] == 2     # b1, b2
+        assert metrics["reference_annotation_count"] == 2 # b1, y1
+        assert metrics["shared"] == 1                     # b1
 
 
 class TestFormatMetricsText:

@@ -47,7 +47,6 @@ def _build_plot_settings(params: dict) -> PlotSettings:
         plot_unpaired_queries=get_param(
             params, "plot_unpaired_queries", DEFAULTS.plot_unpaired_queries,
         ),
-        normalize=get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative",
         workers=get_param(params, "workers", DEFAULTS.workers),
     )
 

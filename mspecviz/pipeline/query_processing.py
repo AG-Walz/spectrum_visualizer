@@ -13,9 +13,9 @@ from mspecviz.annotation.comparison_metrics import (
 from mspecviz.common.defaults import DEFAULTS
 from mspecviz.pipeline.annotation_steps import (
     _annotate_query_spectrum,
-    _build_metric_rows,
     _cache_reference_spectra,
     _try_koina_fallback,
+    build_comparison_row,
 )
 from mspecviz.plotting.plot_task_dataclasses import ComparisonTask
 from mspecviz.spectra.loaded_spectrum import source_label, spectrum_lookup_key
@@ -37,8 +37,7 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str
 def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str, str]:
     """Build mapping from PSM ID to variant key.
 
-    *annotated_queries* can be:
-
+    *annotated_queries* can be either:
     * ``dict``  -- ``{psm_id: (spec, df)}``   (Streamlit format)
     * ``list``  -- ``[(psm_id, spec, df)]``    (CLI format)
     """
@@ -80,7 +79,13 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     else:
         references = reference_store.get(result.variant_key, [])
 
-    comparison_rows = _build_metric_rows(psm_id, result, query_frame, references)
+    comparison_rows = [
+        build_comparison_row(
+            psm_id, result, reference_spectrum, reference_frame,
+            compute_all_metrics(query_frame, reference_frame),
+        )
+        for reference_spectrum, reference_frame in references
+    ]
     return (psm_id, result.query_spectrum, query_frame, comparison_rows)
 
 
@@ -89,7 +94,7 @@ def _build_task(
     reference_spectrum=None, reference_frame=None,
     folder_name: str, plot_title: str, sanitize_fn,
     format_dirs: dict, export_formats: list[str], html_dir: str,
-    figure_size, export_resolution: int, normalize: bool,
+    figure_size, export_resolution: int,
 ) -> ComparisonTask:
     """Construct a ComparisonTask; ``reference_spectrum=None`` yields a single-plot task."""
     is_mirror = reference_spectrum is not None
@@ -122,13 +127,13 @@ def _build_task(
         pdf_dir=format_dirs.get("pdf", ""),
         export_formats=formats,
         figure_size=figure_size, export_resolution=export_resolution,
-        normalize=normalize, html_plot_path=html_path, metrics_text=metrics_text,
+        html_plot_path=html_path, metrics_text=metrics_text,
         peptide=query_spectrum.peptidoform, charge=query_spectrum.precursor_charge,
     )
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
-                     normalize, sanitize_fn, format_dirs=None, figure_size=(12, 8),
+                     sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
     """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
 
@@ -158,7 +163,6 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     folder_name=folder_name, plot_title=plot_title, sanitize_fn=sanitize_fn,
                     format_dirs=format_dirs, export_formats=export_formats, html_dir=html_dir,
                     figure_size=figure_size, export_resolution=export_resolution,
-                    normalize=normalize,
                 ))
         elif plot_unpaired_queries:
             task_id += 1
@@ -167,6 +171,5 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 folder_name=folder_name, plot_title=plot_title, sanitize_fn=sanitize_fn,
                 format_dirs=format_dirs, export_formats=export_formats, html_dir=html_dir,
                 figure_size=figure_size, export_resolution=export_resolution,
-                normalize=normalize,
             ))
     return tasks

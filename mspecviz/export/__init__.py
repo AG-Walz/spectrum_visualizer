@@ -12,11 +12,14 @@ from mspecviz.export.export_pipeline import (
     PlotSettings,
     run_export,
 )
+from mspecviz.export.run_settings import RUN_SETTINGS_FIELDS, build_run_settings
 
 __all__ = [
     "ExportCallbacks",
     "ExportResult",
     "ExportSelection",
     "PlotSettings",
+    "RUN_SETTINGS_FIELDS",
+    "build_run_settings",
     "run_export",
 ]

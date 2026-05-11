@@ -1,6 +1,5 @@
-"""
-Export utilities: filename sanitization and directory structure creation.
-"""
+""" Export utilities: filename sanitization and directory structure creation. """
+
 import hashlib
 import json
 import logging
@@ -88,9 +87,8 @@ def find_or_create_export_directory(
     """Plan an export dir ``{project}_{NNN}_{YYYYMMDD}/`` — reuse on fingerprint match, else bump NNN.
 
     Returns the root ``Path``; nothing is created until :func:`commit_export_directory`
-    runs (so we don't leave empty folders on abort). On re-run with identical
-    settings the matching folder is renamed to today's date, enabling
-    skip-existing-plots behaviour.
+    runs (so we don't leave empty folders on abort). On re-run with identical settings the 
+    matching folder is renamed to today's date, enabling skip-existing-plots behaviour.
     """
     base = Path(base_dir)
     prefix = sanitize_filename(project_name)

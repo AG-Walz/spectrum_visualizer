@@ -37,7 +37,6 @@ class ComparisonTask:
     export_formats: list[str] = field(default_factory=lambda: ["png"])
     figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
-    normalize: bool = True
 
     # Output path for interactive Plotly HTML (empty string = skip HTML output)
     html_plot_path: str = ""

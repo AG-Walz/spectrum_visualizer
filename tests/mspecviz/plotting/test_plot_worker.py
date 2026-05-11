@@ -46,7 +46,6 @@ def _make_single_task(tmp_path, skip_plot=False):
         export_formats=["png"],
         figure_size=(8, 5),
         export_resolution=72,
-        normalize=True,
         skip_plot=skip_plot,
     )
 
@@ -71,7 +70,6 @@ def _make_mirror_task(tmp_path, skip_plot=False):
         export_formats=["png"],
         figure_size=(8, 5),
         export_resolution=72,
-        normalize=True,
         skip_plot=skip_plot,
         query_file="query.mzML",
         reference_file="ref.mzML",

@@ -44,7 +44,6 @@ ION_COLORS: dict[str, str] = {
 
 IMAGE_FORMATS: tuple[str, ...] = ("png", "svg", "pdf", "html")
 
-# Defaults for all user-tunable parameters, with validation at construction time
 
 @dataclass(frozen=True)
 class Defaults:
@@ -77,29 +76,6 @@ class Defaults:
     # --- Summary plots ------------------------------------------------------
     summary_metric: str = "R² binned"
     summary_plot_types: tuple[str, ...] = ("dual_axis", "ridgeline")
-
-    def __post_init__(self):
-        """Fail loud at construction time if a config supplies an unknown enum value."""
-        for field, allowed in (
-            ("intensity_mode", _INTENSITY_MODES),
-            ("koina_instrument_type", _KOINA_INSTRUMENTS),
-            ("koina_model", _KOINA_MODEL_IDS),
-            ("image_format", _IMAGE_FORMATS),
-        ):
-            value = getattr(self, field)
-            if value not in allowed:
-                raise ValueError(f"{field}={value!r} not one of {sorted(allowed)}")
-        bad = set(self.export_formats) - _IMAGE_FORMATS
-        if bad:
-            raise ValueError(
-                f"export_formats contains {sorted(bad)!r}; each must be one of {sorted(_IMAGE_FORMATS)}"
-            )
-
-# Dictionaries and sets for validating config values at construction time
-_INTENSITY_MODES = frozenset({"Relative", "Raw"})
-_KOINA_INSTRUMENTS = frozenset(INSTRUMENT_TYPES)
-_KOINA_MODEL_IDS = frozenset(KOINA_MODELS.values())
-_IMAGE_FORMATS = frozenset(IMAGE_FORMATS)
 
 
 DEFAULTS = Defaults()

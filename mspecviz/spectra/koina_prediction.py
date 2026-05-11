@@ -26,12 +26,6 @@ except ImportError:
     KOINA_AVAILABLE = False
 
 
-def _warn_none(message: str) -> None:
-    """Log *message* at WARNING and return ``None`` — used by the predict-spectrum branches."""
-    logger.warning(message)
-    return None
-
-
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     """Convert a ProForma peptidoform to Koina's UniMod-bracket notation.
 
@@ -51,27 +45,6 @@ def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     return "".join(parts)
 
 
-def _build_koina_input(unimod_seq: str, charge: int, collision_energy: int,
-                       instrument_type: str) -> pd.DataFrame:
-    """Build the single-row input DataFrame Koina expects."""
-    return pd.DataFrame({
-        "peptide_sequences": [unimod_seq],
-        "precursor_charges": [charge],
-        "collision_energies": [collision_energy],
-        "instrument_types": [instrument_type],
-    })
-
-
-def _koina_predictions_to_frame(predictions) -> pd.DataFrame:
-    """Convert raw Koina output into our standard ``[mz, intensity, annotation]`` frame."""
-    result = pd.DataFrame({
-        "mz": predictions["mz"].astype(float),
-        "intensity": predictions["intensities"].astype(float),
-        "annotation": predictions["annotation"].astype(str).str.replace(r"^b'|'$", "", regex=True),
-    })
-    return result[result["intensity"] > 0].reset_index(drop=True)
-
-
 def predict_koina_spectrum(
     peptidoform_str: str,
     charge: int,
@@ -81,23 +54,36 @@ def predict_koina_spectrum(
 ) -> Optional[pd.DataFrame]:
     """Predict MS/MS spectrum via Koina. Returns DataFrame [mz, intensity, annotation] or None."""
     if not KOINA_AVAILABLE:
-        return _warn_none("koinapy not installed -- cannot generate Koina predictions")
+        logger.warning("koinapy not installed -- cannot generate Koina predictions")
+        return None
 
     try:
         unimod_seq = convert_peptide_to_unimod(peptidoform_str)
     except Exception as error:
-        return _warn_none(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
+        logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
+        return None
 
     try:
-        predictions = Koina(model_id).predict(
-            _build_koina_input(unimod_seq, charge, collision_energy, instrument_type)
-        )
-        result = _koina_predictions_to_frame(predictions)
+        koina_input = pd.DataFrame({
+            "peptide_sequences": [unimod_seq],
+            "precursor_charges": [charge],
+            "collision_energies": [collision_energy],
+            "instrument_types": [instrument_type],
+        })
+        predictions = Koina(model_id).predict(koina_input)
+        result = pd.DataFrame({
+            "mz": predictions["mz"].astype(float),
+            "intensity": predictions["intensities"].astype(float),
+            "annotation": predictions["annotation"].astype(str).str.replace(r"^b'|'$", "", regex=True),
+        })
+        result = result[result["intensity"] > 0].reset_index(drop=True)
     except Exception as error:
-        return _warn_none(f"Koina prediction failed for '{peptidoform_str}': {error}")
+        logger.warning(f"Koina prediction failed for '{peptidoform_str}': {error}")
+        return None
 
     if result.empty:
-        return _warn_none(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
+        logger.warning(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
+        return None
 
     logger.info(f"Koina: predicted {len(result)} fragments for '{peptidoform_str}' (model={model_id}, CE={collision_energy}, inst={instrument_type})")
     return result

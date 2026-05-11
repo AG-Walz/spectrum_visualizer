@@ -13,8 +13,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mspecviz.annotation.comparison_metrics import compute_all_metrics, format_metrics_text
-from mspecviz.plotting.mirror_matplotlib import create_mirror_plot, create_single_spectrum_plot
-from mspecviz.plotting.mirror_plotly import create_plotly_mirror_plot, create_plotly_single_plot
+from mspecviz.plotting.mirror import create_spectrum_plot
 from mspecviz.plotting.plot_task_dataclasses import ComparisonResult, ComparisonTask
 
 logger = logging.getLogger(__name__)
@@ -46,27 +45,16 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             summary_row = _build_summary_row(task, metrics)
 
         if not task.skip_plot:
-            if is_mirror:
-                fig = create_mirror_plot(
-                    upper_spectrum=task.query_frame,
-                    lower_spectrum=task.reference_frame,
-                    upper_label=task.query_label,
-                    lower_label=task.reference_label,
-                    title=task.plot_title,
-                    metrics_text=task.metrics_text or format_metrics_text(metrics),
-                    figure_size=task.figure_size,
-                    export_resolution=task.export_resolution,
-                    normalize=task.normalize,
-                )
-            else:
-                fig = create_single_spectrum_plot(
-                    spectrum=task.query_frame,
-                    title=task.plot_title,
-                    label=task.query_label,
-                    figure_size=task.figure_size,
-                    export_resolution=task.export_resolution,
-                    normalize=task.normalize,
-                )
+            fig = create_spectrum_plot(
+                task.query_frame,
+                task.reference_frame if is_mirror else None,
+                backend="ms_matplotlib",
+                title=task.plot_title,
+                query_label=task.query_label,
+                reference_label=task.reference_label,
+                metrics_text=(task.metrics_text or format_metrics_text(metrics)) if is_mirror else "",
+                figure_size=task.figure_size,
+            )
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             plt.close(fig)
 
@@ -119,21 +107,16 @@ def _save_task_html(task: ComparisonTask) -> str:
     try:
         out = Path(task.html_plot_path)
         out.parent.mkdir(parents=True, exist_ok=True)
-
-        if task.task_type == "mirror" and task.reference_frame is not None:
-            fig = create_plotly_mirror_plot(
-                upper_spectrum=task.query_frame,
-                lower_spectrum=task.reference_frame,
-                title=task.plot_title,
-                normalize=task.normalize,
-            )
-        else:
-            fig = create_plotly_single_plot(
-                spectrum=task.query_frame,
-                title=task.plot_title,
-                normalize=task.normalize,
-            )
-
+        is_mirror = task.task_type == "mirror" and task.reference_frame is not None
+        fig = create_spectrum_plot(
+            task.query_frame,
+            task.reference_frame if is_mirror else None,
+            backend="ms_plotly",
+            title=task.plot_title,
+            query_label=task.query_label,
+            reference_label=task.reference_label,
+            metrics_text=task.metrics_text if is_mirror else "",
+        )
         fig.write_html(str(out), include_plotlyjs="cdn")
         return str(out)
 

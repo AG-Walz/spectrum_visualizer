@@ -8,46 +8,17 @@ import pandas as pd
 
 from cli.config import CLIConfig
 from cli.output import TerminalProgress
-from mspecviz.dataframes import (
-    build_heatmap_dataframe,
-    build_peaks_dataframe,
-    build_sequence_dataframe,
-)
+from mspecviz.dataframes import build_visualization_frames
 from mspecviz.export import (
     ExportCallbacks,
     ExportResult,
     ExportSelection,
     PlotSettings,
+    build_run_settings,
     run_export,
 )
 
 logger = logging.getLogger("mspecviz.cli")
-
-
-def _build_run_settings(config: CLIConfig) -> dict:
-    """Serialise ``config`` into the run_settings dict stored alongside exports."""
-    return {
-        "idxml_files": config.idxml_files, "mzml_files": config.mzml_files,
-        "peptides": config.peptides, "reference_substring": config.reference_substring,
-        "ion_types": config.ion_types, "mz_tolerance": config.mz_tolerance,
-        "add_neutral_losses": config.add_neutral_losses,
-        "intensity_mode": config.intensity_mode,
-        "koina_enabled": config.koina_enabled, "koina_model": config.koina_model,
-        "koina_collision_energy": config.koina_collision_energy,
-        "koina_instrument_type": config.koina_instrument_type,
-        "export_formats": config.export_formats, "export_resolution": config.export_resolution,
-        "figure_size": list(config.figure_size),
-        "summary_metric": config.summary_metric,
-        "summary_plot_types": list(config.summary_plot_types),
-    }
-
-
-def _build_visualization_frames(annotated_queries, psm_frame) -> dict:
-    """Build peaks/sequence/heatmap LazyFrames from the annotated queries list."""
-    peaks = build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries])
-    sequence = build_sequence_dataframe([(psm_id, s) for psm_id, s, _ in annotated_queries])
-    heatmap = build_heatmap_dataframe([s for _, s, _ in annotated_queries])
-    return {"psm": psm_frame, "peaks": peaks, "sequence": sequence, "heatmap": heatmap}
 
 
 def _make_callbacks(quiet: bool) -> ExportCallbacks:
@@ -99,14 +70,13 @@ def _build_export_selection(config: CLIConfig) -> ExportSelection:
     )
 
 
-def _build_plot_settings(config: CLIConfig, normalize: bool) -> PlotSettings:
+def _build_plot_settings(config: CLIConfig) -> PlotSettings:
     """Translate the CLI config into a :class:`PlotSettings` for the runner."""
     return PlotSettings(
         export_formats=list(config.export_formats),
         figure_size=config.figure_size,
         export_resolution=config.export_resolution,
         plot_unpaired_queries=config.plot_unpaired_queries,
-        normalize=normalize,
         workers=config.workers,
     )
 
@@ -125,11 +95,10 @@ def run_cli_export(
     variant_groups: dict,
     comparison_rows: list,
     psm_frame,
-    normalize: bool,
     quiet: bool,
 ) -> ExportResult:
     """Full CLI export — delegates to :func:`mspecviz.export.run_export`."""
-    frames = _build_visualization_frames(annotated_queries, psm_frame)
+    frames = build_visualization_frames(annotated_queries, psm_frame)
     comparison_frame = pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
 
     if not quiet:
@@ -138,14 +107,17 @@ def run_cli_export(
     result = run_export(
         export_directory=config.export_directory,
         project_name=config.project_name,
-        run_settings=_build_run_settings(config),
+        run_settings=build_run_settings(
+            lambda key, default: getattr(config, key, default),
+            peptides=config.peptides,
+        ),
         frames=frames,
         annotated_queries=annotated_queries,
         reference_store=reference_store,
         variant_groups=variant_groups,
         comparison_frame=comparison_frame,
         selection=_build_export_selection(config),
-        plot_settings=_build_plot_settings(config, normalize),
+        plot_settings=_build_plot_settings(config),
         callbacks=_make_callbacks(quiet),
     )
 

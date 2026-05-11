@@ -42,7 +42,8 @@ def comparison_metrics_fragment():
 
     display_cols = ["Peptide", "Modification", "Charge", "Query", "Reference",
                     "R\u00b2 match", "R\u00b2 binned", "Cosine", "Entropy",
-                    "Dice", "Jaccard", "SharedRatio", "shared", "ann_q", "ann_r"]
+                    "Dice", "Jaccard", "SharedRatio", "shared",
+                    "query_annotation_count", "reference_annotation_count"]
     available_cols = [c for c in display_cols if c in comparison_frame.columns]
     st.dataframe(comparison_frame[available_cols], width="stretch", hide_index=True)
 

@@ -15,6 +15,7 @@ from mspecviz.dataframes.insight_frames import (
     build_heatmap_dataframe,
     build_peaks_dataframe,
     build_sequence_dataframe,
+    build_visualization_frames,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "build_peaks_dataframe",
     "build_psm_table",
     "build_sequence_dataframe",
+    "build_visualization_frames",
 ]

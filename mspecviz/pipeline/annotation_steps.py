@@ -9,7 +9,7 @@ from typing import Any
 import numpy as np
 from psm_utils import Peptidoform
 
-from mspecviz.annotation.comparison_metrics import METRIC_SHORT_TO_DISPLAY, compute_all_metrics
+from mspecviz.annotation.comparison_metrics import METRIC_SHORT_TO_DISPLAY
 from mspecviz.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
@@ -25,10 +25,7 @@ def get_koina_prediction(
     koina_collision_energy: int = DEFAULTS.koina_collision_energy,
     koina_instrument_type: str = DEFAULTS.koina_instrument_type,
 ):
-    """Get Koina AI prediction and annotate as reference spectrum.
-
-    Returns ``(LoadedSpectrum, annotated_frame)`` tuple or ``None``.
-    """
+    """Get Koina AI prediction and annotate as reference spectrum. """
     if not KOINA_AVAILABLE:
         return None
 
@@ -128,18 +125,10 @@ def build_comparison_row(psm_id, result, reference_spectrum, reference_frame, me
     }
     for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
         row[display_name] = metrics.get(short_key, float("nan"))
-    for count_key in ("total_q", "total_r", "ann_q", "ann_r", "shared"):
+    for count_key in (
+        "query_peak_count", "reference_peak_count",
+        "query_annotation_count", "reference_annotation_count", "shared",
+    ):
         row[count_key] = metrics.get(count_key, 0)
 
     return row
-
-
-def _build_metric_rows(psm_id, result, query_frame, references):
-    """Compute metrics + build summary rows for each query/ref pair."""
-    rows: list[dict[str, Any]] = []
-    for reference_spectrum, reference_frame in references:
-        metrics = compute_all_metrics(query_frame, reference_frame)
-        rows.append(build_comparison_row(
-            psm_id, result, reference_spectrum, reference_frame, metrics,
-        ))
-    return rows

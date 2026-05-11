@@ -29,7 +29,7 @@ from mspecviz.pipeline import (
     build_psm_to_variant_mapping,
     format_spectrum_labels,
 )
-from mspecviz.plotting import create_plotly_mirror_plot
+from mspecviz.plotting import create_spectrum_plot
 from mspecviz.spectra.loaded_spectrum import source_label
 from mspecviz.spectra.mzml_native_ids import extract_id_number
 
@@ -171,21 +171,22 @@ def _render_metrics_expander(metrics: dict) -> None:
             for key, value in metrics.items() if key in METRIC_SHORT_TO_DISPLAY
         }
         metric_data["Shared Ions"] = str(metrics.get("shared", 0))
-        metric_data["Annotated (Query)"] = str(metrics.get("ann_q", 0))
-        metric_data["Annotated (Ref)"] = str(metrics.get("ann_r", 0))
+        metric_data["Annotated (Query)"] = str(metrics.get("query_annotation_count", 0))
+        metric_data["Annotated (Ref)"] = str(metrics.get("reference_annotation_count", 0))
         st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
 
 
 def _render_mirror_pair(query_spectrum, query_frame,
-                        reference_spectrum, reference_frame, normalize: bool) -> None:
+                        reference_spectrum, reference_frame) -> None:
     """Render one mirror plot + metrics expander for the chosen query/reference pair."""
     metrics = compute_all_metrics(query_frame, reference_frame)
     query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
     title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
-    fig = create_plotly_mirror_plot(
-        upper_spectrum=query_frame, lower_spectrum=reference_frame,
-        title=title, upper_label=query_label, lower_label=ref_label,
-        metrics_text=format_metrics_text(metrics), normalize=normalize,
+    fig = create_spectrum_plot(
+        query_frame, reference_frame,
+        backend="ms_plotly",
+        title=title, query_label=query_label, reference_label=ref_label,
+        metrics_text=format_metrics_text(metrics),
     )
     st.plotly_chart(fig, width="stretch")
     _render_metrics_expander(metrics)
@@ -300,7 +301,4 @@ def mirror_plots_fragment(params: dict):
 
     query_spectrum, query_anno = annotated_queries[query_psm]
     reference_spectrum, reference_anno = refs[ref_index[ref_id]]
-    normalize = get_param(params, "intensity_mode", DEFAULTS.intensity_mode) == "Relative"
-    _render_mirror_pair(
-        query_spectrum, query_anno, reference_spectrum, reference_anno, normalize,
-    )
+    _render_mirror_pair(query_spectrum, query_anno, reference_spectrum, reference_anno)

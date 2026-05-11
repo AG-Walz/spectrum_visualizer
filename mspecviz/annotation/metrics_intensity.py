@@ -1,8 +1,7 @@
 """Intensity-based spectrum similarity metrics.
 
 R² (matched + binned) and cosine all rest on aligning intensities of
-shared annotations. The shared helper :func:`_get_matching_intensities` lives
-here; set-based metrics in :mod:`mspecviz.annotation.comparison_metrics` reuse it.
+shared annotations. 
 """
 import logging
 
@@ -18,12 +17,11 @@ def _get_matching_intensities(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Find overlapping annotated ions; returns ``(q_int, r_int)``.
+    """Find overlapping annotated ions; returns ``(query_intensities, reference_intensities)``.
 
-    Within each spectrum, multiple peaks may share an annotation (e.g. isotopes
-    or charge states with the same string label). We collapse to the brightest
-    per label, then keep only labels present in both spectra. ``len(q_int)``
-    gives the number of shared annotations.
+    Within each spectrum, multiple peaks may share an annotation (e.g. isotopes or charge states
+    with the same string label). First collapse to the brightest per label, then keep only 
+    labels present in both spectra. ``len(query_intensities)`` is the number of shared labels.
     """
     query_max = query_frame[query_frame["is_annotated"]].groupby("annotation")["intensity"].max()
     reference_max = reference_frame[reference_frame["is_annotated"]].groupby("annotation")["intensity"].max()

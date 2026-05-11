@@ -1,14 +1,7 @@
-"""Set-based + entropy similarity metrics, full-metric aggregator, and formatting.
+"""Set-based + entropy similarity metrics, full-metric aggregator, and formatting."""
 
-Set metrics (Dice / Jaccard / shared-ratio) operate on the *set* of shared
-annotations rather than their intensities. This file owns the
-``compute_all_metrics`` aggregator that the rest of the pipeline calls — it
-combines intensity metrics from :mod:`metrics_intensity` with the set
-metrics here, and produces the dict consumed by ``format_metrics_text``.
-"""
 import logging
 import math
-
 import numpy as np
 import pandas as pd
 
@@ -18,7 +11,9 @@ from mspecviz.annotation.metrics_intensity import (
     _r2_from_arrays,
     compute_r2_binned,
 )
+from mspecviz.common.defaults import DEFAULTS
 
+# Optional dependencies
 try:
     import ms_entropy
 except ImportError:
@@ -30,6 +25,7 @@ logger = logging.getLogger(__name__)
 def compute_spectral_entropy_similarity(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
+    tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> float:
     """Spectral entropy similarity (Li et al., Nature Methods 2021)."""
     if query_frame.empty or reference_frame.empty:
@@ -39,12 +35,12 @@ def compute_spectral_entropy_similarity(
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
-    q_spec = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
-    r_spec = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
+    query_spectrum_array = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
+    reference_spectrum_array = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
 
     try:
         similarity = ms_entropy.calculate_entropy_similarity(
-            q_spec, r_spec, ms2_tolerance_in_da=0.02
+            query_spectrum_array, reference_spectrum_array, ms2_tolerance_in_da=tolerance_da
         )
         return float(similarity)
     except (ValueError, FloatingPointError) as error:
@@ -55,35 +51,39 @@ def compute_spectral_entropy_similarity(
 def compute_all_metrics(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
+    tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> dict[str, float | int]:
-    """Compute all 7 comparison metrics plus context counts.
+    """Compute all 7 comparison metrics and context counts.
 
     Returns dict with keys:
         Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
-        Counts:   total_q, total_r, ann_q, ann_r, shared
+        Counts:   query_peak_count, reference_peak_count, 
+                  query_annotation_count, reference_annotation_count, 
+                  (both are unique label counts, not peak counts), shared ratio
     """
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(query_intensities)
 
-    ann_q = int(query_frame["is_annotated"].sum())
-    ann_r = int(reference_frame["is_annotated"].sum())
+    # Unique-label counts — duplicate annotations within a spectrum collapse to one label 
+    query_annotation_count = int(query_frame[query_frame["is_annotated"]]["annotation"].nunique())
+    reference_annotation_count = int(reference_frame[reference_frame["is_annotated"]]["annotation"].nunique())
 
-    denom_dice = ann_q + ann_r
-    denom_jacc = ann_q + ann_r - n_shared
-    denom_shr = min(ann_q, ann_r)
+    denom_dice = query_annotation_count + reference_annotation_count
+    denom_jacc = query_annotation_count + reference_annotation_count - n_shared
+    denom_shr = min(query_annotation_count, reference_annotation_count)
 
     return {
         "R2m": _r2_from_arrays(query_intensities, reference_intensities),
         "R2b": compute_r2_binned(query_frame, reference_frame),
         "Cos": _cosine_from_arrays(query_intensities, reference_intensities),
-        "Ent": compute_spectral_entropy_similarity(query_frame, reference_frame),
+        "Ent": compute_spectral_entropy_similarity(query_frame, reference_frame, tolerance_da=tolerance_da),
         "Dice": float(2 * n_shared / denom_dice) if denom_dice else float("nan"),
         "Jacc": float(n_shared / denom_jacc) if denom_jacc else float("nan"),
         "ShR": float(n_shared / denom_shr) if denom_shr else float("nan"),
-        "total_q": len(query_frame),
-        "total_r": len(reference_frame),
-        "ann_q": ann_q,
-        "ann_r": ann_r,
+        "query_peak_count": len(query_frame),
+        "reference_peak_count": len(reference_frame),
+        "query_annotation_count": query_annotation_count,
+        "reference_annotation_count": reference_annotation_count,
         "shared": n_shared,
     }
 
