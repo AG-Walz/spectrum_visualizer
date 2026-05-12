@@ -75,17 +75,20 @@ def _show_saved_files_expander(result) -> None:
 def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
     """Drive :func:`mspecviz.export.run_export` and render the resulting gallery."""
+    # Guard: refuse to export when Search & Load hasn't populated session state
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     if not annotated_queries:
         st.warning("No annotated spectra in session -- re-run **Search & Load** first.")
         return None
 
+    # Build config: ExportSelection + PlotSettings shared with the CLI orchestrator
     selection = ExportSelection(
         parquet=do_parquet, csv=do_csv,
         mirror_plots=do_mirror, summary_plots=do_summary, html=do_html,
     )
     plot_settings = _build_plot_settings(params)
 
+    # Dispatch: run shared export pipeline with a live st.status block
     with st.status("Exporting...", expanded=True) as status:
         result = run_export(
             export_directory=export_dir,
@@ -102,6 +105,7 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
         )
         _show_export_summary(result, status)
 
+    # Post-export: list saved files and render the plot gallery
     _show_saved_files_expander(result)
     _render_plot_gallery(result.export_root)
     return result.export_root

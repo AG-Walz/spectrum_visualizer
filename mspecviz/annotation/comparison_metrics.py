@@ -28,6 +28,7 @@ def compute_spectral_entropy_similarity(
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> float:
     """Spectral entropy similarity (Li et al., Nature Methods 2021)."""
+    # Guard against empty spectra or missing optional dependency
     if query_frame.empty or reference_frame.empty:
         return float("nan")
 
@@ -35,9 +36,11 @@ def compute_spectral_entropy_similarity(
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
+    # Pack each spectrum as the (mz, intensity) 2-column array ms_entropy expects
     query_spectrum_array = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
     reference_spectrum_array = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
 
+    # Call ms_entropy; downgrade numeric errors to NaN so callers can tabulate
     try:
         similarity = ms_entropy.calculate_entropy_similarity(
             query_spectrum_array, reference_spectrum_array, ms2_tolerance_in_da=tolerance_da
@@ -61,17 +64,20 @@ def compute_all_metrics(
                   query_annotation_count, reference_annotation_count, 
                   (both are unique label counts, not peak counts), shared ratio
     """
+    # Align shared-annotation intensities for the intensity-based metrics
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(query_intensities)
 
-    # Unique-label counts — duplicate annotations within a spectrum collapse to one label 
+    # Unique-label counts — duplicate annotations within a spectrum collapse to one label
     query_annotation_count = int(query_frame[query_frame["is_annotated"]]["annotation"].nunique())
     reference_annotation_count = int(reference_frame[reference_frame["is_annotated"]]["annotation"].nunique())
 
+    # Precompute denominators for the set-overlap metrics
     denom_dice = query_annotation_count + reference_annotation_count
     denom_jacc = query_annotation_count + reference_annotation_count - n_shared
     denom_shr = min(query_annotation_count, reference_annotation_count)
 
+    # Assemble the result dict: 7 metrics + context counts
     return {
         "R2m": _r2_from_arrays(query_intensities, reference_intensities),
         "R2b": compute_r2_binned(query_frame, reference_frame),

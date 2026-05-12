@@ -66,6 +66,7 @@ def _load_peptides(source) -> list:
 
 def _load_config(path: str) -> SimpleNamespace:
     """Load YAML, merge with DEFAULTS, resolve globs + peptide source. Exits on error."""
+    # Parse: read YAML file, error out on missing path or non-mapping payload
     config_path = Path(path)
     if not config_path.is_file():
         sys.exit(f"Error: config file not found: {path}")
@@ -73,10 +74,13 @@ def _load_config(path: str) -> SimpleNamespace:
     if not isinstance(yaml_config, dict):
         sys.exit(f"Error: config must be a YAML mapping: {path}")
 
+    # Merge: CLI extras + DEFAULTS overlaid by user YAML (last write wins)
     # Merge into a single dict first; SimpleNamespace(**a, **b) raises TypeError
     # on duplicate keys, but dict-literal **-unpacking is "last write wins".
     merged: dict = {**_CLI_EXTRAS, **asdict(DEFAULTS), **yaml_config}
     config = SimpleNamespace(**merged)
+
+    # Validate: expand input globs and require non-empty peptide list
     config.idxml_files = _expand_globs(config.idxml_files)
     config.mzml_files = _expand_globs(config.mzml_files)
     if not config.idxml_files or not config.mzml_files:
@@ -180,6 +184,7 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
 
 
 def main() -> None:
+    # Bootstrap: configure logging, validate CLI args, load YAML config
     logging.basicConfig(
         level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -192,10 +197,12 @@ def main() -> None:
     start = time.time()
     config = _load_config(sys.argv[1])
 
+    # Step 1: search idXMLs for peptide variants, bail if nothing matched
     variant_groups, total_psms = _run_search(config)
     if total_psms == 0:
         sys.exit("Error: No PSMs found.")
 
+    # Step 2: stream + annotate spectra against the search results
     variant_groups_copy = copy.deepcopy(variant_groups)
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     annotated_queries, reference_store, comparison_rows = _run_load(
@@ -204,6 +211,7 @@ def main() -> None:
     if not annotated_queries:
         sys.exit("Error: No spectra could be loaded or annotated.")
 
+    # Step 3: export plots, tables, settings; report total wall time
     result = _run_export(
         config, annotated_queries, reference_store, variant_groups_copy,
         comparison_rows, psm_frame,

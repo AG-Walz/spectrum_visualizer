@@ -36,15 +36,18 @@ def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: di
 
 def _apply_deferred_navigation(keys: dict) -> None:
     """Consume any pending Up/folder-button navigation request."""
+    # Guard: bail when no navigation was requested this run
     nav_key = keys["nav"]
     if not st.session_state.get(nav_key):
         return
+    # Apply: update current directory + visible path input
     new_dir = st.session_state[nav_key]
     st.session_state[keys["dir"]] = new_dir
     # Sync the path input to the new directory now that navigation fired.
     # Doing this only on real navigation events (Up/folder buttons) — not on
     # every rerun — preserves the user's in-progress typing in the path input.
     st.session_state[keys["path_input"]] = new_dir
+    # Cleanup: clear nav slot + stale select-all/recursive widget state
     st.session_state[nav_key] = None
     for k in (keys["select_all"], keys["recursive"]):
         st.session_state.pop(k, None)
@@ -79,15 +82,18 @@ def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
 
 def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> None:
     """Render up to 16 sub-folders as a 4-column button grid."""
+    # List sub-folders; bail early when the directory has none
     subdirs = [Path(path) for path in list_subdirectories(current_dir)]
     if not subdirs:
         return
 
+    # Inject compact-button styling for the folder grid
     st.markdown(
         "<style>.folder-nav button{font-size:0.8rem !important;"
         "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
         unsafe_allow_html=True,
     )
+    # Render the 4×4 button grid; each button defers navigation via the nav slot
     cols_per_row = 4
     max_folders = 16
     for row_start in range(0, min(len(subdirs), max_folders), cols_per_row):
@@ -102,6 +108,7 @@ def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> Non
                              help=str(folder)):
                     st.session_state[keys["nav"]] = str(folder)
                     st.rerun()
+    # Overflow note: indicate how many folders were truncated
     if len(subdirs) > max_folders:
         st.caption(f"... and {len(subdirs) - max_folders} more folders")
 
@@ -129,6 +136,7 @@ def _selections_outside_scope(state_key: str, file_labels, label_to_path,
 def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
                        current_dir: str, extensions: list, recursive: bool) -> None:
     """Render the filter input, multiselect, and persist the selection list."""
+    # List + filter files in the current view by the substring filter input
     file_labels, label_to_path = _list_browser_files(current_dir, extensions, recursive)
     filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
                                 placeholder="Type to filter filenames...")
@@ -137,6 +145,7 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
         if filter_text else file_labels
     )
 
+    # Empty-state: show info text and bail before rendering pickers
     if not filtered_labels:
         if filter_text:
             st.info(f"No files match filter '{filter_text}'")
@@ -144,6 +153,7 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
             st.info(f"No {extensions[0]} files found")
         return
 
+    # Compute defaults: preserve out-of-scope picks, mark in-scope ones as selected
     all_selected_paths = set(st.session_state.get(state_key, []))
     other_dir_selections = _selections_outside_scope(
         state_key, file_labels, label_to_path, Path(current_dir), recursive,
@@ -152,6 +162,7 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
     valid_defaults = [lbl for lbl in filtered_labels if label_to_path[lbl] in all_selected_paths]
     all_in_scope_selected = set(valid_defaults) == set(filtered_labels) and len(valid_defaults) > 0
 
+    # Render select-all checkbox + the multiselect (or skip multiselect when all selected)
     select_all = st.checkbox(
         f"Select all {len(filtered_labels)} files"
         + (f" (filtered from {len(file_labels)})" if filter_text else ""),
@@ -168,6 +179,7 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
             key=f"{key_prefix}_files",
         )
 
+    # Persist: merge with out-of-scope selections, dedupe while keeping order
     current_selected_paths = [label_to_path[lbl] for lbl in selected_labels]
     merged_selections = list(dict.fromkeys(other_dir_selections + current_selected_paths))
     st.session_state[state_key] = merged_selections
@@ -198,16 +210,19 @@ def render_directory_browser(
         default_dir: Initial directory when state_key is unset.
         params: Workspace params dict (for initial selections + default dir).
     """
+    # Bootstrap: initialise state + consume any pending navigation request
     params = params or {}
     keys = _browser_keys(key_prefix)
 
     _init_browser_state(keys, state_key, default_dir, params)
     _apply_deferred_navigation(keys)
 
+    # Render navigation widgets: path bar + sub-folder grid
     current_dir = st.session_state[keys["dir"]]
     _render_path_bar(key_prefix, keys, current_dir)
     _render_subfolder_grid(key_prefix, keys, current_dir)
 
+    # Render file picker (with recursive toggle) and the clear-all action
     recursive = st.checkbox("Include subdirectories", value=False,
                             key=keys["recursive"],
                             help="Scan all subdirectories for matching files")

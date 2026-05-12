@@ -34,16 +34,18 @@ def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
     """Worker: compute metrics, render figure, save to disk. Skips plot if ``skip_plot`` is set."""
     try:
+        # Setup: classify task type, init optional output slots
         is_mirror = task.task_type == "mirror" and task.reference_frame is not None
         summary_row = None
         png_path = svg_path = pdf_path = html_path = ""
 
-        # Mirror tasks always compute metrics + summary row, even if skip_plot.
+        # Metrics: mirror tasks always compute metrics + summary row, even if skip_plot
         metrics = None
         if is_mirror:
             metrics = compute_all_metrics(task.query_frame, task.reference_frame)
             summary_row = _build_summary_row(task, metrics)
 
+        # Static figure: render via matplotlib, persist to each requested format
         if not task.skip_plot:
             fig = create_spectrum_plot(
                 task.query_frame,
@@ -58,9 +60,11 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             plt.close(fig)
 
+        # Interactive HTML: optional Plotly export when an output path is set
         if task.html_plot_path:
             html_path = _save_task_html(task)
 
+        # Package result for the main process
         return ComparisonResult(
             task_id=task.task_id, task_type=task.task_type, success=True,
             png_path=png_path, svg_path=svg_path, pdf_path=pdf_path,

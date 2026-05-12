@@ -128,10 +128,13 @@ def _run_plot_tasks(
     on_warning: Callable[[str], None],
 ) -> int:
     """Build plot tasks and dispatch through :func:`run_tasks`."""
+    # Resolve format set: append html when caller requested it, map each to a subdir
     base_formats = list(plot_settings.export_formats)
     if do_html and "html" not in base_formats:
         base_formats.append("html")
     format_dirs, html_dir = _resolve_format_dirs(root_dir, base_formats)
+
+    # Build tasks: one per (query, reference) pair with all per-format output paths
     tasks = build_plot_tasks(
         annotated_queries, reference_store, variant_groups,
         sanitize_fn=sanitize_filename,
@@ -144,6 +147,7 @@ def _run_plot_tasks(
     if not tasks:
         return 0
 
+    # Dispatch & collect: tally saved paths, surface worker errors, tick progress
     total_files = 0
     total = len(tasks)
     for completed, (_task, ok, result) in enumerate(run_tasks(
@@ -203,6 +207,7 @@ def run_export(
     Progress and warnings are surfaced through ``callbacks`` so the CLI can render
     a terminal bar and Streamlit can render ``st.caption`` / ``st.warning``.
     """
+    # Normalise inputs: fall back to defaults, wire optional callbacks
     selection = selection or ExportSelection()
     plot_settings = plot_settings or PlotSettings()
     callbacks = callbacks or ExportCallbacks()
@@ -210,11 +215,13 @@ def run_export(
     on_progress = callbacks.on_plot_progress or (lambda *_: None)
     on_warning = callbacks.on_warning or (lambda *_: None)
 
+    # Plan & commit directory: reuse versioned folder or allocate next NNN
     root_dir = find_or_create_export_directory(export_directory, project_name, run_settings)
     commit_export_directory(root_dir, run_settings)
 
     saved_files: list[str] = [str(root_dir / "run_settings.json")]
 
+    # Tabular artefacts: parquet frames + comparison CSV/XLSX
     if selection.parquet:
         on_step("Saving Parquet DataFrames...")
         _write_parquets(frames, root_dir, saved_files)
@@ -223,6 +230,7 @@ def run_export(
         on_step("Saving comparison summary...")
         _write_comparison_summary(comparison_frame, root_dir, saved_files, on_warning)
 
+    # Mirror plots: dispatch per-PSM tasks across workers
     mirror_plot_count = 0
     if selection.mirror_plots or selection.html:
         on_step("Generating mirror plots...")
@@ -232,6 +240,7 @@ def run_export(
             plot_settings, selection.html, saved_files, on_progress, on_warning,
         )
 
+    # Summary plots: dual-axis / ridgeline / heatmap from comparison frame
     summary_plot_count = 0
     if selection.summary_plots:
         on_step("Generating summary plots...")

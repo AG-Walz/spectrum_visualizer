@@ -99,26 +99,31 @@ def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
     cache_dir = Path(cache_dir_str)
     cached_data: dict = {}
 
+    # LazyFrames: scan_parquet each visualization frame
     for key in _LAZYFRAME_KEYS:
         parquet_path = cache_dir / f"{key}.parquet"
         if parquet_path.exists():
             cached_data[key] = pl.scan_parquet(parquet_path)
 
+    # Comparison frame: pandas Parquet (metrics table for the Export tab)
     comparison_path = cache_dir / "comparison_frame.parquet"
     if comparison_path.exists():
         cached_data["comparison_frame"] = pd.read_parquet(comparison_path)
 
+    # psm_lookup: JSON dict mapping spectrum ID to PSM metadata
     lookup_path = cache_dir / "psm_lookup.json"
     if lookup_path.exists():
         with open(lookup_path, "r") as handle:
             cached_data["psm_lookup"] = json.load(handle)
 
+    # Pickled objects: annotated_queries, reference_store, variant_groups
     for key in _PICKLE_KEYS:
         pickle_path = cache_dir / f"{key}.pkl"
         if pickle_path.exists():
             with open(pickle_path, "rb") as handle:
                 cached_data[key] = pickle.load(handle)
 
+    # Metadata marker: cache_version + saved_at timestamp
     with open(cache_dir / "meta.json", "r") as handle:
         cached_data["_meta"] = json.load(handle)
 
@@ -127,6 +132,7 @@ def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
 
 def load_analysis_cache() -> bool:
     """Restore analysis results from the disk cache into session state."""
+    # Discover: locate workspace cache dir, bail if no metadata marker
     cache_dir = _analysis_cache_path()
     meta_path = cache_dir / "meta.json"
 
@@ -134,6 +140,7 @@ def load_analysis_cache() -> bool:
         return False
 
     try:
+        # Read & restore: hydrate every cached frame/object back into session_state
         modification_time = meta_path.stat().st_mtime
         cached_data = _read_analysis_cache(str(cache_dir), modification_time)
 
@@ -141,6 +148,7 @@ def load_analysis_cache() -> bool:
             if key in cached_data:
                 st.session_state[get_state_key(key)] = cached_data[key]
 
+        # Flags: mark data ready and propagate cache version
         metadata = cached_data.get("_meta", {})
         st.session_state[get_state_key("cache_version")] = metadata.get("cache_version", 1)
         st.session_state[get_state_key("data_ready")] = True

@@ -54,14 +54,17 @@ def _load_spectra_from_mzml(
     is_reference: bool,
 ) -> LoadResult:
     """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
+    # Setup: per-file accumulators for loaded spectra and errors
     loaded: List[Tuple[str, LoadedSpectrum]] = []
     errors: List[str] = []
 
     try:
+        # Open & index: build targeted ID→position map for the needed spectra
         needed_ids = [psm.spectrum_id for psm, _ in matches_for_file]
         indexed_exp, id_to_index = open_indexed_mzml_fast(mzml_path_str, needed_ids=needed_ids)
         n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
+        # Resolve & wrap: look up each PSM's spectrum and build LoadedSpectrum
         for psm, variant_key in matches_for_file:
             try:
                 spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
@@ -78,6 +81,7 @@ def _load_spectra_from_mzml(
     except Exception as error:
         errors.append(f"Error opening {display_name}: {error}")
 
+    # Package: counts + errors into LoadResult for the orchestrator
     return LoadResult(
         display_name=display_name,
         is_reference=is_reference,

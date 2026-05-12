@@ -125,6 +125,7 @@ def open_indexed_mzml_fast(
     (``__format__``, ``__n_spectra__``, ``__index_offset__``) used by
     :func:`find_spectrum_index`.
     """
+    # Open & detect: probe the first spectrum's native-ID format and offset
     indexed_exp = oms.OnDiscMSExperiment()
     indexed_exp.openFile(str(mzml_path))
     n_spectra = indexed_exp.getNrSpectra()
@@ -136,11 +137,13 @@ def open_indexed_mzml_fast(
         "__index_offset__": index_offset,
     }
 
+    # Fast path: index=N maps to array position via the detected offset
     if id_format == "index":
         logger.debug(f"Fast path: index format detected (offset={index_offset}), "
                      f"skipping full scan ({n_spectra} spectra)")
         return indexed_exp, id_to_index
 
+    # Targeted lookup: resolve only the needed scan/spectrum IDs when supplied
     if needed_ids and id_format in ("scan", "spectrum"):
         found = sum(
             _resolve_targeted_id(indexed_exp, n_spectra, sid, id_to_index)
@@ -153,6 +156,7 @@ def open_indexed_mzml_fast(
         if found > 0:
             return indexed_exp, id_to_index
 
+    # Fallback: walk every spectrum and index by native ID
     logger.debug(f"Full scan fallback for {Path(mzml_path).name} ({n_spectra} spectra)")
     _build_full_scan_index(indexed_exp, n_spectra, id_to_index)
     return indexed_exp, id_to_index

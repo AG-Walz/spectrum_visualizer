@@ -109,6 +109,7 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
                          reference_df: Optional[pd.DataFrame],
                          is_mirror: bool) -> None:
     """Apply x/y limits + axis labels + mirror divider line."""
+    # X-axis: pad min/max m/z across both panels so outer peaks aren't clipped
     mz_values = []
     if not query_df.empty:
         mz_values.extend(query_df["mz"].tolist())
@@ -117,6 +118,7 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
     if mz_values:
         ax.set_xlim(min(mz_values) - _MZ_PADDING_DA, max(mz_values) + _MZ_PADDING_DA)
 
+    # Y-axis: symmetric ticks + divider for mirror, single-panel scale otherwise
     if is_mirror:
         ax.set_ylim(-1.2, 1.2)
         ax.set_yticks([-1.0, -0.5, 0, 0.5, 1.0])
@@ -126,6 +128,7 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
         ax.set_ylim(0, 1.15)
         ax.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
 
+    # Labels + spines: bold m/z & intensity, drop top/right spines for a clean frame
     ax.set_xlabel("m/z", fontsize=12, fontweight="bold")
     ax.set_ylabel("Relative Intensity", fontsize=12, fontweight="bold")
     ax.spines["top"].set_visible(False)
@@ -217,11 +220,13 @@ def create_spectrum_plot(
     rendered relative (max-normalised) for visual consistency between the
     two panels in a mirror plot.
     """
+    # Prep: normalise both panels, suppress reference label for single-spectrum
     is_mirror = reference_frame is not None
     query = _prep(query_frame)
     reference = _prep(reference_frame) if is_mirror else None
     effective_reference_label = reference_label if is_mirror else ""
 
+    # Matplotlib path: draw stems, axes, legend, corner overlays, then tighten
     if backend == "ms_matplotlib":
         fig = MplFigure(figsize=figure_size, dpi=100)
         ax = fig.add_subplot(111)
@@ -239,6 +244,7 @@ def create_spectrum_plot(
         fig.tight_layout()
         return fig
 
+    # Plotly path: stems per panel, then layout (axes, legend, mirror divider, overlays)
     fig = go.Figure()
     _draw_plotly(fig, query, y_multiplier=1.0, panel_name="query")
     if is_mirror:

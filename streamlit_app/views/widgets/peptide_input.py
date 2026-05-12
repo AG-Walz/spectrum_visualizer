@@ -16,15 +16,18 @@ from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
     """Wrap ``count_psms_in_idxmls`` with a live Streamlit progress bar."""
+    # Setup: error accumulator + progress-status context
     errors: list[str] = []
     n = len(idxmls)
     with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
+        # Dispatch: parallel scan with progress + error callbacks
         merged = count_psms_in_idxmls(
             idxmls,
             workers=min(workers, n),
             progress_callback=lambda done, total, _msg: tracker.update(done, total, units="files"),
             error_callback=errors.append,
         )
+        # Finalise: surface error summary or success count
         if errors:
             tracker.finalize(f"Completed with {len(errors)} errors", state="error")
             for error in errors[:5]:
@@ -56,14 +59,17 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
     """Return cached PSM counts for the given idXML files, scanning if needed."""
+    # Cache lookup: keys for the counts dict and the list of files last scanned
     scan_key = '_idxml_psm_counts'
     scan_files_key = '_idxml_scan_files'
     psm_counts = st.session_state.get(scan_key, {})
     scanned_files = st.session_state.get(scan_files_key)
 
+    # Fast path: return cached counts when the file list is unchanged
     if psm_counts and scanned_files == idxmls:
         return psm_counts
 
+    # Render scan trigger: button kicks off the parallel scan + caches results
     n = len(idxmls)
     st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
     if st.button(f"Scan {n} files for peptides",
@@ -95,14 +101,17 @@ def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
 
 def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -> list[str]:
     """Render the peptide multiselect; returns the list of selected sequences."""
+    # Filter rows: respect min-PSM threshold and the optional substring filter
     shown_items = [
         (sequence, count) for sequence, count in psm_counts.items()
         if count >= min_psm and (not filter_text or filter_text.upper() in sequence)
     ]
+    # Build label↔sequence mapping and pre-select sequences already in the textarea
     labels = [f"{sequence} ({count})" for sequence, count in shown_items]
     label_to_sequence = dict(zip(labels, (sequence for sequence, _ in shown_items)))
     current = set(parse_peptide_list(st.session_state.get('target_peptides', '')))
     defaults = [label for label, sequence in label_to_sequence.items() if sequence in current]
+    # Render multiselect and map chosen labels back to bare sequences
     selected_labels = st.multiselect(
         "Select peptides", options=labels, default=defaults,
         key=f"{STATE_PREFIX}_pick_multi",
@@ -135,14 +144,17 @@ def _render_pick_actions(selected: list[str], pending_key: str) -> None:
 
 def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
     """Pick-from-idXML tab: scans files, renders filterable multiselect."""
+    # Guard: require idXML selections before showing any pick UI
     if not idxmls:
         st.info("Select idXML files above first.")
         return
 
+    # Ensure cached PSM counts; bail until the user runs a scan
     psm_counts = _ensure_psm_counts_for(idxmls, workers)
     if not psm_counts:
         return
 
+    # Render filters → multiselect → commit-action buttons
     st.caption(f"{len(psm_counts)} unique peptides found")
     filter_text, min_psm = _render_pick_filters(psm_counts)
     selected = _render_pick_multiselect(psm_counts, filter_text, min_psm)
@@ -151,11 +163,13 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
 
 def render_peptide_input(params: dict) -> None:
     """Render the Target Peptides widget with paste + pick tabs."""
+    # Commit any pending peptide list flushed by the pick-tab on the previous run
     pending_key = "_pending_target_peptides"
     persisted_key = get_state_key('target_peptides_persisted')
     if pending_key in st.session_state:
         st.session_state['target_peptides'] = st.session_state.pop(pending_key)
 
+    # Resolve current inputs: idXMLs from state, peptide text from persisted/params fallback
     st.subheader("Target Peptides")
 
     idxmls = st.session_state.get('selected_idxmls', params.get('selected_idxmls', []))
@@ -163,6 +177,7 @@ def render_peptide_input(params: dict) -> None:
     # Initial value: persisted session_state (survives page nav) > workspace params
     initial_value = st.session_state.get(persisted_key, params.get('target_peptides', ''))
 
+    # Render the two-tab UI: paste textarea + pick-from-idXML browser
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
     with paste_tab:
         _render_paste_tab(initial_value, persisted_key)

@@ -26,9 +26,11 @@ def get_koina_prediction(
     koina_instrument_type: str = DEFAULTS.koina_instrument_type,
 ):
     """Get Koina AI prediction and annotate as reference spectrum. """
+    # Availability guard: bail early if Koina extra isn't installed
     if not KOINA_AVAILABLE:
         return None
 
+    # Predict: call Koina with model + CE + instrument, bail on empty frame
     predicted_frame = predict_koina_spectrum(
         peptidoform_str=peptidoform,
         charge=charge,
@@ -39,6 +41,7 @@ def get_koina_prediction(
     if predicted_frame is None or predicted_frame.empty:
         return None
 
+    # Wrap prediction: build a synthetic LoadedSpectrum tagged as reference
     reference_spectrum = LoadedSpectrum(
         spectrum_id="koina_prediction",
         mz=predicted_frame["mz"].to_numpy(dtype=np.float64),
@@ -52,7 +55,7 @@ def get_koina_prediction(
         is_reference=True,
     )
 
-    # Use Koina's native AI-predicted annotations directly
+    # Annotate: reuse Koina's native AI-predicted ion labels directly
     reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
     return (reference_spectrum, reference_frame)
 
@@ -111,6 +114,7 @@ def build_comparison_row(psm_id, result, reference_spectrum, reference_frame, me
     *result* is a ``QueryResult`` from ``load_spectra_streaming``.
     *metrics* is the dict returned by ``compute_all_metrics``.
     """
+    # Identity columns: per-PSM metadata + query/reference labels and RTs
     row: dict[str, Any] = {
         "psm_id": psm_id,
         "Peptide": result.query_spectrum.base_sequence,
@@ -123,8 +127,10 @@ def build_comparison_row(psm_id, result, reference_spectrum, reference_frame, me
         "query_rt": result.query_spectrum.rt,
         "ref_rt": reference_spectrum.rt,
     }
+    # Metric columns: short keys -> display names, NaN for missing values
     for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
         row[display_name] = metrics.get(short_key, float("nan"))
+    # Count columns: peak/annotation tallies on both sides plus shared
     for count_key in (
         "query_peak_count", "reference_peak_count",
         "query_annotation_count", "reference_annotation_count", "shared",

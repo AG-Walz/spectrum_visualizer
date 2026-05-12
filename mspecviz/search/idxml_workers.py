@@ -31,12 +31,14 @@ def search_single_idxml(
     target_set: Set[str], mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
     """Worker: scan one idXML for target peptides; return ``(name, matches, errors)``."""
+    # Open reader: bail with a single error if the file can't even be parsed
     matches: list = []
     try:
         reader = IdXMLReader(str(idxml_path))
     except Exception as load_error:
         return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
 
+    # Filter & annotate: keep target hits, stamp resolution metadata on each PSM
     psms, psms_read, parse_error = _iterate_psms_safely(reader, idxml_name)
     for psm in psms:
         if psm.peptidoform.sequence.upper() not in target_set:
@@ -49,6 +51,7 @@ def search_single_idxml(
                 psm.metadata["mzml_resolved_path"] = resolved
         matches.append((psm.peptidoform.modified_sequence, psm))
 
+    # Surface partial-read errors so the orchestrator can warn the user
     errors = []
     if parse_error is not None:
         errors.append(

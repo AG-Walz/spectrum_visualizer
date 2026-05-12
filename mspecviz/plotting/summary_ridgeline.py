@@ -51,6 +51,7 @@ def plot_ridgeline(
     title: str | None = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
+    # Setup: autosize figure, split into ridge + count axes, prep colormap
     variant_count = len(aggregated_frame)
     overlap = 0.65
     if figure_size is None:

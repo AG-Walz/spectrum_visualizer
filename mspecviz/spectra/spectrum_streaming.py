@@ -28,8 +28,10 @@ def build_mzml_to_matches_map(
     a stem-based lookup against ``psm.run`` (the canonical run name psm_utils
     parses from the idXML's ``spectra_data``).
     """
+    # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
 
+    # Resolver: prefer the PSM's pre-resolved path, fall back to stem match
     def resolve(psm: PSM) -> Optional[str]:
         resolved = psm.metadata.get("mzml_resolved_path", "")
         if resolved:
@@ -38,6 +40,7 @@ def build_mzml_to_matches_map(
                 return key
         return stem_to_key.get(psm.run.lower())
 
+    # Bucket: group each PSM under its resolved mzML path key
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
@@ -57,6 +60,7 @@ def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
 def _execute_load_tasks(file_tasks, is_reference, workers,
                         on_file_start, on_file_complete, error_callback) -> List[LoadResult]:
     """Load spectra from mzML files, sequentially or in parallel."""
+    # Setup: short-circuit on empty, wire optional callbacks
     if not file_tasks:
         return []
     kind = "reference" if is_reference else "query"
@@ -64,10 +68,12 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
     on_complete = on_file_complete or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
 
+    # Build & announce: pack is_reference into each task; fire start callbacks
     tasks = [(p, d, m, is_reference) for p, d, m in file_tasks]
     for _path, display_name, _matches, _is_ref in tasks:
         on_start(display_name, is_reference)
 
+    # Dispatch & collect: surface worker errors, accumulate per-file results
     all_results: List[LoadResult] = []
     for task, ok, result in run_tasks(
         tasks=tasks, worker=_load_spectra_from_mzml, workers=workers,
@@ -116,14 +122,19 @@ def _collect_reference_spectra(
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[LoadedSpectrum]]:
     """Bucket reference spectra by variant_key and fire the per-variant callback."""
+    # Bucket: initialise one slot per known variant, fan out the loaded spectra
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {variant_key: [] for variant_key in variant_groups}
     for result in ref_results:
         for variant_key, spectrum in result.loaded:
             reference_spectra[variant_key].append(spectrum)
+
+    # Notify: per-variant callback fires only when references were found
     notify = on_reference_loaded or (lambda *_: None)
     for variant_key, references in reference_spectra.items():
         if references:
             notify(variant_key, len(references))
+
+    # Final summary
     logger.info(f"References loaded: {sum(len(r) for r in reference_spectra.values())} spectra")
     return reference_spectra
 
@@ -163,6 +174,7 @@ def load_spectra_streaming(
     references and queries. Callbacks fire on file start/complete/error plus
     per reference and per query. Returns ``{variant_key: [reference_spectra]}``.
     """
+    # Partition inputs: split paths into reference/query buckets, build PSM map
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     reference_keys, query_keys = _split_reference_and_query_keys(mzml_path_map, reference_substring)
 
@@ -170,12 +182,14 @@ def load_spectra_streaming(
     if skip_ids:
         mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
 
+    # References first: load + bucket so queries can compute metrics immediately
     ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map)
     ref_results = _execute_load_tasks(
         ref_tasks, True, workers, on_file_start, on_file_complete, error_callback,
     )
     reference_spectra = _collect_reference_spectra(ref_results, variant_groups, on_reference_loaded)
 
+    # Queries next: stream each loaded query through on_query_ready
     query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map)
     query_results = _execute_load_tasks(
         query_tasks, False, workers, on_file_start, on_file_complete, error_callback,

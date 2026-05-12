@@ -31,23 +31,30 @@ def _flush_and_switch_workspace(params: dict) -> None:
     workspace-switcher easy to read: each widget just dispatches to a named
     helper and the heavy state surgery lives here.
     """
+    # Flush: write OUTGOING workspace's params.json before mutating state
     # Flush any in-flight session state to the OUTGOING workspace's
     # params.json BEFORE deleting keys. Without this, peptides the user
     # typed in a text_area whose blur event races with the dropdown
     # on_change can be lost on switch.
     save_params(params)
+
+    # Reset widgets: pop every canonical widget key + anything from params
     # Pop every known widget key — not just the ones that happened to
     # be on disk in ``params.json`` — so settings from the outgoing
     # workspace do not bleed into the incoming one's widgets (and from
     # there, back into its params.json via save_params).
     for key in (*_PARAM_KEYS, *params.keys()):
         st.session_state.pop(key, None)
+
+    # Reset analysis: drop page-namespaced keys + _persisted backups
     # Clear page-namespaced keys so stale analysis state (and the
     # ``_persisted`` widget-value backups) from the previous workspace
     # are not shown in the new one.
     stale_keys = [key for key in st.session_state if key.startswith(STATE_PREFIX)]
     for key in stale_keys:
         st.session_state.pop(key, None)
+
+    # Switch & rerun: update query param and halt the in-flight rerun
     st.query_params.workspace = st.session_state["chosen-workspace"]
     # Halt this rerun immediately to avoid the script continuing with
     # session_state.workspace still pointing at the OLD workspace.
@@ -126,11 +133,13 @@ def _render_workspace_switcher(params: dict) -> None:
 
 def page_setup(page: str = "") -> dict[str, Any]:
     """Set up page config, workspace, and sidebar. Call at the top of every page."""
+    # Settings: lazy-load settings.json into session_state on first call
     if "settings" not in st.session_state:
         settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
         with open(settings_path, "r") as handle:
             st.session_state.settings = json.load(handle)
 
+    # Page config: title, favicon, wide layout, sidebar default
     logo_path = PROJECT_ROOT / "assets" / "openms_transparent_bg_logo.svg"
     st.set_page_config(
         page_title=st.session_state.settings.get("app_name", "MSpecViz"),
@@ -140,6 +149,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
         menu_items=None,
     )
 
+    # Workspace resolution: switch from query param or fall back to default
     if "workspace" not in st.session_state or (
         "workspace" in st.query_params
         and st.query_params.workspace != st.session_state.workspace.name
@@ -163,6 +173,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
         else:
             st.session_state.workspace = Path(workspaces_dir, "default")
 
+    # Finalize: sync query param, ensure workspace dir exists, render sidebar
     if (
         "workspace" not in st.query_params
         and st.session_state.settings.get("enable_workspaces", False)
@@ -176,12 +187,15 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
 def render_sidebar(page: str = "") -> dict[str, Any]:
     """Render sidebar with workspace switcher, settings, and version info."""
+    # Load params for the active workspace
     params = load_params()
 
     with st.sidebar:
+        # Workspace switcher: only when workspaces are enabled
         if st.session_state.settings.get("enable_workspaces", False):
             _render_workspace_switcher(params)
 
+        # Settings expander: image export format selector, persisted across pages
         with st.expander("**Settings**"):
             image_formats = ["svg", "png", "jpeg", "webp"]
             persisted = _persisted_key("image_format")
@@ -204,6 +218,7 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             params["image_format"] = selected_format
             save_params(params)
 
+        # Version footer: branded app name + version chip
         version_info = st.session_state.settings.get("version", "0.1.0")
         app_name = st.session_state.settings.get("app_name", "MSpecViz")
         st.markdown(

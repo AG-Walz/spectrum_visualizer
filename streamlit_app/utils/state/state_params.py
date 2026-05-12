@@ -47,9 +47,11 @@ def load_params(default: bool = False) -> dict[str, Any]:
     ``get_param(params, key, DEFAULTS.<key>)`` so there is exactly one
     source of truth for default values (``mspecviz.common.defaults``).
     """
+    # Short-circuit: workspaces disabled or caller asked for defaults
     if default or not st.session_state.settings.get("enable_workspaces", False):
         return {}
 
+    # Read: load params.json from the current workspace
     path = Path(st.session_state.workspace, "params.json")
     if not path.exists():
         return {}
@@ -57,6 +59,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         raw_params = json.load(handle)
 
+    # Migrate: hyphenated legacy keys -> snake_case (snake_case wins on dupes)
     # Migrate legacy hyphenated top-level keys (e.g. ``reference-substring``)
     # to their snake_case equivalent. Defaults and in-code keys are snake_case
     # now; without this, workspaces created before the migration keep stale
@@ -77,9 +80,11 @@ def save_params(params: dict[str, Any]) -> None:
     2. A persisted non-widget key (``peptide_mirror.<key>_persisted``), which
        survives page navigation even after Streamlit cleans up widget keys.
     """
+    # Short-circuit: workspaces disabled means nothing to persist
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
+    # Sync: pull live widget values (or _persisted backups) into the params dict
     # Union of the canonical param keys and whatever is already in
     # ``params``. A key only appears in ``params`` if load_params picked it
     # up from params.json; canonical keys need to be saved even on their
@@ -96,6 +101,7 @@ def save_params(params: dict[str, Any]) -> None:
             if persisted in st.session_state:
                 params[key] = st.session_state[persisted]
 
+    # Atomic write: stage to a unique tmp file, then os.replace into place
     # Atomic write via unique staging file. A single Streamlit rerun calls
     # save_params from several places (sidebar, each setup fragment, ...);
     # sharing one ``params.json.tmp`` path between them — or between browser

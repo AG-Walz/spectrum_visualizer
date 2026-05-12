@@ -65,11 +65,13 @@ def run_streaming_annotation(
     Frontend callbacks default to no-ops. *on_progress* fires after every PSM
     with the running loaded count — callers can throttle/format as they need.
     """
+    # Init buffers: shared accumulators populated by the on_query_ready callback
     annotated_queries: list = []
     reference_store: dict = {}
     comparison_rows: list = []
     noop = lambda *_: None
 
+    # Build callback: per-PSM closure that annotates and appends to buffers
     on_query_ready = make_query_ready_callback(
         psm_lookup=psm_lookup,
         annotation_kwargs=annotation_kwargs,
@@ -80,6 +82,7 @@ def run_streaming_annotation(
         on_progress=on_progress or noop,
     )
 
+    # Dispatch: stream every mzML, fanning lifecycle callbacks to the frontend
     load_spectra_streaming(
         variant_groups=variant_groups,
         mzml_paths=[Path(path) for path in mzml_paths],

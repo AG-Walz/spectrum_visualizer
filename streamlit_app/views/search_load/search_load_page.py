@@ -38,8 +38,10 @@ def display_search_results(results: dict) -> None:
 @st.fragment
 def search_results_fragment():
     """Display search results and load controls as a fragment."""
+    # Empty state: nothing rendered until a search has produced variants
     variant_groups = st.session_state.get(get_state_key("variant_groups"))
     if variant_groups:
+        # Render the per-variant results table + headline match summary
         st.subheader("Search Results")
         display_search_results(variant_groups)
 
@@ -48,6 +50,7 @@ def search_results_fragment():
             f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
             f"Click **Search & Load Spectra** below to load and annotate them."
         )
+        # Render the load controls when mzMLs are present, else nudge the user back to Setup
         mzmls = get_param(params, "selected_mzmls", [])
         if mzmls:
             st.subheader("Load Spectra & Compute Metrics")
@@ -66,6 +69,7 @@ def search_results_fragment():
             if st.button("Search & Load Spectra", key=f"{STATE_PREFIX}_load_btn", type="primary"):
                 run_search_and_load(params)
 
+            # Post-load summary: surface comparison count once data is ready
             if st.session_state.get(get_state_key("data_ready")):
                 comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
                 if comparison_frame is not None and not comparison_frame.empty:
@@ -82,10 +86,12 @@ def search_results_fragment():
 
 
 def render():
+    # Restore cached analysis (if any) and render the page header
     restore_analysis_if_needed()
     st.title("Search & Load")
     st.caption("Search for peptides in idXML files and load spectra for analysis")
 
+    # Resolve inputs from params and validate that prerequisites exist
     idxmls = get_param(params, "selected_idxmls", [])
     peptide_text = get_param(params, "target_peptides", "")
     peptides = parse_peptide_list(peptide_text)
@@ -97,6 +103,7 @@ def render():
         st.warning("Please enter target peptides first (Setup page)")
         return
 
+    # Render search trigger + results/load fragment, then persist params
     if st.button("Search Peptides", key=f"{STATE_PREFIX}_search_btn", type="primary"):
         run_peptide_search(params, idxmls, peptides)
 

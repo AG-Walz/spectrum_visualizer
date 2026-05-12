@@ -142,15 +142,18 @@ def _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager
 @st.fragment
 def render_explorer(params: dict) -> None:
     """openms_insight Table + LinePlot + SequenceView + Heatmap."""
+    # Setup: cache directory, regen flag, and the shared StateManager
     cache_path = _resolve_cache_path(params)
     needs_regeneration, mark_rendered = _needs_cache_regen()
     state_manager = _get_state_manager()
 
+    # Pull frames: four LazyFrames staged by Search & Load into session state
     psm_frame = st.session_state.get(get_state_key("psm_frame"))
     peaks_frame = st.session_state.get(get_state_key("peaks_frame"))
     sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
     heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
 
+    # Render components: banner + table + sequence view + line plot + heatmap
     _show_selected_psm_banner(psm_frame, state_manager)
     _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager)
     _render_sequence_view(
@@ -159,5 +162,6 @@ def render_explorer(params: dict) -> None:
     _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
     _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager)
 
+    # Mark rendered: skip cache regeneration on subsequent reruns
     if needs_regeneration:
         mark_rendered()

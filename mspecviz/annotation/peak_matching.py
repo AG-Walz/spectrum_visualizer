@@ -67,11 +67,13 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
     spectrum_utils returns ``PeakInterpretation`` per peak, each carrying a list
     of ``FragmentAnnotation`` (multiple matches possible). We keep the first match.
     """
+    # Allocate per-column accumulators sized to the number of peaks
     annotations: list[str] = []
     ion_types: list[str] = []
     charges: list[int] = []
     flags: list[bool] = []
 
+    # Walk peaks: take first FragmentAnnotation, fall back to unannotated row
     for peak_ann in spec.annotation:
         fa_list = peak_ann.fragment_annotations if peak_ann else []
         if not fa_list:
@@ -87,6 +89,7 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
         charges.append(int(fa.charge))
         flags.append(True)
 
+    # Pack columns into the standard schema DataFrame
     return pd.DataFrame({
         "mz": np.asarray(spec.mz, dtype=float),
         "intensity": np.asarray(spec.intensity, dtype=float),
@@ -110,11 +113,13 @@ def annotate_spectrum(
 
     Returns one row per experimental peak in the standard schema.
     """
+    # Defaults & fast exit: empty input or no requested ion letters
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
     if len(mz) == 0 or not _ion_types_to_string(ion_types):
         return _empty_annotated_frame(mz, intensity)
 
+    # Build the spectrum_utils MsmsSpectrum carrier
     spec = MsmsSpectrum(
         identifier="experimental",
         precursor_mz=0.0,
@@ -122,6 +127,8 @@ def annotate_spectrum(
         mz=np.asarray(mz, dtype=float),
         intensity=np.asarray(intensity, dtype=float),
     )
+
+    # Annotate via ProForma; fall back to unannotated frame on parse/match failure
     try:
         spec.annotate_proforma(
             peptidoform.split("/")[0],   # strip ProForma charge suffix if present
@@ -141,9 +148,11 @@ def _filter_and_normalize(
     annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
     """Mask peaks whose ion_type isn't in ``ion_types``; optionally scale to max=1."""
+    # Fast exit: nothing to filter or scale
     if annotated.empty:
         return annotated
 
+    # Mask peaks outside the requested ion_types — reset annotation/type/charge
     keep_letters = set(ion_types) | {"unannotated"}
     unwanted = ~annotated["ion_type"].isin(keep_letters)
     if unwanted.any():
@@ -152,6 +161,7 @@ def _filter_and_normalize(
         annotated.loc[unwanted, "is_annotated"] = False
         annotated.loc[unwanted, "charge"] = 0
 
+    # Optionally rescale intensities so the brightest peak equals 1.0
     if normalize:
         max_intensity = annotated["intensity"].max()
         if max_intensity and max_intensity > 0:

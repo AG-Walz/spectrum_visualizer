@@ -57,6 +57,7 @@ def compute_r2_binned(
     n_bins: int = 1000,
 ) -> float:
     """R^2 (binned) -- LinearRegression R^2 on binned intensity profiles."""
+    # Guard against empty inputs or degenerate m/z range
     if query_frame.empty or reference_frame.empty:
         return float("nan")
 
@@ -65,6 +66,7 @@ def compute_r2_binned(
     if mz_max <= mz_min:
         return float("nan")
 
+    # Bin both spectra onto the same m/z grid and sum intensities per bin
     bin_edges = np.linspace(mz_min, mz_max, n_bins + 1)
     n_total = len(bin_edges) + 1
     query_bins = np.digitize(query_frame["mz"].to_numpy(), bin_edges)
@@ -72,6 +74,7 @@ def compute_r2_binned(
     query_sums = np.bincount(query_bins, weights=query_frame["intensity"].to_numpy(), minlength=n_total)
     reference_sums = np.bincount(reference_bins, weights=reference_frame["intensity"].to_numpy(), minlength=n_total)
 
+    # Regress on bins where both spectra carry signal
     shared_mask = (query_sums > 0) & (reference_sums > 0)
     if shared_mask.sum() < 2:
         return float("nan")

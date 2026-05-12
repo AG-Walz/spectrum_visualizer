@@ -53,16 +53,19 @@ def predict_koina_spectrum(
     instrument_type: str = DEFAULTS.koina_instrument_type,
 ) -> Optional[pd.DataFrame]:
     """Predict MS/MS spectrum via Koina. Returns DataFrame [mz, intensity, annotation] or None."""
+    # Guard: koinapy must be installed for this to work
     if not KOINA_AVAILABLE:
         logger.warning("koinapy not installed -- cannot generate Koina predictions")
         return None
 
+    # Convert sequence: translate ProForma to Koina's UniMod-bracket notation
     try:
         unimod_seq = convert_peptide_to_unimod(peptidoform_str)
     except Exception as error:
         logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
         return None
 
+    # Predict & shape: call Koina, build DataFrame, drop zero-intensity rows
     try:
         koina_input = pd.DataFrame({
             "peptide_sequences": [unimod_seq],
@@ -81,6 +84,7 @@ def predict_koina_spectrum(
         logger.warning(f"Koina prediction failed for '{peptidoform_str}': {error}")
         return None
 
+    # Final summary
     if result.empty:
         logger.warning(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
         return None

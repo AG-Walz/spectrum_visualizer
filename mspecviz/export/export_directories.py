@@ -90,14 +90,17 @@ def find_or_create_export_directory(
     runs (so we don't leave empty folders on abort). On re-run with identical settings the 
     matching folder is renamed to today's date, enabling skip-existing-plots behaviour.
     """
+    # Setup: sanitize project name, compute fingerprint, build name regex
     base = Path(base_dir)
     prefix = sanitize_filename(project_name)
     fingerprint = _settings_fingerprint(run_settings)
     today = datetime.now().strftime("%Y%m%d")
     pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{3}})_(\d{{8}})$")
 
+    # Scan existing dirs: highest NNN + any fingerprint-matching folder
     max_number, match_entry, match_number = _scan_existing_dirs(base, pattern, fingerprint)
 
+    # Reuse on match, otherwise allocate next NNN
     if match_entry is not None:
         return _rename_or_reuse_match(prefix, match_entry, match_number, today)
 
@@ -107,8 +110,10 @@ def find_or_create_export_directory(
 
 def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
     """Create export root directory and write run_settings.json."""
+    # Ensure root dir exists
     root_dir.mkdir(parents=True, exist_ok=True)
 
+    # Update path: bump ``_last_run`` on the existing settings file
     settings_file = root_dir / "run_settings.json"
     if settings_file.exists():
         try:
@@ -119,6 +124,7 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
                 json.dump(saved, f, indent=2, default=str)
         except (json.JSONDecodeError, OSError) as error:
             logger.warning(f"Could not update run_settings.json: {error}")
+    # Fresh path: stamp fingerprint + creation time, write new file
     else:
         settings_to_save = {
             "_fingerprint": _settings_fingerprint(run_settings),

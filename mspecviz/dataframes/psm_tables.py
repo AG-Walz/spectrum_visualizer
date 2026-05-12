@@ -38,10 +38,12 @@ def build_psm_table(
     level fields (base_sequence, modification, display_label) are computed once
     per group from the first PSM and reused across the group's rows.
     """
+    # Initialise the row accumulator, lookup map, and running PSM id
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
     psm_id = 0
 
+    # Walk variants -> PSMs: derive variant-level fields once, emit one row per PSM
     for variant_key, psm_list in variant_groups.items():
         if not psm_list:
             continue
@@ -67,6 +69,7 @@ def build_psm_table(
             })
             psm_id += 1
 
+    # Materialise the schema-enforced LazyFrame and return alongside the lookup
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
     logger.info(f"PSM table: {len(rows)} rows across {len(variant_groups)} variants")
     return df, psm_lookup

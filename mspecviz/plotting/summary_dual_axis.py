@@ -57,6 +57,7 @@ def plot_classic_dual_axis(
     title: str | None = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
+    # Setup: sort by count, autosize figure, prep y positions + labels
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
     variant_count = len(aggregated_frame)
     if figure_size is None:

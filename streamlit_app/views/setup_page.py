@@ -48,12 +48,14 @@ params = page_setup()
 
 def file_selection_fragment():
     """File browser for idXML and mzML files."""
+    # Resolve starting directories: workspace overrides > settings default
     _settings = st.session_state.get("settings", {})
     data_dir_default = _get_nested_value(_settings, "data_directories", "default", default="/")
 
     idxml_dir = params.get('idxml_browser_dir', data_dir_default)
     mzml_dir = params.get('mzml_browser_dir', data_dir_default)
 
+    # Render side-by-side directory browsers for idXML and mzML
     st.header("File Selection")
     col1, col2 = st.columns(2)
     with col1:
@@ -69,6 +71,7 @@ def file_selection_fragment():
                                  state_key='selected_mzmls',
                                  default_dir=mzml_dir, params=params)
 
+    # Persist the browsers' current directories back into params + session state
     for dir_param, dir_ss_key, fallback in [
         ('idxml_browser_dir', f"{STATE_PREFIX}_idxml_dir", idxml_dir),
         ('mzml_browser_dir', f"{STATE_PREFIX}_mzml_dir", mzml_dir),
@@ -77,6 +80,7 @@ def file_selection_fragment():
         params[dir_param] = selected_directory
         st.session_state[dir_param] = selected_directory
 
+    # Validate selections: surface duplicate-basename errors per file kind
     for kind, state_key in [("idXML", 'selected_idxmls'), ("mzML", 'selected_mzmls')]:
         try:
             ensure_unique_basenames(st.session_state.get(state_key, []), kind)
@@ -88,12 +92,14 @@ def file_selection_fragment():
 
 def reference_selection_fragment():
     """Reference substring configuration."""
+    # Guard: require mzML selections before showing reference UI
     st.subheader("Reference Identification")
     mzmls = st.session_state.get('selected_mzmls', params.get('selected_mzmls', []))
     if not mzmls:
         st.warning("Please select mzML files first")
         return
 
+    # Render input + persist value across navigation and into params
     st.markdown("Enter a substring to identify reference mzML files (e.g., 'Synpep', 'Standard', 'Ref')")
     persisted_key = get_state_key("reference_substring_persisted")
     initial_value = st.session_state.get(persisted_key, params.get('reference_substring', ''))
@@ -109,6 +115,7 @@ def reference_selection_fragment():
     # whose params.json predates the snake_case key migration.
     params['reference_substring'] = ref_substring
 
+    # Preview the reference/query split (or info note when no substring set)
     if ref_substring:
         reference_files = [Path(m).name for m in mzmls if ref_substring.lower() in Path(m).name.lower()]
         query_files = [Path(m).name for m in mzmls if ref_substring.lower() not in Path(m).name.lower()]
@@ -204,12 +211,14 @@ def _render_koina_model_columns(koina_defaults: dict) -> None:
 
 def _render_koina_settings() -> None:
     """Render the Koina AI-prediction section: enable toggle + model controls."""
+    # Section header + description
     st.markdown("---")
     st.markdown("**Koina AI Prediction**")
     st.caption(
         "When enabled, spectra without an experimental reference are compared "
         "against AI-predicted fragmentation patterns (intensity + m/z)."
     )
+    # Enable toggle: pulls defaults from settings, disables if koinapy missing
     koina_defaults = get_koina_settings(st.session_state.get("settings", {}))
     koina_enabled = st.checkbox(
         "Enable Koina fallback reference",
@@ -218,6 +227,7 @@ def _render_koina_settings() -> None:
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
         disabled=not KOINA_AVAILABLE,
     )
+    # Surface missing-dependency warning or render model picker when active
     if not KOINA_AVAILABLE:
         st.warning("koinapy is not installed. Install it to enable Koina predictions.")
     if koina_enabled and KOINA_AVAILABLE:

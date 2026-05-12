@@ -74,11 +74,13 @@ def _render_run_metadata(run_settings: dict) -> None:
 
 def _render_run_action_buttons(run_dir: Path, run_settings: dict) -> None:
     """Render Reload / Delete buttons for one historical run."""
+    # Reload: rehydrate this run's parameters into session state
     if st.button("Reload settings", key=f"reload_{run_dir.name}"):
         apply_run_settings(run_settings)
         st.success("Settings loaded -- switch to Setup page to review.")
         st.rerun()
 
+    # Delete confirmation: two-step confirm gate before rmtree
     confirm_key = f"confirm_delete_{run_dir.name}"
     if st.session_state.get(confirm_key):
         st.warning("Delete all files in this run?")
@@ -92,6 +94,7 @@ def _render_run_action_buttons(run_dir: Path, run_settings: dict) -> None:
             if st.button("Cancel", key=f"cancel_del_{run_dir.name}"):
                 st.session_state.pop(confirm_key, None)
                 st.rerun()
+    # Initial delete button: arms the confirmation flag on click
     else:
         if st.button("Delete run", key=f"delete_{run_dir.name}"):
             st.session_state[confirm_key] = True
@@ -152,10 +155,12 @@ def zip_download_fragment(export_root: Path) -> None:
 @st.fragment
 def export_controls_fragment():
     """Export format selection and trigger button."""
+    # Guard: data must be loaded before exports can run
     if not st.session_state.get(get_state_key("data_ready")):
         st.info("Load data first (Search & Load page).")
         return
 
+    # Export directory: default to workspace/exports when unset
     workspace = st.session_state.get("workspace", None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
     export_default = params.get("export_directory", "") or export_fallback
@@ -165,6 +170,7 @@ def export_controls_fragment():
         key="export_directory",
     )
 
+    # Format checkboxes: dataframes, summary, plots across two columns
     export_col1, export_col2 = st.columns(2)
     with export_col1:
         export_parquet = st.checkbox("Parquet DataFrames", value=True,
@@ -179,6 +185,7 @@ def export_controls_fragment():
         export_summary = st.checkbox("Summary Analysis Plots", value=True,
                                      key=f"{STATE_PREFIX}_exp_summary")
 
+    # Trigger: dispatch _run_export with the chosen flags
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
         _run_export(
             params,

@@ -90,16 +90,19 @@ def _build_picker_frames(
     variant_key: str, annotated_queries: dict, reference_store: dict, psm_to_vk: dict,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Two LazyFrames — references (id = positional) and queries (psm_id = real key)."""
+    # Reference rows: positional hashed id keyed by (variant_key, index)
     ref_rows = [
         {"id": _ref_row_id(variant_key, i), **_picker_row(spec, _safe_score(spec))}
         for i, (spec, _) in enumerate(reference_store.get(variant_key, []))
     ]
+    # Query rows: filter annotated queries down to the chosen variant
     query_rows = [
         {"psm_id": psm_id, **_picker_row(spec, _safe_score(spec))}
         for psm_id, (spec, _) in annotated_queries.items()
         if psm_to_vk.get(psm_id) == variant_key
     ]
 
+    # Materialise: typed-empty LazyFrame when the row list is empty
     ref_frame = (
         pl.DataFrame(ref_rows, schema=_PICKER_REF_SCHEMA).lazy() if ref_rows
         else pl.DataFrame(schema=_PICKER_REF_SCHEMA).lazy()
@@ -227,6 +230,7 @@ def _render_picker_tables(
 @st.fragment
 def mirror_plots_fragment(params: dict):
     """Two-stage picker → side-by-side selection → mirror plot."""
+    # Pull session state: annotated queries, references, variants
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     reference_store = st.session_state.get(get_state_key("reference_store"), {})
     variant_groups = st.session_state.get(get_state_key("variant_groups"), {})
@@ -235,6 +239,7 @@ def mirror_plots_fragment(params: dict):
         st.info("No annotated spectra available.")
         return
 
+    # Eligibility: keep variants that have both a query and a reference loaded
     psm_to_vk = build_psm_to_variant_mapping(variant_groups, annotated_queries)
     eligible = _eligible_variants(variant_groups, reference_store, psm_to_vk)
 
@@ -254,6 +259,7 @@ def mirror_plots_fragment(params: dict):
         )
         return
 
+    # Peptide selector: pin the selectbox onto an eligible variant
     selectbox_key = f"{STATE_PREFIX}_mirror_chosen_variant"
     if st.session_state.get(selectbox_key) not in eligible:
         st.session_state[selectbox_key] = eligible[0]
@@ -263,12 +269,14 @@ def mirror_plots_fragment(params: dict):
         key=selectbox_key,
     )
 
+    # State manager: reset Tabulator + StateManager when the variant changes
     state_manager = _get_picker_state_manager()
     last_variant_key = f"{STATE_PREFIX}_mirror_last_variant"
     if st.session_state.get(last_variant_key) != chosen:
         _clear_picker_selections(state_manager)
         st.session_state[last_variant_key] = chosen
 
+    # Picker tables: two side-by-side openms_insight Tables for the chosen variant
     ref_frame, query_frame = _build_picker_frames(
         chosen, annotated_queries, reference_store, psm_to_vk,
     )
@@ -276,12 +284,13 @@ def mirror_plots_fragment(params: dict):
         ref_frame, query_frame, _resolve_picker_cache_path(params), state_manager,
     )
 
-    # openms_insight's bridge auto-fills both selection keys with the first
-    # row's value on first render (bridge.py:694-697 — runs unconditionally
-    # regardless of default_row). So the plot renders immediately for the
-    # first ref / first query of the chosen peptide; clicking either table
-    # swaps just that side. The None-checks below are defensive — Vue isn't
-    # running under AppTest, so the auto-fill may not fire there.
+    # Read selections: openms_insight's bridge auto-fills both selection keys
+    # with the first row's value on first render (bridge.py:694-697 — runs
+    # unconditionally regardless of default_row). So the plot renders
+    # immediately for the first ref / first query of the chosen peptide;
+    # clicking either table swaps just that side. The None-checks below are
+    # defensive — Vue isn't running under AppTest, so the auto-fill may not
+    # fire there.
     state = state_manager.get_state_for_vue()
     ref_id = state.get("selected_ref_row")
     query_psm = state.get("selected_query_psm")
@@ -289,6 +298,7 @@ def mirror_plots_fragment(params: dict):
         st.info("Pick one row in each table to render the mirror plot.")
         return
 
+    # Resolve picks: map both ids back to the in-memory spectra
     if query_psm not in annotated_queries:
         return
     refs = reference_store.get(chosen, [])
@@ -299,6 +309,7 @@ def mirror_plots_fragment(params: dict):
     if ref_id not in ref_index:
         return
 
+    # Render: compute metrics and draw the mirror plot for the chosen pair
     query_spectrum, query_anno = annotated_queries[query_psm]
     reference_spectrum, reference_anno = refs[ref_index[ref_id]]
     _render_mirror_pair(query_spectrum, query_anno, reference_spectrum, reference_anno)

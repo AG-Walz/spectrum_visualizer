@@ -32,14 +32,17 @@ logger = logging.getLogger(__name__)
 
 def _show_search_results_summary(results, error_messages, tracker, params: dict) -> None:
     """Finalize the status block with PSM/variant counts and any warnings."""
+    # Empty path: mark the status block as an error and bail
     if not results:
         tracker.finalize("No matches found", state="error")
         return
 
+    # Success path: report PSM/variant counts and persist params
     total_matches = sum(len(psm_list) for psm_list in results.values())
     tracker.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
     save_params(params)
 
+    # Warnings: surface unresolved-mzML count + collapse per-file errors
     unresolved = sum(
         1 for psm_list in results.values()
         for psm in psm_list
@@ -84,14 +87,17 @@ def _params_getter(params: dict):
 def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows) -> None:
     """Persist all analysis results to session state and disk cache."""
+    # Build visualization frames (peaks / sequence / heatmap) from annotations
     frames = build_visualization_frames(annotated_queries)
 
+    # Stash PSM table + visualization frames in session state
     st.session_state[get_state_key("psm_frame")] = psm_frame
     st.session_state[get_state_key("psm_lookup")] = psm_lookup
     st.session_state[get_state_key("peaks_frame")] = frames["peaks"]
     st.session_state[get_state_key("sequence_frame")] = frames["sequence"]
     st.session_state[get_state_key("heatmap_frame")] = frames["heatmap"]
 
+    # Stash annotation payloads + comparison rows for the Explore page
     st.session_state[get_state_key("annotated_queries")] = {
         psm_id: (spec, df) for psm_id, spec, df in annotated_queries
     }
@@ -100,6 +106,7 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
         pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
     )
 
+    # Mark data ready, bump cache version, and persist to disk
     st.session_state[get_state_key("data_ready")] = True
     st.session_state[get_state_key("cache_version")] = \
         st.session_state.get(get_state_key("cache_version"), 0) + 1
@@ -169,6 +176,7 @@ def _finalize_load(
 
 def run_search_and_load(params: dict) -> None:
     """Stream spectra, annotate, compute metrics, build DataFrames."""
+    # Reset any previous analysis cache + validate prerequisites
     clear_analysis_cache()
 
     inputs = _validate_load_inputs(params)
@@ -176,6 +184,7 @@ def run_search_and_load(params: dict) -> None:
         return
     variant_groups, mzmls = inputs
 
+    # Prepare inputs: snapshot variants, build PSM table, gather kwargs
     variant_groups_copy = copy.deepcopy(variant_groups)
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     getter = _params_getter(params)
@@ -184,6 +193,7 @@ def run_search_and_load(params: dict) -> None:
 
     total_psms = sum(len(plist) for plist in variant_groups_copy.values())
 
+    # Stream + annotate inside a progress status; persist results when non-empty
     with progress_status(f"Loading {total_psms} spectra...") as tracker:
         annotated_queries, reference_store, comparison_rows = _stream_and_annotate(
             params, variant_groups_copy, mzmls,

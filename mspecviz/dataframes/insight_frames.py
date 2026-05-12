@@ -40,11 +40,13 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
     Feeds SequenceView's ``parse_openms_sequence()``; returns the bare sequence
     on parse failure.
     """
+    # Parse ProForma; fall back to bare sequence on failure
     try:
         peptidoform_obj = Peptidoform(peptidoform_str)
     except PeptidoformException:
         return peptidoform_str.split("/")[0]
 
+    # Emit N-term mods, then per-residue letters with their mods, then C-term mods
     parts = []
     if peptidoform_obj.properties.get("n_term"):
         for mod in peptidoform_obj.properties["n_term"]:
@@ -64,6 +66,7 @@ def build_peaks_dataframe(
     annotated_spectra: list[tuple[int, pd.DataFrame]],
 ) -> pl.LazyFrame:
     """Build a peaks LazyFrame (one row per peak) matching :data:`PEAKS_SCHEMA`. """
+    # Per-PSM chunks: each annotated frame becomes a typed Polars block
     chunks: list[pl.DataFrame] = []
     for psm_id, annotated_frame in annotated_spectra:
         if annotated_frame is None or len(annotated_frame) == 0:
@@ -78,9 +81,11 @@ def build_peaks_dataframe(
         })
         chunks.append(chunk)
 
+    # Fast path: no chunks -> typed-empty LazyFrame
     if not chunks:
         return pl.DataFrame(schema=PEAKS_SCHEMA).lazy()
 
+    # Concatenate and return as a LazyFrame
     combined = pl.concat(chunks)
     logger.info(f"Peaks DataFrame: {len(combined)} peaks from {len(chunks)} spectra")
     return combined.lazy()
@@ -109,6 +114,7 @@ def build_sequence_dataframe(
 
 def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
     """Build an RT × m/z heatmap LazyFrame (one row per peak) for the openms_insight Heatmap.  """
+    # Per-spectrum chunks: broadcast RT across the m/z axis
     chunks: list[pl.DataFrame] = []
     for spectrum in spectra:
         if len(spectrum.mz) == 0:
@@ -120,9 +126,11 @@ def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
         })
         chunks.append(chunk)
 
+    # Fast path: no chunks -> typed-empty LazyFrame
     if not chunks:
         return pl.DataFrame(schema=HEATMAP_SCHEMA).lazy()
 
+    # Concatenate and return as a LazyFrame
     combined = pl.concat(chunks)
     logger.info(f"Heatmap DataFrame: {len(combined)} points from {len(chunks)} spectra")
     return combined.lazy()

@@ -32,11 +32,13 @@ logger = logging.getLogger(__name__)
 @st.fragment
 def comparison_metrics_fragment():
     """Show comparison metrics table and summary statistics."""
+    # Guard: bail if no comparison frame has been computed yet
     comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
     if comparison_frame is None or comparison_frame.empty:
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
         return
 
+    # Comparison table: list per-PSM metrics for every query/reference pair
     st.subheader("Comparison Summary")
     st.caption(f"{len(comparison_frame)} query/reference comparisons")
 
@@ -47,7 +49,7 @@ def comparison_metrics_fragment():
     available_cols = [c for c in display_cols if c in comparison_frame.columns]
     st.dataframe(comparison_frame[available_cols], width="stretch", hide_index=True)
 
-    # Summary statistics per peptidoform
+    # Summary statistics: per-peptidoform count/median/mean/std across PSMs
     st.markdown("---")
     st.subheader("Summary Statistics")
     metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_frame.columns]
@@ -58,7 +60,7 @@ def comparison_metrics_fragment():
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
 
-    # Summary plots (same as export)
+    # Summary plots: dual-axis and ridgeline figures for the chosen metric
     available_metrics = [m for m in METRIC_COLUMNS if m in comparison_frame.columns]
     if available_metrics:
         st.markdown("---")

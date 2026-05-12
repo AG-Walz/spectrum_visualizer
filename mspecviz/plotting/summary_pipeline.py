@@ -33,18 +33,20 @@ def prepare_summary_data(
 
     Returns (raw_frame, aggregated_frame).
     """
+    # Load: accept either an on-disk CSV path or an already-built DataFrame
     if isinstance(source, (str, Path)):
         raw_frame = pd.read_csv(source, low_memory=False)
     else:
         raw_frame = source.copy()
 
+    # Validate: fail fast if the requested metric column is missing
     if metric not in raw_frame.columns:
         raise ValueError(
             f"Metric '{metric}' not found. Available: "
             f"{[c for c in raw_frame.columns if c in METRIC_COLUMNS]}"
         )
 
-    # Build peptidoform label
+    # Build peptidoform label: modification-or-base sequence joined with charge
     modification = raw_frame["Modification"].fillna("").astype(str)
     inline = modification.mask(
         modification.isin(["", "(unmodified)"]), raw_frame["Peptide"].astype(str),
@@ -53,6 +55,7 @@ def prepare_summary_data(
 
     raw_frame = raw_frame.dropna(subset=[metric]).copy()
 
+    # Aggregate: per-peptidoform count/quartile stats + 95% CI + dominant charge
     grouped = raw_frame.groupby("peptidoform", sort=False)
     agg = grouped[metric].agg([
         "count", "median", "mean", "std",
@@ -64,6 +67,7 @@ def prepare_summary_data(
     agg["ci_hi"] = agg["mean"] + 1.96 * agg["std"] / np.sqrt(agg["count"])
     agg["charge"] = grouped["Charge"].agg(lambda x: x.mode().iloc[0])
 
+    # Finalise: sort ascending by count so plots draw least→most prevalent
     agg = agg.reset_index().sort_values("count", ascending=True).reset_index(drop=True)
     return raw_frame, agg
 
@@ -77,6 +81,7 @@ def generate_all_summary_plots(
     export_resolution: int = 300,
 ) -> dict[str, dict[str, str]]:
     """Generate selected summary plots and save them. """
+    # Resolve defaults: fall back to configured plot types + PNG-only output
     if plot_types is None:
         plot_types = list(DEFAULTS.summary_plot_types)
     if formats is None:
@@ -85,9 +90,11 @@ def generate_all_summary_plots(
     summary_dir = Path(output_dir) / "summary"
     summary_dir.mkdir(parents=True, exist_ok=True)
 
+    # Prep data: aggregate once, reuse across every requested plot type
     raw_frame, aggregated_frame = prepare_summary_data(source, metric=metric)
     logger.info(f"Summary data: {len(aggregated_frame)} peptidoforms, {len(raw_frame)} rows, metric={metric}")
 
+    # Render & save: dispatch each plot type via the registry, write per-format files
     results: dict[str, dict[str, str]] = {}
     for plot_type in plot_types:
         func = _PLOT_REGISTRY.get(plot_type)

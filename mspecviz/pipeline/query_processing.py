@@ -64,13 +64,16 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
                          koina_collision_energy: int = DEFAULTS.koina_collision_energy,
                          koina_instrument_type: str = DEFAULTS.koina_instrument_type):
     """Annotate query, cache references, compute metrics. Returns (psm_id, spec, df, rows) or None."""
+    # PSM lookup: skip spectra that have no matching PSM in the search results
     psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
     if psm_id is None:
         return None
 
+    # Annotate query + warm reference cache for this variant (once)
     query_frame = _annotate_query_spectrum(result, annotation_kwargs)
     _cache_reference_spectra(result, reference_store, annotation_kwargs)
 
+    # Resolve references: experimental cache first, optional Koina AI fallback
     if koina_enabled:
         references = _try_koina_fallback(
             result, reference_store, annotation_kwargs,
@@ -79,6 +82,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     else:
         references = reference_store.get(result.variant_key, [])
 
+    # Compute metrics: one comparison row per (query, reference) pair
     comparison_rows = [
         build_comparison_row(
             psm_id, result, reference_spectrum, reference_frame,
@@ -141,11 +145,13 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     workers can re-use them via :pyattr:`ComparisonTask.metrics_text` instead
     of duplicating the work per task.
     """
+    # Setup: normalise format_dirs, derive export_formats, build PSM->variant lookup
     if format_dirs is None:
         format_dirs = {}
     export_formats = [*format_dirs] + (["html"] if html_dir else [])
     psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
 
+    # Build tasks: iterate PSMs in stable order, mirror when refs exist else single
     tasks: list[ComparisonTask] = []
     task_id = 0
     for psm_id, query_spectrum, query_frame in sorted(annotated_queries, key=lambda x: x[0]):

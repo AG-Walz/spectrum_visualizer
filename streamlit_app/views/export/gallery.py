@@ -89,19 +89,23 @@ def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -
 
 def _render_plot_gallery(root_dir: Path) -> None:
     """Display plots saved in root_dir organized by peptidoform then reference."""
+    # Format selection: prefer SVG, fall back to PNG, bail when neither exists
     browse = _pick_browse_format(root_dir)
     if browse is None:
         return
     browse_dir, browse_format = browse
 
+    # Discover variants: each subdirectory is a peptidoform
     peptide_dirs = sorted([d for d in browse_dir.iterdir() if d.is_dir()])
     if not peptide_dirs:
         return
 
+    # Header: total plot count across all peptide variants
     st.markdown("---")
     st.subheader("Browse Plots")
     total_plots = sum(len(list(d.glob(f"*.{browse_format}"))) for d in peptide_dirs)
     st.caption(f"{len(peptide_dirs)} peptide variants, {total_plots} plots")
 
+    # Render: outer expander per peptide variant
     for peptide_dir in peptide_dirs:
         _render_peptide_dir(peptide_dir, browse_format, root_dir)

@@ -3,18 +3,21 @@ import json
 from pathlib import Path
 import streamlit as st
 
+# Path setup: anchor sys.path on project root for absolute imports
 # Ensure the project root is on sys.path so that `import streamlit_app.*`
 # (and `import mspecviz.*`) resolves when Streamlit runs this file directly.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
+# Settings: load app-wide settings.json once into session state
 if "settings" not in st.session_state:
     settings_path = Path(__file__).parent / "config" / "settings.json"
     with open(settings_path, "r") as f:
         st.session_state.settings = json.load(f)
 
 if __name__ == '__main__':
+    # Navigation: register the four tab pages and hand off to st.navigation
     views = Path(__file__).parent / "views"
     pages = {
         str(st.session_state.settings["app_name"]): [
