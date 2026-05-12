@@ -18,6 +18,33 @@ from mspecviz.search.idxml_workers import search_single_idxml, count_psms_per_pe
 logger = logging.getLogger(__name__)
 
 
+def _normalise_target_peptides(target_peptides: List[str]) -> Set[str]:
+    """Strip + uppercase + dedupe; empty strings dropped."""
+    return {p.strip().upper() for p in target_peptides if p.strip()}
+
+
+def _build_search_tasks(
+    idxml_paths: List[str],
+    target_set: Set[str],
+    mzml_paths: Optional[List[str]],
+) -> List[tuple]:
+    """Pack each idXML path into a 4-tuple consumed by ``search_single_idxml``."""
+    mzml_by_stem = {Path(path).stem.lower(): str(path) for path in (mzml_paths or [])}
+    return [(path, Path(path).name, target_set, mzml_by_stem) for path in idxml_paths]
+
+
+def _process_search_task(
+    task: tuple, ok: bool, result, variant_groups: Dict[str, PSMList],
+) -> List[str]:
+    """Apply one completed worker outcome to *variant_groups*; return errors to surface."""
+    if not ok:
+        return [f"Worker crashed processing {Path(task[0]).name}: {result}"]
+    _, matches, errors = result
+    for variant_key, psm in matches:
+        variant_groups.setdefault(variant_key, PSMList(psm_list=[])).append(psm)
+    return errors
+
+
 def search_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
@@ -32,29 +59,23 @@ def search_peptides_in_idxmls(
     ``idxml_resolved_path``, ``mzml_resolved_path``) in ``PSM.metadata``,
     populated by :func:`mspecviz.search.idxml_workers.search_single_idxml`.
     """
-    target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
+
+    target_set = _normalise_target_peptides(target_peptides)
     if not target_set:
         on_error("No valid target peptides provided")
         logger.warning("No valid target peptides provided")
         return {}
 
-    mzml_by_stem = {Path(path).stem.lower(): str(path) for path in (mzml_paths or [])}
-    tasks = [(path, Path(path).name, target_set, mzml_by_stem) for path in idxml_paths]
+    tasks = _build_search_tasks(idxml_paths, target_set, mzml_paths)
     total = len(idxml_paths)
     variant_groups: Dict[str, PSMList] = {}
 
     for completed, (task, ok, result) in enumerate(
         run_tasks(tasks=tasks, worker=search_single_idxml, workers=workers), start=1,
     ):
-        if ok:
-            _, matches, errors = result
-            for variant_key, psm in matches:
-                variant_groups.setdefault(variant_key, PSMList(psm_list=[])).append(psm)
-        else:
-            errors = [f"Worker crashed processing {Path(task[0]).name}: {result}"]
-        for message in errors:
+        for message in _process_search_task(task, ok, result, variant_groups):
             on_error(message)
         progress(completed, total, "Searching idXML files")
 
