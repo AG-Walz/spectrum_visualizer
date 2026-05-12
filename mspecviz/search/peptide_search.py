@@ -13,7 +13,7 @@ import polars as pl
 from psm_utils import PSMList
 
 from mspecviz.common.task_dispatch import run_tasks
-from mspecviz.search.idxml_workers import _search_single_idxml, count_psms_per_peptide
+from mspecviz.search.idxml_workers import search_single_idxml, count_psms_per_peptide
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +37,7 @@ def search_peptides_in_idxmls(
 
     Each PSM carries mspecviz-specific resolution metadata (``idxml_file``,
     ``idxml_resolved_path``, ``mzml_resolved_path``) in ``PSM.metadata``,
-    populated by :func:`mspecviz.search.idxml_workers._search_single_idxml`.
+    populated by :func:`mspecviz.search.idxml_workers.search_single_idxml`.
     """
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
     progress = progress_callback or (lambda *_: None)
@@ -53,7 +53,7 @@ def search_peptides_in_idxmls(
     variant_groups: Dict[str, PSMList] = {}
 
     for completed, (task, ok, result) in enumerate(
-        run_tasks(tasks=tasks, worker=_search_single_idxml, workers=workers), start=1,
+        run_tasks(tasks=tasks, worker=search_single_idxml, workers=workers), start=1,
     ):
         if ok:
             _, matches, errors = result

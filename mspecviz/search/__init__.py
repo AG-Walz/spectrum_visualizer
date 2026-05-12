@@ -8,11 +8,9 @@ from mspecviz.search.peptide_search import (
     search_peptides_in_idxmls,
     summarize_search_results,
 )
-from mspecviz.search.idxml_workers import count_psms_per_peptide
 
 __all__ = [
     "count_psms_in_idxmls",
-    "count_psms_per_peptide",
     "search_peptides_in_idxmls",
     "summarize_search_results",
 ]

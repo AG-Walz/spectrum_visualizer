@@ -15,27 +15,18 @@ logger = logging.getLogger(__name__)
 def _iterate_psms_safely(
     reader, idxml_name: str,
 ) -> Tuple[List["PSM"], int, Optional[str]]:
-    """Drain a psm_utils IdXMLReader, isolating one bad PSM from the rest.
-
-    psm_utils' ``__iter__`` is a generator that dies on a single malformed PSM
-    (e.g. null rescoring feature in unfiltered ``_pout.idXML``). We catch the
-    generator failure so earlier PSMs in the same file are still usable.
-    Returns ``(psms, psms_read, parse_error)``.
-    """
-    psms, psms_read = [], 0
-    psm_iter = iter(reader)
-    while True:
-        try:
-            psms.append(next(psm_iter))
-            psms_read += 1
-        except StopIteration:
-            return psms, psms_read, None
-        except Exception as error:
-            logger.debug(f"PSM parse error in {idxml_name} after {psms_read} PSMs: {error}")
-            return psms, psms_read, str(error)
+    """Drain a psm_utils IdXMLReader, isolating erroneous PSMs from the rest."""
+    psms: list = []
+    try:
+        for psm in reader:
+            psms.append(psm)
+    except Exception as error:
+        logger.debug(f"PSM parse error in {idxml_name} after {len(psms)} PSMs: {error}")
+        return psms, len(psms), str(error)
+    return psms, len(psms), None
 
 
-def _search_single_idxml(
+def search_single_idxml(
     idxml_path: str, idxml_name: str,
     target_set: Set[str], mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
@@ -67,16 +58,13 @@ def _search_single_idxml(
     return idxml_name, matches, errors
 
 
-def _iter_base_sequences(idxml_path: str, caller: str):
-    """Yield uppercase base sequences from every PSM in *idxml_path*; warn on parse error."""
+def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
+    """Count PSMs per base sequence in one idXML; partial counts on parse error."""
+    counts: Counter = Counter()
     try:
         for psm in IdXMLReader(str(idxml_path)):
             if psm.peptidoform.sequence:
-                yield psm.peptidoform.sequence.upper()
+                counts[psm.peptidoform.sequence.upper()] += 1
     except Exception as error:
-        logger.warning(f"{caller} failed for {Path(idxml_path).name}: {error}")
-
-
-def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
-    """Count PSMs per base sequence in one idXML; ``{}`` on parse error."""
-    return Counter(_iter_base_sequences(idxml_path, "count_psms_per_peptide"))
+        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {error}")
+    return counts
