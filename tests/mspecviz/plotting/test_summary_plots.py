@@ -1,7 +1,7 @@
-"""
-Unit tests for mspecviz/summary_plots.py
+"""Unit tests for the summary-plot stack in ``mspecviz.plotting``.
 
-Covers dual-axis, ridgeline, and heatmap summary plots.
+Covers ``summary_pipeline.prepare_summary_data`` / ``generate_all_summary_plots``
+and the dual-axis + ridgeline renderers.
 """
 from pathlib import Path
 

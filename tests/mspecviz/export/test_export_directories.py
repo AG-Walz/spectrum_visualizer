@@ -1,6 +1,4 @@
-"""
-Unit tests for mspecviz/export/directories.py
-"""
+"""Unit tests for mspecviz/export/export_directories.py"""
 from pathlib import Path
 
 import pytest

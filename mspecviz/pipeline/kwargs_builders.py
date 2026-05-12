@@ -10,7 +10,6 @@ different shapes (CLI uses a ``SimpleNamespace``; Streamlit uses session
 from typing import Any, Callable
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.helpers import is_relative_intensity
 
 ParamGetter = Callable[[str, Any], Any]
 
@@ -20,7 +19,7 @@ def build_annotation_kwargs(getter: ParamGetter) -> dict:
     return dict(
         ion_types=getter("ion_types", DEFAULTS.ion_types),
         mz_tolerance=getter("mz_tolerance", DEFAULTS.mz_tolerance),
-        normalize=is_relative_intensity(getter("intensity_mode", DEFAULTS.intensity_mode)),
+        normalize=getter("intensity_mode", DEFAULTS.intensity_mode) == "Relative",
         add_neutral_losses=getter("add_neutral_losses", DEFAULTS.add_neutral_losses),
     )
 

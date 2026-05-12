@@ -1,4 +1,4 @@
-"""Unit tests for mspecviz/common/text_utils.py"""
+"""Unit tests for mspecviz/common/helpers.py"""
 import pytest
 
 from mspecviz.common.helpers import (

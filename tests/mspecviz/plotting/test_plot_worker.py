@@ -1,6 +1,4 @@
-"""
-Unit tests for mspecviz/plot_worker.py
-"""
+"""Unit tests for mspecviz/plotting/plot_worker.py"""
 from pathlib import Path
 
 import numpy as np
