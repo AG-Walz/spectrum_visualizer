@@ -18,13 +18,6 @@ from mspecviz.search.idxml_workers import search_single_idxml, count_psms_per_pe
 logger = logging.getLogger(__name__)
 
 
-def _build_mzml_lookup(mzml_paths: Optional[List[str]]) -> Dict[str, str]:
-    """Map ``stem.lower() → str(path)`` (matches ``psm_utils.PSM.run`` keying)."""
-    if not mzml_paths:
-        return {}
-    return {Path(path).stem.lower(): str(path) for path in mzml_paths}
-
-
 def search_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
@@ -47,7 +40,7 @@ def search_peptides_in_idxmls(
         logger.warning("No valid target peptides provided")
         return {}
 
-    mzml_by_stem = _build_mzml_lookup(mzml_paths)
+    mzml_by_stem = {Path(path).stem.lower(): str(path) for path in (mzml_paths or [])}
     tasks = [(path, Path(path).name, target_set, mzml_by_stem) for path in idxml_paths]
     total = len(idxml_paths)
     variant_groups: Dict[str, PSMList] = {}
@@ -63,7 +56,6 @@ def search_peptides_in_idxmls(
             errors = [f"Worker crashed processing {Path(task[0]).name}: {result}"]
         for message in errors:
             on_error(message)
-            logger.error(message)
         progress(completed, total, "Searching idXML files")
 
     progress(total, total, "Search complete")
