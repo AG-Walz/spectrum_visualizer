@@ -5,6 +5,7 @@ Coordinates parallel/sequential execution of the per-file workers in
 ``Dict[str, PSMList]`` keyed on canonical ``Peptidoform.modified_sequence``.
 """
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Set
 
@@ -12,7 +13,7 @@ import polars as pl
 from psm_utils import PSMList
 
 from mspecviz.common.task_dispatch import run_tasks
-from mspecviz.search.idxml_workers import _scan_single_idxml_peptides, _search_single_idxml
+from mspecviz.search.idxml_workers import _search_single_idxml, count_psms_per_peptide
 
 logger = logging.getLogger(__name__)
 
@@ -71,31 +72,30 @@ def search_peptides_in_idxmls(
     return variant_groups
 
 
-def get_unique_peptides_from_idxmls(
+def count_psms_in_idxmls(
     idxml_paths: List[str],
-    limit: int = 100,
     progress_callback: Optional[Callable] = None,
+    error_callback: Optional[Callable] = None,
     workers: int = 1,
-) -> List[str]:
-    """Return up to *limit* unique base sequences across *idxml_paths* (sorted)."""
-    unique_peptides: Set[str] = set()
+) -> "Counter[str]":
+    """Merge per-file PSM counts; ``{base_sequence: total_psms}`` across *idxml_paths*."""
+    merged: Counter = Counter()
     total = len(idxml_paths)
     progress = progress_callback or (lambda *_: None)
+    on_error = error_callback or (lambda *_: None)
 
     # Single-arg tasks: run_tasks auto-wraps each ``idxml_path`` into a 1-tuple.
-    for completed, (_task, ok, result) in enumerate(run_tasks(
-        tasks=idxml_paths, worker=_scan_single_idxml_peptides, workers=workers,
+    for completed, (task, ok, result) in enumerate(run_tasks(
+        tasks=idxml_paths, worker=count_psms_per_peptide, workers=workers,
     ), start=1):
         if ok:
-            unique_peptides.update(result[1])
+            merged.update(result)
         else:
-            logger.warning(f"Worker error scanning peptides: {result}")
-        progress(completed, total, "Scanning idXML files")
-        if len(unique_peptides) >= limit:
-            break  # joblib cancels remaining work when the generator is GC'd
+            on_error(f"{Path(task).name}: {result}")
+        progress(completed, total, "Counting PSMs per peptide")
 
-    progress(total, total, "Scan complete")
-    return sorted(unique_peptides)[:limit]
+    progress(total, total, "Count complete")
+    return merged
 
 
 _SUMMARY_SCHEMA = {

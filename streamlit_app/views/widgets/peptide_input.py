@@ -1,48 +1,36 @@
-"""
-Peptide input widget — paste-list and pick-from-idXML tabs.
+"""Peptide input widget — paste-list and pick-from-idXML tabs.
 
-The "pick from idXML" flow scans selected idXML files in parallel for PSM counts
-so the picker shows how many hits each peptide has. Uses
-``mspecviz.common.task_dispatch.run_tasks`` so the sequential/parallel dispatch is
-consistent with the rest of the codebase.
+The "pick from idXML" flow delegates PSM counting to
+:func:`mspecviz.search.count_psms_in_idxmls` and only owns the Streamlit progress UI.
 """
 from collections import Counter
-from pathlib import Path
 
 import streamlit as st
 
 from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.task_dispatch import run_tasks
 from mspecviz.common.helpers import parse_peptide_list
-from mspecviz.search import count_psms_per_peptide
+from mspecviz.search import count_psms_in_idxmls
 from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Run count_psms_per_peptide across files; live progress via ``progress_status``."""
-    merged: Counter = Counter()
+    """Wrap ``count_psms_in_idxmls`` with a live Streamlit progress bar."""
     errors: list[str] = []
     n = len(idxmls)
-
     with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
-        for done, (task, ok, result) in enumerate(
-            run_tasks(tasks=idxmls, worker=count_psms_per_peptide, workers=min(workers, n)),
-            start=1,
-        ):
-            if ok:
-                merged.update(result)
-            else:
-                errors.append(f"{Path(task).name}: {result}")
-            tracker.update(done, n, units="files")
-
+        merged = count_psms_in_idxmls(
+            idxmls,
+            workers=min(workers, n),
+            progress_callback=lambda done, total, _msg: tracker.update(done, total, units="files"),
+            error_callback=errors.append,
+        )
         if errors:
             tracker.finalize(f"Completed with {len(errors)} errors", state="error")
             for error in errors[:5]:
                 st.caption(error)
         else:
             tracker.finalize(f"{len(merged)} peptides from {n} files")
-
     return merged, errors
 
 

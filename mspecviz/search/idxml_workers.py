@@ -80,8 +80,3 @@ def _iter_base_sequences(idxml_path: str, caller: str):
 def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
     """Count PSMs per base sequence in one idXML; ``{}`` on parse error."""
     return Counter(_iter_base_sequences(idxml_path, "count_psms_per_peptide"))
-
-
-def _scan_single_idxml_peptides(idxml_path: str) -> Tuple[str, Set[str]]:
-    """Worker: return ``(idxml_path, {base_sequence, ...})`` for one idXML."""
-    return idxml_path, set(_iter_base_sequences(idxml_path, "_scan_single_idxml_peptides"))

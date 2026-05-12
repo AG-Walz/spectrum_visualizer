@@ -4,7 +4,6 @@ import polars as pl
 from psm_utils import PSMList
 
 from mspecviz.search import (
-    get_unique_peptides_from_idxmls,
     search_peptides_in_idxmls,
     summarize_search_results,
 )
@@ -79,11 +78,6 @@ class TestSearchWithRealData:
             assert psm.peptidoform is not None
             assert psm.spectrum_id is not None
             assert (psm.get_precursor_charge() or 0) > 0
-
-    def test_get_unique_peptides(self, idxml_path):
-        peptides = get_unique_peptides_from_idxmls([idxml_path])
-        assert len(peptides) > 0
-        assert isinstance(peptides, (list, set))
 
     def test_summarize_returns_polars(self, search_results):
         summary = summarize_search_results(search_results)
