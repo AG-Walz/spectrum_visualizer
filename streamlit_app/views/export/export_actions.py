@@ -1,4 +1,4 @@
-"""Export pipeline — delegates to :func:`mspecviz.export.run_export`.
+"""Export pipeline — delegates to :func:`core.export.run_export`.
 
 ``_run_export`` is called from the Export button. It collects session state,
 builds the shared ``ExportSelection`` / ``PlotSettings`` / ``ExportCallbacks``,
@@ -17,8 +17,8 @@ import streamlit as st
 from streamlit_app.utils.state import get_param, get_state_key
 from streamlit_app.utils.page_state import build_run_settings
 from streamlit_app.views.export.gallery import _render_plot_gallery
-from mspecviz.common.defaults import DEFAULTS
-from mspecviz.export import (
+from core.common.defaults import DEFAULTS
+from core.export import (
     ExportCallbacks,
     ExportSelection,
     PlotSettings,
@@ -74,7 +74,7 @@ def _show_saved_files_expander(result) -> None:
 
 def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
-    """Drive :func:`mspecviz.export.run_export` and render the resulting gallery."""
+    """Drive :func:`core.export.run_export` and render the resulting gallery."""
     # Guard: refuse to export when Search & Load hasn't populated session state
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     if not annotated_queries:

@@ -14,11 +14,11 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
+from core.annotation import METRIC_SHORT_TO_DISPLAY
 from psm_utils import PSMList
 
 from tests.conftest import make_peptide_match
-from mspecviz.spectra import LoadedSpectrum
+from core.spectra import LoadedSpectrum
 from streamlit_app.views.export.export_actions import _run_export
 
 

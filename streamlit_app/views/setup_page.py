@@ -11,8 +11,8 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from streamlit_app.views.widgets.file_browser import render_directory_browser
 from streamlit_app.views.widgets.peptide_input import render_peptide_input
-from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.helpers import (
+from core.common.defaults import DEFAULTS
+from core.common.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
 )
@@ -28,10 +28,10 @@ def _get_nested_value(source: dict, *keys, default=None):
             return default
     return current if current is not None else default
 
-from mspecviz.common.defaults import INSTRUMENT_TYPES, KOINA_MODELS
+from core.common.defaults import INSTRUMENT_TYPES, KOINA_MODELS
 
 try:
-    from mspecviz.spectra import KOINA_AVAILABLE, get_koina_settings
+    from core.spectra import KOINA_AVAILABLE, get_koina_settings
 except ImportError:
     KOINA_AVAILABLE = False
 

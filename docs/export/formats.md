@@ -3,12 +3,12 @@
 Per-column schemas for every tabular artifact an export run produces.
 
 - **Parquet** — four files, the same Polars LazyFrames the openms_insight
-  Explorer consumes at runtime. Built by `mspecviz.dataframes`
+  Explorer consumes at runtime. Built by `core.dataframes`
   (`build_psm_table` + `build_visualization_frames`).
 - **CSV / XLSX** — one wide comparison summary per run, human-readable.
-  The frame is assembled by `mspecviz.pipeline.annotation_steps.
+  The frame is assembled by `core.pipeline.annotation_steps.
   build_comparison_row` and serialised by
-  `mspecviz.export.export_pipeline._write_comparison_summary`.
+  `core.export.export_pipeline._write_comparison_summary`.
 
 For plots see [plots.md](plots.md); for the directory layout see
 [layout.md](layout.md).
@@ -22,7 +22,7 @@ Four Parquet files mirror the four LazyFrames built for openms_insight.
 ### `psm.parquet` — PSM table
 
 One row per peptide-spectrum match. Schema constant: `PSM_TABLE_SCHEMA`
-in `mspecviz/dataframes/psm_tables.py`.
+in `core/dataframes/psm_tables.py`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -42,7 +42,7 @@ in `mspecviz/dataframes/psm_tables.py`.
 
 One row per peak in each loaded spectrum. Used by openms_insight LinePlot
 and SequenceView. Schema: `PEAKS_SCHEMA` in
-`mspecviz/dataframes/insight_frames.py`.
+`core/dataframes/insight_frames.py`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -103,7 +103,7 @@ emitted.
 ### 7 comparison metrics
 
 Column names are the display strings from `METRIC_SHORT_TO_DISPLAY`
-(`mspecviz/annotation/comparison_metrics.py`), not the short codes. See
+(`core/annotation/comparison_metrics.py`), not the short codes. See
 [../metrics/comparison.md](../metrics/comparison.md) for definitions.
 
 | Column | Short code | Description |

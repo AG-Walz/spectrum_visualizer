@@ -19,19 +19,19 @@ import streamlit as st
 from openms_insight import StateManager, Table
 
 from streamlit_app.utils.state import STATE_PREFIX, get_param, get_state_key
-from mspecviz.annotation import (
+from core.annotation import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     format_metrics_text,
 )
-from mspecviz.common.defaults import DEFAULTS
-from mspecviz.pipeline import (
+from core.common.defaults import DEFAULTS
+from core.pipeline import (
     build_psm_to_variant_mapping,
     format_spectrum_labels,
 )
-from mspecviz.plotting import create_spectrum_plot
-from mspecviz.spectra.loaded_spectrum import source_label
-from mspecviz.spectra.mzml_native_ids import extract_id_number
+from core.plotting import create_spectrum_plot
+from core.spectra.loaded_spectrum import source_label
+from core.spectra.mzml_native_ids import extract_id_number
 
 
 def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: dict) -> list:

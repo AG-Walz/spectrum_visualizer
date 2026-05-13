@@ -1,6 +1,6 @@
 # Front-ends and Tests
 
-The two UI runners that sit on top of `mspecviz/`, plus the test tree.
+The two UI runners that sit on top of `core/`, plus the test tree.
 
 ---
 
@@ -53,11 +53,11 @@ mutation/orchestration, `*_plots.py` / `gallery.py` for view-only pieces).
 **Workspaces.** Managed by `utils/state/state_workspace.py` and the sidebar
 helpers in `state_sidebar.py`. Each workspace is a directory under
 `workspaces/` with its own `params.json` — a sparse record of user-edited
-widget values. Missing keys fall back to `mspecviz.common.defaults.DEFAULTS`.
+widget values. Missing keys fall back to `core.common.defaults.DEFAULTS`.
 The active workspace lives in `st.session_state["workspace"]`.
 
 **Progress wiring.** `utils/progress_tracker.py` adapts the
-`(current, total, message)` triples emitted by `mspecviz.common.task_dispatch`
+`(current, total, message)` triples emitted by `core.common.task_dispatch`
 into Streamlit `st.progress` calls — kept in the UI layer so the core stays
 framework-agnostic.
 
@@ -79,7 +79,7 @@ runs.
 
 **Two-layer config merge** (see `cli/main.py:_load_config`):
 
-1. `mspecviz.common.defaults.DEFAULTS` + the `_CLI_EXTRAS` dict at the top
+1. `core.common.defaults.DEFAULTS` + the `_CLI_EXTRAS` dict at the top
    of `main.py` (CLI-only fields: `idxml_files`, `mzml_files`,
    `peptide_source`, `peptides`, `reference_substring`, `no_plots`).
 2. YAML file — per-run overrides merged last via dict-literal unpacking
@@ -104,7 +104,7 @@ tests/
 │   ├── test_export_pipeline.py
 │   ├── test_export_bugfixes.py
 │   └── test_mirror_picker.py
-└── mspecviz/                         # tests mirror the core subpackage layout
+└── core/                             # tests mirror the core subpackage layout
     ├── common/test_helpers.py
     ├── search/test_peptide_search.py
     ├── spectra/
@@ -137,7 +137,7 @@ Selective runs:
 
 ```bash
 pytest tests/ -m "not integration"   # skip slow end-to-end tests
-pytest tests/mspecviz/annotation/    # just one core subpackage
+pytest tests/core/annotation/    # just one core subpackage
 pytest tests/cli/ -v                 # CLI integration
 pytest tests/streamlit/ -v           # GUI smoke + export unit tests
 ```

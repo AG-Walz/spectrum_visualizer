@@ -28,8 +28,8 @@ from streamlit_app.utils.state import (
     get_state_key,
     load_params,
 )
-from mspecviz.common.helpers import parse_peptide_list
-from mspecviz.export import (
+from core.common.helpers import parse_peptide_list
+from core.export import (
     RUN_SETTINGS_FIELDS,
     build_run_settings as _build_run_settings_core,
 )
@@ -215,7 +215,7 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 # ---------------------------------------------------------------------------
 # run_settings.json serialization
 # ---------------------------------------------------------------------------
-# The canonical field list lives in ``mspecviz.export.RUN_SETTINGS_FIELDS``.
+# The canonical field list lives in ``core.export.RUN_SETTINGS_FIELDS``.
 # Streamlit stores some of those values under different session keys (e.g.
 # ``idxml_files`` → ``selected_idxmls``) — the map below covers the differences.
 _STREAMLIT_PARAM_KEY_OVERRIDES: dict[str, str] = {

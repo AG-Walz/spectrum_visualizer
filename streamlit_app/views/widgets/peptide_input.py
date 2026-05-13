@@ -1,15 +1,15 @@
 """Peptide input widget — paste-list and pick-from-idXML tabs.
 
 The "pick from idXML" flow delegates PSM counting to
-:func:`mspecviz.search.count_psms_in_idxmls` and only owns the Streamlit progress UI.
+:func:`core.search.count_psms_in_idxmls` and only owns the Streamlit progress UI.
 """
 from collections import Counter
 
 import streamlit as st
 
-from mspecviz.common.defaults import DEFAULTS
-from mspecviz.common.helpers import parse_peptide_list
-from mspecviz.search import count_psms_in_idxmls
+from core.common.defaults import DEFAULTS
+from core.common.helpers import parse_peptide_list
+from core.search import count_psms_in_idxmls
 from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 

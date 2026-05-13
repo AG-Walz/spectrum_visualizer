@@ -15,7 +15,7 @@ comparison-summary CSV/XLSX columns see [formats.md](formats.md).
 ## How the orchestrator runs
 
 Both the CLI and the Streamlit Export tab call
-`mspecviz.export.export_pipeline.run_export()` with three dataclasses:
+`core.export.export_pipeline.run_export()` with three dataclasses:
 
 - `ExportSelection` — what to export (parquets, comparison summary,
   mirror plots, summary plots).
@@ -26,12 +26,12 @@ Both the CLI and the Streamlit Export tab call
   hooks the front-end uses for progress UI.
 
 Mirror plot tasks are built by
-`mspecviz.pipeline.query_processing.build_plot_tasks` (one
+`core.pipeline.query_processing.build_plot_tasks` (one
 `ComparisonTask` per query/reference pair) and dispatched through
-`mspecviz.common.task_dispatch.run_tasks` to the
-`mspecviz.plotting.plot_worker.process_single_task` worker. Summary
+`core.common.task_dispatch.run_tasks` to the
+`core.plotting.plot_worker.process_single_task` worker. Summary
 plots are rendered on the main process by
-`mspecviz.plotting.summary_pipeline.generate_all_summary_plots`.
+`core.plotting.summary_pipeline.generate_all_summary_plots`.
 
 ---
 
@@ -75,7 +75,7 @@ For example:
 png/ASDDFDQASY_unmodified/ASDDFDQASY_vs_ref_ProT001_z2.png
 ```
 
-Filenames are passed through `mspecviz.export.export_directories.
+Filenames are passed through `core.export.export_directories.
 sanitize_filename` which strips filesystem-unsafe characters and
 truncates to 100 chars.
 
@@ -93,7 +93,7 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
   = absolute counts.
 - **Annotations:** ion labels (`y7`, `b3++`) drawn above each annotated
   peak. Colours read from `ION_COLORS` in
-  `mspecviz/common/defaults.py` (mirrored in `settings.json` for
+  `core/common/defaults.py` (mirrored in `settings.json` for
   Streamlit).
 - **Title:** peptidoform string + charge state.
 - **Metrics panel:** the 7 comparison metrics + context counts (peak
@@ -105,7 +105,7 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
 
 Run-wide aggregations across every comparison in
 `comparison_summary.csv`. Produced by
-`mspecviz.plotting.summary_pipeline.generate_all_summary_plots` and
+`core.plotting.summary_pipeline.generate_all_summary_plots` and
 written to `{run}/summary/`.
 
 The default metric is **R² binned** (`DEFAULTS.summary_metric`),
@@ -133,7 +133,7 @@ Explore tab is interactive-only and is not saved to disk.
 Plot types are registered in `summary_pipeline._PLOT_REGISTRY` as a
 straight `{name: callable}` mapping. To add a new plot type:
 
-1. Add a new module `mspecviz/plotting/summary_<name>.py` exporting a
+1. Add a new module `core/plotting/summary_<name>.py` exporting a
    `plot_<name>(raw_frame, aggregated_frame, metric, …) -> Figure` that
    matches the existing renderer signature.
 2. Import it in `summary_pipeline.py` and add an entry to
@@ -148,7 +148,7 @@ title)` keyword set.
 ### Customizing
 
 - `metric` — any column listed in `METRIC_COLUMNS`
-  (`mspecviz/plotting/_summary_shared.py`): `R² match`, `R² binned`,
+  (`core/plotting/_summary_shared.py`): `R² match`, `R² binned`,
   `Cosine`, `Entropy`, `Dice`, `Jaccard`, `SharedRatio`.
 - `plot_types` — subset of `{dual_axis, ridgeline}` to render. Empty
   list → no summary plots.
@@ -206,4 +206,4 @@ fingerprint-matching rules.
 - [../metrics/comparison.md](../metrics/comparison.md) — what each
   metric in the summary CSV actually measures.
 - [../architecture/core.md](../architecture/core.md) — the
-  `mspecviz/plotting/` and `mspecviz/export/` subpackage tours.
+  `core/plotting/` and `core/export/` subpackage tours.

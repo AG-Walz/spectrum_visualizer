@@ -16,7 +16,7 @@ import streamlit as st
 from openms_insight import Heatmap, LinePlot, SequenceView, StateManager, Table
 
 from streamlit_app.utils.state import get_param, get_state_key
-from mspecviz.common.defaults import DEFAULTS
+from core.common.defaults import DEFAULTS
 
 
 def _create_component(cls, cache_id, cache_path, needs_regeneration, **kwargs):

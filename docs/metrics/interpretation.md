@@ -92,5 +92,5 @@ Always sanity-check with the context columns
 - [../export/formats.md](../export/formats.md) — the exact CSV/XLSX
   column names that carry these metrics into the export.
 - [../architecture/core.md](../architecture/core.md) — the
-  `mspecviz/annotation/` subpackage tour shows where each metric is
+  `core/annotation/` subpackage tour shows where each metric is
   implemented.

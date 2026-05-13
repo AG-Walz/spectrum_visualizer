@@ -5,7 +5,7 @@ import streamlit as st
 
 # Path setup: anchor sys.path on project root for absolute imports
 # Ensure the project root is on sys.path so that `import streamlit_app.*`
-# (and `import mspecviz.*`) resolves when Streamlit runs this file directly.
+# (and `import core.*`) resolves when Streamlit runs this file directly.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))

@@ -122,7 +122,7 @@ CI smoke tests — no GUI, no plot rendering.
   the pipeline sequentially. Crashes surface as plain tracebacks instead
   of silent worker exits.
 - **`MSPECVIZ_LOG_LEVEL=DEBUG`** prints DEBUG-level logs from `pyopenms`,
-  `koinapy`, and every `mspecviz.*` module. Useful when a Koina call
+  `koinapy`, and every `core.*` module. Useful when a Koina call
   silently returns no spectrum.
 - **Stale cache** — only relevant to the Streamlit app, which persists
   loaded spectra to `<workspace>/.mspecviz_cache/`. The CLI does **not**
@@ -132,7 +132,7 @@ CI smoke tests — no GUI, no plot rendering.
   force a new fingerprint.
 - **Same-named files** — if you select two files with the same basename
   from different directories, both the Streamlit Setup tab and any code
-  path that calls `mspecviz.common.helpers.ensure_unique_basenames`
+  path that calls `core.common.helpers.ensure_unique_basenames`
   will raise `DuplicateBasenameError`. Rename or stage the files
   separately. The CLI does not currently call this check itself, so
   glob results with collisions silently overwrite — review your globs

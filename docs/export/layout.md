@@ -7,12 +7,12 @@ What an export directory looks like on disk, how it's versioned, and what
 Implementation references:
 
 - Public orchestrator (CLI + Streamlit both call it):
-  `mspecviz/export/export_pipeline.py::run_export()`
+  `core/export/export_pipeline.py::run_export()`
 - Versioned directory + fingerprint logic:
-  `mspecviz/export/export_directories.py` (`find_or_create_export_directory`,
+  `core/export/export_directories.py` (`find_or_create_export_directory`,
   `commit_export_directory`, `sanitize_filename`)
 - `run_settings.json` field list:
-  `mspecviz/export/run_settings.py` (`RUN_SETTINGS_FIELDS`,
+  `core/export/run_settings.py` (`RUN_SETTINGS_FIELDS`,
   `build_run_settings`)
 
 The CLI wires it up in `cli/main.py::_run_export`; the Streamlit Export
@@ -119,7 +119,7 @@ parameters used for the run. It enables reproducibility and powers the
 "reload settings" feature on the Streamlit Export-history panel.
 
 The serialised fields are the single source of truth in
-`mspecviz/export/run_settings.py::RUN_SETTINGS_FIELDS`. Both the CLI and
+`core/export/run_settings.py::RUN_SETTINGS_FIELDS`. Both the CLI and
 the Streamlit Export tab hand `build_run_settings()` a `getter(key,
 default)` callable that knows how to read the value from their local
 config representation; the field list itself is identical.

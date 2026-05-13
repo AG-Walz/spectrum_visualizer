@@ -1,13 +1,13 @@
-# Core Package: `mspecviz/`
+# Core Package: `core/`
 
 Eight subpackages, each exposing a public API via a re-exporting
 `__init__.py`. Cross-package imports should always go through those
-subpackage-level re-exports (`from mspecviz.search import ...`), never
-reach into internal modules (`from mspecviz.search.idxml_workers import ...`).
+subpackage-level re-exports (`from core.search import ...`), never
+reach into internal modules (`from core.search.idxml_workers import ...`).
 
 ---
 
-## `mspecviz/common/`
+## `core/common/`
 
 Pure helpers with no domain logic. Imported by everything.
 
@@ -22,7 +22,7 @@ Pure helpers with no domain logic. Imported by everything.
 
 ---
 
-## `mspecviz/search/`
+## `core/search/`
 
 idXML parsing and peptide search across one or more identification files.
 
@@ -31,12 +31,12 @@ idXML parsing and peptide search across one or more identification files.
 | `idxml_workers.py` | Module-level, picklable workers: `search_single_idxml` (returns matches + per-file errors), `count_psms_per_peptide`. Both are dispatched by `common/task_dispatch.run_tasks` |
 | `peptide_search.py` | Public entry points: `search_peptides_in_idxmls()`, `count_psms_in_idxmls()`, `summarize_search_results()`. Wires the optional `progress_callback` / `error_callback` into the dispatcher so the CLI's tqdm bar and Streamlit's progress widget can attach |
 
-Public API: `from mspecviz.search import search_peptides_in_idxmls,
+Public API: `from core.search import search_peptides_in_idxmls,
 count_psms_in_idxmls, summarize_search_results`.
 
 ---
 
-## `mspecviz/spectra/`
+## `core/spectra/`
 
 mzML streaming + Koina AI prediction. Both produce the same `LoadedSpectrum`
 dataclass so the annotation layer doesn't need to know the spectrum's origin.
@@ -52,7 +52,7 @@ dataclass so the annotation layer doesn't need to know the spectrum's origin.
 
 ---
 
-## `mspecviz/annotation/`
+## `core/annotation/`
 
 Theoretical fragment generation, peak annotation, and the 7 comparison
 metrics. Theoretical fragments are produced by `spectrum_utils.proforma`
@@ -69,7 +69,7 @@ ranges, and interpretation.
 
 ---
 
-## `mspecviz/dataframes/`
+## `core/dataframes/`
 
 Polars LazyFrames consumed by the openms_insight components.
 
@@ -83,7 +83,7 @@ schemas.
 
 ---
 
-## `mspecviz/plotting/`
+## `core/plotting/`
 
 A single mirror renderer (Plotly + Matplotlib via a shared backend), two
 summary plot types (dual-axis + ridgeline), and the parallel plot-generation
@@ -105,7 +105,7 @@ separate, interactive widget driven by `HEATMAP_SCHEMA`.
 
 ---
 
-## `mspecviz/pipeline/`
+## `core/pipeline/`
 
 The glue between search, load, annotate, compare, and plot. **This is the
 layer both the CLI and Streamlit share** — any new feature that should run
@@ -120,7 +120,7 @@ identically from both front ends belongs here.
 
 ---
 
-## `mspecviz/export/`
+## `core/export/`
 
 Versioned export directories + shared export orchestration. Both the CLI and
 the Streamlit Export tab call `run_export()` with their own progress

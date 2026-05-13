@@ -10,7 +10,7 @@ import numpy as np
 
 from psm_utils import PSMList
 
-from mspecviz.spectra.loaded_spectrum import LoadedSpectrum
+from core.spectra.loaded_spectrum import LoadedSpectrum
 from streamlit_app.views.explore.mirror_plots import (
     _build_picker_frames,
     _eligible_variants,

@@ -8,9 +8,9 @@ startup into `st.session_state.settings`; every value is looked up via
 key falls back to a hard-coded default.
 
 `settings.json` does **not** own tunable-parameter defaults. Those live
-in `mspecviz/common/defaults.py` (`DEFAULTS`) — see
+in `core/common/defaults.py` (`DEFAULTS`) — see
 [overview.md](overview.md) and
-[../../mspecviz/common/defaults.py](../../mspecviz/common/defaults.py).
+[../../core/common/defaults.py](../../core/common/defaults.py).
 
 This file is Streamlit-only. The CLI reads `DEFAULTS` directly and does
 not open `settings.json`.
@@ -129,6 +129,6 @@ The shipped palette is Material Design 700-level (saturated, print-safe):
 Charge state (`++`, `+++`) does not change the base colour. The same
 palette is the single source of truth: it ships in `settings.json` for
 the Streamlit UI and as `ION_COLORS` in
-`mspecviz/common/defaults.py` for everything else (mirror renderer,
+`core/common/defaults.py` for everything else (mirror renderer,
 summary plots, CLI). Editing one without the other will desynchronise
 the two — keep them in lockstep or remove the JSON copy.

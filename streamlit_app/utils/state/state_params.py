@@ -4,7 +4,7 @@ Workspace ``params.json`` I/O — load and save widget state per workspace.
 Pure I/O only: no Streamlit widgets. The sidebar / page-setup helpers that
 surface these values live in :mod:`streamlit_app.utils.state.state_sidebar`.
 
-Tunable defaults are owned by :data:`mspecviz.common.defaults.DEFAULTS`.
+Tunable defaults are owned by :data:`core.common.defaults.DEFAULTS`.
 When a key is missing from ``params.json``, callers should fall back to
 ``DEFAULTS.<key>`` at the call site (see ``get_param``).
 """
@@ -45,7 +45,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
 
     Missing keys are not populated here; callers resolve them via
     ``get_param(params, key, DEFAULTS.<key>)`` so there is exactly one
-    source of truth for default values (``mspecviz.common.defaults``).
+    source of truth for default values (``core.common.defaults``).
     """
     # Short-circuit: workspaces disabled or caller asked for defaults
     if default or not st.session_state.settings.get("enable_workspaces", False):

@@ -7,7 +7,7 @@ from pathlib import Path
 
 from psm_utils import PSMList
 
-from mspecviz.spectra.loaded_spectrum import LoadedSpectrum
+from core.spectra.loaded_spectrum import LoadedSpectrum
 from tests.conftest import make_peptide_match
 
 SETTINGS_PATH = Path(__file__).resolve().parents[2] / "streamlit_app" / "config" / "settings.json"

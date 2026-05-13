@@ -9,7 +9,7 @@ The core pipeline is pure Python and ships with two interchangeable front ends:
 - **CLI** — headless pipeline driven by a YAML config, suitable for batch jobs
   and servers without a browser.
 
-Both front ends share the same `mspecviz/` core (search, annotation, metrics,
+Both front ends share the same `core/` core (search, annotation, metrics,
 export). Pick the interface that fits your workflow; neither is required.
 
 ---
@@ -27,7 +27,7 @@ guides are reference material organised by topic, with each file kept under
 
 **Architecture**
 - [Overview](docs/architecture/overview.md) — 3-layer layout, pipeline flow, house rules
-- [Core package](docs/architecture/core.md) — tour of every `mspecviz/` subpackage
+- [Core package](docs/architecture/core.md) — tour of every `core/` subpackage
 - [Front-ends](docs/architecture/frontends.md) — `streamlit_app/`, `cli/`, `tests/`
 
 **Settings**
@@ -180,7 +180,7 @@ Three top-level packages keep core logic separable from the UI runners:
 
 ```
 MSpecViz/
-├── mspecviz/                    # Core package — pure Python, no Streamlit imports
+├── core/                        # Core package — pure Python, no Streamlit imports
 │   ├── search/                  # idXML parsing + peptide search
 │   ├── spectra/                 # mzML streaming + Koina AI prediction
 │   ├── annotation/              # Theoretical fragments + 7 comparison metrics
@@ -190,7 +190,7 @@ MSpecViz/
 │   ├── export/                  # Shared export orchestrator + versioned dirs
 │   └── common/                  # Ion colors, text helpers, parallel runner,
 │                                # path disambiguation
-├── streamlit_app/               # Streamlit UI (imports mspecviz.*)
+├── streamlit_app/               # Streamlit UI (imports core.*)
 │   ├── app.py                   # st.navigation entry point
 │   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)
 │   ├── config/
@@ -204,23 +204,23 @@ MSpecViz/
 │       ├── explore/             # Tab 3 — Explore (3 sub-views)
 │       ├── export/              # Tab 4 — Export
 │       └── widgets/             # File browser, peptide input widget
-├── cli/                         # Headless runner (imports mspecviz.*)
+├── cli/                         # Headless runner (imports core.*)
 │   ├── main.py                  # Entry point: YAML load → search → load → export
 │   └── config/                  # Example YAML configs
 ├── tests/                       # Unit + integration + GUI tests (pytest)
 │   ├── cli/                     # CLI integration tests
-│   ├── mspecviz/                # Core package tests (grouped by subpackage)
+│   ├── core/                    # Core package tests (grouped by subpackage)
 │   └── streamlit/               # GUI + export-pipeline tests
 └── docs/                        # Reading guides (this README points into them)
 ```
 
 **Rules the codebase follows:**
 
-- `mspecviz/` must never import from `streamlit_app/` or `cli/` — the core
+- `core/` must never import from `streamlit_app/` or `cli/` — the core
   stays testable and reusable.
-- Both `streamlit_app/` and `cli/` depend on `mspecviz/`; anything shared
-  between the two goes into `mspecviz/` (usually `mspecviz/pipeline/` for
-  orchestration or `mspecviz/common/` for pure helpers).
+- Both `streamlit_app/` and `cli/` depend on `core/`; anything shared
+  between the two goes into `core/` (usually `core/pipeline/` for
+  orchestration or `core/common/` for pure helpers).
 - No `.py` file exceeds 250 lines; no folder contains more than 10 scripts.
   When a module grows past either cap, split it into a subpackage with a
   re-exporting `__init__.py`.
@@ -237,7 +237,7 @@ with every key documented is in
 
 | File | Scope | What it controls |
 |---|---|---|
-| `mspecviz/common/defaults.py` (`DEFAULTS`) | Single source of truth for tunable defaults | Every parameter's fallback value (ion types, tolerances, export DPI, Koina settings, …) |
+| `core/common/defaults.py` (`DEFAULTS`) | Single source of truth for tunable defaults | Every parameter's fallback value (ion types, tolerances, export DPI, Koina settings, …) |
 | `streamlit_app/config/settings.json` | App-wide environmental config | Koina model catalogue, allowed ion types, data directory, performance tuning, ion color palette |
 | `workspaces/<name>/params.json` | One per workspace | Sparse record of user-edited widget values; missing keys fall back to `DEFAULTS` |
 | `cli/config/*.yaml` | One per CLI run | YAML config combining input files, peptides, annotation, export, and Koina sections |
@@ -262,7 +262,7 @@ conda run -n mspecviz python -m pytest tests/ -v
 
 Test groups, mirroring the source layout:
 
-- `tests/mspecviz/` — unit + integration tests for the core (grouped into
+- `tests/core/` — unit + integration tests for the core (grouped into
   `loading/`, `annotation/`, `dataframes/`, `plotting/` subfolders)
 - `tests/cli/` — CLI integration tests (invoke `python -m cli` as a
   subprocess)
@@ -273,7 +273,7 @@ Marker-driven selection:
 
 ```bash
 pytest tests/ -v -m "not integration"    # skip the slower end-to-end tests
-pytest tests/mspecviz/annotation/ -v     # just the annotation subpackage
+pytest tests/core/annotation/ -v     # just the annotation subpackage
 ```
 
 ---

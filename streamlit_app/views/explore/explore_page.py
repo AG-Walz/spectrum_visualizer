@@ -13,9 +13,9 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
-from mspecviz.annotation import METRIC_SHORT_TO_DISPLAY
-from mspecviz.common.defaults import DEFAULTS
-from mspecviz.plotting import (
+from core.annotation import METRIC_SHORT_TO_DISPLAY
+from core.common.defaults import DEFAULTS
+from core.plotting import (
     METRIC_COLUMNS,
     plot_classic_dual_axis,
     plot_ridgeline,

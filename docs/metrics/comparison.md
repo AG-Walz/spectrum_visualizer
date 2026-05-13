@@ -5,11 +5,11 @@ Four intensity-aware (R2m, R2b, Cos, Ent), three set-based (Dice, Jacc,
 ShR). Implementation:
 
 - Intensity helpers (matched-array R², binned R², matched-array cosine)
-  live in `mspecviz/annotation/metrics_intensity.py`.
+  live in `core/annotation/metrics_intensity.py`.
 - Set-overlap metrics, the entropy wrapper, and the public aggregator
-  `compute_all_metrics()` live in `mspecviz/annotation/comparison_metrics.py`.
+  `compute_all_metrics()` live in `core/annotation/comparison_metrics.py`.
 
-Both modules are re-exported from `mspecviz.annotation`.
+Both modules are re-exported from `core.annotation`.
 
 For a decision table ("which metric should I use?"), see
 [interpretation.md](interpretation.md).

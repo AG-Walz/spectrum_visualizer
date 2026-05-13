@@ -4,8 +4,9 @@ Invoke: ``python -m cli <config.yaml>``. Takes a single YAML config file as inpu
 which specifies parameters for the three main steps:
     1. Search peptides in idXML files, mapping to base sequences and grouping variants.
     2. Load and annotate spectra from mzML files, matching to the search results.
-    3. Export results via the shared mspecviz.export pipeline, including tables and plots.
+    3. Export results via the shared core.export pipeline, including tables and plots.
 """
+import copy
 import glob as globmod
 import logging
 import os
@@ -23,18 +24,18 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from mspecviz.common.defaults import DEFAULTS  # noqa: E402
-from mspecviz.dataframes import build_psm_table, build_visualization_frames  # noqa: E402
-from mspecviz.export import (  # noqa: E402
+from core.common.defaults import DEFAULTS  # noqa: E402
+from core.dataframes import build_psm_table, build_visualization_frames  # noqa: E402
+from core.export import (  # noqa: E402
     ExportCallbacks, ExportSelection, PlotSettings,
     build_run_settings, run_export,
 )
-from mspecviz.pipeline import (  # noqa: E402
+from core.pipeline import (  # noqa: E402
     build_annotation_kwargs, build_koina_kwargs, run_streaming_annotation,
 )
-from mspecviz.search import search_peptides_in_idxmls  # noqa: E402
+from core.search import search_peptides_in_idxmls  # noqa: E402
 
-logger = logging.getLogger("mspecviz.cli")
+logger = logging.getLogger("core.cli")
 
 # CLI-only fields not in DEFAULTS — populated by the user's YAML.
 _CLI_EXTRAS: dict = {
@@ -46,7 +47,7 @@ _CLI_EXTRAS: dict = {
 
 def _expand_globs(patterns: list) -> list:
     """Convert the global patterns from the YAML config (e.g. "runs/**/ProT*.idXML") 
-    and turn them into a unique sorted list of absolute paths."""
+    into a unique sorted list of absolute paths."""
     result, seen = [], set()
     for pattern in patterns:
         for match in sorted(globmod.glob(pattern, recursive=True)):
@@ -58,16 +59,19 @@ def _expand_globs(patterns: list) -> list:
 
 
 def _load_peptides(source) -> list:
-    """Resolve a peptide source (inline list / file path / comma-or-newline string)."""
+    """Resolve a peptide source from the YAML config, into a list of sequences."""
+    # If the source is already a list, strip and uppercase
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
+    # If it is a path to a file, read lines from the file. 
+    # Otherwise, treat it as a raw string with comma/newline-separated peptides.
     source = str(source).strip()
     text = Path(source).read_text() if Path(source).is_file() else source
     return [line.strip().upper() for line in text.replace(",", "\n").splitlines() if line.strip()]
 
 
 def _load_config(path: str) -> SimpleNamespace:
-    """Load YAML, merge with DEFAULTS, resolve globs + peptide source. Exits on error."""
+    """Load YAML, merge with missing parameters from DEFAULTS and resolve global & peptide source paths"""
     # Parse: read YAML file, error out on missing path or non-mapping payload
     config_path = Path(path)
     if not config_path.is_file():
@@ -80,7 +84,7 @@ def _load_config(path: str) -> SimpleNamespace:
     merged: dict = {**_CLI_EXTRAS, **asdict(DEFAULTS), **yaml_config}
     config = SimpleNamespace(**merged)
 
-    # Validate: expand input globs and require non-empty peptide list
+    # Expand input globs and require non-empty idXML and mzML list
     config.idxml_files = _expand_globs(config.idxml_files)
     config.mzml_files = _expand_globs(config.mzml_files)
     if not config.idxml_files or not config.mzml_files:
@@ -140,7 +144,7 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
 
 def _run_export(config, annotated_queries, reference_store, variant_groups,
                 comparison_rows, psm_frame):
-    """Export results via the shared mspecviz.export pipeline."""
+    """Export results via the shared core.export pipeline."""
     logger.info("Step 3: Exporting results")
     plot_bar: dict = {"bar": None}
 
@@ -203,16 +207,17 @@ def main() -> None:
         sys.exit("Error: No PSMs found.")
 
     # Step 2: stream + annotate spectra against the search results
-    psm_frame, psm_lookup = build_psm_table(variant_groups)
+    variant_groups_copy = copy.deepcopy(variant_groups)
+    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     annotated_queries, reference_store, comparison_rows = _run_load(
-        config, variant_groups, psm_lookup, total_psms,
+        config, variant_groups_copy, psm_lookup, total_psms,
     )
     if not annotated_queries:
         sys.exit("Error: No spectra could be loaded or annotated.")
 
     # Step 3: export plots, tables, settings; report total wall time
     result = _run_export(
-        config, annotated_queries, reference_store, variant_groups,
+        config, annotated_queries, reference_store, variant_groups_copy,
         comparison_rows, psm_frame,
     )
     logger.info(f"Done in {time.time() - start:.1f}s. Exported to {result.export_root}")
