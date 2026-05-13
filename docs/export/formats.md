@@ -2,9 +2,13 @@
 
 Per-column schemas for every tabular artifact an export run produces.
 
-- **Parquet** — four files, used both as the live in-app cache and as the
-  portable data artifact. Built by `mspecviz.dataframes`.
+- **Parquet** — four files, the same Polars LazyFrames the openms_insight
+  Explorer consumes at runtime. Built by `mspecviz.dataframes`
+  (`build_psm_table` + `build_visualization_frames`).
 - **CSV / XLSX** — one wide comparison summary per run, human-readable.
+  The frame is assembled by `mspecviz.pipeline.annotation_steps.
+  build_comparison_row` and serialised by
+  `mspecviz.export.export_pipeline._write_comparison_summary`.
 
 For plots see [plots.md](plots.md); for the directory layout see
 [layout.md](layout.md).
@@ -13,12 +17,12 @@ For plots see [plots.md](plots.md); for the directory layout see
 
 ## Parquet DataFrames
 
-Four Parquet files are exported, corresponding to the four Polars
-LazyFrames built for openms_insight. All use zstd compression.
+Four Parquet files mirror the four LazyFrames built for openms_insight.
 
 ### `psm.parquet` — PSM table
 
-One row per peptide-spectrum match.
+One row per peptide-spectrum match. Schema constant: `PSM_TABLE_SCHEMA`
+in `mspecviz/dataframes/psm_tables.py`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -37,12 +41,13 @@ One row per peptide-spectrum match.
 ### `peaks.parquet` — Peak data
 
 One row per peak in each loaded spectrum. Used by openms_insight LinePlot
-and SequenceView.
+and SequenceView. Schema: `PEAKS_SCHEMA` in
+`mspecviz/dataframes/insight_frames.py`.
 
 | Column | Type | Description |
 |---|---|---|
 | `x` | Float32 | m/z value |
-| `y` | Float32 | Intensity (normalized or raw, depending on intensity mode) |
+| `y` | Float32 | Intensity (normalised or raw, depending on intensity mode) |
 | `highlight` | Int32 | 1 if the peak is annotated, 0 if unannotated |
 | `annotation` | String | Ion label (e.g., "y7", "b3++") or "unannotated" |
 | `ion_type` | String | Ion series (e.g., "b", "y", "a", "precursor", "unannotated") |
@@ -51,7 +56,7 @@ and SequenceView.
 ### `seq.parquet` — Sequence data
 
 One row per PSM. Used by openms_insight SequenceView for rendering the
-peptide sequence with modification markers.
+peptide sequence with modification markers. Schema: `SEQUENCE_SCHEMA`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -62,7 +67,7 @@ peptide sequence with modification markers.
 ### `heatmap.parquet` — Heatmap data
 
 One row per peak across all loaded spectra. Used by openms_insight
-Heatmap for RT-by-m/z visualization.
+Heatmap for RT-by-m/z visualization. Schema: `HEATMAP_SCHEMA`.
 
 | Column | Type | Description |
 |---|---|---|
@@ -76,67 +81,52 @@ Heatmap for RT-by-m/z visualization.
 
 Both `comparison_summary.csv` and `comparison_summary.xlsx` contain one
 row per query-reference comparison. Columns are identical across the two
-formats.
+formats; the XLSX is a straight `pandas.to_excel(... engine="openpyxl")`
+dump. If `openpyxl` is not installed the XLSX is skipped and a warning is
+emitted.
 
 ### Identification columns
 
 | Column | Description |
 |---|---|
-| `query_file` | Source mzML filename of the query spectrum |
-| `ref_file` | Source mzML filename of the reference spectrum (or `"Koina"` for an AI-predicted reference) |
-| `peptide` | Peptidoform string |
-| `modification` | Modification state |
-| `charge` | Precursor charge |
+| `psm_id` | Foreign key matching `id` in `psm.parquet` |
+| `Peptide` | Base sequence (uppercase, unmodified) |
+| `Modification` | Modification state (empty string when variant_key == base_sequence) |
+| `Charge` | Precursor charge |
+| `Query` | Source label of the query spectrum (`<basename>:<spectrum_id>`) |
+| `Reference` | Source label of the reference (or `Koina/<model>` for an AI-predicted reference) |
+| `query_spectrum_id` | Native spectrum ID inside the query mzML |
+| `ref_spectrum_id` | Native spectrum ID inside the reference mzML |
+| `query_rt` | Query retention time (seconds) |
+| `ref_rt` | Reference retention time (seconds) |
 
 ### 7 comparison metrics
 
-See [../metrics/comparison.md](../metrics/comparison.md) for definitions.
+Column names are the display strings from `METRIC_SHORT_TO_DISPLAY`
+(`mspecviz/annotation/comparison_metrics.py`), not the short codes. See
+[../metrics/comparison.md](../metrics/comparison.md) for definitions.
 
-| Column | Description |
-|---|---|
-| `R2m` | R² matching |
-| `R2b` | R² binned |
-| `Cos` | Cosine similarity |
-| `Ent` | Spectral entropy similarity |
-| `Dice` | Dice coefficient |
-| `Jacc` | Jaccard index |
-| `ShR` | Shared peak ratio |
+| Column | Short code | Description |
+|---|---|---|
+| `R² match` | R2m | R² (squared Pearson correlation) on shared annotated intensities |
+| `R² binned` | R2b | R² on binned all-peak intensity profile |
+| `Cosine` | Cos | Cosine similarity on shared annotated intensities |
+| `Entropy` | Ent | Spectral entropy similarity (`ms_entropy`) |
+| `Dice` | Dice | Dice coefficient on annotation sets |
+| `Jaccard` | Jacc | Jaccard index on annotation sets |
+| `SharedRatio` | ShR | Shared / smaller-set size |
 
 ### Context counts
 
 | Column | Description |
 |---|---|
-| `total_q` | Total peaks in query |
-| `total_r` | Total peaks in reference |
-| `ann_q` | Annotated peaks in query |
-| `ann_r` | Annotated peaks in reference |
-| `shared` | Shared annotated ions |
+| `query_peak_count` | Total peaks in the query spectrum |
+| `reference_peak_count` | Total peaks in the reference spectrum |
+| `query_annotation_count` | Number of **unique** annotation labels in the query (duplicates collapse) |
+| `reference_annotation_count` | Number of **unique** annotation labels in the reference |
+| `shared` | Number of annotation labels present in both spectra (\|S\|) |
 
-### 17 ion match statistics
-
-All prefixed with `ims_`. See
-[../metrics/ion-match-stats.md](../metrics/ion-match-stats.md) for full
-descriptions.
-
-| Column | Short description |
-|---|---|
-| `ims_NTermIonCurrentRatio` | N-terminal ion current fraction |
-| `ims_CTermIonCurrentRatio` | C-terminal ion current fraction |
-| `ims_TIC` | Total ion current |
-| `ims_MIC` | Max ion current |
-| `ims_annotated_tic_fraction` | Annotated TIC fraction |
-| `ims_matched_prefix_ions_fraction` | Matched N-terminal ions fraction |
-| `ims_matched_suffix_ions_fraction` | Matched C-terminal ions fraction |
-| `ims_max_series_type` | Longest series ion type |
-| `ims_max_series_charge` | Longest series charge |
-| `ims_max_series_size` | Longest series length |
-| `ims_coverage` | Backbone cleavage coverage |
-| `ims_annotated_ion_fraction` | Annotated ion fraction |
-| `ims_ms2_scan_index` | MS2 scan index |
-| `ims_precursor_mz_error_ppm` | Precursor m/z error (ppm) |
-| `ims_fragment_mass_error_mean_ppm` | Mean fragment mass error (ppm) |
-| `ims_fragment_mass_error_stdev_ppm` | Fragment mass error std dev (ppm) |
-| `ims_median_fragment_error_ppm` | Median fragment error (ppm) |
-
-The XLSX variant auto-sizes columns and applies a freeze pane at row 1,
-column B for readability. Otherwise it carries identical data.
+These counts are essential for sanity-checking metric values — see
+[../metrics/interpretation.md](../metrics/interpretation.md#cross-checks).
+A high cosine on `shared = 2` is much weaker evidence than on
+`shared = 20`.

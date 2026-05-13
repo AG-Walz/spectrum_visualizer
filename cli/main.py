@@ -1,8 +1,10 @@
 """MSpecViz CLI — YAML-driven runner over the shared mspecviz pipeline.
 
-Invoke: ``python -m cli <config.yaml>``. Log level via ``MSPECVIZ_LOG_LEVEL``
-env var (default INFO; set ERROR for quiet runs). Exit codes: 0 ok,
-1 pipeline failure, 2 config/input error.
+Invoke: ``python -m cli <config.yaml>``. Takes a single YAML config file as input, 
+which specifies parameters for the three main steps:
+    1. Search peptides in idXML files, mapping to base sequences and grouping variants.
+    2. Load and annotate spectra from mzML files, matching to the search results.
+    3. Export results via the shared mspecviz.export pipeline, including tables and plots.
 """
 import copy
 import glob as globmod
@@ -44,7 +46,7 @@ _CLI_EXTRAS: dict = {
 
 
 def _expand_globs(patterns: list) -> list:
-    """Expand shell-style glob patterns into a unique sorted list of absolute paths."""
+    """Expand shell-style global patterns into a unique sorted list of absolute paths."""
     result, seen = [], set()
     for pattern in patterns:
         for match in sorted(globmod.glob(pattern, recursive=True)):
@@ -75,8 +77,6 @@ def _load_config(path: str) -> SimpleNamespace:
         sys.exit(f"Error: config must be a YAML mapping: {path}")
 
     # Merge: CLI extras + DEFAULTS overlaid by user YAML (last write wins)
-    # Merge into a single dict first; SimpleNamespace(**a, **b) raises TypeError
-    # on duplicate keys, but dict-literal **-unpacking is "last write wins".
     merged: dict = {**_CLI_EXTRAS, **asdict(DEFAULTS), **yaml_config}
     config = SimpleNamespace(**merged)
 

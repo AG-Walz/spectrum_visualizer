@@ -1,13 +1,18 @@
 # 7 Comparison Metrics
 
 Quantitative similarity measures computed for every query-reference pair.
-Four intensity-aware, three set-based. Implemented in
-`mspecviz/annotation/metrics_intensity.py` and `.../metrics_set.py`, both
-re-exported from `mspecviz.annotation`.
+Four intensity-aware (R2m, R2b, Cos, Ent), three set-based (Dice, Jacc,
+ShR). Implementation:
 
-- For the 17 ion match statistics, see [ion-match-stats.md](ion-match-stats.md).
-- For a decision table ("which metric should I use?"), see
-  [interpretation.md](interpretation.md).
+- Intensity helpers (matched-array R², binned R², matched-array cosine)
+  live in `mspecviz/annotation/metrics_intensity.py`.
+- Set-overlap metrics, the entropy wrapper, and the public aggregator
+  `compute_all_metrics()` live in `mspecviz/annotation/comparison_metrics.py`.
+
+Both modules are re-exported from `mspecviz.annotation`.
+
+For a decision table ("which metric should I use?"), see
+[interpretation.md](interpretation.md).
 
 ---
 
@@ -45,25 +50,27 @@ Given two annotated spectra Q (query) and R (reference):
 
 **Category:** Annotated-peak
 
-**What it measures:** How well a linear model predicts reference
-intensities from query intensities, using only the ions that appear in
-both spectra.
+**What it measures:** How tightly the shared-annotation intensities of
+query and reference fall on a straight line.
 
 **Method:**
-1. Find all shared annotation labels S = A_Q ∩ A_R.
-2. Build intensity vectors q = (q_l1, q_l2, …, q_ln) and
-   r = (r_l1, r_l2, …, r_ln).
-3. Fit a linear regression: r = a·q + b.
-4. Return the Pearson R² (coefficient of determination).
+1. Group peaks by annotation label inside each spectrum and keep the
+   brightest peak per label (collapsing isotopes / charge variants).
+2. Find shared labels S = A_Q ∩ A_R.
+3. Build intensity vectors q, r over those shared labels.
+4. Compute the squared Pearson correlation coefficient via
+   `scipy.stats.linregress(q, r).rvalue ** 2`.
 
 **Formula:**
 
 ```
-R² = 1 − Σ(r_i − r̂_i)² / Σ(r_i − r̄)²
+R² = corr(q, r)²
+   = (Σ(q_i − q̄)(r_i − r̄))² / (Σ(q_i − q̄)² · Σ(r_i − r̄)²)
 ```
 
-**Range:** (−∞, 1]. 1.0 = perfect linear relationship. Negative values
-indicate a model worse than a horizontal mean line.
+**Range:** [0, 1]. 1.0 = perfectly collinear shared intensities. Because
+we use the squared correlation (not the regression coefficient of
+determination), the value never goes negative even when slope < 0.
 
 **Minimum data:** ≥ 2 shared ions. Returns NaN otherwise.
 
@@ -82,16 +89,19 @@ agreement among shared fragment ions.
 spectra correlate when discretized into fixed-width m/z bins.
 
 **Method:**
-1. Determine the combined m/z range across both spectra.
+1. Determine the combined m/z range across both spectra (floor of joint
+   min to ceil of joint max).
 2. Divide this range into 1 000 equal-width bins.
-3. For each spectrum, sum peak intensities falling into each bin.
+3. For each spectrum, sum peak intensities into each bin via
+   `numpy.bincount` over `numpy.digitize`.
 4. Keep only bins where both spectra have signal (intersection).
-5. Fit a linear regression on the bin-intensity pairs.
-6. Return R².
+5. Return the squared Pearson correlation coefficient on the surviving
+   bin-intensity pairs.
 
-**Range:** (−∞, 1]. Typically [0, 1] for similar spectra.
+**Range:** [0, 1] (squared correlation, never negative).
 
-**Minimum data:** ≥ 2 shared bins. Returns NaN otherwise.
+**Minimum data:** Either spectrum empty or degenerate m/z range → NaN.
+≥ 2 shared bins required; returns NaN otherwise.
 
 **When to use:** To compare overall spectral shape without requiring
 annotation. Useful when annotation is incomplete or unreliable, or when
@@ -116,9 +126,12 @@ Cos = (q · r) / (‖q‖ · ‖r‖)
 
 **Range:** [0, 1] for non-negative intensities (which MS spectra always
 have). 1.0 means the intensity vectors point in exactly the same
-direction.
+direction. Implemented as `1 − scipy.spatial.distance.cosine(q, r)`.
 
-**Minimum data:** ≥ 1 shared ion. Returns NaN otherwise.
+**Minimum data:** ≥ 1 shared ion **and** non-zero norm on both vectors.
+Returns NaN when no labels are shared or when one vector is all-zero
+(which can happen if the brightest peak per shared label is 0 after
+normalization — rare in practice).
 
 **When to use:** The de facto standard for spectral library searching
 (used by NIST, MassBank). Scale-invariant: multiplying all intensities by
@@ -136,12 +149,13 @@ overlap.
 entropy. Measures how much information is gained or lost when two spectra
 are merged.
 
-**Method:**
-1. Normalize both spectra so intensities sum to 1 (probability
-   distributions).
-2. Merge spectra by matching peaks within 0.02 Da tolerance and averaging
-   matched intensities; unmatched peaks kept at half intensity.
-3. Compute Shannon entropy of Q, R, and the merged spectrum M.
+**Method:** Delegated to `ms_entropy.calculate_entropy_similarity()` with
+`ms2_tolerance_in_da` set to the configured `mz_tolerance` (default
+0.02 Da, from `DEFAULTS.mz_tolerance`). The library internally:
+
+1. Normalizes both spectra to probability distributions.
+2. Matches peaks within tolerance and merges into a combined spectrum M.
+3. Returns the Tsallis/Shannon-style similarity below.
 
 **Formula:**
 
@@ -152,15 +166,19 @@ Ent = 1 − (2·H(M) − H(Q) − H(R)) / ln(4)
 where H(X) = −Σ pᵢ·ln(pᵢ) is the Shannon entropy of X after normalizing
 intensities to a probability distribution.
 
-**Range:** [0, 1]. 1.0 when spectra are identical; 0.0 when they share
-no peaks.
+**Range:** [0, 1]. 1.0 when spectra are identical; near 0 when they
+share no peaks.
 
-**Minimum data:** ≥ 1 peak in each spectrum. Returns NaN otherwise.
+**Minimum data:** Both spectra non-empty. Returns NaN if either is empty,
+if `ms_entropy` isn't installed (optional dependency), or if the library
+raises (`ValueError`, `FloatingPointError`) — those errors are downgraded
+to NaN so callers can tabulate.
 
 **When to use:** Shown to outperform cosine similarity for small-molecule
 compound identification in benchmarks (Li et al., Nature Methods, 2021).
 Considers all peaks and handles spectra of different sizes naturally.
-Implemented via the optimized `ms_entropy` C library.
+The tolerance is the same `mz_tolerance` used for fragment annotation —
+tweak both together for consistent matching.
 
 ---
 
@@ -179,6 +197,10 @@ Dice = 2·|S| / (|A_Q| + |A_R|)
 
 **Range:** [0, 1]. 1.0 means every annotated ion in Q also appears in R
 and vice versa.
+
+**Minimum data:** `|A_Q| + |A_R| > 0` (i.e. at least one of the two
+spectra has any annotated ions). Returns NaN only when both spectra are
+fully unannotated.
 
 **When to use:** A simple, intuitive measure of annotation overlap.
 Symmetric: Dice(Q, R) = Dice(R, Q). Equivalent to the harmonic mean of
@@ -209,6 +231,9 @@ Jacc = |S| / (|A_Q| + |A_R| − |S|)
 Dice = 2·Jacc / (1 + Jacc)
 ```
 
+**Minimum data:** `|A_Q| + |A_R| − |S| > 0`. Returns NaN only when both
+spectra are fully unannotated (in which case S = 0 too).
+
 **When to use:** More conservative than Dice — penalizes non-shared ions
 more heavily. A standard set-similarity metric. Like Dice, ignores
 intensity.
@@ -231,6 +256,9 @@ ShR = |S| / min(|A_Q|, |A_R|)
 **Range:** [0, 1]. 1.0 means every annotated ion in the smaller spectrum
 has a match in the larger one.
 
+**Minimum data:** `min(|A_Q|, |A_R|) > 0` — at least one annotated ion
+in each spectrum. Returns NaN when either spectrum has zero annotations.
+
 **When to use:** Useful when spectra have very different numbers of
 annotated peaks (for example, a low-energy query with few fragments
 versus a high-energy reference with many). Answers the question: "does
@@ -246,11 +274,11 @@ so always check the context columns for absolute counts.
 |---|---|---|---|---|---|---|---|
 | Category | Annotated | All-peak | Annotated | All-peak | Annotated | Annotated | Annotated |
 | Uses intensity | Yes | Yes | Yes | Yes | No | No | No |
-| Range | (−∞, 1] | (−∞, 1] | [0, 1] | [0, 1] | [0, 1] | [0, 1] | [0, 1] |
+| Range | [0, 1] | [0, 1] | [0, 1] | [0, 1] | [0, 1] | [0, 1] | [0, 1] |
 | Perfect match | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 | 1.0 |
-| No overlap | NaN | NaN | NaN | 0.0 | 0.0 | 0.0 | NaN |
+| No overlap | NaN | NaN | NaN | ~0.0 | 0.0 | 0.0 | 0.0 |
 | Scale-invariant | Yes | Yes | Yes | ~Yes | N/A | N/A | N/A |
-| Min. data | 2 shared | 2 shared bins | 1 shared | 1 peak each | 1 ann. each | 1 ann. each | 1 ann. each |
+| Min. data | 2 shared | 2 shared bins | 1 shared, non-zero norm | both non-empty | any annotation | any annotation | ≥1 ann. each |
 
 ---
 
@@ -258,13 +286,13 @@ so always check the context columns for absolute counts.
 
 The comparison output includes context columns alongside the 7 metrics:
 
-| Column | Description |
+| Column key | Description |
 |---|---|
-| Peaks (Q) | Total number of peaks in the query spectrum |
-| Peaks (R) | Total number of peaks in the reference spectrum |
-| Annotated (Q) | Number of peaks in Q matched to a theoretical ion |
-| Annotated (R) | Number of peaks in R matched to a theoretical ion |
-| Shared Ions | Number of annotation labels present in both Q and R |
+| `query_peak_count` | Total number of peaks in the query spectrum |
+| `reference_peak_count` | Total number of peaks in the reference spectrum |
+| `query_annotation_count` | **Unique** annotation labels in Q (duplicates within Q collapse to one label) |
+| `reference_annotation_count` | **Unique** annotation labels in R |
+| `shared` | Number of annotation labels present in both Q and R (\|S\|) |
 
 These counts explain why a metric might be NaN or unexpectedly low:
 

@@ -12,12 +12,37 @@ comparison-summary CSV/XLSX columns see [formats.md](formats.md).
 
 ---
 
+## How the orchestrator runs
+
+Both the CLI and the Streamlit Export tab call
+`mspecviz.export.export_pipeline.run_export()` with three dataclasses:
+
+- `ExportSelection` — what to export (parquets, comparison summary,
+  mirror plots, summary plots).
+- `PlotSettings` — the rendering knobs (`export_formats`,
+  `export_resolution`, `figure_size`, `workers`,
+  `plot_unpaired_queries`).
+- `ExportCallbacks` — `on_step`, `on_plot_progress`, `on_warning` —
+  hooks the front-end uses for progress UI.
+
+Mirror plot tasks are built by
+`mspecviz.pipeline.query_processing.build_plot_tasks` (one
+`ComparisonTask` per query/reference pair) and dispatched through
+`mspecviz.common.task_dispatch.run_tasks` to the
+`mspecviz.plotting.plot_worker.process_single_task` worker. Summary
+plots are rendered on the main process by
+`mspecviz.plotting.summary_pipeline.generate_all_summary_plots`.
+
+---
+
 ## Mirror plots
 
-One plot per `(query spectrum, reference spectrum)` pair, generated in
-parallel by `mspecviz.plotting.worker_execution.run_parallel_comparisons`.
-Each pair is a `ComparisonTask` that the worker pool renders into as many
-formats as you selected.
+One plot per `(query spectrum, reference spectrum)` pair, rendered in
+parallel by `plot_worker.process_single_task`. Each task carries
+everything the worker needs to be picklable — the annotated query frame,
+the reference frame (or `None` for single-spectrum tasks), labels,
+metrics text, and per-format output paths — so workers do not need to
+share any state with the main process.
 
 ### File formats
 
@@ -28,9 +53,12 @@ formats as you selected.
 | PDF | `pdf/` | Matplotlib PDF backend | Vector handoff with font embedding |
 | HTML | `html/` | Plotly | Interactive zoom/hover/peak selection |
 
-All four share the same layout: query on top (positive intensity), reference
-mirrored below (negative intensity), annotated peaks coloured by ion series,
-metrics panel anchored to the lower-left corner.
+PNG/SVG/PDF are saved by `_save_task_figure` (per-format kwargs in
+`_FORMAT_SAVE_KWARGS`); HTML is saved separately by `_save_task_html`
+because Plotly renders directly without a Matplotlib figure. All four
+share the same logical layout: query on top (positive intensity),
+reference mirrored below (negative intensity), annotated peaks coloured
+by ion series, metrics anchored in the lower-left corner.
 
 ### File naming
 
@@ -47,11 +75,12 @@ For example:
 png/ASDDFDQASY_unmodified/ASDDFDQASY_vs_ref_ProT001_z2.png
 ```
 
-Disambiguation suffixes are appended when two references would produce the
-same filename (see `mspecviz/common/path_utils.py`).
+Filenames are passed through `mspecviz.export.export_directories.
+sanitize_filename` which strips filesystem-unsafe characters and
+truncates to 100 chars.
 
-Single-spectrum plots (no reference available, Koina disabled) use the
-simpler form:
+Single-spectrum plots (no reference available, Koina disabled, or
+`plot_unpaired_queries: true`) use the simpler form:
 
 ```
 png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
@@ -59,61 +88,76 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
 
 ### Per-plot contents
 
-- **Axes:** m/z horizontal, intensity vertical. Intensity units match the
-  `intensity_mode` setting — Relative = fraction of base peak, Raw = absolute
-  counts.
+- **Axes:** m/z horizontal, intensity vertical. Intensity units match
+  the `intensity_mode` setting — Relative = fraction of base peak, Raw
+  = absolute counts.
 - **Annotations:** ion labels (`y7`, `b3++`) drawn above each annotated
-  peak. Colours read from `settings.json > ion_colors`.
+  peak. Colours read from `ION_COLORS` in
+  `mspecviz/common/defaults.py` (mirrored in `settings.json` for
+  Streamlit).
 - **Title:** peptidoform string + charge state.
-- **Metrics panel:** the 7 comparison metrics + context counts
-  (annotated-Q / annotated-R / shared).
-- **Footer:** query file, reference file, tolerance, ion types used.
+- **Metrics panel:** the 7 comparison metrics + context counts (peak
+  totals, annotation counts, shared).
 
 ---
 
 ## Summary plots
 
-Run-wide aggregations across every comparison in `comparison_summary.csv`.
-Produced by `mspecviz.plotting.summary_orchestration.generate_all_summary_plots`
-and written to `{run}/summary/`.
+Run-wide aggregations across every comparison in
+`comparison_summary.csv`. Produced by
+`mspecviz.plotting.summary_pipeline.generate_all_summary_plots` and
+written to `{run}/summary/`.
 
-The default metric is **R² binned**, selected via the `metric` argument (CLI
-flag `--summary-metric`, Streamlit dropdown in the Export tab).
+The default metric is **R² binned** (`DEFAULTS.summary_metric`),
+configured via the `summary_metric` YAML key for the CLI or the dropdown
+on the Streamlit Export tab.
 
 ### Plot types
 
 | File | Function | What it shows |
 |---|---|---|
-| `dual_axis.{png,svg,pdf}` | `plot_classic_dual_axis` | Horizontal count bars (left axis, # comparisons per peptidoform) paired with metric boxplots (right axis, metric distribution) — one row per peptidoform |
-| `ridgeline_r2_binned.{png,svg,pdf}` | `plot_ridgeline` | Per-peptidoform KDE ridgeline of the chosen metric. Visualizes distribution shape, including bimodality that boxplots hide |
+| `dual_axis.{png,svg,pdf}` | `summary_dual_axis.plot_classic_dual_axis` | Horizontal count bars (left axis, # comparisons per peptidoform) paired with metric boxplots (right axis, metric distribution) — one row per peptidoform |
+| `ridgeline_r2_binned.{png,svg,pdf}` *or* `ridgeline.{png,svg,pdf}` | `summary_ridgeline.plot_ridgeline` | Per-peptidoform KDE ridgeline of the chosen metric. The `_r2_binned` suffix is used **only** when `metric == DEFAULTS.summary_metric`; any other metric drops the suffix |
 
-Both plots share the same data-preparation step
-(`prepare_summary_data`), which aggregates per-peptidoform counts, mean,
-median, and quartiles of the selected metric.
+Both plots share the same data-prep step (`prepare_summary_data`), which
+loads the comparison CSV (or accepts an in-memory frame), constructs the
+`peptidoform` label (`Modification + "/" + Charge`), and aggregates per
+peptidoform: count, mean, median, std, q25/q75, 95% CI, dominant charge.
+
+There is **no** "heatmap" summary plot — `_PLOT_REGISTRY` contains only
+`dual_axis` and `ridgeline`. The openms_insight Heatmap component on the
+Explore tab is interactive-only and is not saved to disk.
 
 ### Registry
 
-Plot types are registered in `summary_orchestration._PLOT_REGISTRY`. Adding
-a new plot type means adding:
+Plot types are registered in `summary_pipeline._PLOT_REGISTRY` as a
+straight `{name: callable}` mapping. To add a new plot type:
 
-1. A new module under `mspecviz/plotting/summary_<name>.py` exporting a
-   `plot_<name>(raw_frame, aggregated_frame, metric, …) -> Figure` function.
-2. An entry in `_PLOT_REGISTRY` inside `generate_all_summary_plots`.
-3. The string name into `PLOT_TYPES`.
+1. Add a new module `mspecviz/plotting/summary_<name>.py` exporting a
+   `plot_<name>(raw_frame, aggregated_frame, metric, …) -> Figure` that
+   matches the existing renderer signature.
+2. Import it in `summary_pipeline.py` and add an entry to
+   `_PLOT_REGISTRY`.
+3. (Optional) Add the type's name to `DEFAULTS.summary_plot_types` so
+   it's rendered by default.
 
-The registry keeps renderer contracts consistent — every plot consumes the
-same `(raw_frame, aggregated_frame, metric, figure_size, export_resolution, title)` signature.
+The registry keeps renderer contracts consistent — every plot consumes
+the same `(raw_frame, aggregated_frame, metric, export_resolution,
+title)` keyword set.
 
 ### Customizing
 
-- `metric` — one of `R² match`, `R² binned`, `Cosine`, `Entropy`, `Dice`,
-  `Jaccard`, `SharedRatio` (see `METRIC_COLUMNS`).
-- `plot_types` — subset of `PLOT_TYPES` to render (default: all).
-- `formats` — list like `["png", "svg"]` (default: PNG only).
-- `export_resolution` — passed through to Matplotlib (default: 300).
+- `metric` — any column listed in `METRIC_COLUMNS`
+  (`mspecviz/plotting/_summary_shared.py`): `R² match`, `R² binned`,
+  `Cosine`, `Entropy`, `Dice`, `Jaccard`, `SharedRatio`.
+- `plot_types` — subset of `{dual_axis, ridgeline}` to render. Empty
+  list → no summary plots.
+- `formats` — list like `["png", "svg"]` (defaults to PNG only).
+- `export_resolution` — DPI passed through to `Figure.savefig`
+  (default 300).
 
-Summary plots are rendered on the main process only; there is no parallel
-speed-up to gain because each call is O(total comparisons) and fast.
+Summary plots run on the main process; there's no parallel speed-up
+because each call is O(total comparisons) and fast.
 
 ---
 
@@ -129,15 +173,12 @@ completes, the Export tab shows an expandable tree:
 
 - Outer expander: one per peptide-variant subdirectory.
 - Inner expander: one per reference spectrum within that variant.
-- Per-plot: inline image preview (PNG or SVG) plus a download button for
-  each exported format.
+- Per-plot: inline image preview (PNG or SVG) plus a download button
+  for each exported format.
 
-The gallery prefers SVG over PNG when both exist (falls back to PNG if SVG
-wasn't selected). HTML plots are listed but rendered as download links, not
-embedded, to avoid Streamlit-iframe memory issues.
-
-Only the first 20 plots per reference are shown inline — the remainder are
-still on disk, just not auto-loaded.
+The gallery prefers SVG over PNG when both exist (falls back to PNG if
+SVG wasn't selected). HTML plots are listed but rendered as download
+links, not embedded, to avoid Streamlit-iframe memory issues.
 
 ### Export history
 
@@ -145,13 +186,14 @@ The Export tab's history panel lists prior runs in the configured export
 base directory, newest first. For each run you can:
 
 - **View the fingerprint** (first 16 hex chars of the settings SHA-256).
-- **Reload settings** — copies the run's `run_settings.json` back into the
-  current workspace, so the Setup tab reflects that run's parameters.
+- **Reload settings** — copies the run's `run_settings.json` back into
+  the current workspace, so the Setup tab reflects that run's
+  parameters.
 - **Delete** — removes the numbered directory. Cannot be undone.
 
-Matching runs (a run whose fingerprint equals the current Setup parameters)
-are highlighted so you can tell at a glance whether a re-run would reuse an
-existing directory or create a new one. See
+Matching runs (a run whose fingerprint equals the current Setup
+parameters) are highlighted so you can tell at a glance whether a re-run
+would reuse an existing directory or create a new one. See
 [layout.md#re-run-behavior](layout.md#re-run-behavior) for the
 fingerprint-matching rules.
 
@@ -161,7 +203,7 @@ fingerprint-matching rules.
 
 - [layout.md](layout.md) — directory tree and `run_settings.json` schema.
 - [formats.md](formats.md) — Parquet + CSV/XLSX column reference.
-- [../metrics/comparison.md](../metrics/comparison.md) — what each metric
-  in the summary CSV actually measures.
-- [../architecture/core.md#mspecvizplotting](../architecture/core.md#mspecvizplotting)
-  — where the plot renderers live in the codebase.
+- [../metrics/comparison.md](../metrics/comparison.md) — what each
+  metric in the summary CSV actually measures.
+- [../architecture/core.md](../architecture/core.md) — the
+  `mspecviz/plotting/` and `mspecviz/export/` subpackage tours.

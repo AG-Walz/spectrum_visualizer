@@ -33,21 +33,24 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
   YAML / settings.json / widgets
           │
           ▼
-  [ config layer ]            cli/main.py:_load_config, utils/state/params.py
+  [ config layer ]            cli/main.py:_load_config,
+          │                   streamlit_app/utils/state/state_params.py
           │
           ▼
   [ search ]                  mspecviz.search.search_peptides_in_idxmls
-          │   → variant_groups: dict[variant_key → VariantGroup]
+          │   → variant_groups: dict[variant_key → PSMList]
           │
           ▼
-  [ load + annotate ]         mspecviz.spectra.load_spectra_streaming
-          │                   mspecviz.pipeline.process_query_result
-          │                   (invokes annotation + metrics + Koina fallback)
-          │   → annotated_queries, reference_store, comparison_frame
+  [ load + annotate ]         mspecviz.pipeline.run_streaming_annotation
+          │                   (wraps mspecviz.spectra.load_spectra_streaming
+          │                    + mspecviz.pipeline.process_query_result —
+          │                    annotation, metrics, optional Koina fallback)
+          │   → annotated_queries, reference_store, comparison_rows
           │
           ▼
   [ dataframes ]              mspecviz.dataframes.build_psm_table
-          │                   build_peaks_dataframe / sequence / heatmap
+          │                   mspecviz.dataframes.build_visualization_frames
+          │                   (peaks / sequence / heatmap)
           │   → psm_frame, peaks_frame, sequence_frame, heatmap_frame (Polars LazyFrames)
           │
           ▼

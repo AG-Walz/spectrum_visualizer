@@ -3,12 +3,12 @@
 This guide walks through the 4-tab Streamlit workflow using test data, and
 shows the equivalent CLI invocation. For deeper references see:
 
-- [architecture.md](architecture.md) — how the codebase is organised.
-- [settings.md](settings.md) — every configuration key explained.
-- [cli.md](cli.md) — full CLI surface.
-- [metrics.md](metrics.md) — formulas and ranges for the 7 comparison
-  metrics and 17 ion match statistics.
-- [export.md](export.md) — output directory layout and file formats.
+- [architecture/overview.md](architecture/overview.md) — how the codebase is organised.
+- [settings/overview.md](settings/overview.md) — every configuration key explained.
+- [cli/usage.md](cli/usage.md) — full CLI surface.
+- [metrics/comparison.md](metrics/comparison.md) — formulas and ranges for the
+  7 comparison metrics (R2m, R2b, Cos, Ent, Dice, Jacc, ShR).
+- [export/layout.md](export/layout.md) — output directory layout and file formats.
 
 ---
 
@@ -109,7 +109,7 @@ substring are categorized as references; all others are queries.
 When no experimental reference is available, enable Koina AI prediction as a
 fallback. Configure:
 
-- **Model** -- Choose from 16 models across MS2PIP, Prosit, AlphaPept, UniSpec,
+- **Model** -- Choose from 14 models across MS2PIP, Prosit, AlphaPept, UniSpec,
   and PredFull families.
 - **Collision energy** -- Normalized collision energy (default: 35).
 - **Instrument type** -- QE, LUMOS, TIMSTOF, or SCIEXTOF.
@@ -124,9 +124,6 @@ synthetic reference spectrum for mirror plot comparison.
 - **m/z tolerance** -- Maximum distance in Da between an experimental peak and
   a theoretical fragment for a match (default: 0.02 Da).
 - **Neutral losses** -- Include H2O and NH3 loss peaks in annotation.
-- **First prefix ion** -- Include a1/b1 ions.
-- **Remove precursor peaks** -- Strip precursor ions from the spectrum before
-  plotting.
 - **Intensity mode** -- Relative (normalized to base peak = 100%) or Raw.
 
 ### Performance Settings
@@ -166,7 +163,7 @@ After reviewing search results, click **Search & Load Spectra** to:
 3. Pair query spectra with references (by filename substring match).
 4. If no experimental reference exists and Koina is enabled, generate an
    AI-predicted reference spectrum.
-5. Compute 7 comparison metrics and 17 ion match statistics for each pair.
+5. Compute the 7 comparison metrics for each query/reference pair.
 6. Build Polars DataFrames for the openms_insight interactive explorer.
 
 A progress bar tracks loading. When complete, proceed to the Explore tab.
@@ -212,12 +209,12 @@ When no reference is available, a single-spectrum plot is shown instead.
 Displays the full comparison data in tabular form:
 
 - **Metrics table** -- All 7 comparison metrics for every query-reference pair.
-- **Ion match statistics** -- 17 supplementary statistics from PyOpenMS
-  SpectrumAnnotator (coverage, annotated fractions, mass errors, series info).
 - **Summary statistics** -- Aggregate statistics (mean, median, std) across
   all comparisons.
 
-See [metrics.md](metrics.md) for detailed definitions and interpretation.
+See [metrics/comparison.md](metrics/comparison.md) for detailed definitions
+and [metrics/interpretation.md](metrics/interpretation.md) for guidance on
+which metric to trust when.
 
 ---
 
@@ -236,10 +233,11 @@ The Export tab generates publication-quality outputs and manages export history.
 ### What Gets Exported
 
 - Parquet DataFrames (psm.parquet, peaks.parquet, seq.parquet, heatmap.parquet)
-- CSV and XLSX comparison summary with all metrics and ion match statistics
+- CSV and XLSX comparison summary with the 7 metrics plus per-pair context
+  columns (peak counts, annotation counts, shared peaks)
 - Mirror plots organized by peptide variant in format-specific subdirectories
 - Interactive HTML plots (Plotly, using CDN for small file sizes)
-- Summary analysis plots (dual-axis, ridgeline, heatmap)
+- Summary analysis plots (dual-axis bar/box, ridgeline KDE)
 - `run_settings.json` capturing all parameters for reproducibility
 
 ### Export History
@@ -255,8 +253,8 @@ Browse past export runs, view their settings, and:
 Browse exported plots organized by peptide and reference. Download individual
 plots without needing to navigate the filesystem.
 
-See [export.md](export.md) for the full directory structure and file
-schemas.
+See [export/layout.md](export/layout.md) for the full directory structure
+and [export/formats.md](export/formats.md) for file schemas.
 
 ---
 
@@ -292,4 +290,4 @@ schemas.
 | Slow first run | Normal for large mzML files. Subsequent runs with the same settings reuse existing export directories. |
 | Export fails with permission error | Verify write permissions to the export directory. Check available disk space. |
 | Worker processes crash silently | Re-run with `workers: 1` in the YAML (CLI) or set the workers slider to 1 in the Setup tab to surface the underlying traceback. |
-| Stale results after fixing a bug | Delete `<workspace>/.mspecviz_cache/`. The app does not invalidate its own Parquet cache automatically. See [settings.md#cache](settings.md#cache). |
+| Stale results after fixing a bug | Delete `<workspace>/.mspecviz_cache/`. The app does not invalidate its own Parquet cache automatically. See [settings/app.md](settings/app.md) for the cache key in `settings.json`. |

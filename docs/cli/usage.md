@@ -19,8 +19,11 @@ python -m cli cli/config/config_example.yaml
 
 A single positional argument: the path to a YAML config file. There are
 no command-line flag overrides — per-run tweaks are made by copying the
-YAML and editing it. The log level is controlled by an environment
-variable:
+YAML and editing it. Path globs in `idxml_files` / `mzml_files` are
+expanded by `glob.glob(pattern, recursive=True)`, so `**/` wildcards
+work (`/data/**/run_*.mzML`).
+
+The log level is controlled by an environment variable:
 
 ```bash
 # Default: INFO (stage headers, per-file logs, progress bars)
@@ -73,20 +76,35 @@ translation table. To change a default for all CLI runs, edit
 | Code | Meaning |
 | --- | --- |
 | `0` | Pipeline completed successfully. |
-| `1` | Pipeline failed (pyopenms error, Koina unreachable, filesystem I/O, …). Error is logged and the process exits. |
-| `2` | Config error (YAML path missing, YAML not a mapping, required section missing, peptide list empty). |
+| Non-zero | Anything went wrong. |
 
-The test suite uses `test_missing_config_exits_two` to lock the
-exit-code behaviour, so it's safe to automate against.
+The CLI uses `sys.exit("Error: …")` for every failure path (missing
+config, malformed YAML, missing inputs, no PSMs, no spectra, or a
+pyopenms/Koina/filesystem exception in the pipeline). That always yields
+exit code **1** with the message on stderr — there is no separate
+"config error" code. Test `test_missing_config_exits_two` (in
+`tests/cli/test_cli_integration.py`) only asserts non-zero despite its
+name; do not rely on the exact code for branching.
 
 ---
 
 ## Progress output
 
 Each stage logs a header line, and a `tqdm` progress bar tracks
-file/spectrum/plot completion within the stage. Set
-`MSPECVIZ_LOG_LEVEL=ERROR` to suppress everything except real errors;
-the progress bars stay on by default (they go to stderr).
+file/spectrum/plot completion within the stage. The bars are driven by
+the same `progress_callback` / `error_callback` hooks the Streamlit
+front end uses — both layers feed updates into
+`mspecviz.common.task_dispatch.run_tasks` and let each frontend render
+them its own way (tqdm vs `st.progress`).
+
+Set `MSPECVIZ_LOG_LEVEL=ERROR` to suppress everything except real
+errors; the progress bars stay on by default (they go to stderr).
+
+`workers` (default 4) controls parallelism for all three pipeline
+stages — idXML search, mzML streaming, and plot rendering. `workers: 1`
+forces the sequential code path inside `run_tasks`, which is the right
+setting when you want a worker-side traceback instead of a generic
+"worker crashed" message.
 
 Typical successful run:
 

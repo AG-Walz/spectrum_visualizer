@@ -46,7 +46,7 @@ workers: 4                            # 1 = sequential fallback
 
 # Summary plots
 summary_metric: "R² binned"           # default summary-plot metric
-summary_plot_types: [dual_axis, ridgeline]  # subset of dual_axis, ridgeline, heatmap
+summary_plot_types: [dual_axis, ridgeline]  # any subset of {dual_axis, ridgeline}
 
 # Koina AI prediction
 koina_enabled: false                  # master switch for AI prediction
@@ -78,7 +78,7 @@ koina_instrument_type: TIMSTOF        # QE | LUMOS | TIMSTOF | SCIEXTOF
 | `no_plots` | `false` | When `true`, skip plot generation; export only DataFrames + CSV. |
 | `workers` | `4` | Parallel workers. `1` forces the sequential fallback (useful for debugging). |
 | `summary_metric` | `"R² binned"` | Metric used to colour/sort summary plots. Must be one of the keys in `METRIC_COLUMNS`. |
-| `summary_plot_types` | `[dual_axis, ridgeline]` | Subset of `{dual_axis, ridgeline, heatmap}` to render. |
+| `summary_plot_types` | `[dual_axis, ridgeline]` | Subset of `{dual_axis, ridgeline}` to render. A "heatmap" type is not implemented. |
 | `koina_enabled` | `false` | Master switch for the Koina fallback. |
 | `koina_model` | `"ms2pip_timsTOF2024"` | Model ID. |
 | `koina_collision_energy` | `35` | NCE. |

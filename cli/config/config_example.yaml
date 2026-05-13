@@ -1,13 +1,11 @@
 # MSpecViz CLI config — run: python -m cli cli/config/config_example.yaml
 # Full reference: docs/cli/usage.md
 #
-# Every key name below matches a default in mspecviz/common/defaults.py
-# (with CLI-only extras for the inputs section). Flat snake_case, one
-# name per concept — no translation layer. There are no command-line
-# flag overrides; copy this file and edit per-run.
-# Log level: MSPECVIZ_LOG_LEVEL env var (default INFO; ERROR for quiet).
+# Every key name below matches a default parameter in mspecviz/common/defaults.py
+# (with CLI-only extras for the inputs section). Edit the values to point to your 
+# data and adjust settings as needed. 
 
-# --- 1. Almost always edit these ---
+# --- 1. Main parameters ---
 
 idxml_files:
   - /mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML
@@ -30,19 +28,17 @@ plot_unpaired_queries: false          # also render queries with no reference
 
 # --- 2. Sensible defaults ---
 
-ion_types: [b, y]                     # a, b, c, x, y, z, precursor, immonium
+ion_types: [b, y]                     # a, b, c, x, y, z, internal, precursor, immonium
 mz_tolerance: 0.02                    # Da
 add_neutral_losses: false             # H2O, NH3 losses
-add_first_prefix_ion: true            # include the a1/b1/c1 ion
-remove_precursor_peaks: false         # mask peaks near the precursor m/z
 intensity_mode: Relative              # Relative (base-peak normalised) or Raw
 
 workers: 4                            # 1 = sequential (easier debugging)
 
 # summary_metric: R² binned                    # default metric for summary plots
-# summary_plot_types: [dual_axis, ridgeline]   # any of: dual_axis, ridgeline, heatmap
+# summary_plot_types: [dual_axis, ridgeline]   # any subset of {dual_axis, ridgeline}
 
-# --- 3. Advanced / optional ---
+# --- 3. Advanced / optional parameters ---
 
 # Koina generates a predicted reference when no experimental one exists.
 # Requires network access to koina.wilhelmlab.org.
@@ -50,4 +46,4 @@ workers: 4                            # 1 = sequential (easier debugging)
 koina_enabled: false
 koina_model: ms2pip_timsTOF2024
 koina_collision_energy: 35
-koina_instrument_type: TIMSTOF        # TIMSTOF, QE, LUMOS, ELITE
+koina_instrument_type: TIMSTOF        # QE, LUMOS, TIMSTOF, SCIEXTOF

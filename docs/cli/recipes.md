@@ -25,10 +25,14 @@ recorded in `run_settings.json` for reproducibility.
 The `reference_substring` value splits your selected mzML files into two
 groups:
 
-- **Reference files** — name contains the substring. Used to build the
-  reference-intensity side of each mirror plot.
+- **Reference files** — basename contains the substring (case-sensitive
+  Python `in` test on the filename, not the full path).
 - **Query files** — everything else. Used as the top side of each mirror
   plot.
+
+Pick a substring distinctive enough to be unambiguous (e.g. `Synpep`,
+`Standard`, `_Ref_`). A short substring like `1` will match almost
+anything; trim or pre-rename your files if needed.
 
 Leave the substring empty to enter **single-spectrum mode**: queries are
 plotted alone (no mirror), no pairwise metrics are computed, and no
@@ -107,8 +111,8 @@ no_plots: true
 MSPECVIZ_LOG_LEVEL=ERROR python -m cli cli/config/config_example.yaml
 ```
 
-Exits with 0 on success, 1 on pipeline error, 2 on config error. Safe
-for CI smoke tests — no GUI, no plot rendering.
+Exits with 0 on success and non-zero (always 1) on any error. Safe for
+CI smoke tests — no GUI, no plot rendering.
 
 ---
 
@@ -120,14 +124,21 @@ for CI smoke tests — no GUI, no plot rendering.
 - **`MSPECVIZ_LOG_LEVEL=DEBUG`** prints DEBUG-level logs from `pyopenms`,
   `koinapy`, and every `mspecviz.*` module. Useful when a Koina call
   silently returns no spectrum.
-- **Stale cache** — if you've fixed a loading bug and re-runs keep using
-  the buggy output, delete the workspace's `.mspecviz_cache/` directory.
-  The CLI doesn't invalidate cache automatically. See
-  [../settings/app.md#cache](../settings/app.md#cache).
-- **Same-named files** in different directories are disambiguated with a
-  parent-directory suffix by `mspecviz.common.path_utils`. Look for
-  names like `foo.mzML [experimentA]` in the output if you notice them.
+- **Stale cache** — only relevant to the Streamlit app, which persists
+  loaded spectra to `<workspace>/.mspecviz_cache/`. The CLI does **not**
+  cache and always re-runs the load stage. If you see a stale plot from
+  the CLI, the cause is the versioned-export fingerprint reusing an
+  existing directory — delete that directory or change a parameter to
+  force a new fingerprint.
+- **Same-named files** — if you select two files with the same basename
+  from different directories, both the Streamlit Setup tab and any code
+  path that calls `mspecviz.common.helpers.ensure_unique_basenames`
+  will raise `DuplicateBasenameError`. Rename or stage the files
+  separately. The CLI does not currently call this check itself, so
+  glob results with collisions silently overwrite — review your globs
+  if you're sweeping across directories.
 - **`run_settings.json`** is the canonical record of what actually ran.
   If a result looks wrong, start there — the resolved peptide list,
   expanded glob paths, and the final merged settings are all captured
-  verbatim.
+  verbatim. Reproducing a Streamlit run from the CLI is just a matter of
+  translating that JSON into YAML.

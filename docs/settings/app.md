@@ -64,8 +64,10 @@ from `DEFAULTS.koina_model`, not this file.
 |---|---|---|
 | `ion_types.available` | list[string] | Full set of ion series the UI offers. Values outside this list are ignored by the annotation step. |
 
-Shipped: `["a", "b", "c", "x", "y", "z", "precursor", "immonium"]`. The
-pre-selected ion types come from `DEFAULTS.ion_types`.
+Shipped: `["a", "b", "c", "x", "y", "z", "internal", "precursor",
+"immonium"]`. The pre-selected ion types come from `DEFAULTS.ion_types`
+(which defaults to `("b", "y")`). `internal` corresponds to
+spectrum_utils' "m" ions (internal fragments).
 
 ---
 
@@ -109,18 +111,24 @@ Worker count is a pipeline parameter and lives in `DEFAULTS.workers`.
 Colour palette used by both mirror renderers. Accepts any string Plotly +
 Matplotlib both understand (hex, named CSS colours, `rgb()` strings).
 
+The shipped palette is Material Design 700-level (saturated, print-safe):
+
 | Key | Default (hex) | Used for |
 |---|---|---|
-| `ion_colors.a` | `#FFCC00` | a-ion series |
-| `ion_colors.b` | `#0066CC` | b-ion series |
-| `ion_colors.c` | `#00CC66` | c-ion series |
-| `ion_colors.x` | `#CC6600` | x-ion series |
-| `ion_colors.y` | `#CC0000` | y-ion series |
-| `ion_colors.z` | `#6600CC` | z-ion series |
-| `ion_colors.precursor` | `#8B008B` | Precursor ion and its charge states |
-| `ion_colors.immonium` | `#00CED1` | Immonium ions |
-| `ion_colors.unannotated` | `#AAAAAA` | Peaks with no theoretical match |
+| `ion_colors.a` | `#388E3C` | a-ion series (Material Green 700) |
+| `ion_colors.b` | `#1976D2` | b-ion series (Material Blue 700) |
+| `ion_colors.c` | `#00796B` | c-ion series (Material Teal 700) |
+| `ion_colors.x` | `#7B1FA2` | x-ion series (Material Purple 700) |
+| `ion_colors.y` | `#D32F2F` | y-ion series (Material Red 700) |
+| `ion_colors.z` | `#F57C00` | z-ion series (Material Orange 700) |
+| `ion_colors.internal` | `#FBC02D` | Internal fragments / spectrum_utils' "m" ions (Material Yellow 700) |
+| `ion_colors.precursor` | `#512DA8` | Precursor ion and its charge states (Material Deep Purple 700) |
+| `ion_colors.immonium` | `#455A64` | Immonium ions (Material Blue Grey 700) |
+| `ion_colors.unannotated` | `#9E9E9E` | Peaks with no theoretical match (Material Grey 500) |
 
-Charge state (`++`, `+++`) does not change the base colour. The palette
-is exported as `ION_COLORS` from `mspecviz.plotting` and also used in
-summary plots.
+Charge state (`++`, `+++`) does not change the base colour. The same
+palette is the single source of truth: it ships in `settings.json` for
+the Streamlit UI and as `ION_COLORS` in
+`mspecviz/common/defaults.py` for everything else (mirror renderer,
+summary plots, CLI). Editing one without the other will desynchronise
+the two — keep them in lockstep or remove the JSON copy.

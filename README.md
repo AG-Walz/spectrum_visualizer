@@ -42,7 +42,6 @@ guides are reference material organised by topic, with each file kept under
 
 **Metrics**
 - [7 comparison metrics](docs/metrics/comparison.md) — R2m, R2b, Cos, Ent, Dice, Jacc, ShR with formulas
-- [17 ion match statistics](docs/metrics/ion-match-stats.md) — `ims_*` columns
 - [Choosing and interpreting](docs/metrics/interpretation.md) — decision guide + common patterns
 
 **Export**
@@ -73,16 +72,14 @@ guides are reference material organised by topic, with each file kept under
 - **7 Comparison Metrics** — R² matching, R² binned, cosine similarity,
   spectral entropy similarity, Dice coefficient, Jaccard index, and shared
   peak ratio. See [docs/metrics/comparison.md](docs/metrics/comparison.md).
-- **17 Ion Match Statistics** — PyOpenMS `SpectrumAnnotator` metrics including
-  coverage, annotated-ion fraction, fragment mass errors, and series analysis.
-- **Koina AI Prediction** — 14+ deep-learning models (MS2PIP, Prosit,
+- **Koina AI Prediction** — 14 deep-learning models (MS2PIP, Prosit,
   AlphaPept, UniSpec, PredFull) for generating predicted reference spectra
   when no experimental reference is available.
 - **Parallel Export** — `ProcessPoolExecutor`-based batch generation of PNG,
   SVG, PDF, and HTML plots with versioned export directories and ZIP
   download.
-- **Summary Plots** — Dual-axis bar/box, ridgeline KDE, and multi-metric
-  heatmap visualizations of metric distributions across peptidoforms.
+- **Summary Plots** — Dual-axis bar/box and ridgeline KDE visualizations of
+  metric distributions across peptidoforms.
 
 ---
 
@@ -202,7 +199,7 @@ MSpecViz/
 │   │   ├── state/               # page_setup, workspaces, param I/O
 │   │   └── page_state.py        # Session-state namespace helpers
 │   └── views/
-│       ├── setup.py             # Tab 1 — Setup
+│       ├── setup_page.py        # Tab 1 — Setup
 │       ├── search_load/         # Tab 2 — Search & Load
 │       ├── explore/             # Tab 3 — Explore (3 sub-views)
 │       ├── export/              # Tab 4 — Export
@@ -244,9 +241,11 @@ with every key documented is in
 | `streamlit_app/config/settings.json` | App-wide environmental config | Koina model catalogue, allowed ion types, data directory, performance tuning, ion color palette |
 | `workspaces/<name>/params.json` | One per workspace | Sparse record of user-edited widget values; missing keys fall back to `DEFAULTS` |
 | `cli/config/*.yaml` | One per CLI run | YAML config combining input files, peptides, annotation, export, and Koina sections |
-| Command-line flags | Single invocation | Override any YAML field on a single run (`--workers`, `--mz-tolerance`, …) |
+| `MSPECVIZ_LOG_LEVEL` env var | Single invocation | Logging verbosity (`DEBUG`, `INFO`, `WARNING`, `ERROR`) — the only out-of-band override |
 
-**Precedence for CLI runs:** `DEFAULTS` < YAML < CLI flags.
+**Precedence for CLI runs:** `DEFAULTS` < YAML. The CLI takes one positional
+argument (the YAML path); there are no flag overrides — edit the YAML for
+per-run tweaks.
 
 **Precedence for Streamlit runs:** `DEFAULTS` < workspace `params.json`
 < live widget state in session. (`settings.json` is read in parallel for
@@ -293,5 +292,5 @@ For deeper issues:
 - Stale cache after fixing a loading bug → delete the workspace's
   `.mspecviz_cache/` directory. The app never invalidates its own Parquet
   cache automatically.
-- Worker processes crash silently → re-run with `--workers 1` (CLI) or set
-  the workers slider to 1 in the Setup tab to surface the real error.
+- Worker processes crash silently → set `workers: 1` in your CLI YAML or
+  drag the workers slider to 1 in the Setup tab to surface the real error.
