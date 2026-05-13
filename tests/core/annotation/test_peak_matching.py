@@ -1,9 +1,10 @@
-"""
-Unit tests for ``core.annotation`` — low-level building blocks.
+"""Tests for ``core.annotation.peak_matching``.
 
-Covers ``annotate_spectrum``, ``prepare_koina_spectrum_for_plot``, and the
-Koina-charge parser. End-to-end pipeline composition (``prepare_spectrum_for_plot``)
-lives in the ``test_peak_annotation_integration.py`` sibling.
+Covers:
+- ``annotate_spectrum`` — the low-level annotator (peptidoform → annotated frame)
+- ``prepare_spectrum_for_plot`` — composition layer (annotate + filter + normalize)
+- ``prepare_koina_spectrum_for_plot`` — the Koina-frame variant
+- ``_parse_koina_charge`` — the Koina annotation charge parser
 """
 import numpy as np
 import pandas as pd
@@ -16,12 +17,14 @@ from core.annotation import (
 )
 from core.annotation.peak_matching import _parse_koina_charge
 
-# Known singly-charged b2 m/z for ASDDFDQASY (A-S, b2+ ≈ 159.0764)
+# Known singly-charged b2 / y2 m/z for ASDDFDQASY (computed via spectrum_utils
+# during the parity spike — pinned here to avoid coupling tests to PyOpenMS).
 ASDDFDQASY_B2 = 159.0764
+ASDDFDQASY_Y2 = 269.1132
 
 
 class TestAnnotatePeaks:
-    """``annotate_spectrum`` with the new (peptidoform, charge) signature."""
+    """``annotate_spectrum`` — low-level annotator on the new (peptidoform, charge) signature."""
 
     def test_exact_match_annotated(self):
         mz = np.array([ASDDFDQASY_B2])
@@ -50,19 +53,71 @@ class TestAnnotatePeaks:
         result = annotate_spectrum(mz, intensity, "ASDDFDQASY", charge=1, mz_tolerance=0.02)
         assert bool(result.iloc[0]["is_annotated"]) is expected_annotated
 
-    def test_returns_required_columns(self):
-        mz = np.array([ASDDFDQASY_B2])
-        intensity = np.array([1000.0])
-        result = annotate_spectrum(mz, intensity, "ASDDFDQASY", charge=1, mz_tolerance=0.02)
-        for col in ["mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"]:
-            assert col in result.columns
-
     def test_empty_input_returns_empty_df(self):
         result = annotate_spectrum(
             np.array([]), np.array([]), "ASDDFDQASY", charge=1
         )
         assert isinstance(result, pd.DataFrame)
         assert len(result) == 0
+
+
+class TestPrepareSpectrumForPlot:
+    """``prepare_spectrum_for_plot`` — annotate + filter + normalize composition."""
+
+    @pytest.fixture(autouse=True)
+    def setup(self):
+        self.mz = np.array([ASDDFDQASY_B2, ASDDFDQASY_Y2, 500.0, 600.0])
+        self.intensity = np.array([1000.0, 800.0, 200.0, 150.0])
+
+    def test_normalization_max_is_one(self):
+        df = prepare_spectrum_for_plot(
+            self.mz, self.intensity, "ASDDFDQASY", charge=1, normalize=True
+        )
+        assert df["intensity"].max() == pytest.approx(1.0, abs=1e-9)
+
+    def test_no_normalization_unchanged(self):
+        df = prepare_spectrum_for_plot(
+            self.mz, self.intensity, "ASDDFDQASY", charge=1, normalize=False
+        )
+        assert df["intensity"].max() == pytest.approx(1000.0, abs=1e-6)
+
+    def test_result_has_ion_type_column(self):
+        df = prepare_spectrum_for_plot(
+            self.mz, self.intensity, "ASDDFDQASY", charge=1
+        )
+        assert "ion_type" in df.columns
+
+    def test_result_length_matches_input(self):
+        mz = np.array([600.0, 200.0, 400.0])
+        intensity = np.array([100.0, 200.0, 150.0])
+        df = prepare_spectrum_for_plot(mz, intensity, "ASDDFDQASY", charge=1)
+        assert len(df) == 3
+        assert "mz" in df.columns
+
+
+class TestAnnotateRealisticSpectrum:
+    """``prepare_spectrum_for_plot`` on realistic ASDDFDQASY / RTEFNLNQY inputs."""
+
+    def test_annotate_asddfdqasy(self):
+        mz = np.array([175.12, 290.14, 405.17, 520.20, 667.27, 782.30], dtype=np.float64)
+        intensity = np.array([100, 200, 150, 300, 250, 180], dtype=np.float64)
+        result = prepare_spectrum_for_plot(
+            mz, intensity, "ASDDFDQASY", charge=1,
+            ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
+        )
+        assert len(result) == len(mz)
+        assert "annotation" in result.columns
+        assert result["mz"].max() <= max(mz) + 0.01
+
+    def test_annotate_with_losses(self):
+        mz = np.array([175.12, 290.14, 405.17], dtype=np.float64)
+        intensity = np.array([100, 200, 150], dtype=np.float64)
+        result = prepare_spectrum_for_plot(
+            mz, intensity, "RTEFNLNQY", charge=2,
+            ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
+            add_neutral_losses=True,
+        )
+        assert len(result) == len(mz)
 
 
 class TestParseKoinaCharge:

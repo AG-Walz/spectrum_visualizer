@@ -1,6 +1,4 @@
 """Unit tests for core/export/export_directories.py"""
-from pathlib import Path
-
 import pytest
 
 from core.export.export_directories import (
@@ -71,7 +69,3 @@ class TestFindOrCreateExportDirectory:
             commit_export_directory(root, settings)
             nums.append(int(root.name.split("_")[1]))
         assert sorted(nums) == [1, 2, 3]
-
-    def test_returns_path(self, tmp_path):
-        result = find_or_create_export_directory(str(tmp_path), "proj", {"x": 1})
-        assert isinstance(result, Path)

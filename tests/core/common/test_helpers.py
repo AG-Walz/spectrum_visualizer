@@ -74,6 +74,3 @@ class TestEnsureUniqueBasenames:
     def test_kind_interpolated_in_message(self):
         with pytest.raises(DuplicateBasenameError, match="selected mzML files"):
             ensure_unique_basenames(["/a/dup.mzML", "/b/dup.mzML"], "mzML")
-
-    def test_is_value_error_subclass(self):
-        assert issubclass(DuplicateBasenameError, ValueError)

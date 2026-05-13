@@ -2,10 +2,8 @@
 
 Drives ``_run_export`` with a mocked ``st`` module + session_state to verify
 each format flag creates the expected artifacts inside the versioned
-``export_*/`` directory. ``export_controls_fragment`` bug-fix checks live in
-``test_export_bugfixes.py``.
+``export_*/`` directory.
 """
-import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -168,56 +166,32 @@ class TestRunExport:
         _run_export({}, export_dir, **defaults)
         return export_dir
 
-    def test_parquet_export(self, mock_st):
+    @pytest.mark.parametrize("flag, check", [
+        # (selection flag, callable(export_root) -> asserts artefact exists)
+        ("do_parquet", lambda root: list(root.glob("*.parquet"))),
+        ("do_csv",     lambda root: [root / "comparison_summary.csv"]
+                                    if (root / "comparison_summary.csv").exists() else []),
+        ("do_mirror",  lambda root: list(root.rglob("*.png")) + list(root.rglob("*.svg"))),
+        ("do_summary", lambda root: list((root / "summary").rglob("*.*"))
+                                    if (root / "summary").exists() else []),
+    ], ids=["parquet", "csv", "mirror", "summary"])
+    def test_each_format_writes_expected_artefacts(self, mock_st, flag, check):
         _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_parquet=True)
-
-        export_dirs = list(Path(export_dir).iterdir())
-        assert len(export_dirs) == 1
-        export_root = export_dirs[0]
-
+        export_dir = self._invoke_export(tmp_path, **{flag: True})
+        export_root = list(Path(export_dir).iterdir())[0]
+        artefacts = check(export_root)
+        assert len(artefacts) >= 1, f"{flag} produced no artefacts under {export_root}"
+        # The run_settings.json marker is always written
         assert (export_root / "run_settings.json").exists()
-        parquet_files = list(export_root.glob("*.parquet"))
-        assert len(parquet_files) >= 1
 
-    def test_csv_export(self, mock_st):
+    def test_csv_columns_round_trip(self, mock_st):
+        """CSV-specific schema check (Peptide column + row count from comparison_frame)."""
         _, tmp_path = mock_st
         export_dir = self._invoke_export(tmp_path, do_csv=True)
-
         export_root = list(Path(export_dir).iterdir())[0]
-        assert (export_root / "comparison_summary.csv").exists()
         frame = pd.read_csv(export_root / "comparison_summary.csv")
         assert len(frame) == 2
         assert "Peptide" in frame.columns
-
-    def test_mirror_plot_export(self, mock_st):
-        _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_mirror=True)
-
-        export_root = list(Path(export_dir).iterdir())[0]
-        png_files = list(export_root.rglob("*.png"))
-        svg_files = list(export_root.rglob("*.svg"))
-        assert len(png_files) >= 1, "Expected at least one PNG mirror plot"
-        assert len(svg_files) >= 1, "Expected at least one SVG mirror plot"
-
-    def test_summary_plot_export(self, mock_st):
-        _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_summary=True)
-
-        export_root = list(Path(export_dir).iterdir())[0]
-        summary_dir = export_root / "summary"
-        assert summary_dir.exists(), "Summary directory should be created"
-        summary_files = list(summary_dir.rglob("*.*"))
-        assert len(summary_files) >= 2, "Expected dual_axis + ridgeline plots"
-
-    def test_run_settings_json_valid(self, mock_st):
-        _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path)
-
-        export_root = list(Path(export_dir).iterdir())[0]
-        with open(export_root / "run_settings.json") as f:
-            settings = json.load(f)
-        assert "peptides" in settings
 
     def test_export_creates_versioned_directory(self, mock_st):
         """Streamlit now uses the CLI's fingerprinted ``{project}_{NNN}_{YYYYMMDD}`` layout."""

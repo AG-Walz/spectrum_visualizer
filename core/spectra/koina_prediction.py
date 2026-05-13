@@ -1,5 +1,4 @@
-"""
-Koina AI spectrum prediction for MSpecViz.
+""" Koina AI spectrum prediction for MSpecViz.
 
 Generates predicted MS/MS fragment spectra using Koina deep-learning models
 (via koinapy). Unlike PyOpenMS' theoretical generator which only produces m/z
@@ -10,7 +9,6 @@ Used as a fallback reference when no experimental reference mzML is available.
 """
 import logging
 from typing import Optional
-
 import pandas as pd
 from psm_utils import Peptidoform
 
@@ -28,12 +26,7 @@ except ImportError:
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     """Convert a ProForma peptidoform to Koina's UniMod-bracket notation.
-
-    ``"PEPM[Oxidation]IDEK"`` → ``"PEPM[UNIMOD:35]IDEK"``. Reads the resolved
-    UniMod accession from each modification's ``definition`` (psm_utils delegates
-    the resolution to pyteomics' UnimodResolver). A modification without a
-    UniMod entry — e.g. a bare mass-shift like ``[+15.99]`` or PSI-MOD/XLMOD —
-    raises ``KeyError`` here and is caught upstream by ``predict_koina_spectrum``.
+    (e.g. "PEPM[Oxidation]IDEK" → "PEPM[UNIMOD:35]IDEK") 
     """
     p = Peptidoform(peptidoform_str.split("/")[0])
     fmt = lambda mod: f"[UNIMOD:{mod.definition['id']}]"

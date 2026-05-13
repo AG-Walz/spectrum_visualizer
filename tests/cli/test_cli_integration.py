@@ -12,6 +12,7 @@ CLI_ARGS = [sys.executable, "-m", "cli"]
 
 
 @pytest.mark.integration
+@pytest.mark.slow
 class TestCLI:
     def test_no_args_exits_nonzero(self):
         result = subprocess.run(CLI_ARGS, cwd=PROJECT_ROOT,

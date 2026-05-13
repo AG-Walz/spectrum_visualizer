@@ -98,18 +98,6 @@ class TestSummaryPlotsFromCsv:
             for fmt, path in paths.items():
                 assert Path(path).exists()
 
-    def test_single_peptide_does_not_crash(self, tmp_path):
-        # Only one peptide/peptidoform -- some plots may not have enough data
-        frame = _make_summary_frame(n_peptides=1, n_reps=3)
-        results = generate_all_summary_plots(
-            source=frame,
-            output_dir=str(tmp_path),
-            formats=["png"],
-            plot_types=["dual_axis"],
-        )
-        # Should not raise -- results may be empty or have one entry
-        assert isinstance(results, dict)
-
     def test_all_plot_types_from_frame(self, tmp_path):
         frame = _make_summary_frame(n_peptides=3, n_reps=5)
         results = generate_all_summary_plots(

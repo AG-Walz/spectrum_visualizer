@@ -25,6 +25,7 @@ def launch(request):
 
 
 # Test launching of all pages
+@pytest.mark.slow
 @pytest.mark.parametrize(
     "launch",
     (
@@ -74,6 +75,7 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
     at.session_state[f"{STATE_PREFIX}.data_ready"] = True
 
 
+@pytest.mark.slow
 def test_mirror_picker_renders_when_state_seeded():
     """The picker fragment runs without exception and shows the 'pick a row' hint
     when both selections are unset (StateManager wiring)."""
