@@ -30,26 +30,20 @@ PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
 def build_psm_table(
     variant_groups: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
-    """Build the PSM-level LazyFrame + ``psm_lookup`` for the openms_insight Table.
-
-    Each ``psm_utils.PSM`` gets a stable integer ``id``; ``psm_lookup`` maps
-    ``spectrum_lookup_key()`` (``"{spectrum_id}|{peptidoform}"``) → that id so
-    downstream frames can link peaks/sequences back to the right row. Variant-
-    level fields (base_sequence, modification, display_label) are computed once
-    per group from the first PSM and reused across the group's rows.
-    """
+    """Build the PSM-level LazyFrame and ``psm_lookup`` for the openms_insight Table. """
     # Initialise the row accumulator, lookup map, and running PSM id
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
     psm_id = 0
 
-    # Walk variants -> PSMs: derive variant-level fields once, emit one row per PSM
+    # Walk variants and their PSMs: emit one row per PSM, carrying variant-level fields for grouping
     for variant_key, psm_list in variant_groups.items():
         if not psm_list:
             continue
         base_sequence = psm_list[0].peptidoform.sequence.upper()
         modification = variant_key if variant_key != base_sequence else "(unmodified)"
 
+        # Build the lookup key and row dict for each PSM
         for psm in psm_list:
             peptidoform_str = psm.peptidoform.modified_sequence
             # Key must match spectrum_lookup_key() in spectrum_loader

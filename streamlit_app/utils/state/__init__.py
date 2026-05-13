@@ -5,7 +5,6 @@ Re-exports every public name from the four submodules so callers keep using
 name lives in.
 """
 from streamlit_app.utils.state.state_core import (
-    OS_PLATFORM,
     PROJECT_ROOT,
     STATE_PREFIX,
     _persisted_key,
@@ -26,7 +25,6 @@ from streamlit_app.utils.state.state_sidebar import (
 
 __all__ = [
     # core
-    "OS_PLATFORM",
     "PROJECT_ROOT",
     "STATE_PREFIX",
     "_persisted_key",

@@ -71,8 +71,13 @@ def _draw_matplotlib(ax, df: pd.DataFrame, y_multiplier: float) -> None:
 
 
 def _draw_plotly(fig: go.Figure, df: pd.DataFrame, y_multiplier: float,
-                 panel_name: str) -> None:
-    """Draw stems (one trace per ion type) + per-peak labels onto ``fig``."""
+                 panel_name: str, legend_seen: set[str]) -> None:
+    """Draw stems (one trace per ion type) + per-peak labels onto ``fig``.
+
+    *legend_seen* tracks which ion types already appear in the legend so each
+    type contributes only one entry across both panels (Plotly does not dedupe
+    legend names automatically — different legendgroups produce separate items).
+    """
     if df.empty:
         return
     for ion_type, group in df.groupby("ion_type", sort=False):
@@ -87,13 +92,16 @@ def _draw_plotly(fig: go.Figure, df: pd.DataFrame, y_multiplier: float,
                 f"<br>{peak['annotation'] if peak['annotation'] != 'unannotated' else ''}",
                 "",
             ])
+        show_in_legend = ion_type != "unannotated" and ion_type not in legend_seen
+        if show_in_legend:
+            legend_seen.add(ion_type)
         fig.add_trace(go.Scatter(
             x=x_data, y=y_data, mode="lines",
             line=dict(color=color, width=1.5),
             name=ion_type,
-            legendgroup=f"{panel_name}_{ion_type}",
+            legendgroup=ion_type,
             hovertext=hover_data, hoverinfo="text",
-            showlegend=(ion_type != "unannotated"),
+            showlegend=show_in_legend,
         ))
     yshift = 10 if y_multiplier > 0 else -10
     for _, peak in df[df["_label"] != ""].iterrows():
@@ -246,9 +254,11 @@ def create_spectrum_plot(
 
     # Plotly path: stems per panel, then layout (axes, legend, mirror divider, overlays)
     fig = go.Figure()
-    _draw_plotly(fig, query, y_multiplier=1.0, panel_name="query")
+    legend_seen: set[str] = set()
+    _draw_plotly(fig, query, y_multiplier=1.0, panel_name="query", legend_seen=legend_seen)
     if is_mirror:
-        _draw_plotly(fig, reference, y_multiplier=-1.0, panel_name="reference")
+        _draw_plotly(fig, reference, y_multiplier=-1.0,
+                     panel_name="reference", legend_seen=legend_seen)
     fig.update_layout(
         title=title, xaxis_title="m/z", yaxis_title="Relative Intensity",
         width=figure_size[0] * 100, height=figure_size[1] * 100,

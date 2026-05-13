@@ -15,23 +15,21 @@ from mspecviz.spectra.mzml_lookup import find_spectrum_index, open_indexed_mzml_
 logger = logging.getLogger(__name__)
 
 
-def _resolve_precursor(spectrum, default_charge: int) -> Tuple[float, int]:
-    """Pull precursor m/z and charge from *spectrum*, falling back to the match charge."""
-    precursors = spectrum.getPrecursors()
-    if not precursors:
-        return 0.0, default_charge
-    prec = precursors[0]
-    charge = prec.getCharge() if prec.getCharge() > 0 else default_charge
-    return prec.getMZ(), charge
-
-
 def _build_loaded_spectrum(
     spectrum, psm: PSM, display_name: str, is_reference: bool,
 ) -> LoadedSpectrum:
     """Wrap a pyopenms ``MSSpectrum`` in our ``LoadedSpectrum`` dataclass."""
     mz_array, intensity_array = spectrum.get_peaks()
     psm_charge = psm.get_precursor_charge() or 0
-    precursor_mz, precursor_charge = _resolve_precursor(spectrum, psm_charge)
+    # Precursor: pull m/z and charge from the spectrum, falling back to psm_charge
+    precursors = spectrum.getPrecursors()
+    if precursors:
+        prec = precursors[0]
+        precursor_mz = prec.getMZ()
+        precursor_charge = prec.getCharge() if prec.getCharge() > 0 else psm_charge
+    else:
+        precursor_mz = 0.0
+        precursor_charge = psm_charge
     return LoadedSpectrum(
         spectrum_id=psm.spectrum_id,
         mz=mz_array,

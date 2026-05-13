@@ -1,22 +1,19 @@
 """Per-query annotation phases used by ``process_query_result``.
 
 Each phase is a small helper: annotate the query, cache references, attempt a
-Koina fallback, build metric rows. Extracted so ``query_processing`` stays
-readable and each phase can be unit-tested independently.
+Koina fallback. Extracted so ``query_processing`` stays readable and each
+phase can be unit-tested independently.
 """
-from typing import Any
-
 import numpy as np
 from psm_utils import Peptidoform
 
-from mspecviz.annotation.comparison_metrics import METRIC_SHORT_TO_DISPLAY
 from mspecviz.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
 from mspecviz.common.defaults import DEFAULTS
 from mspecviz.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
-from mspecviz.spectra.loaded_spectrum import LoadedSpectrum, source_label
+from mspecviz.spectra.loaded_spectrum import LoadedSpectrum
 
 
 def get_koina_prediction(
@@ -67,6 +64,7 @@ def _annotate_query_spectrum(result, annotation_kwargs):
         result.query_spectrum.intensity,
         result.query_spectrum.peptidoform,
         result.query_spectrum.precursor_charge,
+        precursor_mz=result.query_spectrum.precursor_mz,
         **annotation_kwargs,
     )
 
@@ -81,6 +79,7 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
         reference_frame = prepare_spectrum_for_plot(
             reference_spectrum.mz, reference_spectrum.intensity,
             reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
+            precursor_mz=reference_spectrum.precursor_mz,
             **annotation_kwargs,
         )
         ref_list.append((reference_spectrum, reference_frame))
@@ -106,35 +105,3 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
         reference_store[variant_key] = [koina_ref]
         return reference_store[variant_key]
     return references
-
-
-def build_comparison_row(psm_id, result, reference_spectrum, reference_frame, metrics):
-    """Build a single comparison row dict from query/reference pair.
-
-    *result* is a ``QueryResult`` from ``load_spectra_streaming``.
-    *metrics* is the dict returned by ``compute_all_metrics``.
-    """
-    # Identity columns: per-PSM metadata + query/reference labels and RTs
-    row: dict[str, Any] = {
-        "psm_id": psm_id,
-        "Peptide": result.query_spectrum.base_sequence,
-        "Modification": result.variant_key if result.variant_key != result.query_spectrum.base_sequence else "",
-        "Charge": result.query_spectrum.precursor_charge,
-        "Query": source_label(result.query_spectrum),
-        "Reference": source_label(reference_spectrum),
-        "query_spectrum_id": result.query_spectrum.spectrum_id,
-        "ref_spectrum_id": reference_spectrum.spectrum_id,
-        "query_rt": result.query_spectrum.rt,
-        "ref_rt": reference_spectrum.rt,
-    }
-    # Metric columns: short keys -> display names, NaN for missing values
-    for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
-        row[display_name] = metrics.get(short_key, float("nan"))
-    # Count columns: peak/annotation tallies on both sides plus shared
-    for count_key in (
-        "query_peak_count", "reference_peak_count",
-        "query_annotation_count", "reference_annotation_count", "shared",
-    ):
-        row[count_key] = metrics.get(count_key, 0)
-
-    return row

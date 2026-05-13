@@ -13,7 +13,6 @@ from mspecviz.annotation.metrics_intensity import (
 )
 from mspecviz.common.defaults import DEFAULTS
 
-# Optional dependencies
 try:
     import ms_entropy
 except ImportError:
@@ -56,9 +55,7 @@ def compute_all_metrics(
     reference_frame: pd.DataFrame,
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> dict[str, float | int]:
-    """Compute all 7 comparison metrics and context counts.
-
-    Returns dict with keys:
+    """Compute all 7 comparison metrics and context counts for a given query-reference pair:
         Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
         Counts:   query_peak_count, reference_peak_count, 
                   query_annotation_count, reference_annotation_count, 

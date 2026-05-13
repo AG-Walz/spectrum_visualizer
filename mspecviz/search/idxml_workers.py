@@ -2,28 +2,11 @@
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, TYPE_CHECKING
+from typing import Dict, Set, Tuple
 
 from psm_utils.io.idxml import IdXMLReader
 
-if TYPE_CHECKING:
-    from psm_utils import PSM
-
 logger = logging.getLogger(__name__)
-
-
-def _iterate_psms_safely(
-    reader, idxml_name: str,
-) -> Tuple[List["PSM"], int, Optional[str]]:
-    """Drain a psm_utils IdXMLReader, isolating erroneous PSMs from the rest."""
-    psms: list = []
-    try:
-        for psm in reader:
-            psms.append(psm)
-    except Exception as error:
-        logger.debug(f"PSM parse error in {idxml_name} after {len(psms)} PSMs: {error}")
-        return psms, len(psms), str(error)
-    return psms, len(psms), None
 
 
 def search_single_idxml(
@@ -38,8 +21,17 @@ def search_single_idxml(
     except Exception as load_error:
         return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
 
+    # Drain reader: isolate erroneous PSMs from the rest
+    psms: list = []
+    parse_error: str | None = None
+    try:
+        for psm in reader:
+            psms.append(psm)
+    except Exception as error:
+        logger.debug(f"PSM parse error in {idxml_name} after {len(psms)} PSMs: {error}")
+        parse_error = str(error)
+
     # Filter & annotate: keep target hits, stamp resolution metadata on each PSM
-    psms, psms_read, parse_error = _iterate_psms_safely(reader, idxml_name)
     for psm in psms:
         if psm.peptidoform.sequence.upper() not in target_set:
             continue
@@ -55,7 +47,7 @@ def search_single_idxml(
     errors = []
     if parse_error is not None:
         errors.append(
-            f"{idxml_name}: stopped after {psms_read} PSMs — parse error: {parse_error}. "
+            f"{idxml_name}: stopped after {len(psms)} PSMs — parse error: {parse_error}. "
             f"Try _pout_filtered.idXML for complete results."
         )
     return idxml_name, matches, errors

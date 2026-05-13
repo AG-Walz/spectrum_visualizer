@@ -37,9 +37,9 @@ def _entry_fingerprint(settings_file: Path) -> str | None:
 def _scan_existing_dirs(
     base: Path, pattern: re.Pattern, fingerprint: str,
 ) -> tuple[int, Path | None, int | None]:
-    """Walk *base* looking for fingerprint-matching folders + the highest used NNN.
-
-    Returns ``(max_number, match_entry, match_number)``.
+    """Look for fingerprint-matching folders and find the highest 
+    existing 3-digit number for the given base and name pattern in 
+    order to define the next export directory. 
     """
     max_number = 0
     match_entry = None
@@ -84,12 +84,7 @@ def find_or_create_export_directory(
     project_name: str,
     run_settings: dict,
 ) -> Path:
-    """Plan an export dir ``{project}_{NNN}_{YYYYMMDD}/`` — reuse on fingerprint match, else bump NNN.
-
-    Returns the root ``Path``; nothing is created until :func:`commit_export_directory`
-    runs (so we don't leave empty folders on abort). On re-run with identical settings the 
-    matching folder is renamed to today's date, enabling skip-existing-plots behaviour.
-    """
+    """Plan an export dir ``{project}_{NNN}_{YYYYMMDD}/`` — reusing on fingerprint match """
     # Setup: sanitize project name, compute fingerprint, build name regex
     base = Path(base_dir)
     prefix = sanitize_filename(project_name)

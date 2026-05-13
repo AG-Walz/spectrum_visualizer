@@ -19,12 +19,6 @@ from mspecviz.plotting.summary_ridgeline import plot_ridgeline
 
 logger = logging.getLogger(__name__)
 
-_PLOT_REGISTRY = {
-    "dual_axis": plot_classic_dual_axis,
-    "ridgeline": plot_ridgeline,
-}
-
-
 def prepare_summary_data(
     source: str | Path | pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
@@ -94,17 +88,20 @@ def generate_all_summary_plots(
     raw_frame, aggregated_frame = prepare_summary_data(source, metric=metric)
     logger.info(f"Summary data: {len(aggregated_frame)} peptidoforms, {len(raw_frame)} rows, metric={metric}")
 
-    # Render & save: dispatch each plot type via the registry, write per-format files
+    # Render & save: dispatch each plot type directly, write per-format files
     results: dict[str, dict[str, str]] = {}
     for plot_type in plot_types:
-        func = _PLOT_REGISTRY.get(plot_type)
-        if func is None:
+        if plot_type == "dual_axis":
+            renderer = plot_classic_dual_axis
+        elif plot_type == "ridgeline":
+            renderer = plot_ridgeline
+        else:
             logger.warning("Unknown plot type: %s (skipping)", plot_type)
             continue
 
         try:
-            fig = func(raw_frame, aggregated_frame, metric=metric,
-                       export_resolution=export_resolution, title=None)
+            fig = renderer(raw_frame, aggregated_frame, metric=metric,
+                           export_resolution=export_resolution, title=None)
         except ValueError as error:
             logger.error("Failed to create %s plot: %s", plot_type, error)
             continue

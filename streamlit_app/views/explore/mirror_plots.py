@@ -41,25 +41,6 @@ def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: d
             if vk in has_query and reference_store.get(vk)]
 
 
-def _picker_row(spec, score) -> dict:
-    """Translate one ``LoadedSpectrum`` into the columns the Tables display."""
-    return {
-        "mzml": source_label(spec),
-        "scan": extract_id_number(spec.spectrum_id),
-        "rt": float(spec.rt) if spec.rt is not None else None,
-        "charge": int(spec.precursor_charge or 0),
-        "score": score,
-    }
-
-
-def _safe_score(spec) -> float | None:
-    """Pull ``match.score`` if present; return ``None`` for NaN or no-match (Koina)."""
-    if spec.match is None:
-        return None
-    score = spec.match.score
-    return float(score) if score == score else None  # NaN check
-
-
 def _ref_row_id(variant_key: str, position: int) -> int:
     """Deterministic, peptide-scoped row id for the reference picker.
 
@@ -90,14 +71,28 @@ def _build_picker_frames(
     variant_key: str, annotated_queries: dict, reference_store: dict, psm_to_vk: dict,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Two LazyFrames — references (id = positional) and queries (psm_id = real key)."""
+    def picker_columns(spec) -> dict:
+        # Pull match.score if present; None for NaN or no-match (e.g. Koina-only)
+        score = None
+        if spec.match is not None:
+            raw = spec.match.score
+            score = float(raw) if raw == raw else None
+        return {
+            "mzml": source_label(spec),
+            "scan": extract_id_number(spec.spectrum_id),
+            "rt": float(spec.rt) if spec.rt is not None else None,
+            "charge": int(spec.precursor_charge or 0),
+            "score": score,
+        }
+
     # Reference rows: positional hashed id keyed by (variant_key, index)
     ref_rows = [
-        {"id": _ref_row_id(variant_key, i), **_picker_row(spec, _safe_score(spec))}
+        {"id": _ref_row_id(variant_key, i), **picker_columns(spec)}
         for i, (spec, _) in enumerate(reference_store.get(variant_key, []))
     ]
     # Query rows: filter annotated queries down to the chosen variant
     query_rows = [
-        {"psm_id": psm_id, **_picker_row(spec, _safe_score(spec))}
+        {"psm_id": psm_id, **picker_columns(spec)}
         for psm_id, (spec, _) in annotated_queries.items()
         if psm_to_vk.get(psm_id) == variant_key
     ]

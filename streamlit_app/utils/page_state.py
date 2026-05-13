@@ -156,6 +156,16 @@ def load_analysis_cache() -> bool:
         logger.info("Analysis cache restored from %s", cache_dir)
         return True
 
+    except (ModuleNotFoundError, AttributeError, ImportError) as error:
+        # Pickles were written against an older module layout (e.g. the
+        # ``loader_models`` → ``loaded_spectrum`` rename). The cache is now
+        # un-loadable; clear it so the user doesn't see this on every rerun.
+        logger.warning(
+            "Analysis cache from a previous code version is unreadable (%s); "
+            "clearing it. Re-run Search & Load to regenerate.", error,
+        )
+        clear_analysis_cache()
+        return False
     except Exception as error:
         logger.warning("Failed to restore analysis cache: %s", error)
         return False

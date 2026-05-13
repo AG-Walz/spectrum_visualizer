@@ -20,14 +20,7 @@ from mspecviz.common.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
-# Per spectrum_utils' SUPPORTED_IONS = "?abcxyzIm_prf", the leading character of
-# FragmentAnnotation.ion_type identifies the ion class. Koina annotation strings
-# follow the same convention ("y3+1", "b5++"). The six fragment letters keep
-# their letter so user filters like ['b', 'y'] match the dataframe column;
-# uppercase 'I', lowercase 'p', lowercase 'm' map to readable bucket names.
-# Neutral losses (e.g. ``b3-H2O``) are intentionally NOT a separate bucket —
-# spectrum_utils' own colour scheme inherits the parent ion's colour for them
-# (see ``spectrum_utils/plot.py:117`` ``colors.get(ion_type[0])``).
+# Per spectrum_utils' SUPPORTED_IONS 
 _BUCKET_FROM_PREFIX = {
     "a": "a", "b": "b", "c": "c", "x": "x", "y": "y", "z": "z",
     "I": "immonium", "p": "precursor", "m": "internal",
@@ -39,34 +32,8 @@ def get_ion_type(annotation: str) -> str:
     return _BUCKET_FROM_PREFIX.get(annotation[:1], "unannotated")
 
 
-def _ion_types_to_string(ion_types: list[str]) -> str:
-    """Pack ion_types list (e.g. ``['b', 'y', 'internal']``) into spectrum_utils'
-    single-string form (``'bym'``)."""
-    letters = [t for t in ion_types if t in ("a", "b", "c", "x", "y", "z")]
-    if "internal" in ion_types:
-        letters.append("m")
-    return "".join(letters)
-
-
-def _empty_annotated_frame(mz, intensity) -> pd.DataFrame:
-    """Return a DataFrame with all peaks marked unannotated — used as fallback."""
-    n = len(mz)
-    return pd.DataFrame({
-        "mz": np.asarray(mz, dtype=float),
-        "intensity": np.asarray(intensity, dtype=float),
-        "annotation": ["unannotated"] * n,
-        "ion_type": ["unannotated"] * n,
-        "charge": [0] * n,
-        "is_annotated": [False] * n,
-    })
-
-
 def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
-    """Convert an annotated MsmsSpectrum to the project's DataFrame schema.
-
-    spectrum_utils returns ``PeakInterpretation`` per peak, each carrying a list
-    of ``FragmentAnnotation`` (multiple matches possible). We keep the first match.
-    """
+    """Convert an annotated MsmsSpectrum to the project's DataFrame schema. """
     # Allocate per-column accumulators sized to the number of peaks
     annotations: list[str] = []
     ion_types: list[str] = []
@@ -108,21 +75,48 @@ def annotate_spectrum(
     mz_tolerance: float = 0.02,
     ion_types: list[str] | None = None,
     add_neutral_losses: bool = False,
+    precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
     """Annotate experimental peaks against theoretical fragments of ``peptidoform``.
-
     Returns one row per experimental peak in the standard schema.
+
+    *precursor_mz* must be set to the experimental precursor m/z for
+    ``ion_types`` to include ``"precursor"`` — spectrum_utils needs a real
+    value to match precursor peaks in the spectrum. A 0.0 fallback keeps
+    backbone-ion annotation working when the caller doesn't have it.
     """
-    # Defaults & fast exit: empty input or no requested ion letters
+    # Defaults: empty-input + ion-type string + fallback-frame builder
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
-    if len(mz) == 0 or not _ion_types_to_string(ion_types):
-        return _empty_annotated_frame(mz, intensity)
+    # Pack UI ion-type names into spectrum_utils' single-letter form:
+    # backbone (a/b/c/x/y/z) and the three "special" ions it accepts —
+    # m = internal, p = precursor, I = immonium.
+    _SU_LETTERS = ("a", "b", "c", "x", "y", "z")
+    _SU_SPECIAL = {"internal": "m", "precursor": "p", "immonium": "I"}
+    ion_types_string = "".join(
+        [t for t in ion_types if t in _SU_LETTERS]
+        + [letter for name, letter in _SU_SPECIAL.items() if name in ion_types]
+    )
+    n = len(mz)
+
+    def _fallback_unannotated_frame() -> pd.DataFrame:
+        return pd.DataFrame({
+            "mz": np.asarray(mz, dtype=float),
+            "intensity": np.asarray(intensity, dtype=float),
+            "annotation": ["unannotated"] * n,
+            "ion_type": ["unannotated"] * n,
+            "charge": [0] * n,
+            "is_annotated": [False] * n,
+        })
+
+    # Fast exit: empty input or no requested ion letters
+    if n == 0 or not ion_types_string:
+        return _fallback_unannotated_frame()
 
     # Build the spectrum_utils MsmsSpectrum carrier
     spec = MsmsSpectrum(
         identifier="experimental",
-        precursor_mz=0.0,
+        precursor_mz=float(precursor_mz),
         precursor_charge=int(charge),
         mz=np.asarray(mz, dtype=float),
         intensity=np.asarray(intensity, dtype=float),
@@ -134,12 +128,12 @@ def annotate_spectrum(
             peptidoform.split("/")[0],   # strip ProForma charge suffix if present
             fragment_tol_mass=mz_tolerance,
             fragment_tol_mode="Da",
-            ion_types=_ion_types_to_string(ion_types),
+            ion_types=ion_types_string,
             neutral_losses=add_neutral_losses,
         )
     except (ValueError, KeyError) as error:
         logger.warning(f"annotate_proforma failed for '{peptidoform}': {error}")
-        return _empty_annotated_frame(mz, intensity)
+        return _fallback_unannotated_frame()
 
     return _spec_to_dataframe(spec)
 
@@ -147,7 +141,7 @@ def annotate_spectrum(
 def _filter_and_normalize(
     annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
-    """Mask peaks whose ion_type isn't in ``ion_types``; optionally scale to max=1."""
+    """Mask peaks whose ion_type isn't in ``ion_types`` and optionally scale to max=1."""
     # Fast exit: nothing to filter or scale
     if annotated.empty:
         return annotated
@@ -179,6 +173,7 @@ def prepare_spectrum_for_plot(
     mz_tolerance: float = 0.02,
     normalize: bool = True,
     add_neutral_losses: bool = False,
+    precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
     """Annotate a spectrum and return a DataFrame ready for plotting / metrics."""
     if ion_types is None:
@@ -188,6 +183,7 @@ def prepare_spectrum_for_plot(
         mz_tolerance=mz_tolerance,
         ion_types=ion_types,
         add_neutral_losses=add_neutral_losses,
+        precursor_mz=precursor_mz,
     )
     return _filter_and_normalize(annotated, ion_types, normalize)
 

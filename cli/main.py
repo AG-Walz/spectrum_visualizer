@@ -6,7 +6,6 @@ which specifies parameters for the three main steps:
     2. Load and annotate spectra from mzML files, matching to the search results.
     3. Export results via the shared mspecviz.export pipeline, including tables and plots.
 """
-import copy
 import glob as globmod
 import logging
 import os
@@ -46,7 +45,8 @@ _CLI_EXTRAS: dict = {
 
 
 def _expand_globs(patterns: list) -> list:
-    """Expand shell-style global patterns into a unique sorted list of absolute paths."""
+    """Convert the global patterns from the YAML config (e.g. "runs/**/ProT*.idXML") 
+    and turn them into a unique sorted list of absolute paths."""
     result, seen = [], set()
     for pattern in patterns:
         for match in sorted(globmod.glob(pattern, recursive=True)):
@@ -203,17 +203,16 @@ def main() -> None:
         sys.exit("Error: No PSMs found.")
 
     # Step 2: stream + annotate spectra against the search results
-    variant_groups_copy = copy.deepcopy(variant_groups)
-    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
+    psm_frame, psm_lookup = build_psm_table(variant_groups)
     annotated_queries, reference_store, comparison_rows = _run_load(
-        config, variant_groups_copy, psm_lookup, total_psms,
+        config, variant_groups, psm_lookup, total_psms,
     )
     if not annotated_queries:
         sys.exit("Error: No spectra could be loaded or annotated.")
 
     # Step 3: export plots, tables, settings; report total wall time
     result = _run_export(
-        config, annotated_queries, reference_store, variant_groups_copy,
+        config, annotated_queries, reference_store, variant_groups,
         comparison_rows, psm_frame,
     )
     logger.info(f"Done in {time.time() - start:.1f}s. Exported to {result.export_root}")

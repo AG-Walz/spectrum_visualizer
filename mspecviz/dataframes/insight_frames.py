@@ -35,11 +35,7 @@ HEATMAP_SCHEMA: dict[str, pl.DataType] = {
 
 
 def _proforma_to_openms_str(peptidoform_str: str) -> str:
-    """Convert ProForma (``PEPTM[Oxidation]IDEK``) to OpenMS parens (``PEPTM(Oxidation)IDEK``).
-
-    Feeds SequenceView's ``parse_openms_sequence()``; returns the bare sequence
-    on parse failure.
-    """
+    """Convert ProForma (``PEPTM[Oxidation]IDEK``) to OpenMS parens (``PEPTM(Oxidation)IDEK``). """
     # Parse ProForma; fall back to bare sequence on failure
     try:
         peptidoform_obj = Peptidoform(peptidoform_str)

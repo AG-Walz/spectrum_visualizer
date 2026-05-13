@@ -4,9 +4,7 @@ Re-exports the package's public API so callers can use
 ``from mspecviz.spectra import ...`` without caring which file a name lives in.
 """
 from mspecviz.spectra.koina_prediction import (
-    INSTRUMENT_TYPES,
     KOINA_AVAILABLE,
-    KOINA_MODELS,
     convert_peptide_to_unimod,
     get_koina_settings,
     predict_koina_spectrum,
@@ -15,9 +13,7 @@ from mspecviz.spectra.loaded_spectrum import LoadedSpectrum, spectrum_lookup_key
 from mspecviz.spectra.spectrum_streaming import load_spectra_streaming
 
 __all__ = [
-    "INSTRUMENT_TYPES",
     "KOINA_AVAILABLE",
-    "KOINA_MODELS",
     "LoadedSpectrum",
     "convert_peptide_to_unimod",
     "get_koina_settings",

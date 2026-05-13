@@ -77,14 +77,6 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
         )
 
 
-# Format -> savefig keyword and extension mapping
-_FORMAT_SAVE_KWARGS: dict[str, dict] = {
-    "png": {"format": "png"},
-    "svg": {"format": "svg"},
-    "pdf": {"format": "pdf"},
-}
-
-
 def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
     """Save a matplotlib figure to each requested format. Returns (png_path, svg_path, pdf_path)."""
     format_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
@@ -96,8 +88,7 @@ def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
         variant_dir = Path(format_dir) / task.folder_name
         variant_dir.mkdir(parents=True, exist_ok=True)
         output_path = variant_dir / f"{task.safe_filename}.{output_format}"
-        save_kwargs = {"bbox_inches": "tight", "facecolor": "white",
-                       **_FORMAT_SAVE_KWARGS[output_format]}
+        save_kwargs: dict = {"bbox_inches": "tight", "facecolor": "white", "format": output_format}
         if output_format == "png":
             save_kwargs["dpi"] = task.export_resolution
         fig.savefig(str(output_path), **save_kwargs)

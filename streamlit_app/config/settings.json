@@ -1,53 +1,13 @@
 {
   "app_name": "MSpecViz",
   "version": "0.1.0",
-  "repository_name": "MSpecViz",
-  "online_deployment": false,
   "enable_workspaces": true,
   "workspaces_dir": "workspaces",
-  "test": false,
   "data_directories": {
     "default": "/mnt/volume",
     "_comment": "Starting directory for the file browser. Set this to the root of your local data storage on the server where the app is running."
   },
-  "models": {
-    "available": [
-      "ms2pip_timsTOF2024", "ms2pip_HCD2021", "ms2pip_Immuno_HCD", "ms2pip_TTOF5600",
-      "ms2pip_CID_TMT", "ms2pip_iTRAQphospho",
-      "Prosit_2019_intensity", "Prosit_2020_intensity_HCD", "Prosit_2020_intensity_CID",
-      "Prosit_2020_intensity_TMT", "Prosit_2023_intensity_timsTOF",
-      "AlphaPept_ms2_generic",
-      "UniSpec", "PredFull"
-    ]
-  },
   "ion_types": {
     "available": ["a", "b", "c", "x", "y", "z", "internal", "precursor", "immonium"]
-  },
-  "mz_tolerance": {
-    "unit": "Da"
-  },
-  "performance": {
-    "cache_size_mb": 500,
-    "max_file_size_gb": 3,
-    "chunk_size": 5000,
-    "tmpfs_staging": true,
-    "tmpfs_path": "/dev/shm",
-    "tmpfs_ram_fraction": 0.40
-  },
-  "cache": {
-    "enabled": true,
-    "subdirectory": ".mspecviz_cache"
-  },
-  "ion_colors": {
-    "a": "#388E3C",
-    "b": "#1976D2",
-    "c": "#00796B",
-    "x": "#7B1FA2",
-    "y": "#D32F2F",
-    "z": "#F57C00",
-    "internal": "#FBC02D",
-    "precursor": "#512DA8",
-    "immonium": "#455A64",
-    "unannotated": "#9E9E9E"
   }
 }

@@ -6,7 +6,6 @@ just read/write the namespaced keys our app uses to survive navigation.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -15,8 +14,6 @@ import streamlit as st
 # Namespace for Streamlit session-state keys owned by the app, used to avoid
 # colliding with third-party widget keys.
 STATE_PREFIX = "peptide_mirror"
-
-OS_PLATFORM = sys.platform
 
 # Project root = three levels up from streamlit_app/utils/state/core.py.
 # All CWD-relative paths (workspaces dir, assets, settings) should be

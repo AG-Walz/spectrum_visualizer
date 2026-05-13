@@ -1,9 +1,4 @@
-"""Parallel task dispatcher shared by idXML, mzML, and plot workers.
-
-Wrapper over ``joblib.Parallel(return_as="generator_unordered")``: yields
-``(task, ok, result_or_error)`` tuples in completion order. Worker exceptions
-are caught per-task, resulting in an early ``break``.
-"""
+"""Parallel task dispatcher shared by idXML, mzML, and plot workers."""
 
 from typing import Any, Callable, Iterator, Sequence, Tuple
 from joblib import Parallel, delayed

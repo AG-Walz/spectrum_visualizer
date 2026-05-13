@@ -66,47 +66,6 @@ class ExportResult:
     summary_plot_count: int = 0
 
 
-def _normalize_annotated_queries(annotated_queries: AnnotatedQueries) -> list[tuple]:
-    """Accept dict ``{psm_id: (spec, df)}`` or list ``[(psm_id, spec, df)]``; return list."""
-    if isinstance(annotated_queries, dict):
-        return [(psm_id, spec, df) for psm_id, (spec, df) in annotated_queries.items()]
-    return list(annotated_queries)
-
-
-def _write_parquets(frames: dict[str, Any], root_dir: Path, saved_files: list[str]) -> None:
-    """Collect the four LazyFrames and write ``{name}.parquet``."""
-    for name in _PARQUET_FRAMES:
-        frame = frames.get(name)
-        if frame is None:
-            continue
-        out = root_dir / f"{name}.parquet"
-        frame.collect().write_parquet(out)
-        saved_files.append(str(out))
-
-
-def _write_comparison_summary(
-    comparison_frame: pd.DataFrame | None,
-    root_dir: Path,
-    saved_files: list[str],
-    on_warning: Callable[[str], None],
-) -> None:
-    """Write ``comparison_summary.csv`` and (if openpyxl is available) ``.xlsx``."""
-    if comparison_frame is None or comparison_frame.empty:
-        return
-    csv_path = root_dir / "comparison_summary.csv"
-    comparison_frame.to_csv(csv_path, index=False)
-    saved_files.append(str(csv_path))
-
-    xlsx_path = root_dir / "comparison_summary.xlsx"
-    try:
-        comparison_frame.to_excel(xlsx_path, index=False, engine="openpyxl")
-        saved_files.append(str(xlsx_path))
-    except ImportError:
-        on_warning("openpyxl not installed -- skipping XLSX export")
-    except Exception as error:
-        on_warning(f"XLSX export failed: {error}")
-
-
 def _resolve_format_dirs(
     root_dir: Path, export_formats: list[str],
 ) -> tuple[dict[str, str], str]:
@@ -224,19 +183,41 @@ def run_export(
     # Tabular artefacts: parquet frames + comparison CSV/XLSX
     if selection.parquet:
         on_step("Saving Parquet DataFrames...")
-        _write_parquets(frames, root_dir, saved_files)
+        # Collect the four LazyFrames and write {name}.parquet
+        for name in _PARQUET_FRAMES:
+            frame = frames.get(name)
+            if frame is None:
+                continue
+            out = root_dir / f"{name}.parquet"
+            frame.collect().write_parquet(out)
+            saved_files.append(str(out))
 
-    if selection.csv:
+    if selection.csv and comparison_frame is not None and not comparison_frame.empty:
         on_step("Saving comparison summary...")
-        _write_comparison_summary(comparison_frame, root_dir, saved_files, on_warning)
+        # CSV is unconditional; XLSX is best-effort (requires openpyxl)
+        csv_path = root_dir / "comparison_summary.csv"
+        comparison_frame.to_csv(csv_path, index=False)
+        saved_files.append(str(csv_path))
+        xlsx_path = root_dir / "comparison_summary.xlsx"
+        try:
+            comparison_frame.to_excel(xlsx_path, index=False, engine="openpyxl")
+            saved_files.append(str(xlsx_path))
+        except ImportError:
+            on_warning("openpyxl not installed -- skipping XLSX export")
+        except Exception as error:
+            on_warning(f"XLSX export failed: {error}")
 
     # Mirror plots: dispatch per-PSM tasks across workers
     mirror_plot_count = 0
     if selection.mirror_plots or selection.html:
         on_step("Generating mirror plots...")
+        # Normalise annotated_queries: dict {psm_id: (spec, df)} or list [(psm_id, spec, df)]
+        if isinstance(annotated_queries, dict):
+            queries_list = [(psm_id, spec, df) for psm_id, (spec, df) in annotated_queries.items()]
+        else:
+            queries_list = list(annotated_queries)
         mirror_plot_count = _run_plot_tasks(
-            _normalize_annotated_queries(annotated_queries),
-            reference_store, variant_groups, root_dir,
+            queries_list, reference_store, variant_groups, root_dir,
             plot_settings, selection.html, saved_files, on_progress, on_warning,
         )
 
