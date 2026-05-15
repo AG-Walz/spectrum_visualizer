@@ -68,11 +68,8 @@ def compute_r2_binned(
 
     # Bin both spectra onto the same m/z grid and sum intensities per bin
     bin_edges = np.linspace(mz_min, mz_max, n_bins + 1)
-    n_total = len(bin_edges) + 1
-    query_bins = np.digitize(query_frame["mz"].to_numpy(), bin_edges)
-    reference_bins = np.digitize(reference_frame["mz"].to_numpy(), bin_edges)
-    query_sums = np.bincount(query_bins, weights=query_frame["intensity"].to_numpy(), minlength=n_total)
-    reference_sums = np.bincount(reference_bins, weights=reference_frame["intensity"].to_numpy(), minlength=n_total)
+    query_sums, _ = np.histogram(query_frame["mz"], bins=bin_edges, weights=query_frame["intensity"])
+    reference_sums, _ = np.histogram(reference_frame["mz"], bins=bin_edges, weights=reference_frame["intensity"])
 
     # Regress on bins where both spectra carry signal
     shared_mask = (query_sums > 0) & (reference_sums > 0)

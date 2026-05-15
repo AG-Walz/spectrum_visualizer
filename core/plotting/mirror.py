@@ -20,7 +20,7 @@ matplotlib.use("Agg")
 from matplotlib.figure import Figure as MplFigure  # noqa: E402
 import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
-import pyopenms_viz  # noqa: F401, E402  # registers the .plot accessor
+import pyopenms_viz  # noqa: F401, E402  # pyright: ignore[reportUnusedImport]  # registers the .plot accessor
 
 from core.common.defaults import ION_COLORS  # noqa: E402
 
@@ -238,7 +238,7 @@ def create_spectrum_plot(
         fig = MplFigure(figsize=figure_size, dpi=100)
         ax = fig.add_subplot(111)
         _draw_matplotlib(ax, query, y_multiplier=1.0)
-        if is_mirror:
+        if reference is not None:
             _draw_matplotlib(ax, reference, y_multiplier=-1.0)
         _set_axes_matplotlib(ax, query, reference, is_mirror)
         ax.set_title(title, fontsize=14, fontweight="bold")
@@ -252,12 +252,14 @@ def create_spectrum_plot(
         return fig
 
     # Plotly path: delegate stem rendering to pyopenms-viz, then recolour + decorate
+    fig: go.Figure
     if query.empty and (reference is None or reference.empty):
         # pyopenms-viz raises on empty data; return a blank figure instead.
         fig = go.Figure()
     else:
+        # pandas .plot stub doesn't know the pyopenms-viz "spectrum" kind.
         fig = query.plot(
-            kind="spectrum", backend="ms_plotly",
+            kind="spectrum", backend="ms_plotly",  # type: ignore[arg-type]
             x="mz", y="intensity",
             ion_annotation="ion_type",
             mirror_spectrum=is_mirror,
@@ -270,7 +272,7 @@ def create_spectrum_plot(
         )
         _recolor_plotly_traces(fig)
         _add_peak_labels_plotly(fig, query, y_multiplier=1.0)
-        if is_mirror:
+        if reference is not None:
             _add_peak_labels_plotly(fig, reference, y_multiplier=-1.0)
 
     # Layout: legend + dimensions + axis ranges (overrides pyopenms-viz' own padding)

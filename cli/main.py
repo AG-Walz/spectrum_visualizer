@@ -16,6 +16,7 @@ from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 
+import click
 import pandas as pd
 import yaml
 from tqdm import tqdm
@@ -72,10 +73,8 @@ def _load_peptides(source) -> list:
 
 def _load_config(path: str) -> SimpleNamespace:
     """Load YAML, merge with missing parameters from DEFAULTS and resolve global & peptide source paths"""
-    # Parse: read YAML file, error out on missing path or non-mapping payload
+    # Parse: read YAML file, error out on non-mapping payload
     config_path = Path(path)
-    if not config_path.is_file():
-        sys.exit(f"Error: config file not found: {path}")
     yaml_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(yaml_config, dict):
         sys.exit(f"Error: config must be a YAML mapping: {path}")
@@ -187,19 +186,21 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
     )
 
 
-def main() -> None:
-    # Bootstrap: configure logging, validate CLI args, load YAML config
+@click.command(context_settings={"help_option_names": ["-h", "--help"]})
+@click.argument("config_path",
+                type=click.Path(exists=True, dir_okay=False, path_type=Path))
+def main(config_path: Path) -> None:
+    """Run the MSpecViz pipeline from a YAML config.
+
+    Set MSPECVIZ_LOG_LEVEL=ERROR for a quiet run.
+    """
     logging.basicConfig(
         level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
-    if len(sys.argv) != 2 or sys.argv[1] in ("-h", "--help"):
-        sys.exit("Usage: python -m cli <config.yaml>\n"
-                 "Set MSPECVIZ_LOG_LEVEL=ERROR for a quiet run.")
-
     start = time.time()
-    config = _load_config(sys.argv[1])
+    config = _load_config(str(config_path))
 
     # Step 1: search idXMLs for peptide variants, bail if nothing matched
     variant_groups, total_psms = _run_search(config)
