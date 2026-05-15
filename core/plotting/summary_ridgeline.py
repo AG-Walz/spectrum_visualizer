@@ -1,45 +1,21 @@
-"""Ridgeline / Joy plot: stacked KDE densities + count sidebar."""
+"""Ridgeline / Joy plot: stacked KDE densities + count sidebar.
+
+Delegates the per-row KDE rendering to ``joypy.joyplot``; we then layer the
+count sidebar and median-colour colorbar on top of the figure it returns.
+"""
 
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
-import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-from scipy.stats import gaussian_kde  # noqa: E402
+from joypy import joyplot  # noqa: E402
 
-from core.common.defaults import DEFAULTS
-from core.plotting._summary_shared import (
-    SUMMARY_COLORS,
-    _auto_height,
-    _metric_label,
-    _style_ax,
-)
+from core.common.defaults import DEFAULTS  # noqa: E402
+from core.plotting._summary_shared import _auto_height, _metric_label  # noqa: E402
 
-
-def _draw_histogram_row(ax, values, y_base: float, color) -> None:
-    """Fallback for variants with too few points to KDE: draw a small histogram."""
-    counts_h, edges = np.histogram(values, bins=20, range=(0, 1))
-    density = counts_h / (counts_h.max() + 1e-9) * 0.4
-    centers = (edges[:-1] + edges[1:]) / 2
-    ax.bar(centers, density, bottom=y_base, width=edges[1] - edges[0],
-           color=color, alpha=0.7, edgecolor="white", linewidth=0.3)
-
-
-def _draw_kde_row(ax, values, y_base: float, color, median: float,
-                  x_grid, z_order: int) -> None:
-    """Draw a single ridgeline KDE with a median line; silently skips singular fits."""
-    try:
-        kde = gaussian_kde(values, bw_method="scott")
-        density = kde(x_grid)
-        density = density / density.max() * 0.55
-    except np.linalg.LinAlgError:
-        return
-    ax.fill_between(x_grid, y_base, y_base + density,
-                    color=color, alpha=0.75, zorder=z_order)
-    kde_at_median = density[np.argmin(np.abs(x_grid - median))]
-    ax.vlines(median, y_base, y_base + kde_at_median, color="#2C3E50",
-              linewidth=0.8, linestyle="--", alpha=0.6, zorder=z_order + 2)
+_BAR_COLOR = "#E8945A"
+_BAR_EDGE = "#D07030"
 
 
 def plot_ridgeline(
@@ -51,62 +27,45 @@ def plot_ridgeline(
     title: str | None = None,
 ) -> Figure:
     """Stacked KDE density plots with count sidebar."""
-    # Setup: autosize figure, split into ridge + count axes, prep colormap
     variant_count = len(aggregated_frame)
-    overlap = 0.65
     if figure_size is None:
         figure_size = (14, _auto_height(variant_count, per_row=0.5))
 
-    fig, (ax_ridge, ax_bar) = plt.subplots(
-        1, 2, figsize=figure_size, dpi=export_resolution,
-        gridspec_kw={"width_ratios": [4, 1], "wspace": 0.05}, sharey=True,
-    )
-
+    # Colour each ridge by its median value (RdYlGn so high = green, low = red).
     cmap = plt.cm.RdYlGn
     norm = plt.Normalize(vmin=0.0, vmax=1.0)
-    y_offsets = np.arange(variant_count) * overlap
+    colors = [cmap(norm(m)) for m in aggregated_frame["median"]]
 
-    # Per-variant KDE/histogram on the main axis (pre-group once for O(N) lookup)
-    labels = aggregated_frame["peptidoform"].values
-    medians = aggregated_frame["median"].values
-    x_grid = np.linspace(0, 1, 300)
-    groups = {pep: g[metric].dropna().values
-              for pep, g in raw_frame.groupby("peptidoform", sort=False)}
-    for i in range(variant_count - 1, -1, -1):
-        values = groups.get(labels[i], np.array([]))
-        y_base = y_offsets[i]
-        color = cmap(norm(medians[i]))
-        if len(values) < 5:
-            _draw_histogram_row(ax_ridge, values, y_base, color)
-        else:
-            _draw_kde_row(ax_ridge, values, y_base, color, medians[i],
-                          x_grid, z_order=variant_count - i)
-    ax_ridge.set_yticks(y_offsets)
-    ax_ridge.set_yticklabels(labels, fontsize=8)
-    ax_ridge.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    ax_ridge.set_xlim(-0.02, 1.02)
+    # joypy draws the stacked KDE; ``labels`` enforces the aggregated_frame order.
+    fig, _ = joyplot(
+        data=raw_frame, by="peptidoform", column=metric,
+        labels=aggregated_frame["peptidoform"].tolist(),
+        color=colors, overlap=0.65, x_range=(0, 1),
+        figsize=figure_size, linewidth=0.8, fill=True,
+    )
+    fig.set_dpi(export_resolution)
+    fig.axes[-1].set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
+
+    # Count sidebar: shrink ridge axes on the right, add a barh axis in the freed strip.
+    for ax in fig.axes:
+        pos = ax.get_position()
+        ax.set_position([pos.x0, pos.y0, pos.width * 0.78, pos.height])
+    bar_ax = fig.add_axes([0.78, 0.14, 0.14, 0.78])
+    bar_ax.barh(range(variant_count), aggregated_frame["count"][::-1].values,
+                color=_BAR_COLOR, alpha=0.7, edgecolor=_BAR_EDGE, linewidth=0.5)
+    bar_ax.set_xlabel("Count", fontsize=10, fontweight="bold")
+    bar_ax.tick_params(axis="y", left=False, labelleft=False)
     for side in ("top", "right", "left"):
-        ax_ridge.spines[side].set_visible(False)
-    ax_ridge.tick_params(axis="y", length=0)
+        bar_ax.spines[side].set_visible(False)
 
-    # Count sidebar (right axis)
-    counts = aggregated_frame["count"].values
-    ax_bar.barh(y_offsets + overlap * 0.25, counts, height=overlap * 0.7,
-                color=SUMMARY_COLORS["bar"], alpha=0.7,
-                edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5)
-    ax_bar.set_xlabel("Count", fontsize=10, fontweight="bold")
-    ax_bar.tick_params(axis="y", left=False, labelleft=False)
-    _style_ax(ax_bar)
-
-    # Median colorbar (bottom)
-    sm = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
-    sm.set_array([])
+    # Median colorbar (bottom).
+    scalar_mappable = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
+    scalar_mappable.set_array([])
     cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])
-    fig.colorbar(sm, cax=cbar_ax, orientation="horizontal").set_label(
+    fig.colorbar(scalar_mappable, cax=cbar_ax, orientation="horizontal").set_label(
         f"Median {_metric_label(metric)}", fontsize=9,
     )
 
     if title:
         fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-    fig.subplots_adjust(left=0.20, top=0.92 if title else 0.97, bottom=0.14)
     return fig

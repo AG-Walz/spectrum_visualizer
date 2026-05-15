@@ -1,9 +1,10 @@
 """Summary-plot orchestration: data prep, registry, output writer.
 
 Loads the comparison CSV, aggregates per-peptidoform statistics, and delegates
-to the per-plot-type modules (``summary_dual_axis``, ``summary_ridgeline``).
-Shared constants (metric list, colour palette, plot-type registry) live in
-``_summary_shared`` so both renderers stay in sync.
+to the per-plot-type renderers (``summary_dual_axis``, ``summary_ridgeline``).
+Shared constants (metric list, label map, height helper) live in
+``_summary_shared`` so both renderers stay in sync without creating a circular
+dependency back to this module.
 """
 import logging
 from pathlib import Path

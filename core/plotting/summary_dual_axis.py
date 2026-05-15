@@ -1,4 +1,8 @@
-"""Classic dual-axis summary plot: horizontal count bars + metric boxplots."""
+"""Classic dual-axis summary plot: horizontal count bars + metric boxplots.
+
+Bottom axis is hand-drawn (matplotlib ``barh`` for counts); the top twin axis
+delegates to ``seaborn.boxplot`` for the per-variant IQR rendering.
+"""
 
 import matplotlib
 matplotlib.use("Agg")
@@ -8,44 +12,15 @@ from matplotlib.lines import Line2D  # noqa: E402
 from matplotlib.patches import Patch  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
+import seaborn as sns  # noqa: E402
 
-from core.common.defaults import DEFAULTS
-from core.plotting._summary_shared import (
-    SUMMARY_COLORS,
-    _auto_height,
-    _metric_label,
-    _style_ax,
-    _subsample_group,
-)
+from core.common.defaults import DEFAULTS  # noqa: E402
+from core.plotting._summary_shared import _auto_height, _metric_label  # noqa: E402
 
-
-def _draw_variant_boxplot(ax2, values, position: int) -> None:
-    """Draw one IQR boxplot (or scatter for n<2) on the twin (top) axis."""
-    if len(values) < 2:
-        ax2.scatter(values, [position] * len(values), s=15,
-                    color=SUMMARY_COLORS["scatter"], alpha=0.8, zorder=4)
-        return
-
-    q1, median, q3 = np.percentile(values, [25, 50, 75])
-    iqr = q3 - q1
-    whisker_low = max(values.min(), q1 - 1.5 * iqr)
-    whisker_high = min(values.max(), q3 + 1.5 * iqr)
-    outliers = values[(values < whisker_low) | (values > whisker_high)]
-
-    ax2.bxp(
-        [dict(med=median, q1=q1, q3=q3, whislo=whisker_low, whishi=whisker_high,
-              fliers=outliers)],
-        positions=[position], vert=False, widths=0.35,
-        patch_artist=True, showfliers=True,
-        boxprops=dict(facecolor=SUMMARY_COLORS["box_fill"],
-                      edgecolor=SUMMARY_COLORS["box"], linewidth=0.8, alpha=0.85),
-        whiskerprops=dict(color=SUMMARY_COLORS["box"], linewidth=0.8),
-        capprops=dict(color=SUMMARY_COLORS["box"], linewidth=0.8),
-        medianprops=dict(color=SUMMARY_COLORS["box"], linewidth=1.5),
-        flierprops=dict(marker=".", markersize=3,
-                        markerfacecolor=SUMMARY_COLORS["scatter"],
-                        markeredgecolor="none", alpha=0.4),
-    )
+_BAR_COLOR = "#E8945A"
+_BAR_EDGE = "#D07030"
+_BOX_COLOR = "#2C3E50"
+_BOX_FILL = "#BDC3C7"
 
 
 def plot_classic_dual_axis(
@@ -57,7 +32,6 @@ def plot_classic_dual_axis(
     title: str | None = None,
 ) -> Figure:
     """Horizontal count bars + metric boxplots."""
-    # Setup: sort by count, autosize figure, prep y positions + labels
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
     variant_count = len(aggregated_frame)
     if figure_size is None:
@@ -65,37 +39,41 @@ def plot_classic_dual_axis(
 
     fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
     y_pos = np.arange(variant_count)
-    labels = aggregated_frame["peptidoform"].values
+    labels = aggregated_frame["peptidoform"].tolist()
 
-    # Count bars (bottom axis)
+    # Count bars (bottom axis).
     ax.barh(y_pos, aggregated_frame["count"].values, height=0.65,
-            color=SUMMARY_COLORS["bar"], alpha=0.55,
-            edgecolor=SUMMARY_COLORS["bar_edge"], linewidth=0.5, zorder=1)
+            color=_BAR_COLOR, alpha=0.55, edgecolor=_BAR_EDGE, linewidth=0.5, zorder=1)
     ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
     ax.invert_yaxis()
-    _style_ax(ax, remove_top=False)
+    ax.spines["right"].set_visible(False)
 
-    # Metric boxplots (twin top axis); pre-group once, look up by peptidoform
+    # Metric boxplots (twin top axis) — seaborn handles IQR / whiskers / outliers.
     ax2 = ax.twiny()
-    groups = {pep: group for pep, group in raw_frame.groupby("peptidoform", sort=False)}
-    empty = raw_frame.iloc[:0]
-    for i, peptidoform in enumerate(labels):
-        values = _subsample_group(groups.get(peptidoform, empty), metric)
-        _draw_variant_boxplot(ax2, values, i)
+    sns.boxplot(
+        data=raw_frame, y="peptidoform", x=metric, order=labels, ax=ax2,
+        color=_BOX_FILL, width=0.35, linewidth=0.8, fliersize=3,
+        boxprops=dict(facecolor=_BOX_FILL, edgecolor=_BOX_COLOR, alpha=0.85),
+        medianprops=dict(color=_BOX_COLOR, linewidth=1.5),
+        whiskerprops=dict(color=_BOX_COLOR, linewidth=0.8),
+        capprops=dict(color=_BOX_COLOR, linewidth=0.8),
+        flierprops=dict(marker=".", markerfacecolor=_BOX_COLOR,
+                        markeredgecolor="none", alpha=0.4),
+    )
     if not title:
         ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
     ax2.set_xlim(-0.05, 1.05)
+    ax2.set_ylabel("")
     ax2.spines["bottom"].set_visible(False)
     ax2.spines["right"].set_visible(False)
 
-    # Y-axis ticks + legend
+    # Y-axis ticks + legend.
     ax.set_yticks(y_pos)
     ax.set_yticklabels(labels, fontsize=8)
     ax.legend(handles=[
-        Patch(facecolor=SUMMARY_COLORS["bar"], alpha=0.55,
-              edgecolor=SUMMARY_COLORS["bar_edge"], label="Peptide Count"),
-        Line2D([0], [0], color=SUMMARY_COLORS["box"], marker="s", markersize=6,
-               markerfacecolor=SUMMARY_COLORS["box_fill"], linestyle="-", linewidth=0.8,
+        Patch(facecolor=_BAR_COLOR, alpha=0.55, edgecolor=_BAR_EDGE, label="Peptide Count"),
+        Line2D([0], [0], color=_BOX_COLOR, marker="s", markersize=6,
+               markerfacecolor=_BOX_FILL, linestyle="-", linewidth=0.8,
                label=_metric_label(metric)),
     ], loc="upper left", bbox_to_anchor=(0.0, -0.04), fontsize=9, framealpha=0.9, ncol=2)
 

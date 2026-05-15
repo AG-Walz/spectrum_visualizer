@@ -11,6 +11,7 @@ dependencies:
   - scipy
   - matplotlib
   - plotly
+  - seaborn
   - pyopenms
   - pyarrow
   - pyyaml
@@ -27,3 +28,4 @@ dependencies:
     - altair
     - polars
     - openms-insight>=0.1.11
+    - joypy

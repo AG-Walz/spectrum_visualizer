@@ -1,54 +1,17 @@
-"""Shared constants and helper functions for summary plot renderers.
+"""Constants + helpers shared by the summary renderers.
 
-Extracted here so that ``summary_dual_axis`` and ``summary_ridgeline`` can
-import from this module without creating a circular dependency with
-``summary_pipeline``.
+Lives in its own module so ``summary_dual_axis`` and ``summary_ridgeline`` can
+import without creating a circular dependency back to ``summary_pipeline``
+(which imports the renderers at module top).
 """
-import numpy as np
-
 METRIC_COLUMNS = [
-    "R\u00b2 match",
-    "R\u00b2 binned",
-    "Cosine",
-    "Entropy",
-    "Dice",
-    "Jaccard",
-    "SharedRatio",
+    "R² match", "R² binned", "Cosine", "Entropy",
+    "Dice", "Jaccard", "SharedRatio",
 ]
 
-SUMMARY_COLORS = {
-    "bar": "#E8945A",
-    "bar_edge": "#D07030",
-    "box": "#2C3E50",
-    "box_fill": "#BDC3C7",
-    "scatter": "#2C3E50",
-}
-
-MAX_SCATTER_PER_GROUP = 200
-
-
-def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
-    return max(minimum, per_row * n)
-
-
-def _style_ax(ax, remove_top=True, remove_right=True):
-    if remove_top:
-        ax.spines["top"].set_visible(False)
-    if remove_right:
-        ax.spines["right"].set_visible(False)
-
-
-def _subsample_group(group_frame, metric, max_n=MAX_SCATTER_PER_GROUP, seed=42):
-    vals = group_frame[metric].values
-    if len(vals) <= max_n:
-        return vals
-    rng = np.random.RandomState(seed)
-    return rng.choice(vals, size=max_n, replace=False)
-
-
 _METRIC_LABELS = {
-    "R\u00b2 match": "R\u00b2 (match)",
-    "R\u00b2 binned": "R\u00b2 (binned)",
+    "R² match": "R² (match)",
+    "R² binned": "R² (binned)",
     "Cosine": "Cosine similarity",
     "Entropy": "Spectral entropy similarity",
     "Dice": "Dice coefficient",
@@ -59,3 +22,7 @@ _METRIC_LABELS = {
 
 def _metric_label(metric: str) -> str:
     return _METRIC_LABELS.get(metric, metric)
+
+
+def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
+    return max(minimum, per_row * n)
