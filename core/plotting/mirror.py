@@ -1,16 +1,17 @@
 """Mirror + single-spectrum plotting (matplotlib + Plotly).
 
-Custom hand-rolled renderer because pyopenms-viz' ``plot_spectrum`` cannot
-honour per-peak ``peak_color`` correctly: it groups peaks by a category
-column with ``sort=True`` and consumes one colour per group from a generator
-iterating the row-aligned colour column — so the first peak's colour lands
-on the first alphabetical group regardless of which ion type that group is.
-Result: scrambled b/y/internal/etc. colouring whenever ion types are
-interleaved in m/z order (i.e. always, in real spectra).
+Plotly path delegates stem rendering to pyopenms-viz' ``df.plot(kind="spectrum")``
+(its `_plotly` backend groups by ion type with ``sort=False``, so the per-peak
+colour ordering is correct), then post-processes traces to substitute our
+``ION_COLORS`` palette and dedupe legend entries across the two panels.
+Per-peak labels are added by hand because pyopenms-viz' annotation builder
+prepends m/z + can't be steered to colour text from the ``ION_COLORS`` map
+without a per-row colour column conflicting with its grouping logic.
 
-We draw the peaks ourselves with vlines / line scatters, grouped by
-``ion_type`` so the legend stays one entry per type with the canonical
-``ION_COLORS`` palette. Labels are coloured to match the peak.
+Matplotlib path stays hand-rolled: the pyopenms-viz matplotlib backend has
+a documented bug (``_matplotlib/core.py`` ``groupby(self.by, sort=True)``)
+that scrambles per-peak colours whenever ion types are interleaved in m/z
+order — i.e., always, in real spectra.
 """
 from typing import Literal, Optional
 
@@ -19,15 +20,19 @@ matplotlib.use("Agg")
 from matplotlib.figure import Figure as MplFigure  # noqa: E402
 import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
+import pyopenms_viz  # noqa: F401, E402  # registers the .plot accessor
 
 from core.common.defaults import ION_COLORS  # noqa: E402
 
 Backend = Literal["ms_matplotlib", "ms_plotly"]
 
-# Vertical offset for peak labels, as a fraction of the normalised intensity range.
+# Vertical offset for matplotlib peak labels (fraction of normalised intensity).
 _LABEL_OFFSET = 0.03
-# Extra m/z padding on the plot x-axis (Da) so outer peaks aren't clipped.
+# Extra m/z padding on the x-axis (Da) so outer peaks aren't clipped.
 _MZ_PADDING_DA = 50
+# pyopenms-viz forces intensities to [0, 100] when mirror_spectrum=True or
+# relative_intensity=True. We always use that path, so labels go in the same scale.
+_PLOTLY_INTENSITY_SCALE = 100
 
 
 def _prep(df: pd.DataFrame) -> pd.DataFrame:
@@ -70,43 +75,37 @@ def _draw_matplotlib(ax, df: pd.DataFrame, y_multiplier: float) -> None:
         )
 
 
-def _draw_plotly(fig: go.Figure, df: pd.DataFrame, y_multiplier: float,
-                 panel_name: str, legend_seen: set[str]) -> None:
-    """Draw stems (one trace per ion type) + per-peak labels onto ``fig``.
+def _recolor_plotly_traces(fig: go.Figure) -> None:
+    """Override pyopenms-viz' palette with ``ION_COLORS`` and dedupe legend.
 
-    *legend_seen* tracks which ion types already appear in the legend so each
-    type contributes only one entry across both panels (Plotly does not dedupe
-    legend names automatically — different legendgroups produce separate items).
+    pyopenms-viz emits one Scatter per ion type per panel, with ``trace.name``
+    set to the ion-type string and ``showlegend`` unset (so each becomes a
+    legend entry). We rewrite the line colour from our palette and keep only
+    the first occurrence of each ion type in the legend.
     """
+    legend_seen: set[str] = set()
+    for trace in fig.data:
+        ion_type = trace.name
+        if ion_type in ION_COLORS:
+            trace.line.color = ION_COLORS[ion_type]
+        if ion_type == "unannotated" or ion_type in legend_seen:
+            trace.showlegend = False
+        else:
+            trace.showlegend = True
+            trace.legendgroup = ion_type
+            legend_seen.add(ion_type)
+
+
+def _add_peak_labels_plotly(fig: go.Figure, df: pd.DataFrame,
+                            y_multiplier: float) -> None:
+    """Add per-peak label annotations coloured to match each peak."""
     if df.empty:
         return
-    for ion_type, group in df.groupby("ion_type", sort=False):
-        color = ION_COLORS.get(ion_type, ION_COLORS["unannotated"])
-        x_data, y_data, hover_data = [], [], []
-        for _, peak in group.iterrows():
-            x_data.extend([peak["mz"], peak["mz"], None])
-            y_data.extend([0, peak["intensity"] * y_multiplier, None])
-            hover_data.extend([
-                "",
-                f"m/z: {peak['mz']:.4f}<br>Intensity: {peak['intensity']:.3f}"
-                f"<br>{peak['annotation'] if peak['annotation'] != 'unannotated' else ''}",
-                "",
-            ])
-        show_in_legend = ion_type != "unannotated" and ion_type not in legend_seen
-        if show_in_legend:
-            legend_seen.add(ion_type)
-        fig.add_trace(go.Scatter(
-            x=x_data, y=y_data, mode="lines",
-            line=dict(color=color, width=1.5),
-            name=ion_type,
-            legendgroup=ion_type,
-            hovertext=hover_data, hoverinfo="text",
-            showlegend=show_in_legend,
-        ))
     yshift = 10 if y_multiplier > 0 else -10
     for _, peak in df[df["_label"] != ""].iterrows():
         fig.add_annotation(
-            x=peak["mz"], y=peak["intensity"] * y_multiplier,
+            x=peak["mz"],
+            y=peak["intensity"] * y_multiplier * _PLOTLY_INTENSITY_SCALE,
             text=peak["_label"], showarrow=False,
             font=dict(size=8, color=peak["_color"]),
             yshift=yshift,
@@ -252,13 +251,29 @@ def create_spectrum_plot(
         fig.tight_layout()
         return fig
 
-    # Plotly path: stems per panel, then layout (axes, legend, mirror divider, overlays)
-    fig = go.Figure()
-    legend_seen: set[str] = set()
-    _draw_plotly(fig, query, y_multiplier=1.0, panel_name="query", legend_seen=legend_seen)
-    if is_mirror:
-        _draw_plotly(fig, reference, y_multiplier=-1.0,
-                     panel_name="reference", legend_seen=legend_seen)
+    # Plotly path: delegate stem rendering to pyopenms-viz, then recolour + decorate
+    if query.empty and (reference is None or reference.empty):
+        # pyopenms-viz raises on empty data; return a blank figure instead.
+        fig = go.Figure()
+    else:
+        fig = query.plot(
+            kind="spectrum", backend="ms_plotly",
+            x="mz", y="intensity",
+            ion_annotation="ion_type",
+            mirror_spectrum=is_mirror,
+            reference_spectrum=reference if is_mirror else None,
+            relative_intensity=True,
+            annotate_top_n_peaks=0,    # we add labels ourselves below
+            grid=False,
+            show_plot=False,
+            title=title,
+        )
+        _recolor_plotly_traces(fig)
+        _add_peak_labels_plotly(fig, query, y_multiplier=1.0)
+        if is_mirror:
+            _add_peak_labels_plotly(fig, reference, y_multiplier=-1.0)
+
+    # Layout: legend + dimensions + axis ranges (overrides pyopenms-viz' own padding)
     fig.update_layout(
         title=title, xaxis_title="m/z", yaxis_title="Relative Intensity",
         width=figure_size[0] * 100, height=figure_size[1] * 100,
@@ -273,16 +288,20 @@ def create_spectrum_plot(
     )
     if is_mirror:
         fig.update_yaxes(
-            range=[-1.25, 1.25],
-            tickvals=[-1.0, -0.5, 0, 0.5, 1.0],
+            range=[-_PLOTLY_INTENSITY_SCALE * 1.25, _PLOTLY_INTENSITY_SCALE * 1.25],
+            tickvals=[-100, -50, 0, 50, 100],
             ticktext=["1.0", "0.5", "0", "0.5", "1.0"],
         )
-        fig.add_shape(
-            type="line", xref="paper", x0=0, x1=1, y0=0, y1=0,
-            line=dict(color="black", width=1),
-        )
     else:
-        fig.update_yaxes(range=[0, 1.15])
+        fig.update_yaxes(range=[0, _PLOTLY_INTENSITY_SCALE * 1.15])
+    mz_values = []
+    if not query.empty:
+        mz_values.extend(query["mz"].tolist())
+    if is_mirror and reference is not None and not reference.empty:
+        mz_values.extend(reference["mz"].tolist())
+    if mz_values:
+        fig.update_xaxes(range=[min(mz_values) - _MZ_PADDING_DA,
+                                max(mz_values) + _MZ_PADDING_DA])
     _add_decorations_plotly(
         fig, query_label=query_label,
         reference_label=effective_reference_label,
