@@ -1,4 +1,4 @@
-"""Set-based + entropy similarity metrics, full-metric aggregator, and formatting."""
+"""Full 7-metric comparison row + entropy + plot-overlay text (called by ``core.pipeline.query_processing``; 17 ion-stats fields added later by ``core.plotting.plot_worker``)."""
 
 import logging
 import math
@@ -26,8 +26,8 @@ def compute_spectral_entropy_similarity(
     reference_frame: pd.DataFrame,
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> float:
-    """Spectral entropy similarity (Li et al., Nature Methods 2021)."""
-    # Guard against empty spectra or missing optional dependency
+    """Spectral entropy similarity between two annotated spectra (Li et al., Nature Methods 2021); NaN if empty or ``ms_entropy`` is missing."""
+    # Guard: empty spectra or optional dependency unavailable -> NaN so the row still tabulates
     if query_frame.empty or reference_frame.empty:
         return float("nan")
 
@@ -35,11 +35,11 @@ def compute_spectral_entropy_similarity(
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
-    # Pack each spectrum as the (mz, intensity) 2-column array ms_entropy expects
+    # Pack: ms_entropy expects each spectrum as a 2-column (mz, intensity) array
     query_spectrum_array = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
     reference_spectrum_array = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
 
-    # Call ms_entropy; downgrade numeric errors to NaN so callers can tabulate
+    # Compute: downgrade numeric failures to NaN so the comparison table never breaks
     try:
         similarity = ms_entropy.calculate_entropy_similarity(
             query_spectrum_array, reference_spectrum_array, ms2_tolerance_in_da=tolerance_da
@@ -55,26 +55,21 @@ def compute_all_metrics(
     reference_frame: pd.DataFrame,
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> dict[str, float | int]:
-    """Compute all 7 comparison metrics and context counts for a given query-reference pair:
-        Metrics:  R2m, R2b, Cos, Ent, Dice, Jacc, ShR
-        Counts:   query_peak_count, reference_peak_count, 
-                  query_annotation_count, reference_annotation_count, 
-                  (both are unique label counts, not peak counts), shared ratio
-    """
-    # Align shared-annotation intensities for the intensity-based metrics
+    """One row of the comparison table: 7 similarity metrics (R2m, R2b, Cos, Ent, Dice, Jacc, ShR) plus peak/annotation counts."""
+    # Align: shared annotated ions feed the three intensity-based metrics
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(query_intensities)
 
-    # Unique-label counts — duplicate annotations within a spectrum collapse to one label
+    # Count: unique ion labels per spectrum (duplicate isotopes/charges collapse to one)
     query_annotation_count = int(query_frame[query_frame["is_annotated"]]["annotation"].nunique())
     reference_annotation_count = int(reference_frame[reference_frame["is_annotated"]]["annotation"].nunique())
 
-    # Precompute denominators for the set-overlap metrics
+    # Denominators for the three set-overlap metrics (Dice, Jaccard, SharedRatio)
     denom_dice = query_annotation_count + reference_annotation_count
     denom_jacc = query_annotation_count + reference_annotation_count - n_shared
     denom_shr = min(query_annotation_count, reference_annotation_count)
 
-    # Assemble the result dict: 7 metrics + context counts
+    # Assemble: 7 metrics + the context counts the export and UI table show alongside them
     return {
         "R2m": _r2_from_arrays(query_intensities, reference_intensities),
         "R2b": compute_r2_binned(query_frame, reference_frame),
@@ -92,7 +87,7 @@ def compute_all_metrics(
 
 
 def format_metrics_text(metrics: dict[str, float | int]) -> str:
-    """Format metrics as multi-line string for plot overlay."""
+    """Format the 7 metrics as a multi-line string for the mirror-plot corner overlay."""
     def _fmt(value) -> str:
         if value is None or (isinstance(value, float) and math.isnan(value)):
             return "N/A"
@@ -109,7 +104,7 @@ def format_metrics_text(metrics: dict[str, float | int]) -> str:
     )
 
 
-# Mapping from short keys to display column names (used by summary export)
+# Short metric keys -> human-readable column names used in the export spreadsheet
 METRIC_SHORT_TO_DISPLAY = {
     "R2m": "R² match",
     "R2b": "R² binned",

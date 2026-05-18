@@ -1,11 +1,6 @@
-"""Single source of truth for ``run_settings.json`` field list and assembly.
+"""Single source of truth for ``run_settings.json`` (built by ``cli.main`` and ``streamlit_app.views.export``).
 
-Both the CLI (``cli/main.py``) and the Streamlit Export page need to capture
-the user's parameters into ``run_settings.json`` for reproducibility. The
-field list lives here so the two frontends cannot drift; each frontend supplies
-a *getter* callable ``(key, default) -> value`` that knows how to read from its
-local config representation.
-"""
+Each frontend supplies a ``(key, default) -> value`` getter; the field list lives here so frontends cannot drift."""
 from datetime import datetime
 from typing import Any, Callable
 
@@ -15,9 +10,8 @@ ParamGetter = Callable[[str, Any], Any]
 
 
 # Each entry: (run_settings_key, default). Frontends map their internal storage
-# (CLI ``SimpleNamespace`` attribute, Streamlit ``params`` widget key) onto these
-# run_settings keys via their getter — see ``cli/main.py`` and
-# ``streamlit_app/utils/page_state.py``.
+# (CLI ``SimpleNamespace`` attr, Streamlit ``params`` widget key) onto these keys
+# via their getter — see ``cli.main`` and ``streamlit_app.utils.page_state``.
 RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
     ("idxml_files",            []),
     ("mzml_files",             []),
@@ -41,10 +35,7 @@ RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
 def build_run_settings(getter: ParamGetter, peptides: list[str]) -> dict:
     """Assemble the ``run_settings.json`` dict from any frontend's parameter source.
 
-    *peptides* is supplied separately because the two frontends parse it
-    differently (CLI: list from YAML / file; Streamlit: newline-joined string
-    in session ``target_peptides``). Timestamps are filled in at call time.
-    """
+    ``peptides`` is passed separately because frontends parse it differently (YAML list vs newline string)."""
     settings: dict = {key: getter(key, default) for key, default in RUN_SETTINGS_FIELDS}
     settings["peptides"] = peptides
     now = datetime.now().isoformat()

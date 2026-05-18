@@ -1,1 +1,1 @@
-"""Streamlit-specific utilities (page setup, workspace management)."""
+"""Streamlit-only helpers — ``page_setup``, workspace switcher, analysis cache, progress tracker."""

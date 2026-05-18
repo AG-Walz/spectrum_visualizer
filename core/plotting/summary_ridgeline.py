@@ -1,8 +1,4 @@
-"""Ridgeline / Joy plot: stacked KDE densities + count sidebar.
-
-Delegates the per-row KDE rendering to ``joypy.joyplot``; we then layer the
-count sidebar and median-colour colorbar on top of the figure it returns.
-"""
+"""Ridgeline summary: stacked KDE density per peptidoform with count sidebar (dispatched by ``plotting.summary_pipeline``)."""
 
 import matplotlib
 matplotlib.use("Agg")
@@ -26,7 +22,7 @@ def plot_ridgeline(
     export_resolution: int = 300,
     title: str | None = None,
 ) -> Figure:
-    """Stacked KDE density plots with count sidebar."""
+    """Render a ridgeline plot: one KDE ridge per peptidoform, coloured by median, with a count sidebar and median colorbar."""
     variant_count = len(aggregated_frame)
     if figure_size is None:
         figure_size = (14, _auto_height(variant_count, per_row=0.5))
@@ -36,7 +32,7 @@ def plot_ridgeline(
     norm = plt.Normalize(vmin=0.0, vmax=1.0)
     colors = [cmap(norm(m)) for m in aggregated_frame["median"]]
 
-    # joypy draws the stacked KDE; ``labels`` enforces the aggregated_frame order.
+    # Stacked KDE: joypy draws one ridge per peptidoform in aggregated_frame order
     fig, _ = joyplot(
         data=raw_frame, by="peptidoform", column=metric,
         labels=aggregated_frame["peptidoform"].tolist(),
@@ -46,7 +42,7 @@ def plot_ridgeline(
     fig.set_dpi(export_resolution)
     fig.axes[-1].set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
 
-    # Count sidebar: shrink ridge axes on the right, add a barh axis in the freed strip.
+    # Count sidebar: shrink the ridges, add a horizontal-bar axis in the freed strip
     for ax in fig.axes:
         pos = ax.get_position()
         ax.set_position([pos.x0, pos.y0, pos.width * 0.78, pos.height])
@@ -58,7 +54,7 @@ def plot_ridgeline(
     for side in ("top", "right", "left"):
         bar_ax.spines[side].set_visible(False)
 
-    # Median colorbar (bottom).
+    # Median colorbar at the bottom of the figure
     scalar_mappable = plt.cm.ScalarMappable(cmap=cmap, norm=norm)
     scalar_mappable.set_array([])
     cbar_ax = fig.add_axes([0.25, 0.02, 0.35, 0.015])

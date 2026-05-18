@@ -1,9 +1,4 @@
-"""Session state, workspaces, and page setup for the Streamlit app.
-
-Re-exports every public name from the four submodules so callers keep using
-``from streamlit_app.utils.state import ...`` without caring which file a
-name lives in.
-"""
+"""Flat re-export of session-state, workspace, params, and sidebar helpers from the four submodules."""
 from streamlit_app.utils.state.state_core import (
     PROJECT_ROOT,
     STATE_PREFIX,

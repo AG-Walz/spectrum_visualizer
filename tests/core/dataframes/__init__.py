@@ -1,1 +1,1 @@
-"""Tests for the openms_insight LazyFrame builders (``core.dataframes``)."""
+"""Tests for ``core.dataframes`` (the four openms_insight LazyFrame builders)."""

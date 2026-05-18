@@ -1,8 +1,4 @@
-"""Peptide search across idXML files.
-
-Re-exports the public API of both submodules so callers can use
-``from core.search import ...`` without caring which file a name lives in.
-"""
+"""Peptide-search public API (consumed by ``cli.main`` and ``streamlit_app.views.search_load``)."""
 from core.search.peptide_search import (
     count_psms_in_idxmls,
     search_peptides_in_idxmls,

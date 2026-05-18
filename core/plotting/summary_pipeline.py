@@ -1,11 +1,4 @@
-"""Summary-plot orchestration: data prep, registry, output writer.
-
-Loads the comparison CSV, aggregates per-peptidoform statistics, and delegates
-to the per-plot-type renderers (``summary_dual_axis``, ``summary_ridgeline``).
-Shared constants (metric list, label map, height helper) live in
-``_summary_shared`` so both renderers stay in sync without creating a circular
-dependency back to this module.
-"""
+"""Summary-plot orchestrator: aggregates the comparison table by peptidoform and dispatches to ``summary_dual_axis`` / ``summary_ridgeline`` (called by ``core.export.export_pipeline`` and ``cli.main``)."""
 import logging
 from pathlib import Path
 
@@ -24,10 +17,7 @@ def prepare_summary_data(
     source: str | Path | pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load and aggregate comparison data into per-peptidoform statistics.
-
-    Returns (raw_frame, aggregated_frame).
-    """
+    """Load the comparison table and aggregate per-peptidoform stats; return ``(raw_frame, aggregated_frame)`` with count, median, mean, std, 95% CI, and dominant charge."""
     # Load: accept either an on-disk CSV path or an already-built DataFrame
     if isinstance(source, (str, Path)):
         raw_frame = pd.read_csv(source, low_memory=False)
@@ -75,7 +65,7 @@ def generate_all_summary_plots(
     formats: list[str] | None = None,
     export_resolution: int = 300,
 ) -> dict[str, dict[str, str]]:
-    """Generate selected summary plots and save them. """
+    """Render every requested summary plot type into ``<output_dir>/summary/`` in each requested format; return ``{plot_type: {format: path}}``."""
     # Resolve defaults: fall back to configured plot types + PNG-only output
     if plot_types is None:
         plot_types = list(DEFAULTS.summary_plot_types)

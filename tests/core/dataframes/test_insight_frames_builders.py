@@ -1,8 +1,4 @@
-"""Builder-level tests for ``core.dataframes``.
-
-Covers ``build_psm_table``, the peaks/sequence/heatmap builders, and the
-Parquet round-trip. Schema validation lives in the ``_schemas`` sibling.
-"""
+"""Builder tests for ``core.dataframes`` (PSM table + peaks/sequence/heatmap LazyFrames)."""
 from pathlib import Path
 
 import numpy as np
@@ -30,7 +26,7 @@ from tests.conftest import make_peptide_match
 
 
 def _make_variant_groups():
-    """Build a simple dict of variant groups (Dict[str, PSMList]) for testing."""
+    """Build a ``Dict[variant_key, PSMList]`` with two synthetic PEPTIDEK PSMs."""
     return {"PEPTIDEK": PSMList(psm_list=[
         make_peptide_match(spectrum_id="index=1"),
         make_peptide_match(spectrum_id="index=2"),
@@ -38,7 +34,7 @@ def _make_variant_groups():
 
 
 def _make_annotated_frame(n_peaks=5):
-    """Build a mock annotated DataFrame (prepare_spectrum_for_plot output)."""
+    """Build a synthetic ``prepare_spectrum_for_plot``-shaped DataFrame with ``n_peaks`` rows."""
     return pd.DataFrame({
         "mz": np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
         "intensity": np.linspace(0.2, 1.0, n_peaks).astype(np.float64),
@@ -50,7 +46,7 @@ def _make_annotated_frame(n_peaks=5):
 
 def _make_loaded_spectrum(spectrum_id="index=1", peptidoform="PEPTIDEK",
                           charge=2, rt=120.0, n_peaks=5):
-    """Build a mock LoadedSpectrum."""
+    """Build a synthetic ``LoadedSpectrum`` (linear m/z + intensity ramps)."""
     return LoadedSpectrum(
         spectrum_id=spectrum_id,
         mz=np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
@@ -62,7 +58,7 @@ def _make_loaded_spectrum(spectrum_id="index=1", peptidoform="PEPTIDEK",
 
 class TestBuildPsmTable:
     def test_basic_build(self):
-        """Build PSM table from standard variant groups: type, schema, row count, lookup keys."""
+        """PSM table from two-PSM variant: LazyFrame, schema, row count, lookup keys all match."""
         variant_groups = _make_variant_groups()
         frame, lookup = build_psm_table(variant_groups)
         assert isinstance(frame, pl.LazyFrame)
@@ -91,14 +87,14 @@ class TestBuildPsmTable:
 
 class TestBuildPeaksDataframe:
     def test_basic_build(self):
-        """Build peaks DF: type, schema, peak count, highlight column."""
+        """Peaks DF from one annotated frame: LazyFrame, schema, row count, ``highlight`` column."""
         annotated = [(0, _make_annotated_frame(n_peaks=5))]
         frame = build_peaks_dataframe(annotated)
         assert isinstance(frame, pl.LazyFrame)
         assert dict(frame.collect_schema()) == PEAKS_SCHEMA
         df = frame.collect()
         assert len(df) == 5
-        # First 4 peaks are annotated (highlight=1), last is not (highlight=0)
+        # First 4 peaks are annotated (highlight=1); last peak is unannotated (highlight=0)
         assert df["highlight"][0] == 1
         assert df["highlight"][4] == 0
 
@@ -117,7 +113,7 @@ class TestBuildPeaksDataframe:
 
 class TestBuildSequenceDataframe:
     def test_basic_build(self):
-        """Build sequence DF: type, schema, row count."""
+        """Sequence DF from two spectra: LazyFrame, schema, row count."""
         spectra = [
             (0, _make_loaded_spectrum(spectrum_id="index=1")),
             (1, _make_loaded_spectrum(spectrum_id="index=2")),
@@ -138,7 +134,7 @@ class TestBuildSequenceDataframe:
 
 class TestBuildHeatmapDataframe:
     def test_basic_build(self):
-        """Build heatmap DF: type, schema, point count."""
+        """Heatmap DF from one ten-peak spectrum: LazyFrame, schema, point count."""
         spectra = [_make_loaded_spectrum(n_peaks=10)]
         frame = build_heatmap_dataframe(spectra)
         assert isinstance(frame, pl.LazyFrame)
@@ -158,7 +154,7 @@ class TestBuildHeatmapDataframe:
 
 @pytest.mark.integration
 class TestBuildFromRealData:
-    """Build DataFrames from real search results."""
+    """End-to-end: search → stream → annotate → build the four insight DataFrames."""
 
     @pytest.fixture
     def variant_groups(self, idxml_path, target_peptides):
@@ -172,7 +168,7 @@ class TestBuildFromRealData:
         assert len(lookup) == 2
 
     def test_build_all_dataframes_real(self, variant_groups, mzml_paths):
-        """Full pipeline: search -> stream -> annotate -> build DataFrames."""
+        """Full pipeline against real fixtures: 2 PSMs, ~373 annotated peaks across all frames."""
         psm_frame, psm_lookup = build_psm_table(variant_groups)
         annotated = []
 
@@ -207,8 +203,8 @@ class TestBuildFromRealData:
         assert dict(heatmap_frame.collect_schema()) == HEATMAP_SCHEMA
 
         peaks_collected = peaks_frame.collect()
-        # Range check rather than exact peak count: spectrum_utils / pyOpenMS
-        # versions can shift the matched-peak total by a handful without
+        # Range check rather than exact peak count — spectrum_utils / pyOpenMS
+        # library upgrades shift the matched-peak total by a handful without
         # signalling a real regression.
         assert 350 < len(peaks_collected) < 400
         assert peaks_collected["psm_id"].n_unique() == 2

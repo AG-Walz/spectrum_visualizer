@@ -1,4 +1,6 @@
-""" Export utilities: filename sanitization and directory structure creation. """
+"""Versioned export-folder allocation and fingerprinting (used by ``export.export_pipeline``).
+
+Re-runs with identical settings reuse the same folder; powers the Export-history view."""
 
 import hashlib
 import json
@@ -19,13 +21,13 @@ def sanitize_filename(name: str) -> str:
 
 
 def _settings_fingerprint(run_settings: dict) -> str:
-    """Compute a short hash of the settings dict for fast comparison."""
+    """Short SHA-256 hash of the settings dict — identical settings yield identical hashes."""
     canonical = json.dumps(run_settings, sort_keys=True, default=str)
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()[:16]
 
 
 def _entry_fingerprint(settings_file: Path) -> str | None:
-    """Return the ``_fingerprint`` from a ``run_settings.json``, or None on parse error."""
+    """Return ``_fingerprint`` from a ``run_settings.json`` (None on parse error)."""
     try:
         with open(settings_file, encoding="utf-8") as f:
             return json.load(f).get("_fingerprint")
@@ -37,10 +39,9 @@ def _entry_fingerprint(settings_file: Path) -> str | None:
 def _scan_existing_dirs(
     base: Path, pattern: re.Pattern, fingerprint: str,
 ) -> tuple[int, Path | None, int | None]:
-    """Look for fingerprint-matching folders and find the highest 
-    existing 3-digit number for the given base and name pattern in 
-    order to define the next export directory. 
-    """
+    """Find the highest existing ``NNN`` and any fingerprint-matching folder under ``base``.
+
+    Returns ``(max_number, match_entry, match_number)`` — caller reuses the match or allocates ``max_number + 1``."""
     max_number = 0
     match_entry = None
     match_number = None
@@ -65,7 +66,7 @@ def _scan_existing_dirs(
 
 def _rename_or_reuse_match(prefix: str, match_entry: Path,
                            match_number: int, today: str) -> Path:
-    """Rename a fingerprint-matching folder to today's date, falling back on failure."""
+    """Re-date a fingerprint-matching folder to today; reuse the original on rename failure."""
     new_path = match_entry.with_name(f"{prefix}_{match_number:03d}_{today}")
     if match_entry == new_path:
         logger.info(f"Reusing export directory: {new_path.name}")
@@ -84,7 +85,7 @@ def find_or_create_export_directory(
     project_name: str,
     run_settings: dict,
 ) -> Path:
-    """Plan an export dir ``{project}_{NNN}_{YYYYMMDD}/`` — reusing on fingerprint match """
+    """Plan ``{project}_{NNN}_{YYYYMMDD}/`` — reuse on fingerprint match, else allocate next ``NNN``."""
     # Setup: sanitize project name, compute fingerprint, build name regex
     base = Path(base_dir)
     prefix = sanitize_filename(project_name)
@@ -92,7 +93,7 @@ def find_or_create_export_directory(
     today = datetime.now().strftime("%Y%m%d")
     pattern = re.compile(rf"^{re.escape(prefix)}_(\d{{3}})_(\d{{8}})$")
 
-    # Scan existing dirs: highest NNN + any fingerprint-matching folder
+    # Scan: highest existing NNN and any fingerprint-matching folder
     max_number, match_entry, match_number = _scan_existing_dirs(base, pattern, fingerprint)
 
     # Reuse on match, otherwise allocate next NNN
@@ -104,11 +105,11 @@ def find_or_create_export_directory(
 
 
 def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
-    """Create export root directory and write run_settings.json."""
-    # Ensure root dir exists
+    """Create the export root and write (or refresh) ``run_settings.json``."""
+    # Ensure the export folder exists
     root_dir.mkdir(parents=True, exist_ok=True)
 
-    # Update path: bump ``_last_run`` on the existing settings file
+    # Reused folder: bump ``_last_run`` on the existing settings file
     settings_file = root_dir / "run_settings.json"
     if settings_file.exists():
         try:
@@ -119,7 +120,7 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
                 json.dump(saved, f, indent=2, default=str)
         except (json.JSONDecodeError, OSError) as error:
             logger.warning(f"Could not update run_settings.json: {error}")
-    # Fresh path: stamp fingerprint + creation time, write new file
+    # Fresh folder: stamp fingerprint + creation time, write new file
     else:
         settings_to_save = {
             "_fingerprint": _settings_fingerprint(run_settings),

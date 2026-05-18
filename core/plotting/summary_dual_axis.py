@@ -1,8 +1,4 @@
-"""Classic dual-axis summary plot: horizontal count bars + metric boxplots.
-
-Bottom axis is hand-drawn (matplotlib ``barh`` for counts); the top twin axis
-delegates to ``seaborn.boxplot`` for the per-variant IQR rendering.
-"""
+"""Dual-axis summary: peptide-count bars (bottom axis) overlaid with metric boxplots (top axis), per peptidoform (dispatched by ``plotting.summary_pipeline``)."""
 
 import matplotlib
 matplotlib.use("Agg")
@@ -31,7 +27,7 @@ def plot_classic_dual_axis(
     export_resolution: int = 300,
     title: str | None = None,
 ) -> Figure:
-    """Horizontal count bars + metric boxplots."""
+    """Render the dual-axis summary: count bars (bottom) twinned with metric boxplots (top), one row per peptidoform sorted by count."""
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
     variant_count = len(aggregated_frame)
     if figure_size is None:
@@ -41,14 +37,14 @@ def plot_classic_dual_axis(
     y_pos = np.arange(variant_count)
     labels = aggregated_frame["peptidoform"].tolist()
 
-    # Count bars (bottom axis).
+    # Count bars on the bottom axis (one bar per peptidoform)
     ax.barh(y_pos, aggregated_frame["count"].values, height=0.65,
             color=_BAR_COLOR, alpha=0.55, edgecolor=_BAR_EDGE, linewidth=0.5, zorder=1)
     ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
     ax.invert_yaxis()
     ax.spines["right"].set_visible(False)
 
-    # Metric boxplots (twin top axis) — seaborn handles IQR / whiskers / outliers.
+    # Metric boxplots on the twinned top axis (seaborn draws IQR / whiskers / outliers)
     ax2 = ax.twiny()
     sns.boxplot(
         data=raw_frame, y="peptidoform", x=metric, order=labels, ax=ax2,

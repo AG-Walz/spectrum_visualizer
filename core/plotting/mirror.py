@@ -1,18 +1,4 @@
-"""Mirror + single-spectrum plotting (matplotlib + Plotly).
-
-Plotly path delegates stem rendering to pyopenms-viz' ``df.plot(kind="spectrum")``
-(its `_plotly` backend groups by ion type with ``sort=False``, so the per-peak
-colour ordering is correct), then post-processes traces to substitute our
-``ION_COLORS`` palette and dedupe legend entries across the two panels.
-Per-peak labels are added by hand because pyopenms-viz' annotation builder
-prepends m/z + can't be steered to colour text from the ``ION_COLORS`` map
-without a per-row colour column conflicting with its grouping logic.
-
-Matplotlib path stays hand-rolled: the pyopenms-viz matplotlib backend has
-a documented bug (``_matplotlib/core.py`` ``groupby(self.by, sort=True)``)
-that scrambles per-peak colours whenever ion types are interleaved in m/z
-order — i.e., always, in real spectra.
-"""
+"""Mirror + single-spectrum plotting (matplotlib for export, Plotly for the Streamlit Explore view); called by ``plotting.plot_worker`` and ``streamlit_app.views.explore.mirror_plots``."""
 from typing import Literal, Optional
 
 import matplotlib
@@ -23,6 +9,15 @@ import plotly.graph_objects as go  # noqa: E402
 import pyopenms_viz  # noqa: F401, E402  # pyright: ignore[reportUnusedImport]  # registers the .plot accessor
 
 from core.common.defaults import ION_COLORS  # noqa: E402
+
+# Implementation note: the Plotly path delegates stem rendering to
+# pyopenms-viz' ``df.plot(kind="spectrum")``, then ``_recolor_plotly_traces``
+# overrides its palette (per-row colour columns fight its grouping logic).
+# The matplotlib path stays hand-rolled because pyopenms-viz' matplotlib
+# backend has a colour-scrambling bug in
+# ``_matplotlib/core.py`` (``groupby(self.by, sort=True)``) — peaks of
+# interleaved ion types get the wrong colour, which is "always" in real
+# spectra.
 
 Backend = Literal["ms_matplotlib", "ms_plotly"]
 
@@ -36,7 +31,7 @@ _PLOTLY_INTENSITY_SCALE = 100
 
 
 def _prep(df: pd.DataFrame) -> pd.DataFrame:
-    """Add ``_color`` + ``_label`` columns and normalise intensity to [0, 1]."""
+    """Copy ``df`` with per-peak colour + label columns added and intensity rescaled to ``[0, 1]``."""
     df = df.copy()
     for col in ("annotation", "ion_type"):
         if col not in df.columns:
@@ -51,10 +46,10 @@ def _prep(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def _draw_matplotlib(ax, df: pd.DataFrame, y_multiplier: float) -> None:
-    """Draw stems + per-peak labels for one spectrum onto ``ax``."""
+    """Draw the peak stems and per-peak text labels for one spectrum onto ``ax`` (use ``y_multiplier=-1`` to flip a reference spectrum downwards)."""
     if df.empty:
         return
-    # One vlines call per ion type → one legend entry per type, correct colour.
+    # One vlines call per ion type so each type gets a single, correctly-coloured legend entry
     for ion_type, group in df.groupby("ion_type", sort=False):
         ax.vlines(
             group["mz"].values,
@@ -76,13 +71,7 @@ def _draw_matplotlib(ax, df: pd.DataFrame, y_multiplier: float) -> None:
 
 
 def _recolor_plotly_traces(fig: go.Figure) -> None:
-    """Override pyopenms-viz' palette with ``ION_COLORS`` and dedupe legend.
-
-    pyopenms-viz emits one Scatter per ion type per panel, with ``trace.name``
-    set to the ion-type string and ``showlegend`` unset (so each becomes a
-    legend entry). We rewrite the line colour from our palette and keep only
-    the first occurrence of each ion type in the legend.
-    """
+    """Recolour every pyopenms-viz trace using the MSpecViz ``ION_COLORS`` palette and keep only one legend entry per ion type."""
     legend_seen: set[str] = set()
     for trace in fig.data:
         ion_type = trace.name
@@ -98,7 +87,7 @@ def _recolor_plotly_traces(fig: go.Figure) -> None:
 
 def _add_peak_labels_plotly(fig: go.Figure, df: pd.DataFrame,
                             y_multiplier: float) -> None:
-    """Add per-peak label annotations coloured to match each peak."""
+    """Place per-peak text annotations next to each stem, coloured to match the peak's ion type."""
     if df.empty:
         return
     yshift = 10 if y_multiplier > 0 else -10
@@ -115,7 +104,7 @@ def _add_peak_labels_plotly(fig: go.Figure, df: pd.DataFrame,
 def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
                          reference_df: Optional[pd.DataFrame],
                          is_mirror: bool) -> None:
-    """Apply x/y limits + axis labels + mirror divider line."""
+    """Set x/y limits, ticks, bold m/z + intensity labels, and the mirror divider line."""
     # X-axis: pad min/max m/z across both panels so outer peaks aren't clipped
     mz_values = []
     if not query_df.empty:
@@ -143,8 +132,7 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
 
 
 def _add_legend_matplotlib(ax) -> None:
-    """Dedupe legend entries so each ion type appears once. Bottom-right
-    (top-right is reserved for the metrics overlay box)."""
+    """Add a single deduplicated ion-type legend in the bottom-right (top-right is reserved for the metrics overlay box)."""
     handles, labels = ax.get_legend_handles_labels()
     if not labels:
         return
@@ -157,7 +145,7 @@ def _add_legend_matplotlib(ax) -> None:
 
 def _add_decorations_plotly(fig: go.Figure, *, query_label: str,
                             reference_label: str, metrics_text: str) -> None:
-    """Layer MSpecViz corner labels + metrics-overlay onto a Plotly figure."""
+    """Stamp the query/reference corner labels and the metrics overlay box onto a Plotly figure."""
     if query_label:
         fig.add_annotation(
             x=0.02, y=0.98, xref="paper", yref="paper",
@@ -188,7 +176,7 @@ def _add_decorations_plotly(fig: go.Figure, *, query_label: str,
 
 def _add_decorations_matplotlib(ax, *, query_label: str,
                                 reference_label: str, metrics_text: str) -> None:
-    """Layer MSpecViz corner labels + metrics-overlay onto a Matplotlib Axes."""
+    """Stamp the query/reference corner labels and the metrics overlay box onto a matplotlib Axes."""
     label_kwargs = dict(
         transform=ax.transAxes, fontsize=9, fontweight="bold",
         ha="left", color="#333",
@@ -220,13 +208,7 @@ def create_spectrum_plot(
     metrics_text: str = "",
     figure_size: tuple[int, int] = (12, 8),
 ):
-    """Render a mirror plot when *reference_frame* is supplied, otherwise single.
-
-    Returns ``matplotlib.figure.Figure`` for ``ms_matplotlib`` and
-    ``plotly.graph_objects.Figure`` for ``ms_plotly``. Intensities are always
-    rendered relative (max-normalised) for visual consistency between the
-    two panels in a mirror plot.
-    """
+    """Render a mirror plot when ``reference_frame`` is given, otherwise a single spectrum; returns a matplotlib or Plotly figure depending on ``backend``, with intensities max-normalised for visual consistency."""
     # Prep: normalise both panels, suppress reference label for single-spectrum
     is_mirror = reference_frame is not None
     query = _prep(query_frame)

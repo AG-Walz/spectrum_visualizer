@@ -1,10 +1,4 @@
-"""
-Unit tests for the seven comparison metrics in ``core.annotation``.
-
-Pure-data tests built from hand-constructed DataFrames — no theoretical
-fragment generation, no real spectra. End-to-end checks against annotated
-spectra live in ``test_spectrum_metrics_integration.py``.
-"""
+"""Unit tests for the seven comparison metrics in ``core.annotation`` (hand-built frames, no real spectra)."""
 import math
 
 import pandas as pd
@@ -25,7 +19,7 @@ from core.annotation import (
 # ---------------------------------------------------------------------------
 
 def _make_df(mz, intensity, annotations, is_annotated=None):
-    """Build a DataFrame mimicking prepare_spectrum_for_plot output."""
+    """Build a DataFrame shaped like ``prepare_spectrum_for_plot`` output."""
     n = len(mz)
     if is_annotated is None:
         is_annotated = [a != "unannotated" for a in annotations]
@@ -38,7 +32,7 @@ def _make_df(mz, intensity, annotations, is_annotated=None):
 
 
 def _identical_pair():
-    """Two identical annotated spectra."""
+    """Return ``(query, reference)`` where both are the same five-peak annotated frame."""
     mz = [100.0, 200.0, 300.0, 400.0, 500.0]
     intensity = [0.5, 1.0, 0.3, 0.8, 0.6]
     annotations = ["b1", "b2", "y1", "y2", "y3"]
@@ -47,14 +41,14 @@ def _identical_pair():
 
 
 def _disjoint_pair():
-    """Two spectra with no overlapping annotations."""
+    """Return ``(query, reference)`` with no overlapping annotations (shared==0)."""
     query = _make_df([100.0, 200.0], [1.0, 0.5], ["b1", "b2"])
     reference = _make_df([300.0, 400.0], [0.8, 0.4], ["y1", "y2"])
     return query, reference
 
 
 def _partial_overlap_pair():
-    """Two spectra sharing some annotations."""
+    """Return ``(query, reference)`` sharing exactly one annotation (b1)."""
     query = _make_df([100.0, 200.0, 300.0], [1.0, 0.5, 0.3], ["b1", "b2", "unannotated"])
     reference = _make_df([100.0, 200.0, 400.0], [0.9, 0.6, 0.4], ["b1", "y1", "unannotated"])
     return query, reference
@@ -86,7 +80,7 @@ class TestR2Matching:
     def test_partial_overlap(self):
         query, reference = _partial_overlap_pair()
         result = compute_r2_matching(query, reference)
-        # Only "b1" is shared -- need >=2 points for regression
+        # Only "b1" is shared — need >=2 shared points for a regression
         assert math.isnan(result)
 
     def test_good_correlation(self):
@@ -113,7 +107,8 @@ class TestSpectralEntropy:
     def test_identical(self):
         query, reference = _identical_pair()
         result = compute_spectral_entropy_similarity(query, reference)
-        if not math.isnan(result):  # skip if ms_entropy not installed
+        # NaN tolerated: ms_entropy is an optional dependency
+        if not math.isnan(result):
             assert result > 0.9
 
     def test_empty(self):
@@ -124,7 +119,7 @@ class TestSpectralEntropy:
 
 
 class TestSetMetricsViaComputeAll:
-    """Set metrics (Dice/Jaccard/ShR) are exposed via ``compute_all_metrics`` only."""
+    """Dice / Jaccard / SharedRatio are only exposed through ``compute_all_metrics``."""
 
     def test_identical_returns_perfect(self):
         query, reference = _identical_pair()
@@ -183,7 +178,7 @@ class TestFormatMetricsText:
         text = format_metrics_text(all_valid_metrics)
         assert "Match" in text and "Binned" in text
         assert "0.850" in text and "0.720" in text
-        # Should produce 7 lines (one per metric)
+        # One line per metric → 7 lines total
         assert len(text.strip().split("\n")) == 7
 
     def test_nan_shows_na(self):

@@ -1,9 +1,4 @@
-"""PSM-table LazyFrame construction + schema helpers.
-
-Produces the Table-level DataFrame consumed by the openms_insight Table
-component, plus the ``psm_lookup`` dict that downstream peaks/sequence builders
-use to link peaks to their originating PSM.
-"""
+"""Per-PSM LazyFrame + int-keyed lookup for the openms_insight Table and export pipeline (built by ``pipeline.run_streaming_annotation``)."""
 import logging
 
 import polars as pl
@@ -30,8 +25,7 @@ PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
 def build_psm_table(
     variant_groups: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
-    """Build the PSM-level LazyFrame and ``psm_lookup`` for the openms_insight Table. """
-    # Initialise the row accumulator, lookup map, and running PSM id
+    """Build the per-PSM LazyFrame matching :data:`PSM_TABLE_SCHEMA` plus the ``"spectrum_id|peptidoform" -> psm_id`` lookup used to link peaks back to their PSM."""
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
     psm_id = 0
@@ -43,7 +37,6 @@ def build_psm_table(
         base_sequence = psm_list[0].peptidoform.sequence.upper()
         modification = variant_key if variant_key != base_sequence else "(unmodified)"
 
-        # Build the lookup key and row dict for each PSM
         for psm in psm_list:
             peptidoform_str = psm.peptidoform.modified_sequence
             # Key must match spectrum_lookup_key() in spectrum_loader
@@ -63,7 +56,7 @@ def build_psm_table(
             })
             psm_id += 1
 
-    # Materialise the schema-enforced LazyFrame and return alongside the lookup
+    # Materialise schema-enforced LazyFrame and return alongside the lookup
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
     logger.info(f"PSM table: {len(rows)} rows across {len(variant_groups)} variants")
     return df, psm_lookup

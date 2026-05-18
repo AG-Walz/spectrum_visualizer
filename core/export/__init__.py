@@ -1,10 +1,6 @@
-"""Shared export orchestration used by both ``cli`` and ``streamlit_app``.
+"""Shared export orchestration (called by ``cli.main`` and ``streamlit_app.views.export``).
 
-Both frontends call :func:`run_export` with their own progress callbacks;
-every file layout decision (directory versioning, format subdirs, parquet
-names, CSV/XLSX naming, plot task dispatch, summary plots) lives here so
-the two frontends produce byte-identical outputs given the same inputs.
-"""
+On-disk layout decisions live here so both frontends produce byte-identical outputs — see :func:`run_export`."""
 from core.export.export_pipeline import (
     ExportCallbacks,
     ExportResult,

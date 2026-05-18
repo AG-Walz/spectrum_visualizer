@@ -1,9 +1,4 @@
-"""Streaming mzML loader — picklable worker.
-
-Only holds the module-level worker that can be shipped across the
-ProcessPoolExecutor boundary. The orchestration logic (map-building,
-phase ordering, callbacks) lives in ``core.spectra.spectrum_streaming``.
-"""
+"""ProcessPoolExecutor-picklable mzML loader worker (dispatched by ``spectra.spectrum_streaming`` via ``common.task_dispatch.run_tasks``)."""
 import logging
 from typing import List, Tuple
 
@@ -18,7 +13,7 @@ logger = logging.getLogger(__name__)
 def _build_loaded_spectrum(
     spectrum, psm: PSM, display_name: str, is_reference: bool,
 ) -> LoadedSpectrum:
-    """Wrap a pyopenms ``MSSpectrum`` in our ``LoadedSpectrum`` dataclass."""
+    """Wrap a pyopenms ``MSSpectrum`` + its PSM into a ``LoadedSpectrum``; falls back to PSM charge if the spectrum lacks a precursor."""
     mz_array, intensity_array = spectrum.get_peaks()
     psm_charge = psm.get_precursor_charge() or 0
     # Precursor: pull m/z and charge from the spectrum, falling back to psm_charge
@@ -51,7 +46,7 @@ def _load_spectra_from_mzml(
     matches_for_file: List[Tuple[PSM, str]],
     is_reference: bool,
 ) -> LoadResult:
-    """Worker: open one mzML and extract matched spectra. Module-level for pickling."""
+    """Worker: open one mzML, extract the spectra named in ``matches_for_file``, return a ``LoadResult``."""
     # Setup: per-file accumulators for loaded spectra and errors
     loaded: List[Tuple[str, LoadedSpectrum]] = []
     errors: List[str] = []

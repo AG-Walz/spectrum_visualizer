@@ -1,3 +1,4 @@
+"""AppTest GUI smoke tests for ``streamlit_app/`` (page launches + Mirror-Plots picker render)."""
 from streamlit.testing.v1 import AppTest
 import numpy as np
 import pandas as pd
@@ -16,15 +17,16 @@ STATE_PREFIX = "peptide_mirror"
 
 @pytest.fixture
 def launch(request):
+    """Build an AppTest for the file in ``request.param`` and seed ``session_state.settings``."""
     test = AppTest.from_file(request.param)
 
-    ## Initialize session state ##
+    # Seed session_state.settings from the real config so page_setup() succeeds.
     with open(SETTINGS_PATH, "r") as f:
         test.session_state.settings = json.load(f)
     return test
 
 
-# Test launching of all pages
+# Smoke-test every page boots without raising.
 @pytest.mark.slow
 @pytest.mark.parametrize(
     "launch",
@@ -37,16 +39,15 @@ def launch(request):
     indirect=True,
 )
 def test_launch(launch):
-    """Test if all pages can be launched without errors."""
+    """Each top-level page runs to completion without an uncaught exception."""
     launch.run(timeout=30)
     assert not launch.exception
 
 
 def _seed_mirror_picker_state(at: AppTest) -> None:
-    """Inject one variant + one query + one experimental ref so the picker fragment
-    can run end-to-end. Annotation frames carry the columns ``compute_all_metrics``
-    requires (``mz``, ``intensity``, ``annotation``, ``is_annotated``) so the
-    auto-rendered first-pair plot doesn't blow up."""
+    """Inject one variant + one query + one experimental ref so the picker fragment renders end-to-end.
+
+    Annotation frames carry the columns ``compute_all_metrics`` requires so the auto-rendered first-pair plot doesn't blow up."""
     match = make_peptide_match(
         peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
         spectrum_id="scan=42", charge=2, score=0.9, mzml_filename="q.mzML",
@@ -77,14 +78,13 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
 
 @pytest.mark.slow
 def test_mirror_picker_renders_when_state_seeded():
-    """The picker fragment runs without exception and shows the 'pick a row' hint
-    when both selections are unset (StateManager wiring)."""
+    """Mirror-Plots picker fragment runs without exception and shows the 'pick a row' hint."""
     at = AppTest.from_file("streamlit_app/views/explore/explore_page.py")
     with open(SETTINGS_PATH, "r") as f:
         at.session_state.settings = json.load(f)
     _seed_mirror_picker_state(at)
-    # Default radio is "Spectrum Explorer"; switch to "Mirror Plots" so our
-    # fragment is the one that renders.
+    # Default radio is "Spectrum Explorer" — force "Mirror Plots" so the
+    # picker fragment is the one that renders.
     at.session_state[f"{STATE_PREFIX}_explore_mode"] = "Mirror Plots"
 
     at.run(timeout=30)

@@ -1,1 +1,1 @@
-"""Tests for fragment annotation + spectrum comparison metrics (``core.annotation``)."""
+"""Tests for ``core.annotation`` (fragment annotation + spectrum comparison metrics)."""

@@ -1,9 +1,4 @@
-"""Constants + helpers shared by the summary renderers.
-
-Lives in its own module so ``summary_dual_axis`` and ``summary_ridgeline`` can
-import without creating a circular dependency back to ``summary_pipeline``
-(which imports the renderers at module top).
-"""
+"""Metric list, pretty labels, and height helper shared by ``summary_dual_axis`` and ``summary_ridgeline`` (kept here to avoid a circular import back through ``summary_pipeline``)."""
 METRIC_COLUMNS = [
     "R² match", "R² binned", "Cosine", "Entropy",
     "Dice", "Jaccard", "SharedRatio",

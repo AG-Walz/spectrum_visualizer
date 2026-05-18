@@ -1,8 +1,4 @@
-"""Unit tests for the summary-plot stack in ``core.plotting``.
-
-Covers ``summary_pipeline.prepare_summary_data`` / ``generate_all_summary_plots``
-and the dual-axis + ridgeline renderers.
-"""
+"""Unit tests for ``core.plotting.summary_pipeline`` (dual-axis + ridgeline summary renderers)."""
 from pathlib import Path
 
 import numpy as np
@@ -20,7 +16,7 @@ from core.plotting import (
 # ---------------------------------------------------------------------------
 
 def _make_summary_frame(n_peptides=3, n_reps=4):
-    """Build a realistic synthetic comparison_summary DataFrame."""
+    """Build a synthetic ``comparison_summary.csv``-shaped DataFrame (3 peptides × 4 replicates)."""
     rng = np.random.RandomState(42)
     rows = []
     peptides = ["PEPTIDEK", "AAAVAAAK", "ACDEFGHIK"][:n_peptides]
@@ -45,7 +41,7 @@ def _make_summary_frame(n_peptides=3, n_reps=4):
 
 @pytest.fixture
 def summary_csv(tmp_path):
-    """Write a minimal comparison_summary.csv and return its path."""
+    """Write a minimal ``comparison_summary.csv`` to tmp_path and return its path."""
     frame = _make_summary_frame()
     csv_path = tmp_path / "comparison_summary.csv"
     frame.to_csv(csv_path, index=False)

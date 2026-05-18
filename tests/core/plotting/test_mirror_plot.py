@@ -1,8 +1,8 @@
-"""Unit + integration tests for the pyopenms-viz wrapper in ``core.plotting.mirror``."""
+"""Unit + integration tests for ``core.plotting.mirror`` (pyopenms-viz wrapper)."""
 from io import BytesIO
 
 import matplotlib
-matplotlib.use("Agg")  # Must be before importing plotting modules.
+matplotlib.use("Agg")  # MUST come before importing plotting modules (headless backend).
 
 import numpy as np
 import plotly.graph_objects as go
@@ -14,7 +14,7 @@ from core.plotting import create_spectrum_plot
 
 
 class TestPlotCreation:
-    """Parametrised tests: return-type + empty-frame safety across backends/modes."""
+    """Return-type + empty-frame safety across ``ms_matplotlib`` / ``ms_plotly`` and single/mirror modes."""
 
     @pytest.mark.parametrize("backend, expected_type", [
         ("ms_matplotlib", Figure),
@@ -58,7 +58,7 @@ class TestFigureSaveable:
 
 @pytest.mark.integration
 class TestMirrorPlotWithRealAnnotation:
-    """Generate plots from annotated real-like spectra."""
+    """End-to-end: annotate realistic spectra then render via each backend."""
 
     def test_plotly_mirror_with_annotation(self):
         mz = np.array([175.12, 290.14, 405.17, 520.20], dtype=np.float64)
@@ -93,4 +93,5 @@ class TestMirrorPlotWithRealAnnotation:
         out = tmp_path / "test.png"
         fig.savefig(str(out), format="png", bbox_inches="tight", facecolor="white")
         assert out.exists()
-        assert out.stat().st_size > 1000  # reasonable PNG size
+        # >1 kB ⇒ Matplotlib actually rendered something (not a blank page)
+        assert out.stat().st_size > 1000

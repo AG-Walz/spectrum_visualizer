@@ -1,10 +1,4 @@
-"""Parallel plot generation via ProcessPoolExecutor.
-
-Main process annotates spectra, worker pool runs ``process_single_task()``
-(metrics + matplotlib/plotly), main process collects ``ComparisonResults``.
-Task/result dataclasses live in ``plot_task_dataclasses`` so lightweight
-callers can construct tasks without pulling matplotlib.
-"""
+"""ProcessPoolExecutor-picklable worker: compute comparison metrics + render mirror/single plots to disk (dispatched by ``core.export.export_pipeline``)."""
 import logging
 from pathlib import Path
 
@@ -20,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
-    """Compose the per-task row that becomes one line of the comparison CSV."""
+    """Compose one row of the comparison CSV (file names, peptide identity, charge, plus every computed metric)."""
     return {
         "query_file": task.query_file,
         "ref_file": task.reference_file,
@@ -32,20 +26,20 @@ def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
 
 
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
-    """Worker: compute metrics, render figure, save to disk. Skips plot if ``skip_plot`` is set."""
+    """Worker entry point: compute metrics for mirror tasks, render the figure, and write each requested output format to disk."""
     try:
-        # Setup: classify task type, init optional output slots
+        # Classify: mirror tasks need a reference; remember slots for output paths
         is_mirror = task.task_type == "mirror" and task.reference_frame is not None
         summary_row = None
         png_path = svg_path = pdf_path = html_path = ""
 
-        # Metrics: mirror tasks always compute metrics + summary row, even if skip_plot
+        # Metrics: always computed for mirror tasks, even when the plot is skipped
         metrics = None
         if is_mirror:
             metrics = compute_all_metrics(task.query_frame, task.reference_frame)
             summary_row = _build_summary_row(task, metrics)
 
-        # Static figure: render via matplotlib, persist to each requested format
+        # Static figure: matplotlib render, then write every requested format
         if not task.skip_plot:
             fig = create_spectrum_plot(
                 task.query_frame,
@@ -60,11 +54,11 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             plt.close(fig)
 
-        # Interactive HTML: optional Plotly export when an output path is set
+        # Interactive HTML: only when the task requests a Plotly export
         if task.html_plot_path:
             html_path = _save_task_html(task)
 
-        # Package result for the main process
+        # Return: hand the populated result back to the orchestrator
         return ComparisonResult(
             task_id=task.task_id, task_type=task.task_type, success=True,
             png_path=png_path, svg_path=svg_path, pdf_path=pdf_path,
@@ -78,7 +72,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
 
 def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
-    """Save a matplotlib figure to each requested format. Returns (png_path, svg_path, pdf_path)."""
+    """Write the matplotlib figure to each requested format under per-variant subdirs; return ``(png_path, svg_path, pdf_path)`` with empty strings for skipped formats."""
     format_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
     paths = {"png": "", "svg": "", "pdf": ""}
 
@@ -98,7 +92,7 @@ def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
 
 
 def _save_task_html(task: ComparisonTask) -> str:
-    """Save interactive Plotly HTML plot. Returns path or "" on failure."""
+    """Render the Plotly mirror/single plot and write it as standalone HTML; return the output path, or ``""`` if the write failed."""
     try:
         out = Path(task.html_plot_path)
         out.parent.mkdir(parents=True, exist_ok=True)

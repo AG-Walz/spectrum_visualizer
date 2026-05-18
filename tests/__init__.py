@@ -1,1 +1,1 @@
-"""Unit, integration, and GUI tests for MSpecViz (run with pytest)."""
+"""Unit, integration, and GUI tests for MSpecViz — run via ``pytest tests/``."""

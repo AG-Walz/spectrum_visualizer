@@ -1,13 +1,4 @@
-"""
-Workspace ``params.json`` I/O — load and save widget state per workspace.
-
-Pure I/O only: no Streamlit widgets. The sidebar / page-setup helpers that
-surface these values live in :mod:`streamlit_app.utils.state.state_sidebar`.
-
-Tunable defaults are owned by :data:`core.common.defaults.DEFAULTS`.
-When a key is missing from ``params.json``, callers should fall back to
-``DEFAULTS.<key>`` at the call site (see ``get_param``).
-"""
+"""Load and save each workspace's ``params.json`` — called by ``state_sidebar``, ``page_state``, and Setup."""
 from __future__ import annotations
 
 import json
@@ -21,12 +12,9 @@ import streamlit as st
 from streamlit_app.utils.state.state_core import _persisted_key
 
 
-# Canonical list of workspace params persisted in ``params.json``.
-# ``save_params`` pulls each of these from session_state (or its
-# ``_persisted`` backup) so widget values survive across page
-# navigation and browser reloads even on workspaces whose params.json
-# does not yet contain the key. Keep this list in sync with the widget
-# keys used in the Setup page, sidebar, and file browser.
+# Canonical list of widget keys ``save_params`` writes to ``params.json``. Listing every key
+# explicitly (not just those already on disk) lets first-ever saves capture widget values, and
+# lets _flush_and_switch_workspace pop them when switching workspaces.
 _PARAM_KEYS: tuple[str, ...] = (
     "selected_idxmls", "selected_mzmls",
     "idxml_browser_dir", "mzml_browser_dir",
@@ -41,12 +29,7 @@ _PARAM_KEYS: tuple[str, ...] = (
 
 
 def load_params(default: bool = False) -> dict[str, Any]:
-    """Load the workspace's ``params.json`` — or an empty dict if none exists.
-
-    Missing keys are not populated here; callers resolve them via
-    ``get_param(params, key, DEFAULTS.<key>)`` so there is exactly one
-    source of truth for default values (``core.common.defaults``).
-    """
+    """Load the current workspace's ``params.json`` — empty dict if workspaces disabled or no file yet."""
     # Short-circuit: workspaces disabled or caller asked for defaults
     if default or not st.session_state.settings.get("enable_workspaces", False):
         return {}
@@ -59,12 +42,8 @@ def load_params(default: bool = False) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         raw_params = json.load(handle)
 
-    # Migrate: hyphenated legacy keys -> snake_case (snake_case wins on dupes)
-    # Migrate legacy hyphenated top-level keys (e.g. ``reference-substring``)
-    # to their snake_case equivalent. Defaults and in-code keys are snake_case
-    # now; without this, workspaces created before the migration keep stale
-    # hyphen keys and ``save_params`` can't sync widget values back to disk.
-    # Snake_case wins if both forms exist.
+    # Migrate legacy hyphenated keys (``reference-substring``) to snake_case. Pre-migration
+    # workspaces would otherwise hold stale hyphen keys that save_params cannot sync.
     migrated: dict[str, Any] = {key: value for key, value in raw_params.items() if "-" not in key}
     for key, value in raw_params.items():
         if "-" in key:
@@ -73,40 +52,26 @@ def load_params(default: bool = False) -> dict[str, Any]:
 
 
 def save_params(params: dict[str, Any]) -> None:
-    """Sync widget values from session_state into params and write to workspace.
-
-    For each param key, checks:
-    1. The key itself in session_state (widget value, present on the page that owns it)
-    2. A persisted non-widget key (``peptide_mirror.<key>_persisted``), which
-       survives page navigation even after Streamlit cleans up widget keys.
-    """
+    """Pull live widget values (or ``_persisted`` backups) into ``params`` and write atomically to ``params.json``."""
     # Short-circuit: workspaces disabled means nothing to persist
     if not st.session_state.settings.get("enable_workspaces", False):
         return
 
-    # Sync: pull live widget values (or _persisted backups) into the params dict
-    # Union of the canonical param keys and whatever is already in
-    # ``params``. A key only appears in ``params`` if load_params picked it
-    # up from params.json; canonical keys need to be saved even on their
-    # first-ever write, so iterating ``params`` alone would strand fresh
-    # widget values.
+    # Sync: pull live widget values (or _persisted backups) into the params dict.
+    # Union with _PARAM_KEYS so first-ever saves capture widget values not yet on disk.
     tracked_keys = list(dict.fromkeys((*_PARAM_KEYS, *params.keys())))
     for key in tracked_keys:
         if key in st.session_state:
             params[key] = st.session_state[key]
         else:
-            # Fall back to the persisted non-widget copy (set by setup.py
-            # fragments) so values survive page navigation.
+            # _persisted backup (set by setup.py fragments) — survives widget garbage collection on page navigation.
             persisted = _persisted_key(key)
             if persisted in st.session_state:
                 params[key] = st.session_state[persisted]
 
-    # Atomic write: stage to a unique tmp file, then os.replace into place
-    # Atomic write via unique staging file. A single Streamlit rerun calls
-    # save_params from several places (sidebar, each setup fragment, ...);
-    # sharing one ``params.json.tmp`` path between them — or between browser
-    # tabs on the same workspace — caused the second mover's os.replace to
-    # fail because the first had already moved the staging file away.
+    # Atomic write via unique staging file. A single rerun can call save_params from the sidebar
+    # plus several setup fragments; sharing one ``params.json.tmp`` path between them — or between
+    # browser tabs on the same workspace — made the second mover's os.replace fail.
     params_path = Path(st.session_state.workspace, "params.json")
     params_path.parent.mkdir(parents=True, exist_ok=True)
     file_descriptor, staging_name = tempfile.mkstemp(

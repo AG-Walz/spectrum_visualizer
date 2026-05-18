@@ -1,10 +1,6 @@
-"""Export pipeline — delegates to :func:`core.export.run_export`.
+"""Export action layer — called by ``export_page.py`` to wire the Export button to :func:`core.export.run_export`.
 
-``_run_export`` is called from the Export button. It collects session state,
-builds the shared ``ExportSelection`` / ``PlotSettings`` / ``ExportCallbacks``,
-and routes to the single orchestrator shared with the CLI so both frontends
-write byte-identical directory layouts given the same inputs.
-"""
+Collects session state into the shared dataclasses and routes to the CLI-shared orchestrator."""
 from __future__ import annotations
 
 import logging
@@ -29,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 def _collect_session_frames() -> dict:
-    """Pull the four Polars LazyFrames out of session state."""
+    """Pull the four Polars LazyFrames (psm/peaks/sequence/heatmap) out of session state."""
     return {
         "psm":      st.session_state.get(get_state_key("psm_frame")),
         "peaks":    st.session_state.get(get_state_key("peaks_frame")),
@@ -39,7 +35,7 @@ def _collect_session_frames() -> dict:
 
 
 def _build_plot_settings(params: dict) -> PlotSettings:
-    """Resolve PlotSettings from session params + defaults."""
+    """Resolve ``PlotSettings`` (formats, figure size, workers) from session params + defaults."""
     return PlotSettings(
         export_formats=["png", "svg"],
         figure_size=DEFAULTS.figure_size,
@@ -52,7 +48,7 @@ def _build_plot_settings(params: dict) -> PlotSettings:
 
 
 def _show_export_summary(result, status) -> None:
-    """Update the status block + show plot counts after export completes."""
+    """Stamp mirror/summary plot counts into the status block and mark it complete."""
     if result.mirror_plot_count:
         st.caption(f"  Generated {result.mirror_plot_count} mirror plot file(s)")
     if result.summary_plot_count:
@@ -64,7 +60,7 @@ def _show_export_summary(result, status) -> None:
 
 
 def _show_saved_files_expander(result) -> None:
-    """Render an expander listing every saved file."""
+    """Render a collapsed expander listing every file written by the export."""
     if not result.saved_files:
         return
     with st.expander(f"Exported files ({len(result.saved_files)})", expanded=False):
@@ -74,21 +70,21 @@ def _show_saved_files_expander(result) -> None:
 
 def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
-    """Drive :func:`core.export.run_export` and render the resulting gallery."""
+    """Drive :func:`core.export.run_export` from the Export button and render the resulting gallery."""
     # Guard: refuse to export when Search & Load hasn't populated session state
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     if not annotated_queries:
         st.warning("No annotated spectra in session -- re-run **Search & Load** first.")
         return None
 
-    # Build config: ExportSelection + PlotSettings shared with the CLI orchestrator
+    # Build config: format selection + plot settings shared with the CLI orchestrator
     selection = ExportSelection(
         parquet=do_parquet, csv=do_csv,
         mirror_plots=do_mirror, summary_plots=do_summary, html=do_html,
     )
     plot_settings = _build_plot_settings(params)
 
-    # Dispatch: run shared export pipeline with a live st.status block
+    # Dispatch: run shared export pipeline inside a live ``st.status`` block
     with st.status("Exporting...", expanded=True) as status:
         result = run_export(
             export_directory=export_dir,
@@ -105,7 +101,7 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
         )
         _show_export_summary(result, status)
 
-    # Post-export: list saved files and render the plot gallery
+    # Post-export: list saved files and open the plot gallery below
     _show_saved_files_expander(result)
     _render_plot_gallery(result.export_root)
     return result.export_root

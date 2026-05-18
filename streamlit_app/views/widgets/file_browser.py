@@ -1,11 +1,4 @@
-"""
-Directory-browser widget used on the Setup page.
-
-Self-contained: takes a workspace ``params`` dict + state key; writes selected
-paths back to ``st.session_state[state_key]``. Callers render inside their
-column layout. Extracted from ``views.setup`` to keep that file under the
-500-line review threshold.
-"""
+"""Directory-browser + file-picker widget for the Setup page: breadcrumbs, sub-folder grid, glob-filtered multiselect — selections persist in ``st.session_state[state_key]``."""
 from pathlib import Path
 
 import streamlit as st
@@ -14,7 +7,7 @@ from streamlit_app.utils.page_state import list_files, list_subdirectories
 
 
 def _browser_keys(key_prefix: str) -> dict:
-    """Bundle the per-browser session-state keys derived from ``key_prefix``."""
+    """Return the per-browser ``session_state`` widget keys derived from ``key_prefix``."""
     return {
         "dir": f"{key_prefix}_dir",
         "nav": f"{key_prefix}_nav_to",
@@ -25,7 +18,7 @@ def _browser_keys(key_prefix: str) -> dict:
 
 
 def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: dict) -> None:
-    """Seed session state for the selection list, current directory, and path input."""
+    """Seed ``session_state`` slots (selection list, current directory, path input) on first run."""
     if state_key not in st.session_state:
         st.session_state[state_key] = params.get(state_key, [])
     if keys["dir"] not in st.session_state:
@@ -35,7 +28,7 @@ def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: di
 
 
 def _apply_deferred_navigation(keys: dict) -> None:
-    """Consume any pending Up/folder-button navigation request."""
+    """Consume any pending Up/folder-button navigation request before widgets render this run."""
     # Guard: bail when no navigation was requested this run
     nav_key = keys["nav"]
     if not st.session_state.get(nav_key):
@@ -43,9 +36,9 @@ def _apply_deferred_navigation(keys: dict) -> None:
     # Apply: update current directory + visible path input
     new_dir = st.session_state[nav_key]
     st.session_state[keys["dir"]] = new_dir
-    # Sync the path input to the new directory now that navigation fired.
-    # Doing this only on real navigation events (Up/folder buttons) — not on
-    # every rerun — preserves the user's in-progress typing in the path input.
+    # Sync the path input to the new directory only on real navigation events
+    # (Up/folder buttons) — not on every rerun — so in-progress typing in the
+    # path input is preserved.
     st.session_state[keys["path_input"]] = new_dir
     # Cleanup: clear nav slot + stale select-all/recursive widget state
     st.session_state[nav_key] = None
@@ -54,18 +47,17 @@ def _apply_deferred_navigation(keys: dict) -> None:
 
 
 def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
-    """Render the editable path input plus the parent-directory button."""
+    """Render the editable path input + the Up (parent directory) button."""
     col1, col2 = st.columns([6, 1])
     with col1:
         new_path = st.text_input(
             "Path", key=keys["path_input"],
             label_visibility="collapsed", placeholder="Enter path...",
         )
-        # Resolve to absolute so the Up button (parent == current_dir → disabled)
-        # works after typing a relative path like "." or "subdir/". Route the
-        # update through the deferred-nav slot so it can rewrite the visible
-        # path input — Streamlit won't let us touch the widget-bound key
-        # directly after the widget has been instantiated this run.
+        # Resolve to absolute so the Up button (disabled when parent == current_dir)
+        # works after typing a relative path like "." or "subdir/". Route through
+        # the deferred-nav slot — Streamlit forbids writing a widget-bound key
+        # after the widget instantiates this run.
         if new_path and new_path != current_dir:
             resolved = str(Path(new_path).expanduser().resolve())
             if Path(resolved).is_dir() and resolved != current_dir:
@@ -81,7 +73,7 @@ def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
 
 
 def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> None:
-    """Render up to 16 sub-folders as a 4-column button grid."""
+    """Render up to 16 sub-folders as a 4-column grid of navigation buttons."""
     # List sub-folders; bail early when the directory has none
     subdirs = [Path(path) for path in list_subdirectories(current_dir)]
     if not subdirs:
@@ -114,7 +106,7 @@ def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> Non
 
 
 def _list_browser_files(current_dir: str, extensions: list, recursive: bool):
-    """Return ``(file_labels, label_to_path)`` for the active directory."""
+    """List files in ``current_dir`` matching ``extensions``; return ``(labels, label→path)``."""
     all_files = [Path(path) for path in list_files(current_dir, tuple(extensions), recursive)]
     current_path = Path(current_dir)
     file_labels = ([str(f.relative_to(current_path)) for f in all_files]
@@ -125,7 +117,7 @@ def _list_browser_files(current_dir: str, extensions: list, recursive: bool):
 
 def _selections_outside_scope(state_key: str, file_labels, label_to_path,
                               current_path: Path, recursive: bool) -> list:
-    """Return previously-selected paths that fall outside the current view."""
+    """Return previously-selected paths that fall outside the current directory view (so they survive nav)."""
     current_scope_paths = {label_to_path[lbl] for lbl in file_labels}
     selections = st.session_state.get(state_key, [])
     if recursive:
@@ -135,7 +127,7 @@ def _selections_outside_scope(state_key: str, file_labels, label_to_path,
 
 def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
                        current_dir: str, extensions: list, recursive: bool) -> None:
-    """Render the filter input, multiselect, and persist the selection list."""
+    """Render the filter input + select-all + multiselect and persist picks to ``session_state[state_key]``."""
     # List + filter files in the current view by the substring filter input
     file_labels, label_to_path = _list_browser_files(current_dir, extensions, recursive)
     filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
@@ -186,7 +178,7 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
 
 
 def _render_clear_all(key_prefix: str, keys: dict, state_key: str) -> None:
-    """Render the 'Clear all selections' button if anything is selected."""
+    """Render the 'Clear all selections' button when at least one file is selected."""
     all_selected = st.session_state.get(state_key, [])
     if not all_selected:
         return
@@ -201,15 +193,9 @@ def render_directory_browser(
     key_prefix: str, extensions: list, state_key: str,
     default_dir: str = "/", params: dict | None = None,
 ):
-    """Render a directory browser + file picker.
+    """Render the directory browser + file picker on the Setup page; persists selections to ``session_state[state_key]``.
 
-    Args:
-        key_prefix: Unique prefix for widget keys (lets multiple browsers coexist).
-        extensions: File extensions to list (e.g. ['.idXML', '.idxml']).
-        state_key: ``st.session_state`` key that holds the selected paths list.
-        default_dir: Initial directory when state_key is unset.
-        params: Workspace params dict (for initial selections + default dir).
-    """
+    ``key_prefix`` namespaces widget keys; ``extensions`` filters listed files; ``params`` seeds initial dir + selection."""
     # Bootstrap: initialise state + consume any pending navigation request
     params = params or {}
     keys = _browser_keys(key_prefix)

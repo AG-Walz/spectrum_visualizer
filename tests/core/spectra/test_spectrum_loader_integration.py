@@ -1,4 +1,4 @@
-"""Integration tests for spectrum_loader using real mzML data."""
+"""Integration tests for ``core.spectra.spectrum_loader`` against real mzML fixtures."""
 import pytest
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from core.spectra import load_spectra_streaming, spectrum_lookup_key
 class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
-        """Shared fixture: search + stream spectra once for all tests in this class."""
+        """Run search + streaming once per class — every test below shares the result."""
         variant_groups = search_peptides_in_idxmls([idxml_path], target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]
 
@@ -48,7 +48,7 @@ class TestLoadRealSpectra:
         assert len(set(keys)) == 2
 
     def test_total_peaks_count(self, loaded_spectra):
-        # Range check rather than exact total: spectrum-loader behaviour can
-        # shift the per-spectrum count by a handful with library upgrades
-        # without signalling a real regression.
+        # Range check rather than exact total — spectrum-loader behaviour
+        # shifts by a handful of peaks with library upgrades without
+        # signalling a real regression.
         assert 350 < loaded_spectra["total_peaks"] < 400

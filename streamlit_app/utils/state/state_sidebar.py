@@ -1,10 +1,4 @@
-"""
-Sidebar, workspace switcher, and page-setup entry point.
-
-``page_setup()`` is called at the top of every view; ``render_sidebar``
-renders the shared left-hand controls; ``_render_workspace_switcher`` is the
-workspace selector within the sidebar.
-"""
+"""Sidebar, workspace switcher, and ``page_setup()`` — the entry point called at the top of every Streamlit view."""
 from __future__ import annotations
 
 import json
@@ -25,44 +19,31 @@ from streamlit_app.utils.state.state_workspace import (
 
 
 def _flush_and_switch_workspace(params: dict) -> None:
-    """Selectbox callback: persist outgoing params, clear stale state, switch.
-
-    Keeping this at module level (instead of as a nested closure) makes the
-    workspace-switcher easy to read: each widget just dispatches to a named
-    helper and the heavy state surgery lives here.
-    """
-    # Flush: write OUTGOING workspace's params.json before mutating state
-    # Flush any in-flight session state to the OUTGOING workspace's
-    # params.json BEFORE deleting keys. Without this, peptides the user
-    # typed in a text_area whose blur event races with the dropdown
-    # on_change can be lost on switch.
+    """Workspace-dropdown ``on_change``: save the outgoing workspace, wipe stale state, then rerun on the new one."""
+    # Flush: write the OUTGOING workspace's params.json before mutating state. Without this,
+    # peptides typed in a text_area whose blur event races with the dropdown on_change are lost.
     save_params(params)
 
-    # Reset widgets: pop every canonical widget key + anything from params
-    # Pop every known widget key — not just the ones that happened to
-    # be on disk in ``params.json`` — so settings from the outgoing
-    # workspace do not bleed into the incoming one's widgets (and from
-    # there, back into its params.json via save_params).
+    # Reset widgets: pop every canonical widget key (not just what was on disk) so settings from
+    # the outgoing workspace don't bleed into the incoming one — and from there, back into its
+    # params.json via save_params.
     for key in (*_PARAM_KEYS, *params.keys()):
         st.session_state.pop(key, None)
 
-    # Reset analysis: drop page-namespaced keys + _persisted backups
-    # Clear page-namespaced keys so stale analysis state (and the
-    # ``_persisted`` widget-value backups) from the previous workspace
-    # are not shown in the new one.
+    # Reset analysis: clear page-namespaced keys and ``_persisted`` widget backups so stale
+    # analysis state from the previous workspace doesn't show up in the new one.
     stale_keys = [key for key in st.session_state if key.startswith(STATE_PREFIX)]
     for key in stale_keys:
         st.session_state.pop(key, None)
 
-    # Switch & rerun: update query param and halt the in-flight rerun
-    st.query_params.workspace = st.session_state["chosen-workspace"]
-    # Halt this rerun immediately to avoid the script continuing with
+    # Switch & rerun. Halt this rerun immediately so the script doesn't continue with
     # session_state.workspace still pointing at the OLD workspace.
+    st.query_params.workspace = st.session_state["chosen-workspace"]
     st.rerun()
 
 
 def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
-    """Render the existing-workspace dropdown; returns the current workspace name."""
+    """Render the existing-workspace dropdown and return the current workspace name."""
     workspaces_dir.mkdir(parents=True, exist_ok=True)
     options = sorted(entry.name for entry in workspaces_dir.iterdir() if entry.is_dir())
     if not options:
@@ -80,7 +61,7 @@ def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
 
 
 def _render_create_workspace(workspaces_dir: Path) -> None:
-    """Render the 'New workspace name' input and Create button."""
+    """Render the "New workspace name" input and the Create button."""
     new_workspace_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
     if not st.button("**Create Workspace**"):
         return
@@ -95,7 +76,7 @@ def _render_create_workspace(workspaces_dir: Path) -> None:
 
 
 def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> None:
-    """Render the delete-with-confirmation flow for the current workspace."""
+    """Render the two-step delete-with-confirmation flow for the current workspace."""
     if current_workspace == "default":
         return
     confirm_key = "_confirm_delete_workspace"
@@ -123,7 +104,7 @@ def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> No
 
 
 def _render_workspace_switcher(params: dict) -> None:
-    """Render workspace selector, create, and delete controls."""
+    """Render the Workspaces expander: selector, create, and delete controls."""
     workspaces_dir = _get_workspaces_dir()
     with st.expander("**Workspaces**"):
         current_workspace = _render_workspace_select(workspaces_dir, params)
@@ -132,7 +113,7 @@ def _render_workspace_switcher(params: dict) -> None:
 
 
 def page_setup(page: str = "") -> dict[str, Any]:
-    """Set up page config, workspace, and sidebar. Call at the top of every page."""
+    """Initialise settings, page config, workspace, and sidebar — call once at the top of every view."""
     # Settings: lazy-load settings.json into session_state on first call
     if "settings" not in st.session_state:
         settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
@@ -149,7 +130,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
         menu_items=None,
     )
 
-    # Workspace resolution: switch from query param or fall back to default
+    # Workspace resolution: honour ?workspace=… query param, else fall back to "default"
     if "workspace" not in st.session_state or (
         "workspace" in st.query_params
         and st.query_params.workspace != st.session_state.workspace.name
@@ -186,7 +167,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
 
 def render_sidebar(page: str = "") -> dict[str, Any]:
-    """Render sidebar with workspace switcher, settings, and version info."""
+    """Render the workspace switcher, Settings expander, and version footer; return the active workspace's params."""
     # Load params for the active workspace
     params = load_params()
 
@@ -199,9 +180,8 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
         with st.expander("**Settings**"):
             image_formats = ["svg", "png", "jpeg", "webp"]
             persisted = _persisted_key("image_format")
-            # Seed session_state BEFORE the widget is created so Streamlit
-            # uses the restored value on page navigation. Reading from the
-            # non-widget persisted backup survives widget garbage collection.
+            # Seed session_state from the _persisted backup BEFORE creating the widget — otherwise
+            # Streamlit's default ("svg") wins over the user's saved choice after page navigation.
             if "image_format" not in st.session_state:
                 restored = st.session_state.get(
                     persisted, params.get("image_format", DEFAULTS.image_format)

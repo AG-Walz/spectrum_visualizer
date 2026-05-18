@@ -1,8 +1,4 @@
-"""Plot generation: mirror plots (pyopenms-viz wrapper), summary plots, parallel workers.
-
-Re-exports the public API of the submodules so callers can use
-``from core.plotting import ...`` without caring which file a name lives in.
-"""
+"""Plotting public API: mirror plots, summary plots, parallel render worker (imported by ``core.export``, ``cli.main``, ``streamlit_app.views.explore``)."""
 from core.plotting._summary_shared import METRIC_COLUMNS
 from core.plotting.mirror import create_spectrum_plot
 from core.plotting.plot_task_dataclasses import ComparisonTask

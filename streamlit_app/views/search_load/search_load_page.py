@@ -1,9 +1,6 @@
-"""
-Search & Load Page — Streamlit entry point.
+"""Rendered as the Search & Load tab — the big "Run" button plus the per-variant results table.
 
-Orchestrates the page UI (buttons, fragments, results table). Long-running
-ops live in ``pipeline.py``; this file stays focused on layout and state.
-"""
+Heavy lifting lives in ``search_load_actions.py``; this module handles layout, validation, and session state."""
 import streamlit as st
 
 from streamlit_app.utils.state import (
@@ -23,7 +20,7 @@ params = page_setup()
 
 
 def display_search_results(results: dict) -> None:
-    """Display search results table."""
+    """Render the per-variant search-results table (peptide, modification, PSM count, file resolution)."""
     summary_frame = summarize_search_results(results).collect().to_pandas()
     if not summary_frame.empty:
         display_frame = summary_frame.rename(columns={
@@ -37,11 +34,11 @@ def display_search_results(results: dict) -> None:
 
 @st.fragment
 def search_results_fragment():
-    """Display search results and load controls as a fragment."""
-    # Empty state: nothing rendered until a search has produced variants
+    """Render the search-results table, the Search & Load Spectra trigger, and the post-load summary."""
+    # Empty state: nothing rendered until peptide search has produced variants
     variant_groups = st.session_state.get(get_state_key("variant_groups"))
     if variant_groups:
-        # Render the per-variant results table + headline match summary
+        # Section 1: per-variant results table + headline match count
         st.subheader("Search Results")
         display_search_results(variant_groups)
 
@@ -50,10 +47,11 @@ def search_results_fragment():
             f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
             f"Click **Search & Load Spectra** below to load and annotate them."
         )
-        # Render the load controls when mzMLs are present, else nudge the user back to Setup
+        # Section 2: load-spectra controls — only when mzMLs were picked on the Setup page
         mzmls = get_param(params, "selected_mzmls", [])
         if mzmls:
             st.subheader("Load Spectra & Compute Metrics")
+            # Hint: what the loader will do given the current reference / Koina settings
             reference_substring = get_param(params, "reference_substring", "")
             if reference_substring:
                 st.caption(
@@ -69,7 +67,7 @@ def search_results_fragment():
             if st.button("Search & Load Spectra", key=f"{STATE_PREFIX}_load_btn", type="primary"):
                 run_search_and_load(params)
 
-            # Post-load summary: surface comparison count once data is ready
+            # Section 3: post-load summary — only after the action has set ``data_ready``
             if st.session_state.get(get_state_key("data_ready")):
                 comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
                 if comparison_frame is not None and not comparison_frame.empty:
@@ -86,12 +84,13 @@ def search_results_fragment():
 
 
 def render():
+    """Page entry point: rebuild analysis cache, validate inputs, then render search trigger + results fragment."""
     # Restore cached analysis (if any) and render the page header
     restore_analysis_if_needed()
     st.title("Search & Load")
     st.caption("Search for peptides in idXML files and load spectra for analysis")
 
-    # Resolve inputs from params and validate that prerequisites exist
+    # Resolve inputs from session params and bail early if Setup hasn't been completed
     idxmls = get_param(params, "selected_idxmls", [])
     peptide_text = get_param(params, "target_peptides", "")
     peptides = parse_peptide_list(peptide_text)
@@ -103,7 +102,7 @@ def render():
         st.warning("Please enter target peptides first (Setup page)")
         return
 
-    # Render search trigger + results/load fragment, then persist params
+    # Render the search trigger + results/load fragment, then persist params
     if st.button("Search Peptides", key=f"{STATE_PREFIX}_search_btn", type="primary"):
         run_peptide_search(params, idxmls, peptides)
 

@@ -1,1 +1,1 @@
-"""Tests for the ``core/`` core package."""
+"""Tests for the ``core/`` package (Streamlit-free domain logic)."""

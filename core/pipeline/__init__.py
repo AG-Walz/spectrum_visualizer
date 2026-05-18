@@ -1,8 +1,4 @@
-"""Shared pipeline logic for CLI and Streamlit frontends.
-
-Re-exports the public API of the submodules so callers can use
-``from core.pipeline import ...`` without caring which file a name lives in.
-"""
+"""Streaming-annotation pipeline shared by ``cli.main`` and ``streamlit_app.views.search_load``."""
 from core.pipeline.kwargs_builders import (
     build_annotation_kwargs,
     build_koina_kwargs,

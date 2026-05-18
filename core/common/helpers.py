@@ -18,7 +18,7 @@ def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
             f"Two or more selected {kind} files share the same basename: "
             f"{duplicates}. Rename or symlink so every {kind} basename is unique."
         )
-    
+
 def parse_peptide_list(text: str) -> List[str]:
     """Parse newline-separated peptide list, uppercased and stripped."""
     return [line.strip().upper() for line in text.splitlines() if line.strip()]

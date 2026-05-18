@@ -1,4 +1,4 @@
-"""Tests for ``summarize_search_results`` and the search-pipeline integration."""
+"""Unit + integration tests for ``core.search`` (``summarize_search_results`` + idXML scan)."""
 import pytest
 import polars as pl
 from psm_utils import PSMList
@@ -11,7 +11,7 @@ from tests.conftest import make_peptide_match
 
 
 class TestSummarizeSearchResults:
-    """Tests for ``summarize_search_results()`` which returns ``pl.LazyFrame``."""
+    """Pure-data tests for ``summarize_search_results`` (LazyFrame columns, counts, empties)."""
 
     def test_returns_lazyframe(self):
         result = summarize_search_results({
@@ -59,11 +59,11 @@ class TestSummarizeSearchResults:
 
 @pytest.mark.integration
 class TestSearchWithRealData:
-    """Tests using real idXML/mzML test data."""
+    """Search the small_dataset idXML for the two expected peptides."""
 
     @pytest.fixture(scope="class")
     def search_results(self, idxml_path, target_peptides):
-        """Shared fixture: search once for all tests in this class."""
+        """Run the idXML scan once per class — every test below shares the result."""
         return search_peptides_in_idxmls([idxml_path], target_peptides)
 
     def test_search_finds_expected_peptides(self, search_results):

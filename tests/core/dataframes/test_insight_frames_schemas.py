@@ -1,11 +1,4 @@
-"""
-Tests for ``_proforma_to_openms_str`` peptidoform string conversion.
-
-Builder-level behaviour (``build_psm_table``, ``build_peaks_dataframe``, …)
-lives in ``test_insight_frames_builders.py``; those builders also exercise
-the polars schemas implicitly, so explicit schema-equality assertions add
-no coverage and have been removed.
-"""
+"""Unit tests for ``core.dataframes.insight_frames._proforma_to_openms_str`` (peptidoform string conversion)."""
 from core.dataframes.insight_frames import _proforma_to_openms_str
 
 
@@ -17,7 +10,8 @@ class TestProformaToOpenmsStr:
     def test_oxidation_modification(self):
         result = _proforma_to_openms_str("PEPTM[Oxidation]IDEK")
         assert "Oxidation" in result
-        assert "(" in result  # OpenMS uses parentheses
+        # OpenMS notation uses parentheses (e.g. ``M(Oxidation)``), not brackets
+        assert "(" in result
 
     def test_charge_suffix_stripped(self):
         result = _proforma_to_openms_str("PEPTIDEK/2")
@@ -29,7 +23,7 @@ class TestProformaToOpenmsStr:
         assert "(Acetyl)" in result
 
     def test_fallback_on_invalid(self):
-        # Should not raise, returns best-effort string
+        # Must not raise on unparseable input — returns a best-effort string
         result = _proforma_to_openms_str("PEPTIDEK")
         assert isinstance(result, str)
         assert len(result) > 0

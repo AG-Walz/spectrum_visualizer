@@ -1,11 +1,5 @@
-"""MSpecViz CLI — YAML-driven runner over the shared mspecviz pipeline.
-
-Invoke: ``python -m cli <config.yaml>``. Takes a single YAML config file as input, 
-which specifies parameters for the three main steps:
-    1. Search peptides in idXML files, mapping to base sequences and grouping variants.
-    2. Load and annotate spectra from mzML files, matching to the search results.
-    3. Export results via the shared core.export pipeline, including tables and plots.
-"""
+"""MSpecViz CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config; 
+invoke via ``python -m cli <config.yaml>``."""
 import copy
 import glob as globmod
 import logging
@@ -47,8 +41,7 @@ _CLI_EXTRAS: dict = {
 
 
 def _expand_globs(patterns: list) -> list:
-    """Convert the global patterns from the YAML config (e.g. "runs/**/ProT*.idXML") 
-    into a unique sorted list of absolute paths."""
+    """Expand shell-glob ``patterns`` (e.g. ``"runs/**/ProT*.idXML"``) into a sorted, unique list of absolute paths."""
     result, seen = [], set()
     for pattern in patterns:
         for match in sorted(globmod.glob(pattern, recursive=True)):
@@ -60,19 +53,18 @@ def _expand_globs(patterns: list) -> list:
 
 
 def _load_peptides(source) -> list:
-    """Resolve a peptide source from the YAML config, into a list of sequences."""
-    # If the source is already a list, strip and uppercase
+    """Resolve ``source`` (YAML list, file path, or raw comma/newline string) into a list of upper-cased sequences."""
+    # Already a list: strip and uppercase each entry
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
-    # If it is a path to a file, read lines from the file. 
-    # Otherwise, treat it as a raw string with comma/newline-separated peptides.
+    # File path: read its contents; otherwise treat the string itself as the peptide blob
     source = str(source).strip()
     text = Path(source).read_text() if Path(source).is_file() else source
     return [line.strip().upper() for line in text.replace(",", "\n").splitlines() if line.strip()]
 
 
 def _load_config(path: str) -> SimpleNamespace:
-    """Load YAML, merge with missing parameters from DEFAULTS and resolve global & peptide source paths"""
+    """Parse the YAML at ``path``, overlay on :data:`DEFAULTS`, expand file globs, and resolve the peptide source into a ``SimpleNamespace``."""
     # Parse: read YAML file, error out on non-mapping payload
     config_path = Path(path)
     yaml_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -83,7 +75,7 @@ def _load_config(path: str) -> SimpleNamespace:
     merged: dict = {**_CLI_EXTRAS, **asdict(DEFAULTS), **yaml_config}
     config = SimpleNamespace(**merged)
 
-    # Expand input globs and require non-empty idXML and mzML list
+    # Expand input globs and require non-empty idXML and mzML lists
     config.idxml_files = _expand_globs(config.idxml_files)
     config.mzml_files = _expand_globs(config.mzml_files)
     if not config.idxml_files or not config.mzml_files:
@@ -97,7 +89,7 @@ def _load_config(path: str) -> SimpleNamespace:
 
 
 def _run_search(config) -> tuple:
-    """Search idXMLs for target peptides; return ``(variant_groups, total_psms)``."""
+    """Step 1: scan idXMLs for target peptides with a tqdm bar; return ``(variant_groups, total_psms)``."""
     logger.info("Step 1: Searching peptides in idXML files")
     bar = tqdm(total=len(config.idxml_files), desc="Searching", unit="file")
     errors: list = []
@@ -118,7 +110,7 @@ def _run_search(config) -> tuple:
 
 
 def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
-    """Stream + annotate spectra; return ``(annotated_queries, reference_store, comparison_rows)``."""
+    """Step 2: stream spectra from mzMLs and annotate fragment ions; return ``(annotated_queries, reference_store, comparison_rows)``."""
     logger.info("Step 2: Loading and annotating spectra")
     getter = lambda key, default: getattr(config, key, default)
     bar = tqdm(total=total_psms, desc="Loading", unit="spec")
@@ -143,7 +135,7 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
 
 def _run_export(config, annotated_queries, reference_store, variant_groups,
                 comparison_rows, psm_frame):
-    """Export results via the shared core.export pipeline."""
+    """Step 3: write parquet/CSV tables and (unless ``--no-plots``) mirror + summary plots via :func:`core.export.run_export`."""
     logger.info("Step 3: Exporting results")
     plot_bar: dict = {"bar": None}
 
@@ -190,10 +182,7 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
 @click.argument("config_path",
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 def main(config_path: Path) -> None:
-    """Run the MSpecViz pipeline from a YAML config.
-
-    Set MSPECVIZ_LOG_LEVEL=ERROR for a quiet run.
-    """
+    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config; set ``MSPECVIZ_LOG_LEVEL=ERROR`` for a quiet run."""
     logging.basicConfig(
         level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(),
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

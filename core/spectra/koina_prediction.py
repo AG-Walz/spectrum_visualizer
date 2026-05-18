@@ -1,12 +1,4 @@
-""" Koina AI spectrum prediction for MSpecViz.
-
-Generates predicted MS/MS fragment spectra using Koina deep-learning models
-(via koinapy). Unlike PyOpenMS' theoretical generator which only produces m/z
-positions, Koina models predict both m/z AND relative intensities, making them
-useful for quantitative comparison against experimental spectra.
-
-Used as a fallback reference when no experimental reference mzML is available.
-"""
+"""Koina REST API client — predicted MS/MS spectra (m/z + intensity) used as fallback references when no experimental reference mzML exists (called by ``pipeline``)."""
 import logging
 from typing import Optional
 import pandas as pd
@@ -25,9 +17,7 @@ except ImportError:
 
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
-    """Convert a ProForma peptidoform to Koina's UniMod-bracket notation.
-    (e.g. "PEPM[Oxidation]IDEK" → "PEPM[UNIMOD:35]IDEK") 
-    """
+    """Rewrite a ProForma peptidoform in Koina's UniMod-bracket notation (e.g. ``"PEPM[Oxidation]IDEK" -> "PEPM[UNIMOD:35]IDEK"``)."""
     p = Peptidoform(peptidoform_str.split("/")[0])
     fmt = lambda mod: f"[UNIMOD:{mod.definition['id']}]"
     parts = [f"{fmt(m)}-" for m in p.properties.get("n_term") or []]
@@ -45,20 +35,20 @@ def predict_koina_spectrum(
     collision_energy: int = DEFAULTS.koina_collision_energy,
     instrument_type: str = DEFAULTS.koina_instrument_type,
 ) -> Optional[pd.DataFrame]:
-    """Predict MS/MS spectrum via Koina. Returns DataFrame [mz, intensity, annotation] or None."""
-    # Guard: koinapy must be installed for this to work
+    """Call Koina for a predicted MS/MS spectrum; return ``DataFrame[mz, intensity, annotation]`` or ``None`` on failure."""
+    # Guard: koinapy is an optional dependency
     if not KOINA_AVAILABLE:
         logger.warning("koinapy not installed -- cannot generate Koina predictions")
         return None
 
-    # Convert sequence: translate ProForma to Koina's UniMod-bracket notation
+    # Convert sequence: ProForma -> Koina's UniMod-bracket notation
     try:
         unimod_seq = convert_peptide_to_unimod(peptidoform_str)
     except Exception as error:
         logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
         return None
 
-    # Predict & shape: call Koina, build DataFrame, drop zero-intensity rows
+    # Predict & shape: call Koina, repackage as DataFrame, drop zero-intensity rows
     try:
         koina_input = pd.DataFrame({
             "peptide_sequences": [unimod_seq],
@@ -87,7 +77,7 @@ def predict_koina_spectrum(
 
 
 def get_koina_settings(settings: dict) -> dict:
-    """Extract Koina config from settings, falling back to defaults."""
+    """Pull Koina config (``enabled``/``model``/``collision_energy``/``instrument_type``) from settings, defaulting any missing keys."""
     koina_cfg = settings.get("koina", {})
     return {
         "enabled": koina_cfg.get("enabled", True),

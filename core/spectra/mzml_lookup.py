@@ -1,9 +1,6 @@
-"""mzML spectrum-ID indexing with format-aware fast paths.
+"""Build the spectrum-ID -> array-position index for one mzML (used by ``mzml_workers``).
 
-CRITICAL: ``index=N`` native IDs are not always 0-based — Bruker timsTOF emits
-1-based. ``open_indexed_mzml_fast`` auto-detects the offset; removing this
-silently corrupts lookups for Bruker files.
-"""
+CRITICAL: ``index=N`` is not always 0-based (Bruker timsTOF emits 1-based) — offset auto-detected."""
 import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
@@ -22,10 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tuple[str, int]:
-    """Inspect the first spectrum's native ID; return ``(format, offset)``.
-
-    ``offset`` is meaningful only for ``index=N`` (0 for 0-based, 1 for 1-based).
-    """
+    """Probe the first spectrum's native ID; return ``(format, offset)`` where ``offset`` is 0 or 1 for ``index=N`` only (Bruker timsTOF gotcha)."""
     if n_spectra == 0:
         return "unknown", 0
     first_id = indexed_exp.getSpectrum(0).getNativeID()
@@ -43,7 +37,7 @@ def _try_candidate_indices(
     indexed_exp: oms.OnDiscMSExperiment, clean_id: str, candidates: List[int],
     id_to_index: Dict[str, int],
 ) -> bool:
-    """Try a small list of candidate array positions; persist the first match."""
+    """Check a few likely array positions for a matching native ID; record the first hit and return ``True``."""
     for candidate_index in candidates:
         check_id = indexed_exp.getSpectrum(candidate_index).getNativeID()
         if clean_id != clean_spectrum_id(check_id):
@@ -60,7 +54,7 @@ def _binary_search_for_number(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, target_number: int,
     clean_id: str, id_to_index: Dict[str, int],
 ) -> bool:
-    """Scan IDs are typically monotonic — binary-search by extracted number."""
+    """Binary-search for a scan number across spectra (scan numbers are typically monotonic)."""
     low, high = 0, n_spectra - 1
     while low <= high:
         mid = (low + high) // 2
@@ -86,7 +80,7 @@ def _resolve_targeted_id(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, spectrum_id: str,
     id_to_index: Dict[str, int],
 ) -> bool:
-    """Resolve one needed spectrum ID via off-by-one probe then binary search."""
+    """Locate one needed spectrum ID — try off-by-one candidates first, then binary search by scan number."""
     clean_id = clean_spectrum_id(spectrum_id)
     extracted_number = extract_id_number(clean_id)
     if extracted_number is None:
@@ -102,7 +96,7 @@ def _resolve_targeted_id(
 def _build_full_scan_index(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, id_to_index: Dict[str, int],
 ) -> None:
-    """Fall back to walking every spectrum and recording its native ID."""
+    """Last-resort: walk every spectrum and index it by native ID."""
     for index in range(n_spectra):
         try:
             native_id = indexed_exp.getSpectrum(index).getNativeID()
@@ -118,13 +112,9 @@ def open_indexed_mzml_fast(
     mzml_path: str,
     needed_ids: Optional[List[str]] = None
 ) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
-    """Open mzML and build a targeted ID→position map (skip full scan when possible).
+    """Open one mzML and build its ID -> array-position map, skipping a full scan when possible.
 
-    ``index=N``: O(1) via detected offset. ``scan=N`` with ``needed_ids``: targeted
-    lookup. Otherwise: full scan. The returned dict carries three sentinel keys
-    (``__format__``, ``__n_spectra__``, ``__index_offset__``) used by
-    :func:`find_spectrum_index`.
-    """
+    Returns ``(experiment, id_to_index)``; dict carries ``__format__``/``__n_spectra__``/``__index_offset__`` sentinels."""
     # Open & detect: probe the first spectrum's native-ID format and offset
     indexed_exp = oms.OnDiscMSExperiment()
     indexed_exp.openFile(str(mzml_path))
@@ -167,7 +157,7 @@ def find_spectrum_index(
     id_to_index: Dict[str, int],
     n_spectra: int,
 ) -> Optional[int]:
-    """Resolve a spectrum ID to its array position via the map from ``open_indexed_mzml_fast``."""
+    """Resolve one spectrum ID to its array position using the map from ``open_indexed_mzml_fast``; ``None`` if unknown."""
     clean_id = clean_spectrum_id(spectrum_id)
     if not clean_id:
         return None

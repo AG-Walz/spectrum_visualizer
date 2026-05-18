@@ -1,9 +1,6 @@
-"""
-Explore Page — Streamlit entry point with 3 sub-views.
+"""Explore tab — dispatcher for Spectrum Explorer / Mirror Plots / Comparison Metrics sub-views.
 
-Each sub-view is an @st.fragment so interactions within one view
-(e.g., selecting a PSM in mirror plots) don't rerun the others.
-"""
+Registered in ``app.py``; sub-views are ``@st.fragment``s so interactions stay scoped."""
 import logging
 
 import matplotlib.pyplot as plt
@@ -31,14 +28,14 @@ logger = logging.getLogger(__name__)
 
 @st.fragment
 def comparison_metrics_fragment():
-    """Show comparison metrics table and summary statistics."""
-    # Guard: bail if no comparison frame has been computed yet
+    """Render per-PSM metrics table, per-peptidoform summary stats, and summary plots."""
+    # Guard: bail when Search & Load hasn't produced a comparison frame
     comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
     if comparison_frame is None or comparison_frame.empty:
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
         return
 
-    # Comparison table: list per-PSM metrics for every query/reference pair
+    # Per-PSM table: one row per query/reference pair with all 7 similarity metrics
     st.subheader("Comparison Summary")
     st.caption(f"{len(comparison_frame)} query/reference comparisons")
 
@@ -49,7 +46,7 @@ def comparison_metrics_fragment():
     available_cols = [c for c in display_cols if c in comparison_frame.columns]
     st.dataframe(comparison_frame[available_cols], width="stretch", hide_index=True)
 
-    # Summary statistics: per-peptidoform count/median/mean/std across PSMs
+    # Summary stats: collapse PSMs into count/median/mean/std per peptidoform+charge
     st.markdown("---")
     st.subheader("Summary Statistics")
     metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_frame.columns]
@@ -60,7 +57,7 @@ def comparison_metrics_fragment():
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
 
-    # Summary plots: dual-axis and ridgeline figures for the chosen metric
+    # Summary plots: dual-axis bar/line + ridgeline density for the chosen metric
     available_metrics = [m for m in METRIC_COLUMNS if m in comparison_frame.columns]
     if available_metrics:
         st.markdown("---")
@@ -80,18 +77,24 @@ def comparison_metrics_fragment():
 
 
 def render():
+    """Render title, gate on Search & Load completion, then dispatch to the chosen sub-view."""
+    # Restore analysis: rehydrate session state when the workspace has cached results
     restore_analysis_if_needed()
     st.title("Explore")
     st.caption("Interactive visualization of loaded spectra and comparison metrics")
 
+    # Gate: Search & Load must have populated session state before anything renders
     if not st.session_state.get(get_state_key("data_ready")):
         st.info("Run 'Search & Load' first to populate the explorer.")
         return
 
+    # Sub-view picker: horizontal radio that survives reruns via STATE_PREFIX key
     explore_mode = st.radio(
         "View mode", options=["Spectrum Explorer", "Mirror Plots", "Comparison Metrics"],
         horizontal=True, key=f"{STATE_PREFIX}_explore_mode"
     )
+
+    # Dispatch: only the selected sub-view's fragment runs
 
     if explore_mode == "Spectrum Explorer":
         render_explorer(params)

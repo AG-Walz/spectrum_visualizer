@@ -1,8 +1,4 @@
-"""Peak annotation and spectrum comparison metrics.
-
-Re-exports the public API of the three submodules so callers can keep using
-``from core.annotation import ...`` without caring which file a name lives in.
-"""
+"""Peak annotation + spectrum comparison metrics (re-exported flat for ``core.pipeline``)."""
 from core.annotation.peak_matching import (
     annotate_spectrum,
     prepare_koina_spectrum_for_plot,

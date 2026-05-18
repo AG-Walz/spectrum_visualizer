@@ -1,4 +1,4 @@
-"""Peaks / Sequence / Heatmap LazyFrames for the openms_insight LinePlot, SequenceView, Heatmap."""
+"""Peaks / Sequence / Heatmap LazyFrames feeding the openms_insight LinePlot, SequenceView, and Heatmap (built by ``pipeline.run_streaming_annotation`` → consumed by ``streamlit_app.views.explore.explorer``)."""
 import logging
 
 import numpy as np
@@ -35,8 +35,7 @@ HEATMAP_SCHEMA: dict[str, pl.DataType] = {
 
 
 def _proforma_to_openms_str(peptidoform_str: str) -> str:
-    """Convert ProForma (``PEPTM[Oxidation]IDEK``) to OpenMS parens (``PEPTM(Oxidation)IDEK``). """
-    # Parse ProForma; fall back to bare sequence on failure
+    """Convert ProForma (``PEPTM[Oxidation]IDEK``) to OpenMS parens (``PEPTM(Oxidation)IDEK``) for SequenceView."""
     try:
         peptidoform_obj = Peptidoform(peptidoform_str)
     except PeptidoformException:
@@ -61,7 +60,7 @@ def _proforma_to_openms_str(peptidoform_str: str) -> str:
 def build_peaks_dataframe(
     annotated_spectra: list[tuple[int, pd.DataFrame]],
 ) -> pl.LazyFrame:
-    """Build a peaks LazyFrame (one row per peak) matching :data:`PEAKS_SCHEMA`. """
+    """Stack annotated peaks across PSMs into one LazyFrame (one row per peak) matching :data:`PEAKS_SCHEMA`."""
     # Per-PSM chunks: each annotated frame becomes a typed Polars block
     chunks: list[pl.DataFrame] = []
     for psm_id, annotated_frame in annotated_spectra:
@@ -81,7 +80,7 @@ def build_peaks_dataframe(
     if not chunks:
         return pl.DataFrame(schema=PEAKS_SCHEMA).lazy()
 
-    # Concatenate and return as a LazyFrame
+    # Concatenate into the final LazyFrame
     combined = pl.concat(chunks)
     logger.info(f"Peaks DataFrame: {len(combined)} peaks from {len(chunks)} spectra")
     return combined.lazy()
@@ -90,7 +89,7 @@ def build_peaks_dataframe(
 def build_sequence_dataframe(
     psm_spectra: list[tuple[int, LoadedSpectrum]],
 ) -> pl.LazyFrame:
-    """Build a sequence LazyFrame (one row per PSM) for openms_insight SequenceView. """
+    """Build the per-PSM sequence LazyFrame (one row per PSM) feeding openms_insight SequenceView."""
     if not psm_spectra:
         return pl.DataFrame(schema=SEQUENCE_SCHEMA).lazy()
 
@@ -109,7 +108,7 @@ def build_sequence_dataframe(
 
 
 def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
-    """Build an RT × m/z heatmap LazyFrame (one row per peak) for the openms_insight Heatmap.  """
+    """Stack peaks into an RT × m/z LazyFrame (one row per peak) feeding the openms_insight Heatmap."""
     # Per-spectrum chunks: broadcast RT across the m/z axis
     chunks: list[pl.DataFrame] = []
     for spectrum in spectra:
@@ -126,19 +125,14 @@ def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
     if not chunks:
         return pl.DataFrame(schema=HEATMAP_SCHEMA).lazy()
 
-    # Concatenate and return as a LazyFrame
+    # Concatenate into the final LazyFrame
     combined = pl.concat(chunks)
     logger.info(f"Heatmap DataFrame: {len(combined)} points from {len(chunks)} spectra")
     return combined.lazy()
 
 
 def build_visualization_frames(annotated_queries, psm_frame=None) -> dict:
-    """Build the peaks / sequence / heatmap LazyFrame trio used by openms_insight.
-
-    *annotated_queries* is the canonical list of ``(psm_id, LoadedSpectrum, annotated_frame)``
-    tuples returned by ``run_streaming_annotation`` / ``process_query_result``. When
-    *psm_frame* is supplied it is folded into the returned dict under ``"psm"``.
-    """
+    """Bundle peaks / sequence / heatmap LazyFrames (plus optional ``psm`` frame) for openms_insight from the ``(psm_id, LoadedSpectrum, annotated_frame)`` tuples returned by ``run_streaming_annotation``."""
     frames = {
         "peaks":    build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries]),
         "sequence": build_sequence_dataframe([(psm_id, spec) for psm_id, spec, _ in annotated_queries]),

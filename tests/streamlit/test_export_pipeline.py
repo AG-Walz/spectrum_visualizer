@@ -1,9 +1,4 @@
-"""Unit tests for ``streamlit_app.views.export.export_actions._run_export``.
-
-Drives ``_run_export`` with a mocked ``st`` module + session_state to verify
-each format flag creates the expected artifacts inside the versioned
-``export_*/`` directory.
-"""
+"""Integration tests for ``streamlit_app.views.export.export_actions._run_export`` (mocked Streamlit)."""
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -47,7 +42,7 @@ def _make_annotated_frame():
 
 
 def _make_comparison_frame():
-    """Build a minimal comparison DataFrame matching the real schema."""
+    """Build a two-row comparison_frame with every metric column the export expects."""
     rows = []
     for i, pep in enumerate(["PEPTIDEK", "ANOTHERPEP"]):
         row = {
@@ -98,7 +93,7 @@ def _make_psm_lazyframe():
 
 
 def _build_session_state(tmp_path):
-    """Build a mock session_state dict with all keys _run_export needs."""
+    """Assemble the ``peptide_mirror.*`` session_state ``_run_export`` reads end-to-end."""
     query_spectrum = _make_loaded_spectrum()
     query_frame = _make_annotated_frame()
     reference_spectrum = _make_loaded_spectrum(source_file="ref.mzML", is_ref=True)
@@ -123,11 +118,11 @@ def _build_session_state(tmp_path):
 
 
 class TestRunExport:
-    """Test _run_export produces expected output files."""
+    """Drive ``_run_export`` outside the live app and check each format produces its artefacts."""
 
     @pytest.fixture
     def mock_st(self, tmp_path):
-        """Patch Streamlit + helpers to let _run_export run outside the app."""
+        """Patch ``st`` + helper modules so ``_run_export`` runs end-to-end without a Streamlit runtime."""
         state = _build_session_state(tmp_path)
 
         with patch("streamlit_app.views.export.export_actions.st") as mock_st, \
@@ -181,11 +176,11 @@ class TestRunExport:
         export_root = list(Path(export_dir).iterdir())[0]
         artefacts = check(export_root)
         assert len(artefacts) >= 1, f"{flag} produced no artefacts under {export_root}"
-        # The run_settings.json marker is always written
+        # run_settings.json is always written regardless of which flags are on
         assert (export_root / "run_settings.json").exists()
 
     def test_csv_columns_round_trip(self, mock_st):
-        """CSV-specific schema check (Peptide column + row count from comparison_frame)."""
+        """CSV export round-trip: ``Peptide`` column survives and row count matches ``comparison_frame``."""
         _, tmp_path = mock_st
         export_dir = self._invoke_export(tmp_path, do_csv=True)
         export_root = list(Path(export_dir).iterdir())[0]
@@ -194,13 +189,12 @@ class TestRunExport:
         assert "Peptide" in frame.columns
 
     def test_export_creates_versioned_directory(self, mock_st):
-        """Streamlit now uses the CLI's fingerprinted ``{project}_{NNN}_{YYYYMMDD}`` layout."""
+        """Streamlit reuses the CLI's ``{project}_{NNN}_{YYYYMMDD}`` versioned layout."""
         _, tmp_path = mock_st
         export_dir = self._invoke_export(tmp_path, do_parquet=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
-        # Shared orchestrator: ``MSpecViz_analysis_001_20260420`` (or whatever
-        # project name / next number / today is).
+        # Expected layout: ``MSpecViz_analysis_001_20260420`` (NNN counter + YYYYMMDD)
         assert export_root.name.startswith("MSpecViz_analysis_")
         parts = export_root.name.rsplit("_", 2)
         assert parts[1].isdigit() and len(parts[1]) == 3

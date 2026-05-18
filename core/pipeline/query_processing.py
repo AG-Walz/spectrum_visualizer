@@ -1,9 +1,4 @@
-"""Pipeline orchestration: query processing + plot-task building.
-
-Used by both ``cli/main.py`` (terminal mode) and the Streamlit app in
-``streamlit_app/views/`` (interactive mode). Keeps shared helpers in a single
-authoritative location so both frontends stay in sync.
-"""
+"""Per-query workflow (annotate, match, score) plus plot-task building (called by ``pipeline.streaming_orchestration``, ``cli.main``, and ``streamlit_app.views``)."""
 from pathlib import Path
 
 from core.annotation.comparison_metrics import (
@@ -22,11 +17,7 @@ from core.spectra.loaded_spectrum import source_label, spectrum_lookup_key
 
 
 def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str, str]:
-    """Format query/reference spectrum labels with RT.
-
-    Returns ``(query_label, reference_label)`` tuple.  *reference_label* is ``""``
-    when *reference_spectrum* is ``None``.
-    """
+    """Build ``"Query: <file> (RT: ...)"`` and matching reference label; reference label is ``""`` when no reference is given."""
     query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
     if reference_spectrum is None:
         return query_label, ""
@@ -35,19 +26,15 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str
 
 
 def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str, str]:
-    """Build mapping from PSM ID to variant key.
-
-    *annotated_queries* can be either:
-    * ``dict``  -- ``{psm_id: (spec, df)}``   (Streamlit format)
-    * ``list``  -- ``[(psm_id, spec, df)]``    (CLI format)
-    """
-    # Normalise to iterable of (psm_id, spec); pre-build O(1) lookup by spectrum key.
+    """Map each PSM id to its peptide-variant key; accepts the Streamlit dict shape or the CLI list-of-tuples shape."""
+    # Normalise input: handle Streamlit's dict shape and the CLI list-of-tuples shape uniformly
     if isinstance(annotated_queries, dict):
         items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
     else:
         items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
     spec_to_psm_id = {spectrum_lookup_key(spec): psm_id for psm_id, spec in items}
 
+    # Walk variants: match each PSM's spectrum key back to the annotated query's PSM id
     psm_id_to_variant_key: dict[str, str] = {}
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
@@ -63,7 +50,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
                          koina_model: str = DEFAULTS.koina_model,
                          koina_collision_energy: int = DEFAULTS.koina_collision_energy,
                          koina_instrument_type: str = DEFAULTS.koina_instrument_type):
-    """Annotate query, cache references, compute metrics. Returns (psm_id, spec, df, rows) or None."""
+    """Annotate one query, resolve its references (experimental or Koina), and score every pair; return ``(psm_id, spectrum, frame, rows)`` or ``None``."""
     # PSM lookup: skip spectra that have no matching PSM in the search results
     psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
     if psm_id is None:
@@ -118,12 +105,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
-    """Build list of ``ComparisonTask`` instances for parallel/sequential generation.
-
-    Metrics + ``metrics_text`` are pre-computed here (in the main process) so
-    workers can re-use them via :pyattr:`ComparisonTask.metrics_text` instead
-    of duplicating the work per task.
-    """
+    """Build one ``ComparisonTask`` per (query, reference) pair; metrics text is pre-computed here so plot workers don't recompute it."""
     # Setup: normalise format_dirs, derive export_formats, build PSM->variant lookup
     if format_dirs is None:
         format_dirs = {}

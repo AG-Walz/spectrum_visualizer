@@ -1,1 +1,1 @@
-"""Tests for mirror + summary plotting (``core.plotting``)."""
+"""Tests for ``core.plotting`` (mirror plots, summary plots, plot worker)."""

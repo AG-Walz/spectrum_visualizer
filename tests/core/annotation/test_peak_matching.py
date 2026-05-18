@@ -1,11 +1,4 @@
-"""Tests for ``core.annotation.peak_matching``.
-
-Covers:
-- ``annotate_spectrum`` — the low-level annotator (peptidoform → annotated frame)
-- ``prepare_spectrum_for_plot`` — composition layer (annotate + filter + normalize)
-- ``prepare_koina_spectrum_for_plot`` — the Koina-frame variant
-- ``_parse_koina_charge`` — the Koina annotation charge parser
-"""
+"""Unit tests for ``core.annotation.peak_matching`` (PyOpenMS + Koina annotators)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -17,14 +10,15 @@ from core.annotation import (
 )
 from core.annotation.peak_matching import _parse_koina_charge
 
-# Known singly-charged b2 / y2 m/z for ASDDFDQASY (computed via spectrum_utils
-# during the parity spike — pinned here to avoid coupling tests to PyOpenMS).
+# Singly-charged b2 / y2 m/z for ASDDFDQASY — pinned (computed via
+# spectrum_utils during the parity spike) so the test isn't coupled to whichever
+# theoretical-spectrum library we use today.
 ASDDFDQASY_B2 = 159.0764
 ASDDFDQASY_Y2 = 269.1132
 
 
 class TestAnnotatePeaks:
-    """``annotate_spectrum`` — low-level annotator on the new (peptidoform, charge) signature."""
+    """``annotate_spectrum`` — match peaks against theoretical fragments at a given tolerance."""
 
     def test_exact_match_annotated(self):
         mz = np.array([ASDDFDQASY_B2])
@@ -62,7 +56,7 @@ class TestAnnotatePeaks:
 
 
 class TestPrepareSpectrumForPlot:
-    """``prepare_spectrum_for_plot`` — annotate + filter + normalize composition."""
+    """``prepare_spectrum_for_plot`` — annotate + filter + normalise composition."""
 
     @pytest.fixture(autouse=True)
     def setup(self):
@@ -96,7 +90,7 @@ class TestPrepareSpectrumForPlot:
 
 
 class TestAnnotateRealisticSpectrum:
-    """``prepare_spectrum_for_plot`` on realistic ASDDFDQASY / RTEFNLNQY inputs."""
+    """End-to-end checks on realistic ASDDFDQASY / RTEFNLNQY peak lists."""
 
     def test_annotate_asddfdqasy(self):
         mz = np.array([175.12, 290.14, 405.17, 520.20, 667.27, 782.30], dtype=np.float64)
@@ -129,7 +123,7 @@ class TestParseKoinaCharge:
         ("b5+++", 3),
         ("y3", 1),
         ("", 0),
-        ("y3-H2O+1", 1),  # Koina loss annotation format
+        ("y3-H2O+1", 1),  # Koina neutral-loss annotation format
     ])
     def test_charge_parsing(self, annotation, expected_charge):
         assert _parse_koina_charge(annotation) == expected_charge
@@ -145,7 +139,7 @@ class TestPrepareKoinaSpectrumForPlot:
         })
 
     def test_annotations_ion_types_and_charges(self, koina_frame):
-        """Verify Koina native annotations are preserved with correct ion types and charges."""
+        """Koina native annotations are preserved with correct ion types and charges."""
         result = prepare_koina_spectrum_for_plot(koina_frame)
         for col in ("mz", "intensity", "annotation", "ion_type", "charge", "is_annotated"):
             assert col in result.columns

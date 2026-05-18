@@ -1,8 +1,4 @@
-"""Spectrum loading + Koina prediction.
-
-Re-exports the package's public API so callers can use
-``from core.spectra import ...`` without caring which file a name lives in.
-"""
+"""Spectrum loading + Koina prediction — public API for ``from core.spectra import ...`` (imported by ``pipeline``, ``streamlit_app``, ``cli``)."""
 from core.spectra.koina_prediction import (
     KOINA_AVAILABLE,
     convert_peptide_to_unimod,

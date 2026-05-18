@@ -1,1 +1,1 @@
-"""Tests for the ``streamlit_app/`` UI package."""
+"""Tests for the ``streamlit_app/`` UI (AppTest GUI smoke + export pipeline)."""

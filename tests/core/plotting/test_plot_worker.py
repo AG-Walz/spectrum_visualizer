@@ -1,4 +1,4 @@
-"""Unit tests for core/plotting/plot_worker.py"""
+"""Unit tests for ``core.plotting.plot_worker`` (``ComparisonTask`` → PNG, mirror + single)."""
 from pathlib import Path
 
 import numpy as np
@@ -8,9 +8,9 @@ import pytest
 from core.plotting import ComparisonTask, process_single_task
 from core.annotation import prepare_spectrum_for_plot
 
-# Pinned singly-charged b2 / y2 m/z values for PEPTIDEK (computed via
-# spectrum_utils.MsmsSpectrum.annotate_proforma) — keeps the test from
-# coupling to whichever theoretical-generation library we use today.
+# Pinned singly-charged b2 / y2 m/z for PEPTIDEK — computed via
+# spectrum_utils so the test isn't coupled to whichever theoretical
+# generator we use today.
 PEPTIDEK_B2_PLUS = 227.1026
 PEPTIDEK_Y2_PLUS = 276.1554
 
@@ -20,14 +20,14 @@ PEPTIDEK_Y2_PLUS = 276.1554
 # ---------------------------------------------------------------------------
 
 def _make_annotated_frame(peptidoform="PEPTIDEK", charge=2):
-    """Build a real annotated DataFrame using prepare_spectrum_for_plot."""
+    """Build a real annotated DataFrame via ``prepare_spectrum_for_plot``."""
     mz = np.array([PEPTIDEK_B2_PLUS, PEPTIDEK_Y2_PLUS, 500.0, 600.0])
     intensity = np.array([1000.0, 800.0, 200.0, 150.0])
     return prepare_spectrum_for_plot(mz, intensity, peptidoform, charge=charge)
 
 
 def _make_single_task(tmp_path, skip_plot=False):
-    """Create a single-spectrum ComparisonTask."""
+    """Build a single-spectrum ``ComparisonTask`` writing into ``tmp_path/png``."""
     png_dir = str(tmp_path / "png")
     (tmp_path / "png").mkdir(parents=True, exist_ok=True)
     return ComparisonTask(
@@ -49,7 +49,7 @@ def _make_single_task(tmp_path, skip_plot=False):
 
 
 def _make_mirror_task(tmp_path, skip_plot=False):
-    """Create a mirror ComparisonTask with both query and reference frames."""
+    """Build a mirror ``ComparisonTask`` with both query and reference frames populated."""
     png_dir = str(tmp_path / "png")
     (tmp_path / "png").mkdir(parents=True, exist_ok=True)
     return ComparisonTask(
@@ -100,9 +100,9 @@ class TestProcessSingleTask:
         task = _make_mirror_task(tmp_path, skip_plot=True)
         result = process_single_task(task)
         assert result.success is True
-        # skip_plot=True means no file written
+        # skip_plot=True ⇒ no file written
         assert result.png_path == ""
-        # But metrics should still be computed for mirror tasks
+        # But mirror metrics are still computed (summary CSV needs them)
         assert result.summary_row is not None
 
     def test_result_has_expected_fields(self, tmp_path):

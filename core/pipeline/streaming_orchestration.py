@@ -1,10 +1,4 @@
-"""Streaming-annotation orchestrator shared by CLI and Streamlit frontends.
-
-``run_streaming_annotation`` wraps ``load_spectra_streaming`` with the per-PSM
-result buffering, progress accounting, and per-file logging that both frontends
-were duplicating. Callers supply frontend-specific callbacks; the core sees
-only callables and plain Python lists/dicts.
-"""
+"""Top-level streaming entry: load spectra, annotate each PSM, buffer results (called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -22,13 +16,7 @@ def make_query_ready_callback(
     comparison_rows: list,
     on_progress: Callable[[int], None],
 ):
-    """Return the ``on_query_ready`` callback used by ``load_spectra_streaming``.
-
-    Each invocation: process the query via :func:`process_query_result`, buffer
-    the annotated query + comparison rows, and tick *on_progress* with the
-    running loaded count. *on_progress* fires after every successful PSM —
-    frontends can throttle (e.g. ``if count % 10 == 0``) inside their own callback.
-    """
+    """Build the per-PSM callback that annotates, appends to buffers, and ticks ``on_progress``."""
     loaded_count = [0]
 
     def on_query_ready(result):
@@ -60,11 +48,7 @@ def run_streaming_annotation(
     on_file_complete: Optional[Callable] = None,
     on_error: Optional[Callable[[str], None]] = None,
 ) -> tuple[list, dict, list]:
-    """Stream-load + annotate every PSM. Returns ``(annotated_queries, reference_store, comparison_rows)``.
-
-    Frontend callbacks default to no-ops. *on_progress* fires after every PSM
-    with the running loaded count — callers can throttle/format as they need.
-    """
+    """Stream-load and annotate every PSM; return ``(annotated_queries, reference_store, comparison_rows)``."""
     # Init buffers: shared accumulators populated by the on_query_ready callback
     annotated_queries: list = []
     reference_store: dict = {}

@@ -1,12 +1,4 @@
-"""Frontend-agnostic kwargs builders for the streaming-annotation pipeline.
-
-Both the CLI (`cli/main.py`) and the Streamlit search-and-load view need to
-pack annotation + Koina settings into the kwargs dicts consumed by
-``process_query_result``. The two frontends store the same values under
-different shapes (CLI uses a ``SimpleNamespace``; Streamlit uses session
-``params``). The functions here take a *getter* callable
-``(key, default) -> value`` so each frontend can supply its own lookup.
-"""
+"""Pack annotation + Koina settings into kwargs dicts (called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
 from typing import Any, Callable
 
 from core.common.defaults import DEFAULTS
@@ -15,7 +7,7 @@ ParamGetter = Callable[[str, Any], Any]
 
 
 def build_annotation_kwargs(getter: ParamGetter) -> dict:
-    """Pack annotation params into the kwargs dict for ``prepare_spectrum_for_plot``."""
+    """Read ion types, tolerance, intensity mode, and neutral-loss flag via ``getter`` for ``prepare_spectrum_for_plot``."""
     return dict(
         ion_types=getter("ion_types", DEFAULTS.ion_types),
         mz_tolerance=getter("mz_tolerance", DEFAULTS.mz_tolerance),
@@ -25,7 +17,7 @@ def build_annotation_kwargs(getter: ParamGetter) -> dict:
 
 
 def build_koina_kwargs(getter: ParamGetter) -> dict:
-    """Pack Koina settings into the kwargs dict for ``process_query_result``."""
+    """Read Koina enable flag, model, collision energy, and instrument via ``getter`` for ``process_query_result``."""
     return dict(
         koina_enabled=getter("koina_enabled", DEFAULTS.koina_enabled),
         koina_model=getter("koina_model", DEFAULTS.koina_model),

@@ -1,1 +1,1 @@
-"""Reusable Streamlit widgets shared across views (file browser, peptide input)."""
+"""Reusable Streamlit widgets (file browser, peptide input) — used by ``views/setup_page.py``."""

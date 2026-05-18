@@ -1,4 +1,4 @@
-"""Unit tests for core/common/helpers.py"""
+"""Unit tests for ``core.common.helpers`` (peptide parsing, time formatting, basename uniqueness)."""
 import pytest
 
 from core.common.helpers import (

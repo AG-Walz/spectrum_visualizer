@@ -1,4 +1,4 @@
-"""Integration tests for the CLI pipeline."""
+"""Integration tests for ``cli.main`` — subprocess-driven against the small_dataset fixture."""
 import os
 import subprocess
 import sys
@@ -32,7 +32,8 @@ class TestCLI:
         if not source_config.exists():
             pytest.skip("config_example.yaml not found")
 
-        # Copy the example config but redirect the export directory to tmp_path.
+        # Arrange: clone the example YAML but redirect export_directory to tmp_path
+        # so the test never writes into the developer's real exports folder.
         config_data = yaml.safe_load(source_config.read_text(encoding="utf-8")) or {}
         config_data["export_directory"] = str(tmp_path)
         config_path = tmp_path / "test_config.yaml"

@@ -1,4 +1,4 @@
-"""Unit and integration tests for ``core/spectra/koina_prediction.py``."""
+"""Unit + network-integration tests for ``core.spectra.koina_prediction`` (Koina AI fallback)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -69,11 +69,11 @@ class TestGetKoinaSettings:
 class TestPredictKoinaSpectrum:
     @pytest.fixture(scope="class")
     def predicted_asddfdqasy(self):
-        """Shared prediction result to avoid redundant network calls."""
+        """Run one Koina prediction per class to keep network calls down."""
         return predict_koina_spectrum("ASDDFDQASY", charge=1)
 
     def test_prediction_returns_valid_dataframe(self, predicted_asddfdqasy):
-        """Verify prediction result is a non-empty DataFrame with required columns and valid values."""
+        """Prediction is a non-empty DataFrame with mz/intensity/annotation columns and positive values."""
         result = predicted_asddfdqasy
         assert result is not None
         assert isinstance(result, pd.DataFrame)
@@ -115,7 +115,7 @@ class TestPredictKoinaSpectrum:
 @pytest.mark.slow
 class TestKoinaPipelineIntegration:
     def test_predict_and_annotate_native(self):
-        """Predict a spectrum via Koina and annotate using native Koina annotations."""
+        """Predict via Koina then preserve native ``y3+1``-style annotations through ``prepare_koina_spectrum_for_plot``."""
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 
@@ -124,22 +124,18 @@ class TestKoinaPipelineIntegration:
         assert len(annotated) > 0
         assert "annotation" in annotated.columns
         assert "ion_type" in annotated.columns
-        # Koina predictions should all be annotated (they are predicted fragments)
+        # Every Koina-predicted peak is a theoretical fragment ⇒ all annotated
         annotated_count = (annotated["is_annotated"]).sum()
         assert annotated_count > 0, "Expected annotated peaks from Koina prediction"
-        # Verify native annotations are preserved (not re-matched to PyOpenMS theory)
-        # Koina annotations should be like 'y3+1', 'b5+1', not PyOpenMS format
+        # Native annotations (y3+1, b5+1) must survive — we don't re-match to PyOpenMS
         non_unannotated = annotated[annotated["annotation"] != "unannotated"]
         if len(non_unannotated) > 0:
             sample_ann = non_unannotated["annotation"].iloc[0]
             assert "+" in sample_ann, f"Expected Koina annotation format (e.g. y3+1), got '{sample_ann}'"
 
     def test_koina_as_reference_spectrum(self):
-        """
-        Full flow: predict reference via Koina using native annotations,
-        annotate query with PyOpenMS, then compute comparison metrics.
-        """
-        # Simulate a query spectrum (synthetic peaks around known ASDDFDQASY fragments)
+        """End-to-end: predict reference via Koina, annotate query via PyOpenMS, compute metrics."""
+        # Arrange: synthetic query peaks near the known ASDDFDQASY fragments
         query_mz = np.array([175.0, 290.0, 405.0, 520.0, 635.0, 750.0])
         query_intensity = np.array([500.0, 800.0, 1000.0, 600.0, 300.0, 200.0])
 
@@ -147,16 +143,15 @@ class TestKoinaPipelineIntegration:
             query_mz, query_intensity, "ASDDFDQASY", charge=1, normalize=True
         )
 
-        # Predict reference via Koina using native annotations
+        # Act: predict reference via Koina (keeps native annotations)
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 
         reference_frame = prepare_koina_spectrum_for_plot(predicted, normalize=True)
 
-        # Compute metrics between query and reference
+        # Assert: comparison metrics dict is populated and cosine is bounded
         metrics = compute_all_metrics(query_frame, reference_frame)
         assert isinstance(metrics, dict)
         assert len(metrics) > 0
-        # Cosine similarity should be a number between 0 and 1
         if "cosine_similarity" in metrics:
             assert 0.0 <= metrics["cosine_similarity"] <= 1.0

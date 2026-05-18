@@ -1,1 +1,1 @@
-"""Shared utilities for the core package (defaults, text parsing, time formatting, parallelisation)."""
+"""Shared utilities for the core package: defaults, text parsing, time formatting, parallel dispatch (used by ``core.search``, ``core.spectra``, ``core.plotting``, the Streamlit views, and the CLI)."""

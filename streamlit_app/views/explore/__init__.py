@@ -1,1 +1,1 @@
-"""Explore view: openms_insight explorer + mirror plots + metrics tab."""
+"""Explore tab package — sub-views: Spectrum Explorer, Mirror Plots, Comparison Metrics."""

@@ -1,15 +1,6 @@
-"""Annotate experimental + Koina spectra into the DataFrame schema used downstream.
+"""Match experimental or Koina peaks to theoretical fragments of a peptidoform (called by ``core.pipeline.annotation_steps``).
 
-Experimental annotation is delegated to ``spectrum_utils.MsmsSpectrum.annotate_proforma``
-which generates theoretical fragments and aligns them in one call; we then
-convert the per-peak ``PeakInterpretation`` objects back into the project's
-DataFrame schema. Koina-predicted spectra arrive with native string annotations
-that we keep verbatim — no theoretical step is needed.
-
-Output schema for both paths:
-    mz (float), intensity (float), annotation (str), ion_type (str),
-    charge (int), is_annotated (bool)
-"""
+Experimental path delegates to ``spectrum_utils.annotate_proforma``; Koina keeps native labels."""
 import logging
 
 import numpy as np
@@ -20,7 +11,7 @@ from core.common.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 
-# Per spectrum_utils' SUPPORTED_IONS 
+# First-char of an annotation -> ion-type bucket used for plot colouring
 _BUCKET_FROM_PREFIX = {
     "a": "a", "b": "b", "c": "c", "x": "x", "y": "y", "z": "z",
     "I": "immonium", "p": "precursor", "m": "internal",
@@ -28,19 +19,19 @@ _BUCKET_FROM_PREFIX = {
 
 
 def get_ion_type(annotation: str) -> str:
-    """Map a spectrum_utils ion_type or Koina annotation to its colour-bucket key."""
+    """Return the colour-bucket key (``b``, ``y``, ``immonium``, ``precursor``...) for an annotation string."""
     return _BUCKET_FROM_PREFIX.get(annotation[:1], "unannotated")
 
 
 def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
-    """Convert an annotated MsmsSpectrum to the project's DataFrame schema. """
-    # Allocate per-column accumulators sized to the number of peaks
+    """Convert an annotated ``MsmsSpectrum`` to a DataFrame row per peak in the standard schema."""
+    # Accumulators: one entry per peak, filled in order
     annotations: list[str] = []
     ion_types: list[str] = []
     charges: list[int] = []
     flags: list[bool] = []
 
-    # Walk peaks: take first FragmentAnnotation, fall back to unannotated row
+    # Walk peaks: take the first matched fragment, else mark as unannotated
     for peak_ann in spec.annotation:
         fa_list = peak_ann.fragment_annotations if peak_ann else []
         if not fa_list:
@@ -56,7 +47,7 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
         charges.append(int(fa.charge))
         flags.append(True)
 
-    # Pack columns into the standard schema DataFrame
+    # Pack: stitch the columns into the project's standard peaks-frame schema
     return pd.DataFrame({
         "mz": np.asarray(spec.mz, dtype=float),
         "intensity": np.asarray(spec.intensity, dtype=float),
@@ -77,20 +68,14 @@ def annotate_spectrum(
     add_neutral_losses: bool = False,
     precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
-    """Annotate experimental peaks against theoretical fragments of ``peptidoform``.
-    Returns one row per experimental peak in the standard schema.
+    """Match experimental peaks to theoretical fragments of ``peptidoform``; one row per peak.
 
-    *precursor_mz* must be set to the experimental precursor m/z for
-    ``ion_types`` to include ``"precursor"`` — spectrum_utils needs a real
-    value to match precursor peaks in the spectrum. A 0.0 fallback keeps
-    backbone-ion annotation working when the caller doesn't have it.
-    """
-    # Defaults: empty-input + ion-type string + fallback-frame builder
+    Pass real ``precursor_mz`` when ``"precursor"`` is in ``ion_types`` (0.0 only blocks precursor matches)."""
+    # Defaults: fill ion_types, build spectrum_utils' letter string, prepare fallback frame
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
-    # Pack UI ion-type names into spectrum_utils' single-letter form:
-    # backbone (a/b/c/x/y/z) and the three "special" ions it accepts —
-    # m = internal, p = precursor, I = immonium.
+    # Translate UI ion-type names into the single-letter alphabet spectrum_utils expects:
+    # backbone letters a/b/c/x/y/z pass through; "internal"->m, "precursor"->p, "immonium"->I.
     _SU_LETTERS = ("a", "b", "c", "x", "y", "z")
     _SU_SPECIAL = {"internal": "m", "precursor": "p", "immonium": "I"}
     ion_types_string = "".join(
@@ -109,11 +94,11 @@ def annotate_spectrum(
             "is_annotated": [False] * n,
         })
 
-    # Fast exit: empty input or no requested ion letters
+    # Fast exit: nothing to annotate or no ion types requested
     if n == 0 or not ion_types_string:
         return _fallback_unannotated_frame()
 
-    # Build the spectrum_utils MsmsSpectrum carrier
+    # Wrap: build the MsmsSpectrum carrier spectrum_utils operates on
     spec = MsmsSpectrum(
         identifier="experimental",
         precursor_mz=float(precursor_mz),
@@ -122,7 +107,7 @@ def annotate_spectrum(
         intensity=np.asarray(intensity, dtype=float),
     )
 
-    # Annotate via ProForma; fall back to unannotated frame on parse/match failure
+    # Annotate: ProForma fragment matching; any parse/match failure -> unannotated frame
     try:
         spec.annotate_proforma(
             peptidoform.split("/")[0],   # strip ProForma charge suffix if present
@@ -141,12 +126,12 @@ def annotate_spectrum(
 def _filter_and_normalize(
     annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
-    """Mask peaks whose ion_type isn't in ``ion_types`` and optionally scale to max=1."""
-    # Fast exit: nothing to filter or scale
+    """Drop annotations whose ion type the user didn't ask for and optionally normalise to max=1."""
+    # Fast exit: nothing to do on an empty frame
     if annotated.empty:
         return annotated
 
-    # Mask peaks outside the requested ion_types — reset annotation/type/charge
+    # Mask: peaks outside the requested ion_types lose their label but stay in the frame
     keep_letters = set(ion_types) | {"unannotated"}
     unwanted = ~annotated["ion_type"].isin(keep_letters)
     if unwanted.any():
@@ -155,7 +140,7 @@ def _filter_and_normalize(
         annotated.loc[unwanted, "is_annotated"] = False
         annotated.loc[unwanted, "charge"] = 0
 
-    # Optionally rescale intensities so the brightest peak equals 1.0
+    # Normalise: rescale so the tallest peak sits at intensity 1.0 (mirror-plot convention)
     if normalize:
         max_intensity = annotated["intensity"].max()
         if max_intensity and max_intensity > 0:
@@ -175,7 +160,7 @@ def prepare_spectrum_for_plot(
     add_neutral_losses: bool = False,
     precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
-    """Annotate a spectrum and return a DataFrame ready for plotting / metrics."""
+    """Annotate an experimental spectrum, filter by ion types, optionally normalise — ready for plotting and metrics."""
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
     annotated = annotate_spectrum(
@@ -189,7 +174,7 @@ def prepare_spectrum_for_plot(
 
 
 def _parse_koina_charge(annotation: str) -> int:
-    """Parse Koina annotation charge: ``y3+1`` → 1, ``b5+2`` → 2, ``y7++`` → 2."""
+    """Pull the fragment charge out of a Koina label: ``y3+1`` -> 1, ``b5+2`` -> 2, ``y7++`` -> 2."""
     if not annotation:
         return 0
     plus_count = len(annotation) - len(annotation.rstrip("+"))
@@ -207,7 +192,7 @@ def prepare_koina_spectrum_for_plot(
     normalize: bool = True,
     **_kwargs,
 ) -> pd.DataFrame:
-    """Prepare a Koina-predicted spectrum for plotting; preserves native annotations."""
+    """Prepare a Koina-predicted spectrum for plotting; uses the predictor's labels verbatim (no theoretical matching)."""
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
 

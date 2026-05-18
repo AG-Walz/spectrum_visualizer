@@ -1,10 +1,6 @@
-"""
-Search & Load pipeline helpers — peptide search, spectrum streaming, annotation.
+"""Search & Load action layer — called by ``search_load_page.py`` buttons to drive idXML scan + spectrum streaming.
 
-These are the long-running operations triggered from ``page.py`` buttons.
-They take ``params`` explicitly (not from module state) so the split remains
-testable and re-runnable without reloading the view module.
-"""
+Wraps the core search + streaming-annotation functions with Streamlit progress plumbing."""
 from __future__ import annotations
 
 import copy
@@ -31,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 
 def _show_search_results_summary(results, error_messages, tracker, params: dict) -> None:
-    """Finalize the status block with PSM/variant counts and any warnings."""
+    """Finalize the search status block with PSM/variant counts and any warnings."""
     # Empty path: mark the status block as an error and bail
     if not results:
         tracker.finalize("No matches found", state="error")
@@ -42,7 +38,7 @@ def _show_search_results_summary(results, error_messages, tracker, params: dict)
     tracker.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
     save_params(params)
 
-    # Warnings: surface unresolved-mzML count + collapse per-file errors
+    # Warnings: count PSMs whose mzML couldn't be resolved + collapse per-file parse errors
     unresolved = sum(
         1 for psm_list in results.values()
         for psm in psm_list
@@ -57,10 +53,11 @@ def _show_search_results_summary(results, error_messages, tracker, params: dict)
 
 
 def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
-    """Execute peptide search."""
+    """Scan ``idxmls`` for ``peptides``, stash ``variant_groups`` in session state, surface progress + warnings."""
     mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
+    # Dispatch parallel idXML scan inside a progress status block; stash and summarize results
     with progress_status("Searching peptides...") as tracker:
         results = search_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
@@ -75,18 +72,13 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
 
 
 def _params_getter(params: dict):
-    """Adapter so shared kwargs builders can read from Streamlit ``params``.
-
-    Streamlit stores some keys under different names (e.g. ``selected_mzmls``
-    in session vs ``mzml_files`` in run_settings); for the annotation/Koina
-    kwargs the names already match.
-    """
+    """Return a ``(key, default) -> value`` lookup adapter so shared kwargs builders can read from Streamlit ``params``."""
     return lambda key, default: get_param(params, key, default)
 
 
 def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows) -> None:
-    """Persist all analysis results to session state and disk cache."""
+    """Persist every analysis output (PSM table, visualization frames, annotations, metrics) to session state + disk cache."""
     # Build visualization frames (peaks / sequence / heatmap) from annotations
     frames = build_visualization_frames(annotated_queries)
 
@@ -106,7 +98,7 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
         pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
     )
 
-    # Mark data ready, bump cache version, and persist to disk
+    # Mark data ready, bump cache version (invalidates downstream caches), and persist to disk
     st.session_state[get_state_key("data_ready")] = True
     st.session_state[get_state_key("cache_version")] = \
         st.session_state.get(get_state_key("cache_version"), 0) + 1
@@ -119,10 +111,8 @@ def _stream_and_annotate(
     psm_lookup, annotation_kwargs, koina_kwargs,
     total_psms: int, tracker,
 ) -> tuple[list, dict, list]:
-    """Run the streaming-annotation orchestrator with Streamlit progress + error wiring.
-
-    Returns ``(annotated_queries, reference_store, comparison_rows)``.
-    """
+    """Drive :func:`core.pipeline.run_streaming_annotation` with Streamlit progress/error wiring; return ``(queries, references, comparisons)``."""
+    # Throttle progress updates so we don't redraw on every single spectrum
     def on_progress(loaded_count: int) -> None:
         if loaded_count % 10 == 0 or loaded_count == total_psms:
             tracker.update(loaded_count, total_psms, units="spectra")
@@ -149,7 +139,7 @@ def _stream_and_annotate(
 
 
 def _validate_load_inputs(params: dict) -> tuple | None:
-    """Pre-flight: ensure search ran and mzMLs were picked. Returns ``(variant_groups, mzmls)``."""
+    """Pre-flight check; return ``(variant_groups, mzmls)`` or ``None`` after surfacing an inline error."""
     variant_groups = st.session_state.get(get_state_key("variant_groups"))
     if not variant_groups:
         st.error("No search results. Run peptide search first.")
@@ -164,7 +154,7 @@ def _validate_load_inputs(params: dict) -> tuple | None:
 def _finalize_load(
     psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, tracker,
 ) -> None:
-    """Persist results + update the status block with the run summary."""
+    """Persist results into session state and stamp the status block with a one-line run summary."""
     tracker.info(f"Building DataFrames from {len(annotated_queries)} spectra...")
     _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows)
@@ -175,8 +165,8 @@ def _finalize_load(
 
 
 def run_search_and_load(params: dict) -> None:
-    """Stream spectra, annotate, compute metrics, build DataFrames."""
-    # Reset any previous analysis cache + validate prerequisites
+    """Stream spectra, annotate against the theoretical fragments, compute metrics, and build visualization frames."""
+    # Reset stale cache + abort if Setup/Search prerequisites are missing
     clear_analysis_cache()
 
     inputs = _validate_load_inputs(params)
@@ -184,7 +174,7 @@ def run_search_and_load(params: dict) -> None:
         return
     variant_groups, mzmls = inputs
 
-    # Prepare inputs: snapshot variants, build PSM table, gather kwargs
+    # Prepare inputs: deep-copy variants (workers mutate metadata), build PSM table, gather annotation/Koina kwargs
     variant_groups_copy = copy.deepcopy(variant_groups)
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     getter = _params_getter(params)
@@ -193,7 +183,7 @@ def run_search_and_load(params: dict) -> None:
 
     total_psms = sum(len(plist) for plist in variant_groups_copy.values())
 
-    # Stream + annotate inside a progress status; persist results when non-empty
+    # Stream + annotate inside a progress status block; persist results when non-empty
     with progress_status(f"Loading {total_psms} spectra...") as tracker:
         annotated_queries, reference_store, comparison_rows = _stream_and_annotate(
             params, variant_groups_copy, mzmls,
@@ -207,4 +197,5 @@ def run_search_and_load(params: dict) -> None:
             psm_frame, psm_lookup, annotated_queries, reference_store, comparison_rows, tracker,
         )
 
+    # Rerun so the page picks up ``data_ready`` and shows the post-load summary
     st.rerun()

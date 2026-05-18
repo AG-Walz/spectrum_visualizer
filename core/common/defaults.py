@@ -1,9 +1,10 @@
-"""Single source of truth for user-tunable pipeline parameters."""
+"""Single source of truth for user-tunable pipeline parameters 
+(imported by Setup, Search & Load, and Export views, plus the CLI config loader)."""
 
 from dataclasses import dataclass
 
 
-# Parameter option catalogues (imported by the rest of the codebase)
+# Catalogues of valid choices surfaced in the UI and CLI config
 
 KOINA_MODELS: dict[str, str] = {
     # MS2PIP family
@@ -28,7 +29,7 @@ KOINA_MODELS: dict[str, str] = {
 
 INSTRUMENT_TYPES: tuple[str, ...] = ("QE", "LUMOS", "TIMSTOF", "SCIEXTOF")
 
-# Extended spectrum_utils' ion palette 
+# Fragment-ion colour palette extending spectrum_utils' scheme; reused across Plotly and Matplotlib plots
 ION_COLORS: dict[str, str] = {
     "a":           "#388E3C",  # green       (Material Green 700)
     "b":           "#1976D2",  # blue        (Material Blue 700)
@@ -47,7 +48,7 @@ IMAGE_FORMATS: tuple[str, ...] = ("png", "svg", "pdf", "html")
 
 @dataclass(frozen=True)
 class Defaults:
-    """Canonical defaults. Instantiated once as ``DEFAULTS`` below."""
+    """Canonical default values for every tunable parameter; instantiated once as ``DEFAULTS`` and treated as read-only."""
 
     # --- Annotation ---------------------------------------------------------
     ion_types: tuple[str, ...] = ("b", "y")

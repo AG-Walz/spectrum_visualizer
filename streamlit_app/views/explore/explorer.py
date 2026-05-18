@@ -1,11 +1,6 @@
-"""
-openms_insight Table / SequenceView / LinePlot / Heatmap fragment.
+"""Interactive Explorer sub-view of the Explore tab — Table + SequenceView + LinePlot + Heatmap.
 
-The four components share a single ``StateManager`` so row selections in the
-Table drive the filters for the other three. Cache files are stored under the
-configured export directory and regenerated whenever the underlying analysis
-result changes (``cache_version`` bump).
-"""
+Rendered by ``explore_page.py``; one shared ``StateManager`` cross-links the four components."""
 from __future__ import annotations
 
 import os
@@ -20,20 +15,16 @@ from core.common.defaults import DEFAULTS
 
 
 def _create_component(cls, cache_id, cache_path, needs_regeneration, **kwargs):
-    """Create an openms_insight component, using cache when available."""
+    """Instantiate an openms_insight component, skipping ``kwargs`` when the disk cache is fresh."""
     if needs_regeneration:
         return cls(cache_id=cache_id, cache_path=cache_path, **kwargs)
     return cls(cache_id=cache_id, cache_path=cache_path)
 
 
 def _needs_cache_regen():
-    """Compare this fragment's last-rendered cache version against the current one.
+    """Return ``(needs_regen, mark_rendered)`` by comparing rendered vs current ``cache_version``.
 
-    Returns ``(needs_regen, mark_rendered)``. Call ``mark_rendered()`` after a
-    successful render so the next rerun can short-circuit. Centralising this
-    here keeps the ``cache_version`` / ``cache_rendered_version`` session-state
-    key pair in one place.
-    """
+    Call ``mark_rendered()`` after a successful render so the next rerun short-circuits."""
     cache_version = st.session_state.get(get_state_key("cache_version"), 0)
     reg_key = get_state_key("cache_rendered_version")
     needs = st.session_state.get(reg_key, -1) != cache_version
@@ -45,7 +36,7 @@ def _needs_cache_regen():
 
 
 def _resolve_cache_path(params: dict) -> str:
-    """Return the explorer's component-cache directory, creating it if needed."""
+    """Return the openms_insight component-cache directory, creating it if missing."""
     export_dir = get_param(params, "export_directory", "")
     cache_path = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
     os.makedirs(cache_path, exist_ok=True)
@@ -53,14 +44,14 @@ def _resolve_cache_path(params: dict) -> str:
 
 
 def _get_state_manager() -> StateManager:
-    """Return the cross-component StateManager, creating it on first access."""
+    """Lazily build the cross-component ``StateManager`` and stash it in session state."""
     if "mspecviz_sm" not in st.session_state:
         st.session_state["mspecviz_sm"] = StateManager(session_key="mspecviz_state")
     return st.session_state["mspecviz_sm"]
 
 
 def _show_selected_psm_banner(psm_frame: pl.LazyFrame | None, state_manager: StateManager) -> None:
-    """Show an info banner naming the currently selected PSM, if any."""
+    """Display an info banner with the label and source file of the active PSM, if one is picked."""
     if psm_frame is None:
         return
     selected_id = state_manager.get_state_for_vue().get("selected_psm")
@@ -75,7 +66,7 @@ def _show_selected_psm_banner(psm_frame: pl.LazyFrame | None, state_manager: Sta
 
 
 def _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager) -> None:
-    """Render the PSM Table; selecting a row updates ``selected_psm``."""
+    """Render the openms_insight PSM ``Table``; row clicks publish ``selected_psm`` to the StateManager."""
     st.subheader("PSM Table")
     st.caption("Click a row to update the spectrum and sequence views below.")
     columns = [
@@ -95,8 +86,9 @@ def _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager) 
 def _render_sequence_view(
     sequence_frame, peaks_frame, params, cache_path, needs_regeneration, state_manager,
 ) -> None:
-    """Render the SequenceView coverage map filtered by ``selected_psm``."""
+    """Render the ``SequenceView`` ion-coverage map for the active PSM."""
     st.subheader("Sequence Coverage")
+    # Rename peaks columns: SequenceView expects ``peak_id``/``mass``/``intensity``
     if needs_regeneration:
         peaks_for_sv = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
     else:
@@ -116,7 +108,7 @@ def _render_sequence_view(
 
 
 def _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager) -> None:
-    """Render the fragment-spectrum LinePlot, linked to the SequenceView."""
+    """Render the fragment-spectrum ``LinePlot``, color-linked to the ``SequenceView``."""
     st.subheader("Fragment Spectrum")
     lineplot = _create_component(
         LinePlot, "spectrum_plot", cache_path, needs_regeneration,
@@ -129,7 +121,7 @@ def _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager
 
 
 def _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager) -> None:
-    """Render the RT x m/z Heatmap (log-scaled intensity)."""
+    """Render the retention-time x m/z ``Heatmap`` with log-scaled intensity."""
     st.subheader("RT x m/z Heatmap")
     heatmap = _create_component(
         Heatmap, "rt_heatmap", cache_path, needs_regeneration,
@@ -141,8 +133,8 @@ def _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager
 
 @st.fragment
 def render_explorer(params: dict) -> None:
-    """openms_insight Table + LinePlot + SequenceView + Heatmap."""
-    # Setup: cache directory, regen flag, and the shared StateManager
+    """Render the full Interactive Explorer — banner + Table + SequenceView + LinePlot + Heatmap."""
+    # Prepare: cache directory, regen flag, and the shared StateManager
     cache_path = _resolve_cache_path(params)
     needs_regeneration, mark_rendered = _needs_cache_regen()
     state_manager = _get_state_manager()
@@ -153,7 +145,7 @@ def render_explorer(params: dict) -> None:
     sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
     heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
 
-    # Render components: banner + table + sequence view + line plot + heatmap
+    # Render: banner + table + sequence view + line plot + heatmap (top to bottom)
     _show_selected_psm_banner(psm_frame, state_manager)
     _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager)
     _render_sequence_view(
@@ -162,6 +154,6 @@ def render_explorer(params: dict) -> None:
     _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
     _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager)
 
-    # Mark rendered: skip cache regeneration on subsequent reruns
+    # Mark rendered: subsequent reruns reuse the parquet caches instead of rebuilding
     if needs_regeneration:
         mark_rendered()

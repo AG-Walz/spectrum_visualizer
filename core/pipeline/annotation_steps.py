@@ -1,9 +1,4 @@
-"""Per-query annotation phases used by ``process_query_result``.
-
-Each phase is a small helper: annotate the query, cache references, attempt a
-Koina fallback. Extracted so ``query_processing`` stays readable and each
-phase can be unit-tested independently.
-"""
+"""Per-query annotation phases — annotate query, cache references, fall back to Koina (called by ``pipeline.query_processing.process_query_result``)."""
 import numpy as np
 from psm_utils import Peptidoform
 
@@ -22,7 +17,7 @@ def get_koina_prediction(
     koina_collision_energy: int = DEFAULTS.koina_collision_energy,
     koina_instrument_type: str = DEFAULTS.koina_instrument_type,
 ):
-    """Get Koina AI prediction and annotate as reference spectrum. """
+    """Predict a spectrum with Koina and wrap it as an annotated reference; return ``(spectrum, frame)`` or ``None``."""
     # Availability guard: bail early if Koina extra isn't installed
     if not KOINA_AVAILABLE:
         return None
@@ -58,7 +53,7 @@ def get_koina_prediction(
 
 
 def _annotate_query_spectrum(result, annotation_kwargs):
-    """Annotate the query spectrum (peaks + theoretical fragments)."""
+    """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame."""
     return prepare_spectrum_for_plot(
         result.query_spectrum.mz,
         result.query_spectrum.intensity,
@@ -70,7 +65,7 @@ def _annotate_query_spectrum(result, annotation_kwargs):
 
 
 def _cache_reference_spectra(result, reference_store, annotation_kwargs):
-    """Annotate and cache reference spectra for this variant (once)."""
+    """Annotate every reference spectrum for this peptide variant and stash them in ``reference_store`` (once per variant)."""
     variant_key = result.variant_key
     if variant_key in reference_store or not result.reference_spectra:
         return
@@ -88,7 +83,7 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
 
 def _try_koina_fallback(result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
-    """If no experimental references, try a Koina AI prediction. Returns the ref list."""
+    """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list."""
     variant_key = result.variant_key
     references = reference_store.get(variant_key, [])
     if references:

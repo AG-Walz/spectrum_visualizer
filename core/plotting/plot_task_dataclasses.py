@@ -1,9 +1,4 @@
-"""Task / result dataclasses for parallel plot generation.
-
-Kept separate from ``worker_execution`` so they remain lightweight to import
-(no matplotlib / plotly dependency) for callers that only need to construct
-tasks — e.g. the CLI builder in ``core.pipeline``.
-"""
+"""``ComparisonTask`` / ``ComparisonResult`` dataclasses passed between the orchestrator and the parallel render workers (constructed by ``core.export.export_pipeline`` / ``cli.main``, consumed by ``plot_worker``)."""
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -12,7 +7,7 @@ import pandas as pd
 
 @dataclass
 class ComparisonTask:
-    """All data needed to produce one plot in a worker process."""
+    """Picklable bundle of everything a worker needs to render one plot (spectra, labels, output paths, formats)."""
 
     task_id: int
     task_type: str  # "mirror" or "single"
@@ -44,10 +39,8 @@ class ComparisonTask:
     # Skip plot generation (metrics only -- plot already exists on disk)
     skip_plot: bool = False
 
-    # Pre-formatted metrics box text. When non-empty, the worker uses this
-    # directly instead of recomputing via ``format_metrics_text`` — lets the
-    # caller (e.g. the CLI) compute metrics once in the main process and
-    # avoid re-doing the work per worker.
+    # Pre-formatted metrics box: lets the caller compute metrics once in the
+    # main process and reuse the text across workers instead of recomputing.
     metrics_text: str = ""
 
     # Summary metadata (for CSV row)
@@ -60,7 +53,7 @@ class ComparisonTask:
 
 @dataclass
 class ComparisonResult:
-    """Output from one worker invocation."""
+    """Worker output: success flag, on-disk paths for each rendered format, and the summary-CSV row for mirror tasks."""
 
     task_id: int
     task_type: str
@@ -72,5 +65,5 @@ class ComparisonResult:
     pdf_path: str = ""
     html_path: str = ""
 
-    # Dict with metrics for summary CSV (only for mirror tasks)
+    # Per-task metrics row for the summary CSV (mirror tasks only)
     summary_row: Optional[dict] = None

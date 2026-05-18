@@ -1,8 +1,4 @@
-"""Intensity-based spectrum similarity metrics.
-
-R² (matched + binned) and cosine all rest on aligning intensities of
-shared annotations. 
-"""
+"""Intensity-based similarity (cosine, R² matched, R² binned) between two annotated spectra (helpers reused by ``comparison_metrics.compute_all_metrics``)."""
 import logging
 
 import numpy as np
@@ -17,12 +13,9 @@ def _get_matching_intensities(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Find overlapping annotated ions; returns ``(query_intensities, reference_intensities)``.
+    """Aligned intensities for ions annotated in both spectra; returns ``(query, reference)`` of length n-shared.
 
-    Within each spectrum, multiple peaks may share an annotation (e.g. isotopes or charge states
-    with the same string label). First collapse to the brightest per label, then keep only 
-    labels present in both spectra. ``len(query_intensities)`` is the number of shared labels.
-    """
+    Collapses duplicate labels (isotopes, charge states) to the brightest peak before intersecting on label."""
     query_max = query_frame[query_frame["is_annotated"]].groupby("annotation")["intensity"].max()
     reference_max = reference_frame[reference_frame["is_annotated"]].groupby("annotation")["intensity"].max()
     shared = sorted(set(query_max.index) & set(reference_max.index))
@@ -32,21 +25,21 @@ def _get_matching_intensities(
 
 
 def _r2_from_arrays(query_intensities: np.ndarray, reference_intensities: np.ndarray) -> float:
-    """R^2 from pre-computed matched intensity arrays."""
+    """R² from already-aligned intensity arrays; NaN with fewer than 2 points."""
     if len(query_intensities) < 2:
         return float("nan")
     return float(linregress(query_intensities, reference_intensities).rvalue ** 2)
 
 
 def _cosine_from_arrays(query_intensities: np.ndarray, reference_intensities: np.ndarray) -> float:
-    """Cosine similarity from pre-computed matched intensity arrays."""
+    """Cosine similarity from already-aligned intensity arrays; NaN if either side is all-zero."""
     if len(query_intensities) == 0 or not np.any(query_intensities) or not np.any(reference_intensities):
         return float("nan")
     return 1.0 - float(_cosine_distance(query_intensities, reference_intensities))
 
 
 def compute_r2_matching(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
-    """R^2 (matching) -- LinearRegression R^2 on matching annotated ion intensities."""
+    """R² on intensities of ions annotated in both spectra (the ``R2m`` column)."""
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     return _r2_from_arrays(query_intensities, reference_intensities)
 
@@ -56,8 +49,8 @@ def compute_r2_binned(
     reference_frame: pd.DataFrame,
     n_bins: int = 1000,
 ) -> float:
-    """R^2 (binned) -- LinearRegression R^2 on binned intensity profiles."""
-    # Guard against empty inputs or degenerate m/z range
+    """R² on intensity profiles after binning both spectra onto a shared m/z grid (the ``R2b`` column)."""
+    # Guard: empty inputs or a zero-width m/z range can't be binned
     if query_frame.empty or reference_frame.empty:
         return float("nan")
 
@@ -66,12 +59,12 @@ def compute_r2_binned(
     if mz_max <= mz_min:
         return float("nan")
 
-    # Bin both spectra onto the same m/z grid and sum intensities per bin
+    # Bin: sum intensities into a shared 1000-bin grid spanning the combined m/z range
     bin_edges = np.linspace(mz_min, mz_max, n_bins + 1)
     query_sums, _ = np.histogram(query_frame["mz"], bins=bin_edges, weights=query_frame["intensity"])
     reference_sums, _ = np.histogram(reference_frame["mz"], bins=bin_edges, weights=reference_frame["intensity"])
 
-    # Regress on bins where both spectra carry signal
+    # Regress: only bins with signal in both spectra count toward the fit
     shared_mask = (query_sums > 0) & (reference_sums > 0)
     if shared_mask.sum() < 2:
         return float("nan")
@@ -79,6 +72,6 @@ def compute_r2_binned(
 
 
 def compute_cosine_similarity(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
-    """Cosine similarity on matching annotated ion intensities."""
+    """Cosine similarity on intensities of ions annotated in both spectra (the ``Cos`` column)."""
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     return _cosine_from_arrays(query_intensities, reference_intensities)

@@ -1,8 +1,4 @@
-"""Peptide input widget — paste-list and pick-from-idXML tabs.
-
-The "pick from idXML" flow delegates PSM counting to
-:func:`core.search.count_psms_in_idxmls` and only owns the Streamlit progress UI.
-"""
+"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via :func:`core.search.count_psms_in_idxmls`)."""
 from collections import Counter
 
 import streamlit as st
@@ -15,7 +11,7 @@ from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Wrap ``count_psms_in_idxmls`` with a live Streamlit progress bar."""
+    """Run :func:`count_psms_in_idxmls` with a live Streamlit progress bar; return ``(counts, errors)``."""
     # Setup: error accumulator + progress-status context
     errors: list[str] = []
     n = len(idxmls)
@@ -38,7 +34,7 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
 
 
 def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
-    """Paste-list tab: textarea + live count."""
+    """Render the paste-list tab: textarea + live peptide count."""
     col1, col2 = st.columns([2, 1])
     with col1:
         peptide_text = st.text_area(
@@ -58,7 +54,7 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
 
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
-    """Return cached PSM counts for the given idXML files, scanning if needed."""
+    """Return cached PSM counts for ``idxmls``; render a Scan button when no cache exists."""
     # Cache lookup: keys for the counts dict and the list of files last scanned
     scan_key = '_idxml_psm_counts'
     scan_files_key = '_idxml_scan_files'
@@ -82,7 +78,7 @@ def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
 
 
 def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
-    """Render the filter input + min-PSM number_input; returns ``(text, min_psm)``."""
+    """Render the substring filter + min-PSM threshold; return ``(filter_text, min_psm)``."""
     f_col1, f_col2 = st.columns([2, 1])
     with f_col1:
         filter_text = st.text_input(
@@ -100,7 +96,7 @@ def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
 
 
 def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -> list[str]:
-    """Render the peptide multiselect; returns the list of selected sequences."""
+    """Render the peptide multiselect and return the bare sequences the user picked."""
     # Filter rows: respect min-PSM threshold and the optional substring filter
     shown_items = [
         (sequence, count) for sequence, count in psm_counts.items()
@@ -120,7 +116,7 @@ def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -
 
 
 def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) -> None:
-    """Write *selected* into ``pending_key`` either replacing or appending."""
+    """Stage ``selected`` into ``pending_key`` (replace or append to the textarea) and rerun."""
     if mode == "append":
         existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
         peps = list(dict.fromkeys(existing + selected))
@@ -131,7 +127,7 @@ def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) ->
 
 
 def _render_pick_actions(selected: list[str], pending_key: str) -> None:
-    """Render the 'Set as target' / 'Add to existing' buttons."""
+    """Render the 'Set as target' and 'Add to existing' commit buttons."""
     c1, c2 = st.columns(2)
     with c1:
         if st.button("Set as target peptides", key=f"{STATE_PREFIX}_pick_set",
@@ -143,7 +139,7 @@ def _render_pick_actions(selected: list[str], pending_key: str) -> None:
 
 
 def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
-    """Pick-from-idXML tab: scans files, renders filterable multiselect."""
+    """Render the pick-from-idXML tab: scan files, then filter and multiselect peptides."""
     # Guard: require idXML selections before showing any pick UI
     if not idxmls:
         st.info("Select idXML files above first.")
@@ -162,7 +158,7 @@ def _render_pick_tab(idxmls: list[str], workers: int, pending_key: str) -> None:
 
 
 def render_peptide_input(params: dict) -> None:
-    """Render the Target Peptides widget with paste + pick tabs."""
+    """Render the Target Peptides widget (paste-list + pick-from-idXML tabs) on the Setup page."""
     # Commit any pending peptide list flushed by the pick-tab on the previous run
     pending_key = "_pending_target_peptides"
     persisted_key = get_state_key('target_peptides_persisted')

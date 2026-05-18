@@ -1,10 +1,4 @@
-"""Streaming mzML loader — orchestration + dispatch.
-
-Coordinates reference-first ordering so downstream consumers can compute
-query/reference metrics as each query arrives. The per-file worker itself
-lives in ``core.spectra.mzml_workers``; parallel/sequential dispatch
-lives in ``core.common.task_dispatch``.
-"""
+"""Streaming mzML loader — orchestrates reference-first loading so each query can be compared against its references on arrival (driven by ``pipeline.streaming_orchestration``)."""
 import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -22,12 +16,9 @@ def build_mzml_to_matches_map(
     variant_groups: Dict[str, PSMList],
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Map each mzML path key to the list of ``(psm, variant_key)`` pairs to load.
+    """Group PSMs by the mzML they live in; return ``{path_key: [(psm, variant_key), ...]}``.
 
-    Prefers ``psm.metadata["mzml_resolved_path"]`` when set, then falls back to
-    a stem-based lookup against ``psm.run`` (the canonical run name psm_utils
-    parses from the idXML's ``spectra_data``).
-    """
+    Prefers ``psm.metadata["mzml_resolved_path"]``, falls back to a stem match against ``psm.run``."""
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
 
@@ -40,7 +31,7 @@ def build_mzml_to_matches_map(
                 return key
         return stem_to_key.get(psm.run.lower())
 
-    # Bucket: group each PSM under its resolved mzML path key
+    # Bucket: file each PSM under its resolved mzML path key
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
@@ -50,7 +41,7 @@ def build_mzml_to_matches_map(
 
 
 def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
-    """Build ``(path_str, display_name, matches)`` tuples for files that have matches."""
+    """Pack ``(path_str, display_name, matches)`` tuples for every file with at least one match."""
     return [
         (str(mzml_path_map[key]), mzml_path_map[key].name, mzml_to_matches[key])
         for key in file_keys if key in mzml_to_matches
@@ -59,7 +50,7 @@ def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
 
 def _execute_load_tasks(file_tasks, is_reference, workers,
                         on_file_start, on_file_complete, error_callback) -> List[LoadResult]:
-    """Load spectra from mzML files, sequentially or in parallel."""
+    """Run the mzML worker over ``file_tasks`` (sequential or parallel) and return all ``LoadResult``s; fires the progress callbacks along the way."""
     # Setup: short-circuit on empty, wire optional callbacks
     if not file_tasks:
         return []
@@ -68,12 +59,12 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
     on_complete = on_file_complete or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
 
-    # Build & announce: pack is_reference into each task; fire start callbacks
+    # Build & announce: stamp is_reference onto each task; fire start callbacks
     tasks = [(p, d, m, is_reference) for p, d, m in file_tasks]
     for _path, display_name, _matches, _is_ref in tasks:
         on_start(display_name, is_reference)
 
-    # Dispatch & collect: surface worker errors, accumulate per-file results
+    # Dispatch & collect: surface worker crashes, accumulate per-file results
     all_results: List[LoadResult] = []
     for task, ok, result in run_tasks(
         tasks=tasks, worker=_load_spectra_from_mzml, workers=workers,
@@ -91,7 +82,7 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
 def _split_reference_and_query_keys(
     mzml_path_map: Dict[str, Path], reference_substring: str,
 ) -> Tuple[Dict[str, Path], Dict[str, Path]]:
-    """Partition path-keys into ``(references, queries)`` by case-insensitive substring."""
+    """Split mzML paths into ``(references, queries)`` by case-insensitive substring match; empty needle means every file is a query."""
     needle = reference_substring.lower() if reference_substring else None
     references: Dict[str, Path] = {}
     queries: Dict[str, Path] = {}
@@ -105,7 +96,7 @@ def _filter_already_loaded(
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]],
     skip_ids: set,
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Drop any (variant_key, spectrum_id) pairs already present in *skip_ids*."""
+    """Drop ``(variant_key, spectrum_id)`` pairs found in ``skip_ids`` (used to resume from a partial run)."""
     before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
         path_key: kept for path_key, matches in mzml_to_matches.items()
@@ -121,20 +112,19 @@ def _collect_reference_spectra(
     ref_results: List[LoadResult], variant_groups: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[LoadedSpectrum]]:
-    """Bucket reference spectra by variant_key and fire the per-variant callback."""
-    # Bucket: initialise one slot per known variant, fan out the loaded spectra
+    """Bucket every reference spectrum by ``variant_key`` and fire the per-variant callback once references are in."""
+    # Bucket: one slot per known variant, fan out the loaded spectra
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {variant_key: [] for variant_key in variant_groups}
     for result in ref_results:
         for variant_key, spectrum in result.loaded:
             reference_spectra[variant_key].append(spectrum)
 
-    # Notify: per-variant callback fires only when references were found
+    # Notify: per-variant callback only fires for variants that actually got refs
     notify = on_reference_loaded or (lambda *_: None)
     for variant_key, references in reference_spectra.items():
         if references:
             notify(variant_key, len(references))
 
-    # Final summary
     logger.info(f"References loaded: {sum(len(r) for r in reference_spectra.values())} spectra")
     return reference_spectra
 
@@ -144,7 +134,7 @@ def _stream_query_results(
     reference_spectra: Dict[str, List[LoadedSpectrum]],
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
-    """Fire ``on_query_ready`` once per loaded query spectrum."""
+    """Fire ``on_query_ready`` once per loaded query spectrum, attaching its variant's reference spectra."""
     if not on_query_ready:
         return
     for result in query_results:
@@ -168,13 +158,10 @@ def load_spectra_streaming(
     workers: int = 1,
     skip_ids: Optional[set] = None,
 ) -> Dict[str, List[LoadedSpectrum]]:
-    """Stream-load references first, then queries; yields each query via ``on_query_ready``.
+    """Load references first, then stream each query through ``on_query_ready``; return ``{variant_key: [reference_spectra]}``.
 
-    ``reference_substring`` (case-insensitive) splits ``mzml_paths`` into
-    references and queries. Callbacks fire on file start/complete/error plus
-    per reference and per query. Returns ``{variant_key: [reference_spectra]}``.
-    """
-    # Partition inputs: split paths into reference/query buckets, build PSM map
+    ``reference_substring`` (case-insensitive) partitions ``mzml_paths``; loading refs first lets queries compute metrics on arrival."""
+    # Partition inputs: bucket paths into refs/queries, group PSMs by mzML
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     reference_keys, query_keys = _split_reference_and_query_keys(mzml_path_map, reference_substring)
 
@@ -182,7 +169,7 @@ def load_spectra_streaming(
     if skip_ids:
         mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
 
-    # References first: load + bucket so queries can compute metrics immediately
+    # References first: load + bucket so queries can be compared on arrival
     ref_tasks = _build_file_tasks(reference_keys, mzml_to_matches, mzml_path_map)
     ref_results = _execute_load_tasks(
         ref_tasks, True, workers, on_file_start, on_file_complete, error_callback,

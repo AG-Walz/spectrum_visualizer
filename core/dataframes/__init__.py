@@ -1,9 +1,4 @@
-"""Polars LazyFrames for openms_insight components.
-
-Re-exports the public API of the submodules so callers can keep using
-``from core.dataframes import ...`` without caring which file a name
-lives in.
-"""
+"""Polars LazyFrames feeding openms_insight Table/LinePlot/SequenceView/Heatmap (imported by ``cli.main`` and ``streamlit_app.views.search_load.search_load_actions``)."""
 from core.dataframes.psm_tables import (
     PSM_TABLE_SCHEMA,
     build_psm_table,

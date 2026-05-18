@@ -1,9 +1,6 @@
-"""Shared export orchestrator: directory versioning, parquets, plots, summaries.
+"""Top-level export orchestrator (called by ``cli.main`` and ``streamlit_app.views.export.export_actions``).
 
-``run_export`` is the single entry point. Both ``cli.main`` and
-``streamlit_app.views.export.export_actions`` call it with their own progress
-callbacks so the on-disk layout stays identical across frontends.
-"""
+``run_export`` plans a versioned folder, writes parquet + CSV/XLSX, dispatches plot workers, writes ``run_settings.json``."""
 from __future__ import annotations
 
 import logging
@@ -32,7 +29,7 @@ _PICTURE_FORMATS = ("png", "svg", "pdf")
 
 @dataclass
 class ExportSelection:
-    """Which artifact groups the caller wants written."""
+    """Which artefact groups to write (parquet / CSV / mirror plots / summaries / HTML)."""
     parquet: bool = True
     csv: bool = True
     mirror_plots: bool = True
@@ -42,7 +39,7 @@ class ExportSelection:
 
 @dataclass
 class PlotSettings:
-    """Plot task generation parameters."""
+    """Figure size, image formats, DPI, and plot-worker count."""
     export_formats: list[str] = field(default_factory=lambda: ["png", "svg"])
     figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
@@ -52,7 +49,7 @@ class PlotSettings:
 
 @dataclass
 class ExportCallbacks:
-    """UI hooks. All optional; no-op when ``None``."""
+    """Optional UI hooks for step messages, plot progress, and warnings (no-op when ``None``)."""
     on_step: Callable[[str], None] | None = None
     on_plot_progress: Callable[[int, int], None] | None = None
     on_warning: Callable[[str], None] | None = None
@@ -60,6 +57,7 @@ class ExportCallbacks:
 
 @dataclass
 class ExportResult:
+    """Final outcome: the chosen folder, every saved file, and per-group plot counts."""
     export_root: Path
     saved_files: list[str]
     mirror_plot_count: int = 0
@@ -69,7 +67,7 @@ class ExportResult:
 def _resolve_format_dirs(
     root_dir: Path, export_formats: list[str],
 ) -> tuple[dict[str, str], str]:
-    """Return ``(format_dirs, html_dir)`` without creating any folders."""
+    """Map each requested format to its subfolder path (no folders created)."""
     format_dirs = {fmt: str(root_dir / fmt) for fmt in _PICTURE_FORMATS if fmt in export_formats}
     html_dir = str(root_dir / "html") if "html" in export_formats else ""
     return format_dirs, html_dir
@@ -86,8 +84,8 @@ def _run_plot_tasks(
     on_progress: Callable[[int, int], None],
     on_warning: Callable[[str], None],
 ) -> int:
-    """Build plot tasks and dispatch through :func:`run_tasks`."""
-    # Resolve format set: append html when caller requested it, map each to a subdir
+    """Build one mirror plot per ``(query, reference)`` pair and render via a worker pool."""
+    # Resolve format set: append html when requested, map each to a subdir
     base_formats = list(plot_settings.export_formats)
     if do_html and "html" not in base_formats:
         base_formats.append("html")
@@ -106,7 +104,7 @@ def _run_plot_tasks(
     if not tasks:
         return 0
 
-    # Dispatch & collect: tally saved paths, surface worker errors, tick progress
+    # Dispatch: tally saved paths, surface worker errors, tick progress
     total_files = 0
     total = len(tasks)
     for completed, (_task, ok, result) in enumerate(run_tasks(
@@ -131,7 +129,7 @@ def _run_summary_plots(
     export_formats: list[str],
     saved_files: list[str],
 ) -> int:
-    """Delegate to :func:`generate_all_summary_plots` with a picture-format filter."""
+    """Render dual-axis / ridgeline / heatmap summaries (picture formats only; falls back to PNG)."""
     if comparison_frame is None or comparison_frame.empty:
         return 0
     summary_formats = [f for f in export_formats if f in _PICTURE_FORMATS] or ["png"]
@@ -159,14 +157,10 @@ def run_export(
     plot_settings: PlotSettings | None = None,
     callbacks: ExportCallbacks | None = None,
 ) -> ExportResult:
-    """Orchestrate a full export: versioned dir, parquets, CSV/XLSX, plots, summaries.
+    """Run a full export end-to-end: versioned dir, parquets, CSV/XLSX, plots, summaries.
 
-    Plans (or reuses) ``{project}_{NNN}_{YYYYMMDD}/`` via :func:`find_or_create_export_directory`,
-    writes ``run_settings.json``, then dispatches each optional group in ``selection``.
-    Progress and warnings are surfaced through ``callbacks`` so the CLI can render
-    a terminal bar and Streamlit can render ``st.caption`` / ``st.warning``.
-    """
-    # Normalise inputs: fall back to defaults, wire optional callbacks
+    Returns an ``ExportResult`` listing every saved file; dispatches each artefact group in ``selection``."""
+    # Normalise inputs: defaults for missing dataclasses, no-op for missing callbacks
     selection = selection or ExportSelection()
     plot_settings = plot_settings or PlotSettings()
     callbacks = callbacks or ExportCallbacks()
@@ -174,16 +168,15 @@ def run_export(
     on_progress = callbacks.on_plot_progress or (lambda *_: None)
     on_warning = callbacks.on_warning or (lambda *_: None)
 
-    # Plan & commit directory: reuse versioned folder or allocate next NNN
+    # Stage 1 — Plan & commit folder: reuse on fingerprint match, else allocate next NNN
     root_dir = find_or_create_export_directory(export_directory, project_name, run_settings)
     commit_export_directory(root_dir, run_settings)
 
     saved_files: list[str] = [str(root_dir / "run_settings.json")]
 
-    # Tabular artefacts: parquet frames + comparison CSV/XLSX
+    # Stage 2 — Parquet frames: write each of the four LazyFrames as {name}.parquet
     if selection.parquet:
         on_step("Saving Parquet DataFrames...")
-        # Collect the four LazyFrames and write {name}.parquet
         for name in _PARQUET_FRAMES:
             frame = frames.get(name)
             if frame is None:
@@ -192,9 +185,9 @@ def run_export(
             frame.collect().write_parquet(out)
             saved_files.append(str(out))
 
+    # Stage 3 — Comparison table: CSV unconditional; XLSX best-effort (needs openpyxl)
     if selection.csv and comparison_frame is not None and not comparison_frame.empty:
         on_step("Saving comparison summary...")
-        # CSV is unconditional; XLSX is best-effort (requires openpyxl)
         csv_path = root_dir / "comparison_summary.csv"
         comparison_frame.to_csv(csv_path, index=False)
         saved_files.append(str(csv_path))
@@ -207,7 +200,7 @@ def run_export(
         except Exception as error:
             on_warning(f"XLSX export failed: {error}")
 
-    # Mirror plots: dispatch per-PSM tasks across workers
+    # Stage 4 — Mirror plots: one per PSM, rendered across the worker pool
     mirror_plot_count = 0
     if selection.mirror_plots or selection.html:
         on_step("Generating mirror plots...")
@@ -221,7 +214,7 @@ def run_export(
             plot_settings, selection.html, saved_files, on_progress, on_warning,
         )
 
-    # Summary plots: dual-axis / ridgeline / heatmap from comparison frame
+    # Stage 5 — Summary plots: dual-axis / ridgeline / heatmap from the comparison frame
     summary_plot_count = 0
     if selection.summary_plots:
         on_step("Generating summary plots...")

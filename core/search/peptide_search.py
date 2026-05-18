@@ -1,4 +1,4 @@
-"""Peptide-search orchestration coordinating per-file workers and aggregating results."""
+"""Peptide-search orchestration (called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
 import logging
 from collections import Counter
 from pathlib import Path
@@ -21,11 +21,9 @@ def search_peptides_in_idxmls(
     error_callback: Optional[Callable] = None,
     workers: int = 1,
 ) -> Dict[str, PSMList]:
-    """Search target peptides across idXML files; returning PSM lists keyed on peptide variant
-    including information on the idXML files they were found in, the mzML files they were resolved 
-    against and callbacks to handle progress and errors. """
+    """Search ``target_peptides`` across all idXMLs; return ``{variant_key: PSMList}`` with per-PSM resolution metadata stamped."""
 
-    # Normalise inputs: dedupe target peptides, wire optional callbacks
+    # Normalise inputs: dedupe targets, wire optional callbacks
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
@@ -54,7 +52,6 @@ def search_peptides_in_idxmls(
             on_error(message)
         progress(completed, total, "Searching idXML files")
 
-    # Final summary
     progress(total, total, "Search complete")
     total_psms = sum(len(g) for g in variant_groups.values())
     logger.info(f"Found {total_psms} PSMs across {len(variant_groups)} variants")
@@ -67,7 +64,7 @@ def count_psms_in_idxmls(
     error_callback: Optional[Callable] = None,
     workers: int = 1,
 ) -> "Counter[str]":
-    """Merge per-file PSM counts and map to base sequences across idxml_paths."""
+    """Merge per-file PSM counts across ``idxml_paths`` into a ``Counter`` keyed by base sequence (drives the Setup peptide-preview)."""
 
     # Setup PSM counter, progress and error callbacks
     merged: Counter = Counter()
@@ -75,8 +72,7 @@ def count_psms_in_idxmls(
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
 
-    # Dispatch & merge: single-arg tasks wrapped by run_tasks (common/task_dispatch) 
-    # merge results into the Counter, surface errors, tick progress
+    # Dispatch & merge: tick progress, surface errors, fold per-file counts in
     for completed, (task, ok, result) in enumerate(run_tasks(
         tasks=idxml_paths, worker=count_psms_per_peptide, workers=workers,
     ), start=1):
@@ -86,11 +82,10 @@ def count_psms_in_idxmls(
             on_error(f"{Path(task).name}: {result}")
         progress(completed, total, "Counting PSMs per peptide")
 
-    # Final summary 
     progress(total, total, "Count complete")
     return merged
 
-# Schema for the summary LazyFrame: one row per variant, with counts and metadata aggregated from PSMs
+# One row per variant: counts + resolution metadata aggregated from PSMs
 _SUMMARY_SCHEMA = {
     "id": pl.UInt32, "base_sequence": pl.String, "modification": pl.String,
     "display_label": pl.String, "psm_count": pl.Int32,
@@ -99,7 +94,7 @@ _SUMMARY_SCHEMA = {
 
 
 def summarize_search_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame:
-    """Per-variant summary LazyFrame for the openms_insight Table component."""
+    """Build the per-variant summary LazyFrame consumed by the openms_insight Table."""
 
     # Flatten variant groups: one row per PSM, carrying variant & resolution metadata
     rows = []
@@ -116,7 +111,7 @@ def summarize_search_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame
             "mzml_resolved": bool(psm.metadata.get("mzml_resolved_path")),
         } for psm in psm_list)
 
-    # Case empty input -> typed-empty LazyFrame 
+    # Empty input: hand back a typed-empty frame so downstream schemas stay stable
     if not rows:
         return pl.DataFrame(schema=_SUMMARY_SCHEMA).lazy()
 

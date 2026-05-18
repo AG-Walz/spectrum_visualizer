@@ -1,4 +1,4 @@
-"""Unit tests for core/export/export_directories.py"""
+"""Unit tests for ``core.export.export_directories`` (fingerprinted versioned export folders)."""
 import pytest
 
 from core.export.export_directories import (
@@ -37,12 +37,12 @@ class TestFindOrCreateExportDirectory:
     def test_creates_first_run(self, tmp_path):
         settings = {"peptide": "PEPTIDEK", "tolerance": 0.02}
         root = find_or_create_export_directory(str(tmp_path), "myproject", settings)
-        # No directories created yet -- only after commit
+        # find_or_create returns a path but does not create it — only commit does
         assert not root.exists()
         commit_export_directory(root, settings)
         assert root.exists()
         assert (root / "run_settings.json").exists()
-        # Folder name should contain _001_
+        # First run → folder number "001"
         assert "_001_" in root.name
 
     def test_reuses_matching_settings(self, tmp_path):
@@ -50,7 +50,7 @@ class TestFindOrCreateExportDirectory:
         root1 = find_or_create_export_directory(str(tmp_path), "proj", settings)
         commit_export_directory(root1, settings)
         root2 = find_or_create_export_directory(str(tmp_path), "proj", settings)
-        # Same run_settings -> same folder number
+        # Same fingerprinted settings → reuse the same folder number
         assert root1.name.split("_")[1] == root2.name.split("_")[1]
 
     def test_creates_new_for_different_settings(self, tmp_path):

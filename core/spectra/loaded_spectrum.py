@@ -1,21 +1,17 @@
-"""Dataclasses returned by the mzML spectrum loader.
-
-Kept separate from the loader workers so they can be imported cheaply (no
-pyopenms pull-in) by consumers that only need the types.
-"""
+"""Shared dataclasses for the mzML loader (split out so callers can import the types without pulling in pyopenms)."""
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
 
-if TYPE_CHECKING:  # avoid circular import at runtime
+if TYPE_CHECKING:
     from psm_utils import PSM
 
 
 @dataclass
 class LoadedSpectrum:
-    """A loaded spectrum; fields duplicating ``match.*`` exist so Koina refs (``match=None``) carry the same shape."""
+    """One loaded spectrum (peaks + metadata); fields duplicate ``match.*`` so Koina refs (``match=None``) keep the same shape."""
     spectrum_id: str
     mz: np.ndarray
     intensity: np.ndarray
@@ -30,19 +26,15 @@ class LoadedSpectrum:
 
 
 def source_label(spectrum) -> str:
-    """Filename stem for plot titles / picker tables; ``"Koina"`` for synthetic refs.
+    """Filename stem for plot titles and picker tables; ``"Koina"`` for synthetic refs.
 
-    Defined as a module-level function (not a method on LoadedSpectrum) so that
-    older instances cached in Streamlit's session_state across an auto-reload
-    keep working — a method/property would only resolve on instances of the
-    *currently-loaded* class.
-    """
+    Module-level (not a method) so cached ``LoadedSpectrum`` instances survive Streamlit reloads."""
     return Path(spectrum.source_file).stem if spectrum.source_file else "Koina"
 
 
 @dataclass
 class StreamingResult:
-    """One query spectrum with its variant key and matching reference spectra."""
+    """One query spectrum plus its variant key and the matching reference spectra (yielded by ``load_spectra_streaming``)."""
     query_spectrum: LoadedSpectrum
     reference_spectra: List[LoadedSpectrum]
     variant_key: str
@@ -50,12 +42,7 @@ class StreamingResult:
 
 @dataclass
 class LoadResult:
-    """Per-file output from ``_load_spectra_from_mzml``.
-
-    Replaces an anonymous 6-tuple. *loaded* is a list of
-    ``(variant_key, LoadedSpectrum)`` pairs so the caller can bucket spectra
-    by variant without re-scanning.
-    """
+    """Per-file output from ``_load_spectra_from_mzml``; ``loaded`` is ``[(variant_key, LoadedSpectrum), ...]`` so the orchestrator can bucket by variant without rescanning."""
     display_name: str
     is_reference: bool
     loaded: List[Tuple[str, LoadedSpectrum]]
@@ -65,11 +52,7 @@ class LoadResult:
 
 
 def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
-    """Return ``spectrum_id|peptidoform`` — stable PSM-unique key for lookup.
+    """Return ``"spectrum_id|peptidoform"`` — stable per-PSM key for joining peaks/sequence DataFrames.
 
-    The same physical spectrum may appear with different peptidoforms across
-    PSMs, and spectrum IDs alone can collide across mzML files. Pair the key
-    with ``build_psm_table()``'s ``psm_lookup`` dict to resolve ``psm_id`` when
-    building peaks and sequence DataFrames.
-    """
+    Pairs both fields because spectrum IDs alone collide across mzML files and across peptidoforms."""
     return f"{spec.spectrum_id}|{spec.peptidoform}"

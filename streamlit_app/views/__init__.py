@@ -1,1 +1,1 @@
-"""Streamlit page modules (Setup, Search & Load, Explore, Export)."""
+"""Streamlit page modules (Setup, Search & Load, Explore, Export) registered by ``streamlit_app/app.py``."""

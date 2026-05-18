@@ -1,9 +1,4 @@
-"""Pure-function tests for the Mirror-Plots picker (``mirror_plots.py``).
-
-The Streamlit fragment + StateManager wiring is covered by the AppTest case
-in ``test_gui.py``; this file only exercises the data-shaping helpers so a
-broken eligibility filter or picker frame fails fast.
-"""
+"""Pure-function tests for ``streamlit_app.views.explore.mirror_plots`` (picker frames + eligibility)."""
 from __future__ import annotations
 
 import numpy as np
@@ -22,6 +17,7 @@ from tests.conftest import make_peptide_match
 def _spec(source_file: str, spectrum_id: str, charge: int = 2,
           rt: float = 12.5, peptidoform: str = "PEPTIDEK",
           match=None, is_ref: bool = False) -> LoadedSpectrum:
+    """Build a tiny two-peak ``LoadedSpectrum`` for picker-frame tests."""
     return LoadedSpectrum(
         spectrum_id=spectrum_id,
         mz=np.array([100.0, 200.0]),
@@ -38,7 +34,7 @@ def _spec(source_file: str, spectrum_id: str, charge: int = 2,
 
 
 def _empty_plist() -> PSMList:
-    """Build an empty PSMList — picker tests only need the dict-key shape."""
+    """Return an empty PSMList — picker tests only care about the dict-key shape."""
     return PSMList(psm_list=[])
 
 
@@ -97,19 +93,20 @@ class TestBuildPickerFrames:
         }
 
     def test_ref_row_ids_differ_across_peptides(self):
-        # The whole point of _ref_row_id: same positional index, different
-        # variant_keys must produce different ids — otherwise the openms_insight
-        # render-cache key collides on the auto-filled selection and the
-        # reference table never refreshes when the peptide changes.
+        # The whole point of _ref_row_id: same positional index across
+        # different variant_keys must produce DIFFERENT ids — otherwise the
+        # openms_insight render-cache key collides on the auto-filled
+        # selection and the reference table never refreshes when the
+        # peptide changes.
         ids_for_a = [_ref_row_id("VARIANT_A|", i) for i in range(3)]
         ids_for_b = [_ref_row_id("VARIANT_B|", i) for i in range(3)]
         assert set(ids_for_a).isdisjoint(ids_for_b)
-        # And the function is deterministic across calls.
+        # And the function must be deterministic across calls.
         assert _ref_row_id("VARIANT_A|", 0) == ids_for_a[0]
 
     def test_koina_reference_renders_as_blank_scan(self):
-        # Koina spectra use spectrum_id="koina_prediction" which has no digits
-        # and no `match`, so scan + score must be None (blank in Tabulator).
+        # Koina spectra use spectrum_id="koina_prediction" (no digits, no match)
+        # ⇒ scan + score must be None so the Tabulator cell renders blank.
         annotated_queries = {0: (_spec("q.mzML", "scan=1", match=make_peptide_match()), None)}
         reference_store = {
             "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True), None)]
@@ -121,14 +118,14 @@ class TestBuildPickerFrames:
         )
         row = ref_lazy.collect().row(0, named=True)
         # LoadedSpectrum.source_label returns the source_file stem
-        # ("Koina:ms2pip") when set, only falling back to bare "Koina" when
-        # source_file is empty.
+        # ("Koina:ms2pip") when set — it only falls back to bare "Koina"
+        # if source_file is empty.
         assert row["mzml"] == "Koina:ms2pip"
         assert row["scan"] is None
         assert row["score"] is None
 
     def test_filters_queries_by_variant_key(self):
-        # Two queries, only one matches the chosen variant.
+        # Two queries, only one matches the chosen variant — the other is dropped.
         annotated_queries = {
             5: (_spec("q.mzML", "scan=5", match=make_peptide_match(peptidoform="A")), None),
             6: (_spec("q.mzML", "scan=6", match=make_peptide_match(peptidoform="B")), None),
@@ -165,6 +162,6 @@ class TestBuildPickerFrames:
         _, query_lazy = _build_picker_frames(
             "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
         )
-        # pl.Float32 cannot represent NaN-as-null distinctly without the explicit
-        # conversion in _safe_score; verify it lands as null.
+        # pl.Float32 cannot represent NaN-as-null distinctly without the
+        # explicit conversion in ``_safe_score`` — verify it lands as null.
         assert query_lazy.collect().row(0, named=True)["score"] is None

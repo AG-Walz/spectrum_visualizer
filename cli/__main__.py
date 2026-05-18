@@ -1,4 +1,4 @@
-"""Entry point for ``python -m cli``."""
+"""Module entry for ``python -m cli`` — delegates to :func:`cli.main.main`."""
 from cli.main import main
 
 if __name__ == "__main__":
