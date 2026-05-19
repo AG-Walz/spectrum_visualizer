@@ -7,15 +7,14 @@ reach into internal modules (`from core.search.idxml_workers import ...`).
 
 ---
 
-## `core/common/`
+## Top-level modules
 
 Pure helpers with no domain logic. Imported by everything.
 
 | Module | What it holds |
 |---|---|
 | `defaults.py` | The frozen `Defaults` dataclass + `DEFAULTS` instance (single source of truth for every tunable parameter), the `KOINA_MODELS` catalogue, `INSTRUMENT_TYPES`, `ION_COLORS` (Material-Design palette), and `IMAGE_FORMATS` |
-| `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename across directories) |
-| `task_dispatch.py` | `run_tasks()` — the single dispatcher every parallel worker uses. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers can update progress bars and surface per-file errors in the parent process. Falls back to a sequential loop when `workers=1` |
+| `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename across directories), and `run_tasks()` — the single dispatcher every parallel worker uses. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers can update progress bars and surface per-file errors in the parent process. Falls back to a sequential loop when `workers=1` |
 
 `STATE_PREFIX` (the Streamlit session-state namespace) lives in
 `streamlit_app/utils/state/state_core.py`, not here — it's a UI-layer concern.
@@ -28,7 +27,7 @@ idXML parsing and peptide search across one or more identification files.
 
 | Module | What it holds |
 |---|---|
-| `idxml_workers.py` | Module-level, picklable workers: `search_single_idxml` (returns matches + per-file errors), `count_psms_per_peptide`. Both are dispatched by `common/task_dispatch.run_tasks` |
+| `idxml_workers.py` | Module-level, picklable workers: `search_single_idxml` (returns matches + per-file errors), `count_psms_per_peptide`. Both are dispatched by `core.helpers.run_tasks` |
 | `peptide_search.py` | Public entry points: `search_peptides_in_idxmls()`, `count_psms_in_idxmls()`, `summarize_search_results()`. Wires the optional `progress_callback` / `error_callback` into the dispatcher so the CLI's tqdm bar and Streamlit's progress widget can attach |
 
 Public API: `from core.search import search_peptides_in_idxmls,

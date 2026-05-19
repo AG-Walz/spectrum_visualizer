@@ -11,7 +11,7 @@ from streamlit_app.utils.state import (
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from core.annotation import METRIC_SHORT_TO_DISPLAY
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.plotting import (
     METRIC_COLUMNS,
     plot_classic_dual_axis,

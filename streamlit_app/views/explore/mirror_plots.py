@@ -18,7 +18,7 @@ from core.annotation import (
     compute_all_metrics,
     format_metrics_text,
 )
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.pipeline import (
     build_psm_to_variant_mapping,
     format_spectrum_labels,

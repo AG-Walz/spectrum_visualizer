@@ -60,7 +60,7 @@ template — copy it and edit the paths.
 
 Two layers, merged inside `cli/main.py:_load_config`:
 
-1. **`core/common/defaults.py`** seeds the runtime config with every
+1. **`core/defaults.py`** seeds the runtime config with every
    default plus CLI-only fields (`idxml_files`, `mzml_files`,
    `peptide_source`, `reference_substring`, `no_plots`).
 2. **YAML file** overrides any seeded value.
@@ -94,7 +94,7 @@ Each stage logs a header line, and a `tqdm` progress bar tracks
 file/spectrum/plot completion within the stage. The bars are driven by
 the same `progress_callback` / `error_callback` hooks the Streamlit
 front end uses — both layers feed updates into
-`core.common.task_dispatch.run_tasks` and let each frontend render
+`core.helpers.run_tasks` and let each frontend render
 them its own way (tqdm vs `st.progress`).
 
 Set `MSPECVIZ_LOG_LEVEL=ERROR` to suppress everything except real

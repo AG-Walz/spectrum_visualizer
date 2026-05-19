@@ -1,7 +1,7 @@
-"""Unit tests for ``core.common.helpers`` (peptide parsing, time formatting, basename uniqueness)."""
+"""Unit tests for ``core.helpers`` (peptide parsing, time formatting, basename uniqueness)."""
 import pytest
 
-from core.common.helpers import (
+from core.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
     format_time,

@@ -28,7 +28,7 @@ Both the CLI and the Streamlit Export tab call
 Mirror plot tasks are built by
 `core.pipeline.query_processing.build_plot_tasks` (one
 `ComparisonTask` per query/reference pair) and dispatched through
-`core.common.task_dispatch.run_tasks` to the
+`core.helpers.run_tasks` to the
 `core.plotting.plot_worker.process_single_task` worker. Summary
 plots are rendered on the main process by
 `core.plotting.summary_pipeline.generate_all_summary_plots`.
@@ -93,7 +93,7 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
   = absolute counts.
 - **Annotations:** ion labels (`y7`, `b3++`) drawn above each annotated
   peak. Colours read from `ION_COLORS` in
-  `core/common/defaults.py` (mirrored in `settings.json` for
+  `core/defaults.py` (mirrored in `settings.json` for
   Streamlit).
 - **Title:** peptidoform string + charge state.
 - **Metrics panel:** the 7 comparison metrics + context counts (peak

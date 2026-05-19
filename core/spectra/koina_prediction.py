@@ -5,7 +5,7 @@ import pandas as pd
 from psm_utils import Peptidoform
 
 # KOINA_MODELS / INSTRUMENT_TYPES sourced from defaults (single catalogue).
-from core.common.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
+from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 
 logger = logging.getLogger(__name__)
 

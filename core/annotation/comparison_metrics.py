@@ -11,7 +11,7 @@ from core.annotation.metrics_intensity import (
     _r2_from_arrays,
     compute_r2_binned,
 )
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 
 try:
     import ms_entropy

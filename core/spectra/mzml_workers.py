@@ -1,4 +1,4 @@
-"""ProcessPoolExecutor-picklable mzML loader worker (dispatched by ``spectra.spectrum_streaming`` via ``common.task_dispatch.run_tasks``)."""
+"""ProcessPoolExecutor-picklable mzML loader worker (dispatched by ``spectra.spectrum_streaming`` via ``common.helpers.run_tasks``)."""
 import logging
 from typing import List, Tuple
 

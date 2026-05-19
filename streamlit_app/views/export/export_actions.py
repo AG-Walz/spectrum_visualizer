@@ -13,7 +13,7 @@ import streamlit as st
 from streamlit_app.utils.state import get_param, get_state_key
 from streamlit_app.utils.page_state import build_run_settings
 from streamlit_app.views.export.gallery import _render_plot_gallery
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.export import (
     ExportCallbacks,
     ExportSelection,

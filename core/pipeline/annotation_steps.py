@@ -6,7 +6,7 @@ from core.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
 from core.spectra.loaded_spectrum import LoadedSpectrum
 

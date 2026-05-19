@@ -3,8 +3,8 @@ from collections import Counter
 
 import streamlit as st
 
-from core.common.defaults import DEFAULTS
-from core.common.helpers import parse_peptide_list
+from core.defaults import DEFAULTS
+from core.helpers import parse_peptide_list
 from core.search import count_psms_in_idxmls
 from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key

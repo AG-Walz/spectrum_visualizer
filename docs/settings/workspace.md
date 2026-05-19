@@ -5,7 +5,7 @@ Two sources shape the Streamlit per-workspace state:
 - `workspaces/<name>/params.json` — one per workspace, persisted widget state
 - `peptide_mirror.*` keys in `st.session_state` — live widget state
 
-Defaults come from `core.common.defaults.DEFAULTS` (see
+Defaults come from `core.defaults.DEFAULTS` (see
 [overview.md](overview.md)). There is no template file: a new workspace
 starts with an empty `params.json` and each widget resolves its initial
 value via `get_param(params, key, DEFAULTS.<key>)`.
@@ -44,7 +44,7 @@ user has touched get persisted. Missing keys fall back to
 | `summary_metric` | string | `DEFAULTS.summary_metric` | Metric the summary plots are coloured/sorted by. |
 | `summary_plot_types` | list[string] | `DEFAULTS.summary_plot_types` | Which summary plots to generate (`dual_axis`, `ridgeline`). |
 
-**Editing defaults.** Change `core/common/defaults.py`. This affects
+**Editing defaults.** Change `core/defaults.py`. This affects
 every workspace that has not explicitly overridden the key (and every
 CLI run that does not override it). Existing workspaces that did
 override a key keep their value in `params.json`.

@@ -7,7 +7,7 @@ from typing import Callable, Dict, List, Optional, Set
 import polars as pl
 from psm_utils import PSMList
 
-from core.common.task_dispatch import run_tasks
+from core.helpers import run_tasks
 from core.search.idxml_workers import search_single_idxml, count_psms_per_peptide
 
 logger = logging.getLogger(__name__)

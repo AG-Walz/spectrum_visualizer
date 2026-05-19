@@ -3,7 +3,6 @@ import logging
 from collections import Counter
 from pathlib import Path
 from typing import Dict, Set, Tuple
-
 from psm_utils.io.idxml import IdXMLReader
 
 logger = logging.getLogger(__name__)
@@ -14,26 +13,26 @@ def search_single_idxml(
     target_set: Set[str], mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
     """Worker: scan one idXML for target peptides; return ``(name, matches, errors)``."""
-    # Open reader: bail with a single error if the file can't even be parsed
+    # Open psm_utils' idxml-reader, which yields PSMs one at a time
     matches: list = []
     try:
         reader = IdXMLReader(str(idxml_path))
+    # Catch file-level errors
     except Exception as load_error:
         return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
 
-    # Drain reader: isolate erroneous PSMs from the rest
+    # Fill a list with all PSMs, to surface parse errors as partial results instead of silent failure
     psms: list = []
     parse_error: str | None = None
     try:
         for psm in reader:
             psms.append(psm)
     except Exception as error:
-        logger.debug(f"PSM parse error in {idxml_name} after {len(psms)} PSMs: {error}")
         parse_error = str(error)
 
     # Filter & annotate: keep target hits, stamp resolution metadata on each PSM
     for psm in psms:
-        if psm.peptidoform.sequence.upper() not in target_set:
+        if psm.peptidoform.sequence not in target_set:
             continue
         psm.metadata["idxml_file"] = idxml_name
         psm.metadata["idxml_resolved_path"] = str(idxml_path)

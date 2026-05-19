@@ -6,7 +6,7 @@ from core.annotation.comparison_metrics import (
     compute_all_metrics,
     format_metrics_text,
 )
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.pipeline.annotation_steps import (
     _annotate_query_spectrum,
     _cache_reference_spectra,

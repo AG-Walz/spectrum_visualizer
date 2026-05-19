@@ -8,7 +8,7 @@ from core.annotation import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.spectra import (
     convert_peptide_to_unimod,
     predict_koina_spectrum,

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 from core.plotting._summary_shared import METRIC_COLUMNS, _metric_label
 from core.plotting.summary_dual_axis import plot_classic_dual_axis
 from core.plotting.summary_ridgeline import plot_ridgeline

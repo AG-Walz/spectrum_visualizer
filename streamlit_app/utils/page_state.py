@@ -17,7 +17,7 @@ from streamlit_app.utils.state import (
     get_state_key,
     load_params,
 )
-from core.common.helpers import parse_peptide_list
+from core.helpers import parse_peptide_list
 from core.export import (
     RUN_SETTINGS_FIELDS,
     build_run_settings as _build_run_settings_core,

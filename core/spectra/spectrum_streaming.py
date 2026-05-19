@@ -5,7 +5,7 @@ from typing import Callable, Dict, List, Optional, Tuple
 
 from psm_utils import PSM, PSMList
 
-from core.common.task_dispatch import run_tasks
+from core.helpers import run_tasks
 from core.spectra.loaded_spectrum import LoadResult, LoadedSpectrum, StreamingResult
 from core.spectra.mzml_workers import _load_spectra_from_mzml
 

@@ -1,7 +1,7 @@
 """Pack annotation + Koina settings into kwargs dicts (called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
 from typing import Any, Callable
 
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 
 ParamGetter = Callable[[str, Any], Any]
 

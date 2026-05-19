@@ -1,11 +1,10 @@
-"""Single source of truth for user-tunable pipeline parameters 
+"""User-tunable pipeline parameters, including option collections and default values. 
+Used across the streamlit app's views and CLI commands 
 (imported by Setup, Search & Load, and Export views, plus the CLI config loader)."""
 
 from dataclasses import dataclass
 
-
 # Catalogues of valid choices surfaced in the UI and CLI config
-
 KOINA_MODELS: dict[str, str] = {
     # MS2PIP family
     "MS2PIP TimsTOF 2024": "ms2pip_timsTOF2024",

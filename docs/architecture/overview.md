@@ -17,7 +17,7 @@ MSpecViz/
 
 - **Layer 1** never imports from layer 2. Any helper that both the UI and
   the CLI need lives in layer 1 — orchestration in `core/pipeline/`,
-  pure helpers in `core/common/`.
+  pure helpers in `core/helpers.py`.
 - **Layers 2a and 2b are siblings** and never import from each other. They
   share code only through layer 1.
 - **Layer 3** can import from everywhere. `tests/conftest.py` lives at the

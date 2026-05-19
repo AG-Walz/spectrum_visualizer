@@ -8,7 +8,7 @@ import pandas as pd  # noqa: E402
 import plotly.graph_objects as go  # noqa: E402
 import pyopenms_viz  # noqa: F401, E402  # pyright: ignore[reportUnusedImport]  # registers the .plot accessor
 
-from core.common.defaults import ION_COLORS  # noqa: E402
+from core.defaults import ION_COLORS  # noqa: E402
 
 # Implementation note: the Plotly path delegates stem rendering to
 # pyopenms-viz' ``df.plot(kind="spectrum")``, then ``_recolor_plotly_traces``

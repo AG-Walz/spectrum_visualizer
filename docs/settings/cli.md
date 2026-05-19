@@ -6,7 +6,7 @@ flag overrides — copy the YAML and edit per-run instead.
 
 Every YAML key matches a field on the merged runtime config exactly —
 no translation table. Defaults come from
-`core.common.defaults.DEFAULTS`. See [overview.md](overview.md) for
+`core.defaults.DEFAULTS`. See [overview.md](overview.md) for
 precedence; [../cli/usage.md](../cli/usage.md) for invocation.
 
 The log level is set via the `MSPECVIZ_LOG_LEVEL` environment variable

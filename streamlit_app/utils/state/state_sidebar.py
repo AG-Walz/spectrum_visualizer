@@ -8,7 +8,7 @@ from typing import Any
 
 import streamlit as st
 
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 
 from streamlit_app.utils.state.state_core import PROJECT_ROOT, STATE_PREFIX, _persisted_key
 from streamlit_app.utils.state.state_params import _PARAM_KEYS, load_params, save_params

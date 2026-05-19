@@ -4,7 +4,7 @@ Each frontend supplies a ``(key, default) -> value`` getter; the field list live
 from datetime import datetime
 from typing import Any, Callable
 
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 
 ParamGetter = Callable[[str, Any], Any]
 

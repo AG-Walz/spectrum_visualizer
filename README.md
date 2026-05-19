@@ -188,8 +188,8 @@ MSpecViz/
 │   ├── plotting/                # Plotly + Matplotlib mirror/summary plots
 │   ├── pipeline/                # Shared CLI/Streamlit orchestration
 │   ├── export/                  # Shared export orchestrator + versioned dirs
-│   └── common/                  # Ion colors, text helpers, parallel runner,
-│                                # path disambiguation
+│   ├── defaults.py              # Single source of truth for tunable defaults
+│   └── helpers.py               # Text helpers, parallel runner, path disambiguation
 ├── streamlit_app/               # Streamlit UI (imports core.*)
 │   ├── app.py                   # st.navigation entry point
 │   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)
@@ -220,7 +220,7 @@ MSpecViz/
   stays testable and reusable.
 - Both `streamlit_app/` and `cli/` depend on `core/`; anything shared
   between the two goes into `core/` (usually `core/pipeline/` for
-  orchestration or `core/common/` for pure helpers).
+  orchestration or `core/helpers.py` for pure helpers).
 - No `.py` file exceeds 250 lines; no folder contains more than 10 scripts.
   When a module grows past either cap, split it into a subpackage with a
   re-exporting `__init__.py`.
@@ -237,7 +237,7 @@ with every key documented is in
 
 | File | Scope | What it controls |
 |---|---|---|
-| `core/common/defaults.py` (`DEFAULTS`) | Single source of truth for tunable defaults | Every parameter's fallback value (ion types, tolerances, export DPI, Koina settings, …) |
+| `core/defaults.py` (`DEFAULTS`) | Single source of truth for tunable defaults | Every parameter's fallback value (ion types, tolerances, export DPI, Koina settings, …) |
 | `streamlit_app/config/settings.json` | App-wide environmental config | Koina model catalogue, allowed ion types, data directory, performance tuning, ion color palette |
 | `workspaces/<name>/params.json` | One per workspace | Sparse record of user-edited widget values; missing keys fall back to `DEFAULTS` |
 | `cli/config/*.yaml` | One per CLI run | YAML config combining input files, peptides, annotation, export, and Koina sections |

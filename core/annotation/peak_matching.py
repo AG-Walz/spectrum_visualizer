@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from spectrum_utils.spectrum import MsmsSpectrum
 
-from core.common.defaults import DEFAULTS
+from core.defaults import DEFAULTS
 
 logger = logging.getLogger(__name__)
 

@@ -7,8 +7,8 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
-from core.common.defaults import DEFAULTS
-from core.common.helpers import parse_peptide_list
+from core.defaults import DEFAULTS
+from core.helpers import parse_peptide_list
 from core.search import summarize_search_results
 
 from streamlit_app.views.search_load.search_load_actions import (

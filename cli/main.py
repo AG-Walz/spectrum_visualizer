@@ -1,5 +1,5 @@
-"""MSpecViz CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config; 
-invoke via ``python -m cli <config.yaml>``."""
+"""MSpecViz CLI entry: run the 3-step pipeline (search → load+annotate → export) delegating functionality to core/ packages;
+configured from a YAML config invoked via ``python -m cli <config.yaml>``."""
 import copy
 import glob as globmod
 import logging
@@ -9,7 +9,6 @@ import time
 from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
-
 import click
 import pandas as pd
 import yaml
@@ -19,6 +18,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
+# Imports from core package
 from core.common.defaults import DEFAULTS  # noqa: E402
 from core.dataframes import build_psm_table, build_visualization_frames  # noqa: E402
 from core.export import (  # noqa: E402
@@ -41,11 +41,16 @@ _CLI_EXTRAS: dict = {
 
 
 def _expand_globs(patterns: list) -> list:
-    """Expand shell-glob ``patterns`` (e.g. ``"runs/**/ProT*.idXML"``) into a sorted, unique list of absolute paths."""
+    """Resolves shell glob ``patterns`` (e.g. ``"runs/**/ProT*.idXML"``)  into a sorted, 
+    unique (de-duplicated) list of absolute paths. Necessary because YAML lets the user 
+    write paths with wildcards — core/ expects concrete file lists."""
     result, seen = [], set()
     for pattern in patterns:
+        # Sort the YAML-provided patterns for deterministic output 
         for match in sorted(globmod.glob(pattern, recursive=True)):
+            # Convert matches to absolute paths 
             absolute = str(Path(match).resolve())
+            # De-duplicate across patterns 
             if absolute not in seen:
                 seen.add(absolute)
                 result.append(absolute)
@@ -53,26 +58,31 @@ def _expand_globs(patterns: list) -> list:
 
 
 def _load_peptides(source) -> list:
-    """Resolve ``source`` (YAML list, file path, or raw comma/newline string) into a list of upper-cased sequences."""
-    # Already a list: strip and uppercase each entry
+    """Resolve the peptide loading ``source`` (which can be a YAML list, 
+    a file path from which to read peptides, or raw comma/newline strings) 
+    into a list of upper-cased sequences."""
+    # A. Sequence list case: strip and uppercase each entry
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
-    # File path: read its contents; otherwise treat the string itself as the peptide blob
+    # B.File path case: read its text
     source = str(source).strip()
+    # C. Raw string case: split on commas/newlines, strip, and uppercase each entry
     text = Path(source).read_text() if Path(source).is_file() else source
     return [line.strip().upper() for line in text.replace(",", "\n").splitlines() if line.strip()]
 
 
 def _load_config(path: str) -> SimpleNamespace:
-    """Parse the YAML at ``path``, overlay on :data:`DEFAULTS`, expand file globs, and resolve the peptide source into a ``SimpleNamespace``."""
-    # Parse: read YAML file, error out on non-mapping payload
+    """Full config-loading pipeline: Parse the YAML at ``path``, join with the defaults, 
+    expand file globs, and resolve the peptide source into a ``SimpleNamespace``."""
+    # Parse YAML file: error out on non-mapping payload
     config_path = Path(path)
     yaml_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
     if not isinstance(yaml_config, dict):
         sys.exit(f"Error: config must be a YAML mapping: {path}")
 
-    # Merge: CLI extras + DEFAULTS overlaid by user YAML (last write wins)
+    # Merge 3 layers: CLI extras (renamed defaults) < DEFAULTS < user YAML (last write wins)
     merged: dict = {**_CLI_EXTRAS, **asdict(DEFAULTS), **yaml_config}
+    # Wrap merged dictionary in a SimpleNamespace for convenient attribute access
     config = SimpleNamespace(**merged)
 
     # Expand input globs and require non-empty idXML and mzML lists
@@ -82,6 +92,8 @@ def _load_config(path: str) -> SimpleNamespace:
         sys.exit("Error: idxml_files and mzml_files must both be set.")
     if not config.peptide_source:
         sys.exit("Error: 'peptide_source' is required.")
+    
+    # Resolve the peptide source into a list of sequences 
     config.peptides = _load_peptides(config.peptide_source)
     if not config.peptides:
         sys.exit("Error: peptide list is empty.")
@@ -89,10 +101,14 @@ def _load_config(path: str) -> SimpleNamespace:
 
 
 def _run_search(config) -> tuple:
-    """Step 1: scan idXMLs for target peptides with a tqdm bar; return ``(variant_groups, total_psms)``."""
+    """Calls core.search.search_peptides_in_idxmls() to scan idXML files 
+    for target peptides producing variang_groups (list of PSMs) 
+     and return ``(variant_groups, total_psms)``."""
     logger.info("Step 1: Searching peptides in idXML files")
+    # Progress bar
     bar = tqdm(total=len(config.idxml_files), desc="Searching", unit="file")
     errors: list = []
+    # Search for peptides across idXML files, streaming results and errors via callbacks
     variant_groups = search_peptides_in_idxmls(
         idxml_paths=config.idxml_files,
         target_peptides=config.peptides,
@@ -102,17 +118,23 @@ def _run_search(config) -> tuple:
         workers=min(config.workers, len(config.idxml_files)),
     )
     bar.close()
+    # Log any search errors but keep going
     for error in errors:
         logger.warning(error)
+    # Count total PSMs across all variant groups for progress tracking in the next step
     total_psms = sum(len(psm_list) for psm_list in variant_groups.values())
     logger.info(f"Found {total_psms} PSMs across {len(variant_groups)} variants")
     return variant_groups, total_psms
 
 
 def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
-    """Step 2: stream spectra from mzMLs and annotate fragment ions; return ``(annotated_queries, reference_store, comparison_rows)``."""
+    """Calls core.pipeline.run_streaming_annotation() to stream spectra from mzMLs and 
+    annotate fragment ions (optionally fetching Koina AI prediction when no reference spectra are available);
+    return ``(annotated_queries, reference_store, comparison_rows)``."""
     logger.info("Step 2: Loading and annotating spectra")
+    # Build a simple getter function for accessing config values with defaults
     getter = lambda key, default: getattr(config, key, default)
+    # Progress bar
     bar = tqdm(total=total_psms, desc="Loading", unit="spec")
     annotated_queries, reference_store, comparison_rows = run_streaming_annotation(
         variant_groups=variant_groups,
@@ -135,10 +157,11 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
 
 def _run_export(config, annotated_queries, reference_store, variant_groups,
                 comparison_rows, psm_frame):
-    """Step 3: write parquet/CSV tables and (unless ``--no-plots``) mirror + summary plots via :func:`core.export.run_export`."""
+    """Calls :func:`core.export.run_export` to write parquet/CSV tables and 
+    (unless ``--no-plots`` is selected) mirror & summary plots."""
     logger.info("Step 3: Exporting results")
+    # Progress bar 
     plot_bar: dict = {"bar": None}
-
     def _on_plot_progress(completed: int, total: int) -> None:
         if plot_bar["bar"] is None:
             plot_bar["bar"] = tqdm(total=total, desc="Plots", unit="plot")
@@ -158,12 +181,14 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
         reference_store=reference_store,
         variant_groups=variant_groups,
         comparison_frame=pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame(),
+        # Export selection: which tables and plots to write based on config
         selection=ExportSelection(
             parquet=True, csv=True,
             mirror_plots=not config.no_plots,
             summary_plots=not config.no_plots,
             html="html" in config.export_formats,
         ),
+        # Plot settings: mostly from config (or DEFAULTS)
         plot_settings=PlotSettings(
             export_formats=list(config.export_formats),
             figure_size=tuple(config.figure_size),
@@ -171,20 +196,23 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
             plot_unpaired_queries=config.plot_unpaired_queries,
             workers=config.workers,
         ),
+        # Progress and error reporting callbacks for the export step
         callbacks=ExportCallbacks(
             on_step=logger.info, on_plot_progress=_on_plot_progress,
             on_warning=logger.warning,
         ),
     )
 
-
+# CLI entry point 
 @click.command(context_settings={"help_option_names": ["-h", "--help"]})
 @click.argument("config_path",
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
+
 def main(config_path: Path) -> None:
-    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config; set ``MSPECVIZ_LOG_LEVEL=ERROR`` for a quiet run."""
+    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config."""
+    # Configure logging
     logging.basicConfig(
-        level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(),
+        level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(), # set ``MSPECVIZ_LOG_LEVEL=ERROR`` for a quiet run
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )
@@ -197,7 +225,7 @@ def main(config_path: Path) -> None:
         sys.exit("Error: No PSMs found.")
 
     # Step 2: stream + annotate spectra against the search results
-    variant_groups_copy = copy.deepcopy(variant_groups)
+    variant_groups_copy = copy.deepcopy(variant_groups) 
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     annotated_queries, reference_store, comparison_rows = _run_load(
         config, variant_groups_copy, psm_lookup, total_psms,

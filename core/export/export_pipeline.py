@@ -10,7 +10,7 @@ from typing import Any, Callable
 
 import pandas as pd
 
-from core.common.task_dispatch import run_tasks
+from core.helpers import run_tasks
 from core.export.export_directories import (
     commit_export_directory,
     find_or_create_export_directory,

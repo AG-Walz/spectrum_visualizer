@@ -10,7 +10,7 @@ key-by-key reference, follow the links in each section.
 
 | File / source | Scope | Who reads it | Detailed reference |
 |---|---|---|---|
-| `core/common/defaults.py` (`DEFAULTS`) | Tunable parameter defaults, single source of truth | Both front ends | (this file, see below) |
+| `core/defaults.py` (`DEFAULTS`) | Tunable parameter defaults, single source of truth | Both front ends | (this file, see below) |
 | `streamlit_app/config/settings.json` | App-wide environmental config & enumerations | Streamlit | [app.md](app.md) |
 | `workspaces/<name>/params.json` | One workspace's live parameters | Streamlit only (written by `page_setup()`) | [workspace.md](workspace.md) |
 | `cli/config/*.yaml` | One CLI invocation | CLI only | [cli.md](cli.md) |
@@ -21,7 +21,7 @@ All paths are relative to the **project root**. The Streamlit front end
 `workspaces/`, `exports/`, and config JSON still resolve against the
 project root.
 
-`DEFAULTS` is a frozen dataclass (`core.common.defaults.Defaults`).
+`DEFAULTS` is a frozen dataclass (`core.defaults.Defaults`).
 Every tunable parameter that has a default value is defined there once;
 the other layers only override. Change a default by editing that file.
 
@@ -76,5 +76,5 @@ Examples: `ion_types`, `mz_tolerance`, `add_neutral_losses`,
 `figure_size`, `plot_unpaired_queries`, `summary_plot_types`.
 
 See [cli.md](cli.md) for the full YAML schema, and
-`core/common/defaults.py` for the field list with default values.
+`core/defaults.py` for the field list with default values.
 Missing keys always fall back to `DEFAULTS.<field>`.

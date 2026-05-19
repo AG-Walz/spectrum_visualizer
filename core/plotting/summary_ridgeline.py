@@ -7,7 +7,7 @@ from matplotlib.figure import Figure  # noqa: E402
 import pandas as pd  # noqa: E402
 from joypy import joyplot  # noqa: E402
 
-from core.common.defaults import DEFAULTS  # noqa: E402
+from core.defaults import DEFAULTS  # noqa: E402
 from core.plotting._summary_shared import _auto_height, _metric_label  # noqa: E402
 
 _BAR_COLOR = "#E8945A"
