@@ -55,3 +55,4 @@ Thumbs.db
 
 # Standalone scripts (not part of the application)
 main.py
+examples/
