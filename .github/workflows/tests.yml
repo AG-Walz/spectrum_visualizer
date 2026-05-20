@@ -20,14 +20,14 @@ jobs:
 
     steps:
       # Check out the repository so subsequent steps have access to source files.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Recreate the exact conda environment declared in environment.yml using
       # micromamba (a fast, self-contained conda replacement).
       # `cache-environment: true` stores the solved environment across runs so
       # cold starts only happen when environment.yml changes.
       - name: Set up micromamba
-        uses: mamba-org/setup-micromamba@v2
+        uses: mamba-org/setup-micromamba@v3
         with:
           environment-file: environment.yml
           environment-name: mspecviz
