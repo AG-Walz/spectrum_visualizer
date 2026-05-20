@@ -7,7 +7,7 @@ from core.annotation.peak_matching import (
     prepare_spectrum_for_plot,
 )
 from core.defaults import DEFAULTS
-from core.spectra.koina_prediction import KOINA_AVAILABLE, predict_koina_spectrum
+from core.spectra.koina_prediction import predict_koina_spectrum
 from core.spectra.loaded_spectrum import LoadedSpectrum
 
 
@@ -18,10 +18,6 @@ def get_koina_prediction(
     koina_instrument_type: str = DEFAULTS.koina_instrument_type,
 ):
     """Predict a spectrum with Koina and wrap it as an annotated reference; return ``(spectrum, frame)`` or ``None``."""
-    # Availability guard: bail early if Koina extra isn't installed
-    if not KOINA_AVAILABLE:
-        return None
-
     # Predict: call Koina with model + CE + instrument, bail on empty frame
     predicted_frame = predict_koina_spectrum(
         peptidoform_str=peptidoform,

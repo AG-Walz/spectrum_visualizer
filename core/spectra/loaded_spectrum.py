@@ -53,6 +53,5 @@ class LoadResult:
 
 def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
     """Return ``"spectrum_id|peptidoform"`` — stable per-PSM key for joining peaks/sequence DataFrames.
-
     Pairs both fields because spectrum IDs alone collide across mzML files and across peptidoforms."""
     return f"{spec.spectrum_id}|{spec.peptidoform}"

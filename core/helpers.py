@@ -1,4 +1,5 @@
 """Shared text-parsing, time-formatting, input-validation, and parallel-dispatch utilities."""
+
 from collections import Counter
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, List, Sequence, Tuple

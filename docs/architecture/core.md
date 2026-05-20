@@ -47,7 +47,7 @@ dataclass so the annotation layer doesn't need to know the spectrum's origin.
 | `mzml_lookup.py` | `open_indexed_mzml_fast()` + `find_spectrum_index()` — index-backed O(1) spectrum lookup, with `_detect_id_format` working out the file's ID scheme on first access |
 | `mzml_workers.py` | Picklable `_load_spectra_from_mzml` worker plus precursor-resolution helpers |
 | `spectrum_streaming.py` | `load_spectra_streaming()` — the public API. Builds an mzML → matches map, runs reference loads first (so queries can be paired during streaming), then yields query results lazily |
-| `koina_prediction.py` | `predict_koina_spectrum()`, the 14-entry `KOINA_MODELS` catalogue, `get_koina_settings()`, `INSTRUMENT_TYPES`, `convert_peptide_to_unimod()`, and the `KOINA_AVAILABLE` flag for optional-dependency guards |
+| `koina_prediction.py` | `predict_koina_spectrum()`, the 14-entry `KOINA_MODELS` catalogue, `get_koina_settings()`, `INSTRUMENT_TYPES`, and `convert_peptide_to_unimod()` |
 
 ---
 
@@ -60,7 +60,7 @@ inside `annotate_spectrum()` — there is no separate `peak_theory` module.
 | Module | What it holds |
 |---|---|
 | `peak_matching.py` | `annotate_spectrum()` (proforma → annotated `MsmsSpectrum`), `prepare_spectrum_for_plot()` (main entry point used by the pipeline), `prepare_koina_spectrum_for_plot()` (Koina-output variant), `get_ion_type()` for bucket resolution |
-| `metrics_intensity.py` | Intensity-based metrics: `compute_r2_matching` (R²m), `compute_r2_binned` (R²b), `compute_cosine_similarity` (Cos). All take aligned query/reference DataFrames; return NaN on zero-norm or <2 shared points |
+| `intensity_metrics.py` | Intensity-based metrics: `compute_r2_matching` (R²m), `compute_r2_binned` (R²b), `compute_cosine_similarity` (Cos). All take aligned query/reference DataFrames; return NaN on zero-norm or <2 shared points |
 | `comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY` |
 
 See [../metrics/comparison.md](../metrics/comparison.md) for formulas,

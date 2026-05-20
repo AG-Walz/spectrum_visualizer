@@ -1,11 +1,15 @@
-"""Full 7-metric comparison row + entropy + plot-overlay text (called by ``core.pipeline.query_processing``; 17 ion-stats fields added later by ``core.plotting.plot_worker``)."""
+"""Spectrum pair scoring layer: 
+Given two already-annotated spectra (a query and a reference of the same peptide), 
+it produces 7 similarity scores that appear in the comparison table, 
+the export spreadsheet, and the corner overlay of every mirror plot.
+(called by ``core.pipeline.query_processing`` and ``core.plotting.plot_worker``)."""
 
 import logging
 import math
 import numpy as np
 import pandas as pd
 
-from core.annotation.metrics_intensity import (
+from core.annotation.intensity_metrics import (
     _cosine_from_arrays,
     _get_matching_intensities,
     _r2_from_arrays,
@@ -26,16 +30,18 @@ def compute_spectral_entropy_similarity(
     reference_frame: pd.DataFrame,
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> float:
-    """Spectral entropy similarity between two annotated spectra (Li et al., Nature Methods 2021); NaN if empty or ``ms_entropy`` is missing."""
-    # Guard: empty spectra or optional dependency unavailable -> NaN so the row still tabulates
+    """Wraper for spectral entropy similarity between two annotated spectra 
+    (Li et al., Nature Methods 2021)"""
+
+    # Return NaN for empty spectra 
     if query_frame.empty or reference_frame.empty:
         return float("nan")
-
+    # Return NaN if ms_entropy is not installed
     if ms_entropy is None:
         logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
-    # Pack: ms_entropy expects each spectrum as a 2-column (mz, intensity) array
+    # Pack spectrum in 2 columns (mz, intensity) array
     query_spectrum_array = np.column_stack([query_frame["mz"].values, query_frame["intensity"].values])
     reference_spectrum_array = np.column_stack([reference_frame["mz"].values, reference_frame["intensity"].values])
 
@@ -55,12 +61,14 @@ def compute_all_metrics(
     reference_frame: pd.DataFrame,
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> dict[str, float | int]:
-    """One row of the comparison table: 7 similarity metrics (R2m, R2b, Cos, Ent, Dice, Jacc, ShR) plus peak/annotation counts."""
-    # Align: shared annotated ions feed the three intensity-based metrics
+    """Compute one row of the comparison table: 7 similarity metrics (3 Intensity based: R2m, R2b, Cos, 
+    1 Entropy-based: Ent, 3 Ion-matching: Dice, Jacc, ShR) plus peak/annotation counts."""
+    
+    # Align the query and reference spectra on their shared annotated ions
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(query_intensities)
 
-    # Count: unique ion labels per spectrum (duplicate isotopes/charges collapse to one)
+    # Count unique ion labels per spectrum (duplicate isotopes/charges collapse to one)
     query_annotation_count = int(query_frame[query_frame["is_annotated"]]["annotation"].nunique())
     reference_annotation_count = int(reference_frame[reference_frame["is_annotated"]]["annotation"].nunique())
 
@@ -88,6 +96,8 @@ def compute_all_metrics(
 
 def format_metrics_text(metrics: dict[str, float | int]) -> str:
     """Format the 7 metrics as a multi-line string for the mirror-plot corner overlay."""
+    
+    # Format None and NaN as "N/A"
     def _fmt(value) -> str:
         if value is None or (isinstance(value, float) and math.isnan(value)):
             return "N/A"

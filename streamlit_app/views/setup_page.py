@@ -29,16 +29,7 @@ def _get_nested_value(source: dict, *keys, default=None):
     return current if current is not None else default
 
 from core.defaults import INSTRUMENT_TYPES, KOINA_MODELS
-
-try:
-    from core.spectra import KOINA_AVAILABLE, get_koina_settings
-except ImportError:
-    KOINA_AVAILABLE = False
-
-    def get_koina_settings(s):
-        return {"enabled": False, "model": DEFAULTS.koina_model,
-                "collision_energy": DEFAULTS.koina_collision_energy,
-                "instrument_type": DEFAULTS.koina_instrument_type}
+from core.spectra import get_koina_settings
 
 params = page_setup()
 
@@ -190,11 +181,8 @@ def settings_fragment():
         value=params.get("koina_enabled", koina_defaults["enabled"]),
         key="koina_enabled",
         help="Use AI-predicted spectrum as reference when no experimental reference mzML exists",
-        disabled=not KOINA_AVAILABLE,
     )
-    if not KOINA_AVAILABLE:
-        st.warning("koinapy is not installed. Install it to enable Koina predictions.")
-    if koina_enabled and KOINA_AVAILABLE:
+    if koina_enabled:
         # Model / collision energy / instrument: three-column row of selectors
         k_col1, k_col2, k_col3 = st.columns(3)
         with k_col1:

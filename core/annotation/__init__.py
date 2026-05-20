@@ -4,7 +4,7 @@ from core.annotation.peak_matching import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
-from core.annotation.metrics_intensity import (
+from core.annotation.intensity_metrics import (
     compute_cosine_similarity,
     compute_r2_binned,
     compute_r2_matching,
@@ -21,7 +21,7 @@ __all__ = [
     "annotate_spectrum",
     "prepare_koina_spectrum_for_plot",
     "prepare_spectrum_for_plot",
-    # metrics_intensity
+    # intensity_metrics
     "compute_cosine_similarity",
     "compute_r2_binned",
     "compute_r2_matching",

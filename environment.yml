@@ -3,30 +3,33 @@ channels:
   - bioconda
   - conda-forge
   - defaults
+# Every version is pinned to the known-good set the test suite runs against.
+# CI rebuilds this environment from scratch on each run, so an unpinned
+# dependency lets CI silently drift onto an untested release. Bump versions
+# deliberately (and together), never by leaving a spec open.
 dependencies:
   - python=3.11
   - pip
-  - numpy
-  - pandas
-  - scipy
-  - matplotlib
-  - plotly
-  - seaborn
-  - pyopenms
-  - pyarrow
-  - pyyaml
-  - streamlit>=1.48.0
-  - openpyxl
-  - pytest
-  - joblib
-  - tqdm
+  - numpy=2.4.2
+  - pandas=2.3.3
+  - scipy=1.17.0
+  - matplotlib=3.10.8
+  - plotly=6.5.2
+  - seaborn=0.13.2
+  - pyopenms=3.4.1
+  - pyarrow=22.0.0
+  - pyyaml=6.0.3
+  - streamlit=1.53.1
+  - openpyxl=3.1.5
+  - pytest=9.0.2
+  - joblib=1.5.3
+  - tqdm=4.67.2
   - pip:
-    - psm-utils
-    - koinapy
-    - ms-entropy
-    - spectrum-utils>=0.4.2
-    - altair
-    - polars
-    - openms-insight>=0.1.11
-    - pyopenms-viz
-    - joypy
+    - psm-utils==1.5.1
+    - koinapy==0.0.10
+    - ms-entropy==1.4.0
+    - spectrum-utils==0.5.0
+    - altair==6.0.0
+    - polars==1.39.3
+    - openms-insight==0.1.13
+    - pyopenms-viz==1.0.1
