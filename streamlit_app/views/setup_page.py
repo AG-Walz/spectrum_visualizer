@@ -1,6 +1,6 @@
 """Setup tab — pick idXML/mzML files, enter peptides, configure reference + annotation + Koina.
 
-Registered in app.py via st.Page(); outputs land in params and feed Search & Load."""
+Registered in app.py via st.Page(); outputs land in params and feed Load & Annotate."""
 from pathlib import Path
 
 import streamlit as st
@@ -215,7 +215,7 @@ def settings_fragment():
 
 def render():
     """Render the four Setup sections top-to-bottom — files, peptides, reference, settings."""
-    # Restore analysis: rehydrate workspace state if Search & Load was already run
+    # Restore analysis: rehydrate workspace state if Load & Annotate was already run
     restore_analysis_if_needed()
     st.title("Setup")
     st.caption("Configure files, peptides, reference, and annotation settings")

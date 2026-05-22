@@ -19,12 +19,12 @@ if "settings" not in st.session_state:
         st.session_state.settings = json.load(f)
 
 if __name__ == '__main__':
-    # Navigation: register the four tabs (Setup, Search & Load, Explore, Export)
+    # Navigation: register the four tabs (Setup, Load & Annotate, Explore, Export)
     views = Path(__file__).parent / "views"
     pages = {
         str(st.session_state.settings["app_name"]): [
             st.Page(views / "setup_page.py", title="Setup", icon="⚙️"),
-            st.Page(views / "search_load" / "search_load_page.py", title="Search & Load", icon="🔍", url_path="search-load"),
+            st.Page(views / "load_annotate" / "load_annotate_page.py", title="Load & Annotate", icon="📂", url_path="load-annotate"),
             st.Page(views / "explore" / "explore_page.py", title="Explore", icon="🔬", url_path="explore"),
             st.Page(views / "export" / "export_page.py", title="Export", icon="📦", url_path="export"),
         ],

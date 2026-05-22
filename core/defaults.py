@@ -1,6 +1,6 @@
 """User-tunable pipeline parameters, including option collections and default values. 
 Used across the streamlit app's views and CLI commands 
-(imported by Setup, Search & Load, and Export views, plus the CLI config loader).
+(imported by Setup, Load & Annotate, and Export views, plus the CLI config loader).
 """
 from dataclasses import dataclass
 

@@ -1,4 +1,4 @@
-"""One-line st.status + progress-bar + ETA helper used by Search & Load, Explore, and Export.
+"""One-line st.status + progress-bar + ETA helper used by Load & Annotate, Explore, and Export.
 """
 from __future__ import annotations
 

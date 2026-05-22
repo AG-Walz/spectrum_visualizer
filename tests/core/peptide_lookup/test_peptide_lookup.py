@@ -1,26 +1,26 @@
-"""Unit + integration tests for core.search (summarize_search_results + idXML scan)."""
+"""Unit + integration tests for core.peptide_lookup (summarize_lookup_results + idXML scan)."""
 import pytest
 import polars as pl
 from psm_utils import PSMList
 
-from core.search import (
-    search_peptides_in_idxmls,
-    summarize_search_results,
+from core.peptide_lookup import (
+    lookup_peptides_in_idxmls,
+    summarize_lookup_results,
 )
 from tests.conftest import make_peptide_match
 
 
-class TestSummarizeSearchResults:
-    """Pure-data tests for summarize_search_results (LazyFrame columns, counts, empties)."""
+class TestSummarizeLookupResults:
+    """Pure-data tests for summarize_lookup_results (LazyFrame columns, counts, empties)."""
 
     def test_returns_lazyframe(self):
-        result = summarize_search_results({
+        result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),
         })
         assert isinstance(result, pl.LazyFrame)
 
     def test_expected_columns(self):
-        result = summarize_search_results({
+        result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),
         })
         df = result.collect()
@@ -29,7 +29,7 @@ class TestSummarizeSearchResults:
         assert expected_cols.issubset(set(df.columns))
 
     def test_psm_count(self):
-        result = summarize_search_results({
+        result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[
                 make_peptide_match(spectrum_id="index=1"),
                 make_peptide_match(spectrum_id="index=2"),
@@ -39,13 +39,13 @@ class TestSummarizeSearchResults:
         assert df["psm_count"][0] == 2
 
     def test_empty_variant_groups(self):
-        result = summarize_search_results({})
+        result = summarize_lookup_results({})
         assert isinstance(result, pl.LazyFrame)
         df = result.collect()
         assert len(df) == 0
 
     def test_multiple_variants(self):
-        result = summarize_search_results({
+        result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),
             "AAAVAAAK": PSMList(psm_list=[make_peptide_match(peptidoform="AAAVAAAK")]),
         })
@@ -58,29 +58,29 @@ class TestSummarizeSearchResults:
 # ---------------------------------------------------------------------------
 
 @pytest.mark.integration
-class TestSearchWithRealData:
-    """Search the small_dataset idXML for the two expected peptides."""
+class TestLookupWithRealData:
+    """Look up the two expected peptides in the small_dataset idXML."""
 
     @pytest.fixture(scope="class")
-    def search_results(self, idxml_path, target_peptides):
+    def lookup_results(self, idxml_path, target_peptides):
         """Run the idXML scan once per class — every test below shares the result."""
-        return search_peptides_in_idxmls([idxml_path], target_peptides)
+        return lookup_peptides_in_idxmls([idxml_path], target_peptides)
 
-    def test_search_finds_expected_peptides(self, search_results):
-        assert len(search_results) == 2
-        assert "ASDDFDQASY" in search_results
-        assert "RTEFNLNQY" in search_results
+    def test_lookup_finds_expected_peptides(self, lookup_results):
+        assert len(lookup_results) == 2
+        assert "ASDDFDQASY" in lookup_results
+        assert "RTEFNLNQY" in lookup_results
 
-    def test_each_variant_has_one_psm_with_valid_fields(self, search_results):
-        for key, psm_list in search_results.items():
+    def test_each_variant_has_one_psm_with_valid_fields(self, lookup_results):
+        for key, psm_list in lookup_results.items():
             assert len(psm_list) == 1
             psm = psm_list[0]
             assert psm.peptidoform is not None
             assert psm.spectrum_id is not None
             assert (psm.get_precursor_charge() or 0) > 0
 
-    def test_summarize_returns_polars(self, search_results):
-        summary = summarize_search_results(search_results)
+    def test_summarize_returns_polars(self, lookup_results):
+        summary = summarize_lookup_results(lookup_results)
         assert isinstance(summary, pl.LazyFrame)
         df = summary.collect()
         assert len(df) == 2

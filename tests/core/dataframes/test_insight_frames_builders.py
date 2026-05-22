@@ -19,7 +19,7 @@ from core.dataframes import (
 )
 from psm_utils import PSMList
 
-from core.search import search_peptides_in_idxmls
+from core.peptide_lookup import lookup_peptides_in_idxmls
 from core.spectra import LoadedSpectrum, load_spectra_streaming, spectrum_lookup_key
 
 from tests.conftest import make_peptide_match
@@ -154,11 +154,11 @@ class TestBuildHeatmapDataframe:
 
 @pytest.mark.integration
 class TestBuildFromRealData:
-    """End-to-end: search → stream → annotate → build the four insight DataFrames."""
+    """End-to-end: lookup → stream → annotate → build the four insight DataFrames."""
 
     @pytest.fixture
     def variant_groups(self, idxml_path, target_peptides):
-        return search_peptides_in_idxmls([idxml_path], target_peptides)
+        return lookup_peptides_in_idxmls([idxml_path], target_peptides)
 
     def test_build_psm_table_real(self, variant_groups):
         psm_frame, lookup = build_psm_table(variant_groups)

@@ -32,7 +32,7 @@ def launch(request):
     "launch",
     (
         "streamlit_app/views/setup_page.py",
-        "streamlit_app/views/search_load/search_load_page.py",
+        "streamlit_app/views/load_annotate/load_annotate_page.py",
         "streamlit_app/views/explore/explore_page.py",
         "streamlit_app/views/export/export_page.py",
     ),

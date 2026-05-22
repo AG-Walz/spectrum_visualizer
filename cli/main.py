@@ -1,4 +1,4 @@
-"""MSpecViz CLI entry: run the 3-step pipeline (search → load+annotate → export) delegating functionality to core/ packages;
+"""MSpecViz CLI entry: run the 3-step pipeline (lookup → load+annotate → export) delegating functionality to core/ packages;
 configured from a YAML config invoked via python -m cli <config.yaml>.
 """
 import copy
@@ -29,7 +29,7 @@ from core.export import (  # noqa: E402
 from core.pipeline import (  # noqa: E402
     build_annotation_kwargs, build_koina_kwargs, run_streaming_annotation,
 )
-from core.search import search_peptides_in_idxmls  # noqa: E402
+from core.peptide_lookup import lookup_peptides_in_idxmls  # noqa: E402
 
 logger = logging.getLogger("core.cli")
 
@@ -66,7 +66,7 @@ def _resolve_peptide_source(source) -> list:
     # A. Sequence list case: strip and uppercase each entry
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
-    # B. File path / inline string case: one peptide per line
+    # B. File path or inline string case: one peptide per line
     source = str(source).strip()
     text = Path(source).read_text() if Path(source).is_file() else source
     return [line.strip().upper() for line in text.splitlines() if line.strip()]
@@ -102,17 +102,17 @@ def _load_config(path: str) -> SimpleNamespace:
     return config
 
 
-def _run_search(config) -> tuple:
-    """Calls core.search.search_peptides_in_idxmls() to scan idXML files 
-    for target peptides producing variang_groups (list of PSMs) 
+def _run_lookup(config) -> tuple:
+    """Calls core.peptide_lookup.lookup_peptides_in_idxmls() to scan idXML files
+    for target peptides producing variang_groups (list of PSMs)
      and return (variant_groups, total_psms).
     """
-    logger.info("Step 1: Searching peptides in idXML files")
+    logger.info("Step 1: Looking up peptides in idXML files")
     # Progress bar
-    bar = tqdm(total=len(config.idxml_files), desc="Searching", unit="file")
+    bar = tqdm(total=len(config.idxml_files), desc="Looking up", unit="file")
     errors: list = []
-    # Search for peptides across idXML files, streaming results and errors via callbacks
-    variant_groups = search_peptides_in_idxmls(
+    # Look up peptides across idXML files, streaming results and errors via callbacks
+    variant_groups = lookup_peptides_in_idxmls(
         idxml_paths=config.idxml_files,
         target_peptides=config.peptides,
         mzml_paths=config.mzml_files,
@@ -121,7 +121,7 @@ def _run_search(config) -> tuple:
         workers=min(config.workers, len(config.idxml_files)),
     )
     bar.close()
-    # Log any search errors but keep going
+    # Log any lookup errors but keep going
     for error in errors:
         logger.warning(error)
     # Count total PSMs across all variant groups for progress tracking in the next step
@@ -214,7 +214,7 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 
 def main(config_path: Path) -> None:
-    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config.
+    """CLI entry: run the 3-step pipeline (lookup → load+annotate → export) from a YAML config.
     """
     # Configure logging
     logging.basicConfig(
@@ -225,12 +225,12 @@ def main(config_path: Path) -> None:
     start = time.time()
     config = _load_config(str(config_path))
 
-    # Step 1: search idXMLs for peptide variants, bail if nothing matched
-    variant_groups, total_psms = _run_search(config)
+    # Step 1: look up peptide variants in idXMLs, bail if nothing matched
+    variant_groups, total_psms = _run_lookup(config)
     if total_psms == 0:
         sys.exit("Error: No PSMs found.")
 
-    # Step 2: stream + annotate spectra against the search results
+    # Step 2: stream + annotate spectra against the lookup results
     variant_groups_copy = copy.deepcopy(variant_groups) 
     psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
     annotated_queries, reference_store, comparison_rows = _run_load(

@@ -22,9 +22,9 @@ streamlit_app/
 │       └── state_sidebar.py    # page_setup, render_sidebar, workspace switcher
 └── views/
     ├── setup_page.py           # Tab 1 — file selection + parameters
-    ├── search_load/
-    │   ├── search_load_page.py    # Streamlit entry (render + fragments)
-    │   └── search_load_actions.py # run_peptide_search, run_search_and_load
+    ├── load_annotate/
+    │   ├── load_annotate_page.py    # Streamlit entry (render + fragments)
+    │   └── load_annotate_actions.py # run_peptide_lookup, run_load_and_annotate
     ├── explore/
     │   ├── explore_page.py     # render + comparison_metrics_fragment
     │   ├── explorer.py         # openms_insight components wrapper
@@ -68,7 +68,7 @@ framework-agnostic.
 ```
 cli/
 ├── __main__.py         # Enables `python -m cli <config.yaml>`
-├── main.py             # YAML load + pipeline (search → load → export), tqdm progress
+├── main.py             # YAML load + pipeline (lookup → load → export), tqdm progress
 └── config/             # Example YAML configs (config_example.yaml + real-run configs)
 ```
 
@@ -106,7 +106,7 @@ tests/
 │   └── test_mirror_picker.py
 └── core/                             # tests mirror the core subpackage layout
     ├── common/test_helpers.py
-    ├── search/test_peptide_search.py
+    ├── peptide_lookup/test_peptide_lookup.py
     ├── spectra/
     │   ├── test_koina_prediction.py
     │   └── test_spectrum_loader_integration.py

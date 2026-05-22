@@ -9,8 +9,8 @@ The core pipeline is pure Python and ships with two interchangeable front ends:
 - **CLI** — headless pipeline driven by a YAML config, suitable for batch jobs
   and servers without a browser.
 
-Both front ends share the same `core/` core (search, annotation, metrics,
-export). Pick the interface that fits your workflow; neither is required.
+Both front ends share the same `core/` core (peptide lookup, annotation,
+metrics, export). Pick the interface that fits your workflow; neither is required.
 
 ---
 
@@ -181,7 +181,7 @@ Three top-level packages keep core logic separable from the UI runners:
 ```
 MSpecViz/
 ├── core/                        # Core package — pure Python, no Streamlit imports
-│   ├── search/                  # idXML parsing + peptide search
+│   ├── peptide_lookup/          # idXML parsing + peptide lookup
 │   ├── spectra/                 # mzML streaming + Koina AI prediction
 │   ├── annotation/              # Theoretical fragments + 7 comparison metrics
 │   ├── dataframes/              # Polars LazyFrames for openms_insight
@@ -200,12 +200,12 @@ MSpecViz/
 │   │   └── page_state.py        # Session-state namespace helpers
 │   └── views/
 │       ├── setup_page.py        # Tab 1 — Setup
-│       ├── search_load/         # Tab 2 — Search & Load
+│       ├── load_annotate/       # Tab 2 — Load & Annotate
 │       ├── explore/             # Tab 3 — Explore (3 sub-views)
 │       ├── export/              # Tab 4 — Export
 │       └── widgets/             # File browser, peptide input widget
 ├── cli/                         # Headless runner (imports core.*)
-│   ├── main.py                  # Entry point: YAML load → search → load → export
+│   ├── main.py                  # Entry point: YAML load → lookup → load → export
 │   └── config/                  # Example YAML configs
 ├── tests/                       # Unit + integration + GUI tests (pytest)
 │   ├── cli/                     # CLI integration tests

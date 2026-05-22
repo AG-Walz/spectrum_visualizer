@@ -1,4 +1,4 @@
-"""Pack annotation + Koina settings into kwargs dicts (called by cli.main and streamlit_app.views.search_load).
+"""Pack annotation + Koina settings into kwargs dicts (called by cli.main and streamlit_app.views.load_annotate).
 """
 from typing import Any, Callable
 

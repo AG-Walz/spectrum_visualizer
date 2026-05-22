@@ -92,7 +92,7 @@ koina_instrument_type: TIMSTOF        # QE | LUMOS | TIMSTOF | SCIEXTOF
 | `[PEPTIDE1, PEPTIDE2]` | Inline list (YAML flow style). |
 
 Peptides are case-folded to uppercase and stripped of whitespace before
-the search.
+the lookup.
 
 ---
 

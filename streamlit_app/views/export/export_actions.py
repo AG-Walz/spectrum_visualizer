@@ -76,10 +76,10 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
                 do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
     """Drive core.export.run_export from the Export button and render the resulting gallery.
     """
-    # Guard: refuse to export when Search & Load hasn't populated session state
+    # Guard: refuse to export when Load & Annotate hasn't populated session state
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     if not annotated_queries:
-        st.warning("No annotated spectra in session -- re-run **Search & Load** first.")
+        st.warning("No annotated spectra in session -- re-run **Load & Annotate** first.")
         return None
 
     # Build config: format selection + plot settings shared with the CLI orchestrator

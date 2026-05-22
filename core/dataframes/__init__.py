@@ -1,5 +1,5 @@
 """Polars LazyFrames feeding openms_insight Table/LinePlot/SequenceView/Heatmap 
-(imported by cli.main and streamlit_app.views.search_load.search_load_actions).
+(imported by cli.main and streamlit_app.views.load_annotate.load_annotate_actions).
 """
 # The PSM selector Table — the row-per-PSM frame that drives openms_insight cross-linking.
 from core.dataframes.psm_tables import (

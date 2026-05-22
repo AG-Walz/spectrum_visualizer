@@ -80,9 +80,9 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     optional Koina AI fallback when no experimental reference exists. Returns
     (psm_id, query_spectrum, query_frame, comparison_rows), where
     comparison_rows holds one metrics dict per (query, reference) pair, or
-    None when the query has no matching PSM in the search results.
+    None when the query has no matching PSM in the lookup results.
     """
-    # PSM lookup: skip spectra that have no matching PSM in the search results
+    # PSM lookup: skip spectra that have no matching PSM in the lookup results
     psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
     if psm_id is None:
         return None

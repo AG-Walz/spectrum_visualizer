@@ -1,5 +1,5 @@
 """Analysis-cache I/O, directory-browser listings, and run_settings.json 
-(de)serialization — used by Search & Load (write), Explore (read), and Export (read + settings).
+(de)serialization — used by Load & Annotate (write), Explore (read), and Export (read + settings).
 """
 import json
 import logging
@@ -44,7 +44,7 @@ def _analysis_cache_path() -> Path:
 
 
 def save_analysis_cache() -> None:
-    """Write every Search-&-Load result to analysis_cache/ so the Explore and Export views survive a reload.
+    """Write every Load-&-Annotate result to analysis_cache/ so the Explore and Export views survive a reload.
     """
     cache_dir = _analysis_cache_path()
     cache_dir.mkdir(parents=True, exist_ok=True)
@@ -159,7 +159,7 @@ def load_analysis_cache() -> bool:
         # doesn't see this warning on every rerun.
         logger.warning(
             "Analysis cache from a previous code version is unreadable (%s); "
-            "clearing it. Re-run Search & Load to regenerate.", error,
+            "clearing it. Re-run Load & Annotate to regenerate.", error,
         )
         clear_analysis_cache()
         return False

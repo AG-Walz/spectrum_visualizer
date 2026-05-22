@@ -1,7 +1,7 @@
-"""Peptide-search orchestration layer, dispatching the tasks of searching for target peptides
- across idXML files and summarising results for the UI; It uses core.helpers.run_tasks 
-to parallelize the file-wise workers in core.search.idxml_workers;
-(called by cli.main and streamlit_app.views.search_load).
+"""Peptide-lookup orchestration layer, dispatching the tasks of looking up target peptides
+ across idXML files and summarising results for the UI; It uses core.helpers.run_tasks
+to parallelize the file-wise workers in core.peptide_lookup.idxml_workers;
+(called by cli.main and streamlit_app.views.load_annotate).
 """
 import logging
 from collections import Counter
@@ -12,7 +12,7 @@ import polars as pl
 from psm_utils import PSMList
 
 from core.helpers import run_tasks
-from core.search.idxml_workers import search_single_idxml, count_psms_per_peptide
+from core.peptide_lookup.idxml_workers import lookup_peptides_in_single_idxml, count_psms_per_peptide
 
 logger = logging.getLogger(__name__)
 
@@ -23,7 +23,7 @@ def count_psms_in_idxmls(
     error_callback: Optional[Callable] = None,
     workers: int = 1,
 ) -> "Counter[str]":
-    """Small dispatcher run before peptide search to count by base sequence (ignoring modifications)
+    """Small dispatcher run before peptide lookup to count by base sequence (ignoring modifications)
     across idXMLs; The result populates the "Pick peptides from idXML" tab in Streamlit
     keyed by base sequence (drives the Setup peptide-preview).
     """
@@ -49,7 +49,7 @@ def count_psms_in_idxmls(
     return merged
 
 
-def search_peptides_in_idxmls(
+def lookup_peptides_in_idxmls(
     idxml_paths: List[str],
     target_peptides: List[str],
     mzml_paths: Optional[List[str]] = None,
@@ -57,7 +57,7 @@ def search_peptides_in_idxmls(
     error_callback: Optional[Callable] = None,
     workers: int = 1,
 ) -> Dict[str, PSMList]:
-    """Search target_peptides across all idXMLs; return {variant_key: PSMList} 
+    """Look up target_peptides across all idXMLs; return {variant_key: PSMList}
     with per-PSM resolution metadata stamped.
     """
     # Normalise inputs: target peptides are stripped, uppercased, and deduped into a set 
@@ -69,7 +69,7 @@ def search_peptides_in_idxmls(
         logger.warning("No valid target peptides provided")
         return {}
 
-    # Build tasks: pack each idXML into the 4-tuple (path, name, target_set, mzml_by_stem) search_single_idxml expects
+    # Build tasks: pack each idXML into the 4-tuple (path, name, target_set, mzml_by_stem) lookup_peptides_in_single_idxml expects
     mzml_by_stem = {Path(path).stem.lower(): str(path) for path in (mzml_paths or [])}
     tasks = [(path, Path(path).name, target_set, mzml_by_stem) for path in idxml_paths]
     total = len(idxml_paths)
@@ -77,7 +77,7 @@ def search_peptides_in_idxmls(
 
     # Dispatch  task stream tuples (task, ok, result) from run_tasks
     for completed, (task, ok, result) in enumerate(
-        run_tasks(tasks=tasks, worker=search_single_idxml, workers=workers), start=1,
+        run_tasks(tasks=tasks, worker=lookup_peptides_in_single_idxml, workers=workers), start=1,
     ):
         # On success, fold matches into variant groups (PSMList grouped by modified sequence)
         if ok:
@@ -89,9 +89,9 @@ def search_peptides_in_idxmls(
             errors = [f"Worker crashed processing {Path(task[0]).name}: {result}"]
         for message in errors:
             on_error(message)
-        progress(completed, total, "Searching idXML files")
+        progress(completed, total, "Looking up peptides in idXML files")
 
-    progress(total, total, "Search complete")
+    progress(total, total, "Lookup complete")
     total_psms = sum(len(g) for g in variant_groups.values())
     logger.info(f"Found {total_psms} PSMs across {len(variant_groups)} variants")
     return variant_groups
@@ -104,8 +104,8 @@ _SUMMARY_SCHEMA = {
     "idxml_files": pl.Int32, "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
 }
 
-def summarize_search_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame:
-    """Turn the variant groups returned by search_peptides_in_idxmls into a summary LazyFrame with one row per variant for display
+def summarize_lookup_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame:
+    """Turn the variant groups returned by lookup_peptides_in_idxmls into a summary LazyFrame with one row per variant for display
     """
     # Flatten variant groups into one row per PSM, carrying variant & resolution metadata
     rows = []

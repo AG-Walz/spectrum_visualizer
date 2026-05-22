@@ -101,7 +101,7 @@ Set `MSPECVIZ_LOG_LEVEL=ERROR` to suppress everything except real
 errors; the progress bars stay on by default (they go to stderr).
 
 `workers` (default 4) controls parallelism for all three pipeline
-stages — idXML search, mzML streaming, and plot rendering. `workers: 1`
+stages — idXML lookup, mzML streaming, and plot rendering. `workers: 1`
 forces the sequential code path inside `run_tasks`, which is the right
 setting when you want a worker-side traceback instead of a generic
 "worker crashed" message.
@@ -109,8 +109,8 @@ setting when you want a worker-side traceback instead of a generic
 Typical successful run:
 
 ```text
-[INFO] Step 1: Searching peptides in idXML files
-Searching: 100%|██████████| 1/1 [00:01<00:00,  1.2file/s]
+[INFO] Step 1: Looking up peptides in idXML files
+Looking up: 100%|██████████| 1/1 [00:01<00:00,  1.2file/s]
 [INFO] Found 2 PSMs across 2 variants
 [INFO] Step 2: Loading and annotating spectra
 Loading:   100%|██████████| 2/2 [00:14<00:00,  7.1s/spec]

@@ -215,7 +215,7 @@ def _render_picker_tables(
 def mirror_plots_fragment(params: dict):
     """Render the Mirror Plots sub-view — peptide selectbox -> two pickers -> mirror plot.
     """
-    # Pull session state: annotated queries, references, and variant groups from Search & Load
+    # Pull session state: annotated queries, references, and variant groups from Load & Annotate
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     reference_store = st.session_state.get(get_state_key("reference_store"), {})
     variant_groups = st.session_state.get(get_state_key("variant_groups"), {})

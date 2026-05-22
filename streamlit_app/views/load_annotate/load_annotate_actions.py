@@ -1,5 +1,5 @@
-"""Search & Load action layer — called by search_load_page.py buttons to drive idXML scan + spectrum streaming.
-Wraps the core search + streaming-annotation functions with Streamlit progress plumbing.
+"""Load & Annotate action layer — called by load_annotate_page.py buttons to drive idXML scan + spectrum streaming.
+Wraps the core peptide-lookup + streaming-annotation functions with Streamlit progress plumbing.
 """
 from __future__ import annotations
 
@@ -21,13 +21,13 @@ from core.pipeline import (
     build_koina_kwargs,
     run_streaming_annotation,
 )
-from core.search import search_peptides_in_idxmls
+from core.peptide_lookup import lookup_peptides_in_idxmls
 
 logger = logging.getLogger(__name__)
 
 
-def _show_search_results_summary(results, error_messages, tracker, params: dict) -> None:
-    """Finalize the search status block with PSM/variant counts and any warnings.
+def _show_lookup_results_summary(results, error_messages, tracker, params: dict) -> None:
+    """Finalize the lookup status block with PSM/variant counts and any warnings.
     """
     # Empty path: mark the status block as an error and bail
     if not results:
@@ -53,15 +53,15 @@ def _show_search_results_summary(results, error_messages, tracker, params: dict)
                 st.caption(message)
 
 
-def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
+def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
     """Scan idxmls for peptides, stash variant_groups in session state, surface progress + warnings.
     """
     mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
     # Dispatch parallel idXML scan inside a progress status block; stash and summarize results
-    with progress_status("Searching peptides...") as tracker:
-        results = search_peptides_in_idxmls(
+    with progress_status("Looking up peptides...") as tracker:
+        results = lookup_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
             progress_callback=lambda current, total, message: tracker.update(
                 current, total, units="files", message=message,
@@ -70,7 +70,7 @@ def run_peptide_search(params: dict, idxmls: list, peptides: list) -> None:
             workers=get_param(params, "workers", DEFAULTS.workers),
         )
         st.session_state[get_state_key("variant_groups")] = results
-        _show_search_results_summary(results, error_messages, tracker, params)
+        _show_lookup_results_summary(results, error_messages, tracker, params)
 
 
 def _params_getter(params: dict):
@@ -147,7 +147,7 @@ def _validate_load_inputs(params: dict) -> tuple | None:
     """Pre-flight check; return (variant_groups, mzmls) or None after surfacing an inline error."""
     variant_groups = st.session_state.get(get_state_key("variant_groups"))
     if not variant_groups:
-        st.error("No search results. Run peptide search first.")
+        st.error("No lookup results. Run peptide lookup first.")
         return None
     mzmls = get_param(params, "selected_mzmls", [])
     if not mzmls:
@@ -169,9 +169,9 @@ def _finalize_load(
     )
 
 
-def run_search_and_load(params: dict) -> None:
+def run_load_and_annotate(params: dict) -> None:
     """Stream spectra, annotate against the theoretical fragments, compute metrics, and build visualization frames."""
-    # Reset stale cache + abort if Setup/Search prerequisites are missing
+    # Reset stale cache + abort if Setup/Lookup prerequisites are missing
     clear_analysis_cache()
 
     inputs = _validate_load_inputs(params)

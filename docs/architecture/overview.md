@@ -37,7 +37,7 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
           │                   streamlit_app/utils/state/state_params.py
           │
           ▼
-  [ search ]                  core.search.search_peptides_in_idxmls
+  [ lookup ]                  core.peptide_lookup.lookup_peptides_in_idxmls
           │   → variant_groups: dict[variant_key → PSMList]
           │
           ▼
@@ -71,8 +71,8 @@ where outputs go (stdout/disk vs. session state + disk).
 Checked by reviewers and by the repository's line/folder caps:
 
 1. **≤250 lines per `.py`** — split into a subpackage when you cross it.
-2. **≤10 scripts per folder** — subgroup by topic (`search/models.py`,
-   `search/workers.py`, …). Shared helpers stay at the parent level.
+2. **≤10 scripts per folder** — subgroup by topic (`spectra/models.py`,
+   `spectra/workers.py`, …). Shared helpers stay at the parent level.
 3. **`core/` imports no UI code** — if you need to cross that line,
    move the shared logic into `core/pipeline/` and have both callers
    pass data in.

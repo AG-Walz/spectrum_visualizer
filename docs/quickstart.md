@@ -88,10 +88,10 @@ RTEFNLNQY
 ```
 
 Enter **base sequences** (unmodified). MSpecViz automatically finds all
-modified variants during the search step. Sequences are case-insensitive.
+modified variants during the lookup step. Sequences are case-insensitive.
 
 Use "Preview peptides in idXML" to see which peptides are present in your
-selected idXML files before committing to a search.
+selected idXML files before committing to a lookup.
 
 ### Reference Configuration
 
@@ -133,13 +133,13 @@ synthetic reference spectrum for mirror plot comparison.
 
 ---
 
-## Tab 2: Search & Load
+## Tab 2: Load & Annotate
 
 This tab runs the analysis pipeline in two stages.
 
-### Stage 1: Search Peptides
+### Stage 1: Look Up Peptides
 
-Click **Search Peptides** to scan selected idXML files for target peptide
+Click **Look Up Peptides** to scan selected idXML files for target peptide
 sequences. MSpecViz finds all PSMs, groups them by peptide variant (base
 sequence plus modification state), and resolves which mzML file contains each
 spectrum.
@@ -154,9 +154,9 @@ The results table shows:
 | idXML Files | Source identification files |
 | mzML Resolved | Whether the corresponding mzML files were located |
 
-### Stage 2: Search & Load Spectra
+### Stage 2: Load & Annotate Spectra
 
-After reviewing search results, click **Search & Load Spectra** to:
+After reviewing lookup results, click **Load & Annotate Spectra** to:
 
 1. Stream spectra from mzML files.
 2. Annotate each spectrum with theoretical fragment ions.
@@ -261,8 +261,8 @@ and [export/formats.md](export/formats.md) for file schemas.
 ## Tips
 
 - **Peptide preview** -- Use the "Preview peptides in idXML" button in Setup
-  before searching. This shows a sample of peptides in your files and helps
-  catch typos.
+  before running the lookup. This shows a sample of peptides in your files and
+  helps catch typos.
 - **Same-name files** -- If you select files with identical names from different
   directories, MSpecViz automatically disambiguates them using parent directory
   components.
@@ -283,7 +283,7 @@ and [export/formats.md](export/formats.md) for file schemas.
 | Problem | Solution |
 |---|---|
 | No files shown in the directory browser | Verify the path exists and you have read permissions. Check the `data_directories.default` setting in `streamlit_app/config/settings.json`. |
-| "No matches found" after peptide search | Verify the peptide sequences exist in your idXML files using the Preview button. Sequences are case-insensitive but must match the base (unmodified) sequence. |
+| "No matches found" after peptide lookup | Verify the peptide sequences exist in your idXML files using the Preview button. Sequences are case-insensitive but must match the base (unmodified) sequence. |
 | PSMs not resolved to mzML files | Ensure the mzML files referenced in the idXML metadata are among your selected files. The filenames must match. |
 | openms_insight components not rendering | Confirm openms_insight 0.1.11 is installed. Restart the Streamlit server if components fail to load. |
 | Koina prediction returns no results | Check network connectivity (Koina uses a remote API). Some models only support specific peptide lengths or charge states. |

@@ -1,6 +1,6 @@
-"""idXML scanning workers, which open and read the peptide identifications out of them, 
+"""idXML scanning workers, which open and read the peptide identifications out of them,
 designed to be dispatched across multiple processes by the run_tasks utility in helpers.py
-(used by core.search.peptide_search).
+(used by core.peptide_lookup.peptide_lookup).
 """
 import logging
 from collections import Counter
@@ -26,7 +26,7 @@ def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
     return counts
 
 
-def search_single_idxml(
+def lookup_peptides_in_single_idxml(
     idxml_path: str, idxml_name: str,
     target_set: Set[str], mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
@@ -37,7 +37,7 @@ def search_single_idxml(
     matches: list = []
     try:
         reader = IdXMLReader(str(idxml_path))
-    # Catch file-level errors, returning empty results with an error message instead of crashing the whole search
+    # Catch file-level errors, returning empty results with an error message instead of crashing the whole lookup
     except Exception as load_error:
         return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
 

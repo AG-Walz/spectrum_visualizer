@@ -27,7 +27,7 @@ user has touched get persisted. Missing keys fall back to
 | `selected_mzmls` | list[string] | `[]` | Absolute paths of mzML files queued in the Setup tab. |
 | `idxml_browser_dir` | string | `""` | Last directory browsed for idXML selection. |
 | `mzml_browser_dir` | string | `""` | Same, for the mzML browser. |
-| `target_peptides` | string | `""` | Raw contents of the peptide-input textarea (newline-separated). Parsed by `parse_peptide_list` at search time. |
+| `target_peptides` | string | `""` | Raw contents of the peptide-input textarea (newline-separated). Parsed by `parse_peptide_list` at lookup time. |
 | `reference_substring` | string | `""` | Filename substring identifying reference mzMLs. Empty ⇒ single-spectrum mode, no mirror plots. |
 | `ion_types` | list[string] | `DEFAULTS.ion_types` | Active fragment ion series. Must be a subset of `settings.json > ion_types.available`. |
 | `mz_tolerance` | float | `DEFAULTS.mz_tolerance` | m/z matching tolerance in Da. |
@@ -77,14 +77,14 @@ contract between views — written by one view, read by another.
 
 | Key | Written by | Read by | Description |
 |---|---|---|---|
-| `selected_idxmls`, `selected_mzmls`, `target_peptides`, `reference_substring` | Setup | Search & Load | Input definitions. |
-| `ion_types`, `mz_tolerance`, `add_neutral_losses`, `intensity_mode` | Setup | Search & Load, Export | Annotation parameters. |
-| `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Search & Load, Export | Runtime / AI-prediction parameters. |
-| `variant_groups` | Search & Load (stage 1) | Search & Load (stage 2), Export | Search results — the `Dict[variant_key, PSMList]` returned by `search_peptides_in_idxmls`. |
-| `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Search & Load (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
-| `annotated_queries`, `reference_store`, `comparison_frame` | Search & Load (stage 2) | Explore, Export | Annotated spectra + metrics. |
-| `data_ready` | Search & Load (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |
-| `cache_version` | Search & Load (stage 2) | Cache validator | Bumped whenever a fresh load completes; used to detect re-runs and invalidate cached frames. |
+| `selected_idxmls`, `selected_mzmls`, `target_peptides`, `reference_substring` | Setup | Load & Annotate | Input definitions. |
+| `ion_types`, `mz_tolerance`, `add_neutral_losses`, `intensity_mode` | Setup | Load & Annotate, Export | Annotation parameters. |
+| `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Load & Annotate, Export | Runtime / AI-prediction parameters. |
+| `variant_groups` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[variant_key, PSMList]` returned by `lookup_peptides_in_idxmls`. |
+| `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Load & Annotate (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
+| `annotated_queries`, `reference_store`, `comparison_frame` | Load & Annotate (stage 2) | Explore, Export | Annotated spectra + metrics. |
+| `data_ready` | Load & Annotate (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |
+| `cache_version` | Load & Annotate (stage 2) | Cache validator | Bumped whenever a fresh load completes; used to detect re-runs and invalidate cached frames. |
 
 All keys are prefixed with `peptide_mirror.` when actually stored. Use
 `get_state_key(key)` to resolve the prefixed version.

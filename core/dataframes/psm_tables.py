@@ -3,7 +3,7 @@ Flattens peptidoform variant_groups into one row per PSMList and produces two ou
 a schema-enforced Polars LazyFrame matching PSM_TABLE_SCHEMA 
 (selectable PSM list shown in the openms_insight Table) and a "spectrum_id|peptidoform" -> psm_id lookup 
 that lets downstream code attach peaks, sequence and heatmap rows back to the integer PSM id that cross-links every component.
-(imported by core.dataframes, cli.main and streamlit_app.views.search_load.search_load_actions.)
+(imported by core.dataframes, cli.main and streamlit_app.views.load_annotate.load_annotate_actions.)
 """
 import logging
 import polars as pl

@@ -1,11 +1,11 @@
-"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via core.search.count_psms_in_idxmls)."""
+"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via core.peptide_lookup.count_psms_in_idxmls)."""
 from collections import Counter
 
 import streamlit as st
 
 from core.defaults import DEFAULTS
 from core.helpers import parse_peptide_list
-from core.search import count_psms_in_idxmls
+from core.peptide_lookup import count_psms_in_idxmls
 from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 

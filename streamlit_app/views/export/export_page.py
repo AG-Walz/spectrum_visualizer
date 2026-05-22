@@ -162,9 +162,9 @@ def zip_download_fragment(export_root: Path) -> None:
 def export_controls_fragment():
     """Render the export-directory input, format checkboxes, and the "Export All" trigger button.
     """
-    # Guard: Search & Load must have populated session state first
+    # Guard: Load & Annotate must have populated session state first
     if not st.session_state.get(get_state_key("data_ready")):
-        st.info("Load data first (Search & Load page).")
+        st.info("Load data first (Load & Annotate page).")
         return
 
     # Export directory: default to <workspace>/exports when unset

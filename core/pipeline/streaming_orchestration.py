@@ -5,7 +5,7 @@ and metric scoring, and buffers the outcomes into three accumulators returned to
 the caller: annotated_queries (per-PSM annotated spectra), reference_store
 (experimental reference cache, populated as a side effect), and comparison_rows
 (one metrics dict per query/reference pair).
-(called by cli.main and streamlit_app.views.search_load; the returned
+(called by cli.main and streamlit_app.views.load_annotate; the returned
 buffers are consumed downstream by core.dataframes to build the openms_insight LazyFrames.)
 """
 from pathlib import Path
@@ -39,7 +39,7 @@ def make_query_ready_callback(
         """Annotate one streamed query spectrum and record it into the shared buffers.
         Invoked once per query spectrum by load_spectra_streaming. Delegates to
         process_query_result; a None result means the spectrum has no matching
-        PSM in the search results, so it is silently skipped. On success, the per-PSM
+        PSM in the lookup results, so it is silently skipped. On success, the per-PSM
         annotated spectrum is appended to annotated_queries, its metric rows are
         extended into comparison_rows, and the progress counter advances. Returns None.
         """
@@ -47,7 +47,7 @@ def make_query_ready_callback(
         processed = process_query_result(
             result, psm_lookup, annotation_kwargs, reference_store, **koina_kwargs,
         )
-        # Skip spectra with no matching PSM in the search results.
+        # Skip spectra with no matching PSM in the lookup results.
         if processed is None:
             return
         # Buffer the annotated query and its per-pair metric rows for the caller.

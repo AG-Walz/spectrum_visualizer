@@ -148,7 +148,7 @@ def render_explorer(params: dict) -> None:
     needs_regeneration, mark_rendered = _needs_cache_regen()
     state_manager = _get_state_manager()
 
-    # Pull frames: four LazyFrames staged by Search & Load into session state
+    # Pull frames: four LazyFrames staged by Load & Annotate into session state
     psm_frame = st.session_state.get(get_state_key("psm_frame"))
     peaks_frame = st.session_state.get(get_state_key("peaks_frame"))
     sequence_frame = st.session_state.get(get_state_key("sequence_frame"))

@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 def comparison_metrics_fragment():
     """Render per-PSM metrics table, per-peptidoform summary stats, and summary plots.
     """
-    # Guard: bail when Search & Load hasn't produced a comparison frame
+    # Guard: bail when Load & Annotate hasn't produced a comparison frame
     comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
     if comparison_frame is None or comparison_frame.empty:
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
@@ -78,16 +78,16 @@ def comparison_metrics_fragment():
 
 
 def render():
-    """Render title, gate on Search & Load completion, then dispatch to the chosen sub-view.
+    """Render title, gate on Load & Annotate completion, then dispatch to the chosen sub-view.
     """
     # Restore analysis: rehydrate session state when the workspace has cached results
     restore_analysis_if_needed()
     st.title("Explore")
     st.caption("Interactive visualization of loaded spectra and comparison metrics")
 
-    # Gate: Search & Load must have populated session state before anything renders
+    # Gate: Load & Annotate must have populated session state before anything renders
     if not st.session_state.get(get_state_key("data_ready")):
-        st.info("Run 'Search & Load' first to populate the explorer.")
+        st.info("Run 'Load & Annotate' first to populate the explorer.")
         return
 
     # Sub-view picker: horizontal radio that survives reruns via STATE_PREFIX key
