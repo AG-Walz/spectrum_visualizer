@@ -12,10 +12,10 @@ The `peptide_source:` YAML key accepts two forms:
 
 | Form | Example | Behaviour |
 | --- | --- | --- |
-| File path | `peptide_source: /data/list.txt` | Read from disk. Comma- or newline-separated. Case is folded to uppercase. |
+| File path | `peptide_source: /data/list.txt` | Read from disk — one peptide per line. Case is folded to uppercase. |
 | Inline list | `peptide_source: [ASDDFDQASY, RTEFNLNQY]` | YAML flow-style list. |
 
-Both route through `cli.main._load_peptides()`. The resolved list is
+Both route through `cli.main._resolve_peptide_source()`. The resolved list is
 recorded in `run_settings.json` for reproducibility.
 
 ---

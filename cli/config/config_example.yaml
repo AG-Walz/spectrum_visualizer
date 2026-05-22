@@ -13,6 +13,7 @@ mzml_files:
   - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
 
 # "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
+# A .txt file must hold one peptide per line (commas are not separators).
 peptide_source: /mnt/volume/nacho/data/peptide_lists/peptides.txt
 
 # Substring that marks reference mzMLs; leave empty for single-spectrum mode

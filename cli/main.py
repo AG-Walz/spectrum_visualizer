@@ -60,18 +60,16 @@ def _expand_globs(patterns: list) -> list:
 
 
 def _resolve_peptide_source(source) -> list:
-    """Resolve the peptide loading source (which can be a YAML list, 
-    a file path from which to read peptides, or raw comma/newline strings) 
-    into a list of upper-cased sequences.
+    """Resolve the peptide loading source (a YAML list, or a file path or inline
+    string holding one peptide per line) into a list of upper-cased sequences.
     """
     # A. Sequence list case: strip and uppercase each entry
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
-    # B.File path case: read its text
+    # B. File path / inline string case: one peptide per line
     source = str(source).strip()
-    # C. Raw string case: split on commas/newlines, strip, and uppercase each entry
     text = Path(source).read_text() if Path(source).is_file() else source
-    return [line.strip().upper() for line in text.replace(",", "\n").splitlines() if line.strip()]
+    return [line.strip().upper() for line in text.splitlines() if line.strip()]
 
 
 def _load_config(path: str) -> SimpleNamespace:

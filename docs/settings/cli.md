@@ -88,7 +88,7 @@ koina_instrument_type: TIMSTOF        # QE | LUMOS | TIMSTOF | SCIEXTOF
 
 | Value | Behaviour |
 |---|---|
-| `/abs/path/peptides.txt` | Read newline- or comma-separated peptide list from disk. |
+| `/abs/path/peptides.txt` | Peptide list read from disk — one peptide per line. |
 | `[PEPTIDE1, PEPTIDE2]` | Inline list (YAML flow style). |
 
 Peptides are case-folded to uppercase and stripped of whitespace before
