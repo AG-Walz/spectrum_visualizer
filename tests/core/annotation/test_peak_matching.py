@@ -1,4 +1,4 @@
-"""Unit tests for ``core.annotation.peak_matching`` (PyOpenMS + Koina annotators)."""
+"""Unit tests for core.annotation.peak_matching (PyOpenMS + Koina annotators)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -18,7 +18,7 @@ ASDDFDQASY_Y2 = 269.1132
 
 
 class TestAnnotatePeaks:
-    """``annotate_spectrum`` — match peaks against theoretical fragments at a given tolerance."""
+    """annotate_spectrum — match peaks against theoretical fragments at a given tolerance."""
 
     def test_exact_match_annotated(self):
         mz = np.array([ASDDFDQASY_B2])
@@ -56,7 +56,7 @@ class TestAnnotatePeaks:
 
 
 class TestPrepareSpectrumForPlot:
-    """``prepare_spectrum_for_plot`` — annotate + filter + normalise composition."""
+    """prepare_spectrum_for_plot — annotate + filter + normalise composition."""
 
     @pytest.fixture(autouse=True)
     def setup(self):

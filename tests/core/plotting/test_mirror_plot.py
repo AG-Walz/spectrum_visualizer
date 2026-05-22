@@ -1,4 +1,4 @@
-"""Unit + integration tests for ``core.plotting.mirror`` (pyopenms-viz wrapper)."""
+"""Unit + integration tests for core.plotting.mirror (pyopenms-viz wrapper)."""
 from io import BytesIO
 
 import matplotlib
@@ -14,7 +14,7 @@ from core.plotting import create_spectrum_plot
 
 
 class TestPlotCreation:
-    """Return-type + empty-frame safety across ``ms_matplotlib`` / ``ms_plotly`` and single/mirror modes."""
+    """Return-type + empty-frame safety across ms_matplotlib / ms_plotly and single/mirror modes."""
 
     @pytest.mark.parametrize("backend, expected_type", [
         ("ms_matplotlib", Figure),

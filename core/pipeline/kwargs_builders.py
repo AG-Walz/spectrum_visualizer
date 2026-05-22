@@ -1,13 +1,17 @@
-"""Pack annotation + Koina settings into kwargs dicts (called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
+"""Pack annotation + Koina settings into kwargs dicts (called by cli.main and streamlit_app.views.search_load).
+"""
 from typing import Any, Callable
 
 from core.defaults import DEFAULTS
 
+# Accessor contract shared by both callers: (key, default) -> value —
+# the CLI passes a YAML-config lookup, Streamlit passes a session-state lookup.
 ParamGetter = Callable[[str, Any], Any]
 
 
 def build_annotation_kwargs(getter: ParamGetter) -> dict:
-    """Read ion types, tolerance, intensity mode, and neutral-loss flag via ``getter`` for ``prepare_spectrum_for_plot``."""
+    """Read ion types, tolerance, intensity mode, and neutral-loss flag via getter for prepare_spectrum_for_plot.
+    """
     return dict(
         ion_types=getter("ion_types", DEFAULTS.ion_types),
         mz_tolerance=getter("mz_tolerance", DEFAULTS.mz_tolerance),
@@ -17,7 +21,8 @@ def build_annotation_kwargs(getter: ParamGetter) -> dict:
 
 
 def build_koina_kwargs(getter: ParamGetter) -> dict:
-    """Read Koina enable flag, model, collision energy, and instrument via ``getter`` for ``process_query_result``."""
+    """Read Koina enable flag, model, collision energy, and instrument via getter for process_query_result.
+    """
     return dict(
         koina_enabled=getter("koina_enabled", DEFAULTS.koina_enabled),
         koina_model=getter("koina_model", DEFAULTS.koina_model),

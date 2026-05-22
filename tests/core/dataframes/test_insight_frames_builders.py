@@ -1,4 +1,4 @@
-"""Builder tests for ``core.dataframes`` (PSM table + peaks/sequence/heatmap LazyFrames)."""
+"""Builder tests for core.dataframes (PSM table + peaks/sequence/heatmap LazyFrames)."""
 from pathlib import Path
 
 import numpy as np
@@ -26,7 +26,7 @@ from tests.conftest import make_peptide_match
 
 
 def _make_variant_groups():
-    """Build a ``Dict[variant_key, PSMList]`` with two synthetic PEPTIDEK PSMs."""
+    """Build a Dict[variant_key, PSMList] with two synthetic PEPTIDEK PSMs."""
     return {"PEPTIDEK": PSMList(psm_list=[
         make_peptide_match(spectrum_id="index=1"),
         make_peptide_match(spectrum_id="index=2"),
@@ -34,7 +34,7 @@ def _make_variant_groups():
 
 
 def _make_annotated_frame(n_peaks=5):
-    """Build a synthetic ``prepare_spectrum_for_plot``-shaped DataFrame with ``n_peaks`` rows."""
+    """Build a synthetic prepare_spectrum_for_plot-shaped DataFrame with n_peaks rows."""
     return pd.DataFrame({
         "mz": np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
         "intensity": np.linspace(0.2, 1.0, n_peaks).astype(np.float64),
@@ -46,7 +46,7 @@ def _make_annotated_frame(n_peaks=5):
 
 def _make_loaded_spectrum(spectrum_id="index=1", peptidoform="PEPTIDEK",
                           charge=2, rt=120.0, n_peaks=5):
-    """Build a synthetic ``LoadedSpectrum`` (linear m/z + intensity ramps)."""
+    """Build a synthetic LoadedSpectrum (linear m/z + intensity ramps)."""
     return LoadedSpectrum(
         spectrum_id=spectrum_id,
         mz=np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
@@ -87,7 +87,7 @@ class TestBuildPsmTable:
 
 class TestBuildPeaksDataframe:
     def test_basic_build(self):
-        """Peaks DF from one annotated frame: LazyFrame, schema, row count, ``highlight`` column."""
+        """Peaks DF from one annotated frame: LazyFrame, schema, row count, highlight column."""
         annotated = [(0, _make_annotated_frame(n_peaks=5))]
         frame = build_peaks_dataframe(annotated)
         assert isinstance(frame, pl.LazyFrame)

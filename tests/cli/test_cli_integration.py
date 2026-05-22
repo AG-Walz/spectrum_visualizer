@@ -1,4 +1,4 @@
-"""Integration tests for ``cli.main`` — subprocess-driven against the small_dataset fixture."""
+"""Integration tests for cli.main — subprocess-driven against the small_dataset fixture."""
 import os
 import subprocess
 import sys

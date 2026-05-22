@@ -1,4 +1,4 @@
-"""Unit tests for ``core.dataframes.insight_frames._proforma_to_openms_str`` (peptidoform string conversion)."""
+"""Unit tests for core.dataframes.insight_frames._proforma_to_openms_str (peptidoform string conversion)."""
 from core.dataframes.insight_frames import _proforma_to_openms_str
 
 
@@ -10,7 +10,7 @@ class TestProformaToOpenmsStr:
     def test_oxidation_modification(self):
         result = _proforma_to_openms_str("PEPTM[Oxidation]IDEK")
         assert "Oxidation" in result
-        # OpenMS notation uses parentheses (e.g. ``M(Oxidation)``), not brackets
+        # OpenMS notation uses parentheses (e.g. M(Oxidation)), not brackets
         assert "(" in result
 
     def test_charge_suffix_stripped(self):

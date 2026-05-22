@@ -1,4 +1,4 @@
-"""Unit tests for ``core.helpers`` (peptide parsing, time formatting, basename uniqueness)."""
+"""Unit tests for core.helpers (peptide parsing, time formatting, basename uniqueness)."""
 import pytest
 
 from core.helpers import (

@@ -1,4 +1,6 @@
-"""Per-query annotation phases — annotate query, cache references, fall back to Koina (called by ``pipeline.query_processing.process_query_result``)."""
+"""Per-query annotation phases — annotate query, cache references, fall back to Koina 
+(called by pipeline.query_processing.process_query_result).
+"""
 import numpy as np
 from psm_utils import Peptidoform
 
@@ -17,7 +19,9 @@ def get_koina_prediction(
     koina_collision_energy: int = DEFAULTS.koina_collision_energy,
     koina_instrument_type: str = DEFAULTS.koina_instrument_type,
 ):
-    """Predict a spectrum with Koina and wrap it as an annotated reference; return ``(spectrum, frame)`` or ``None``."""
+    """Predict a spectrum with Koina and wrap it as an annotated reference; 
+    return (spectrum, frame) or None.
+    """
     # Predict: call Koina with model + CE + instrument, bail on empty frame
     predicted_frame = predict_koina_spectrum(
         peptidoform_str=peptidoform,
@@ -49,7 +53,8 @@ def get_koina_prediction(
 
 
 def _annotate_query_spectrum(result, annotation_kwargs):
-    """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame."""
+    """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame.
+    """
     return prepare_spectrum_for_plot(
         result.query_spectrum.mz,
         result.query_spectrum.intensity,
@@ -61,10 +66,14 @@ def _annotate_query_spectrum(result, annotation_kwargs):
 
 
 def _cache_reference_spectra(result, reference_store, annotation_kwargs):
-    """Annotate every reference spectrum for this peptide variant and stash them in ``reference_store`` (once per variant)."""
+    """Annotate every reference spectrum for this peptide variant and stash them in 
+    reference_store (once per variant).
+    """
     variant_key = result.variant_key
+    # Guard: skip if this variant is already cached or has no references to annotate
     if variant_key in reference_store or not result.reference_spectra:
         return
+    # Annotate each experimental reference against its own theoretical fragments
     ref_list = []
     for reference_spectrum in result.reference_spectra:
         reference_frame = prepare_spectrum_for_plot(
@@ -79,11 +88,14 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
 
 def _try_koina_fallback(result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
-    """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list."""
+    """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list.
+    """
     variant_key = result.variant_key
+    # Prefer experimental references: only fall back to Koina when the cache is empty
     references = reference_store.get(variant_key, [])
     if references:
         return references
+    # Request an AI-predicted reference for this peptidoform + charge
     koina_ref = get_koina_prediction(
         result.query_spectrum.peptidoform,
         result.query_spectrum.precursor_charge,
@@ -92,6 +104,7 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
         koina_collision_energy=koina_collision_energy,
         koina_instrument_type=koina_instrument_type,
     )
+    # On success, cache the synthetic reference; on failure, return the empty list
     if koina_ref is not None:
         reference_store[variant_key] = [koina_ref]
         return reference_store[variant_key]

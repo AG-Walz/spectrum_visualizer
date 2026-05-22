@@ -1,1 +1,1 @@
-"""Tests for the ``cli/`` terminal runner (config-driven pipeline)."""
+"""Tests for the cli/ terminal runner (config-driven pipeline)."""

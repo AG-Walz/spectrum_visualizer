@@ -1,5 +1,6 @@
 """MSpecViz CLI entry: run the 3-step pipeline (search → load+annotate → export) delegating functionality to core/ packages;
-configured from a YAML config invoked via ``python -m cli <config.yaml>``."""
+configured from a YAML config invoked via python -m cli <config.yaml>.
+"""
 import copy
 import glob as globmod
 import logging
@@ -41,9 +42,10 @@ _CLI_EXTRAS: dict = {
 
 
 def _expand_globs(patterns: list) -> list:
-    """Resolves shell glob ``patterns`` (e.g. ``"runs/**/ProT*.idXML"``)  into a sorted, 
+    """Resolves shell glob patterns (e.g. "runs/**/ProT*.idXML")  into a sorted, 
     unique (de-duplicated) list of absolute paths. Necessary because YAML lets the user 
-    write paths with wildcards — core/ expects concrete file lists."""
+    write paths with wildcards — core/ expects concrete file lists.
+    """
     result, seen = [], set()
     for pattern in patterns:
         # Sort the YAML-provided patterns for deterministic output 
@@ -58,9 +60,10 @@ def _expand_globs(patterns: list) -> list:
 
 
 def _load_peptides(source) -> list:
-    """Resolve the peptide loading ``source`` (which can be a YAML list, 
+    """Resolve the peptide loading source (which can be a YAML list, 
     a file path from which to read peptides, or raw comma/newline strings) 
-    into a list of upper-cased sequences."""
+    into a list of upper-cased sequences.
+    """
     # A. Sequence list case: strip and uppercase each entry
     if isinstance(source, list):
         return [str(peptide).strip().upper() for peptide in source if str(peptide).strip()]
@@ -72,8 +75,9 @@ def _load_peptides(source) -> list:
 
 
 def _load_config(path: str) -> SimpleNamespace:
-    """Full config-loading pipeline: Parse the YAML at ``path``, join with the defaults, 
-    expand file globs, and resolve the peptide source into a ``SimpleNamespace``."""
+    """Full config-loading pipeline: Parse the YAML at path, join with the defaults, 
+    expand file globs, and resolve the peptide source into a SimpleNamespace.
+    """
     # Parse YAML file: error out on non-mapping payload
     config_path = Path(path)
     yaml_config = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
@@ -103,7 +107,8 @@ def _load_config(path: str) -> SimpleNamespace:
 def _run_search(config) -> tuple:
     """Calls core.search.search_peptides_in_idxmls() to scan idXML files 
     for target peptides producing variang_groups (list of PSMs) 
-     and return ``(variant_groups, total_psms)``."""
+     and return (variant_groups, total_psms).
+    """
     logger.info("Step 1: Searching peptides in idXML files")
     # Progress bar
     bar = tqdm(total=len(config.idxml_files), desc="Searching", unit="file")
@@ -130,7 +135,8 @@ def _run_search(config) -> tuple:
 def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
     """Calls core.pipeline.run_streaming_annotation() to stream spectra from mzMLs and 
     annotate fragment ions (optionally fetching Koina AI prediction when no reference spectra are available);
-    return ``(annotated_queries, reference_store, comparison_rows)``."""
+    return (annotated_queries, reference_store, comparison_rows).
+    """
     logger.info("Step 2: Loading and annotating spectra")
     # Build a simple getter function for accessing config values with defaults
     getter = lambda key, default: getattr(config, key, default)
@@ -157,8 +163,9 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
 
 def _run_export(config, annotated_queries, reference_store, variant_groups,
                 comparison_rows, psm_frame):
-    """Calls :func:`core.export.run_export` to write parquet/CSV tables and 
-    (unless ``--no-plots`` is selected) mirror & summary plots."""
+    """Calls core.export.run_export to write parquet/CSV tables and 
+    (unless --no-plots is selected) mirror & summary plots.
+    """
     logger.info("Step 3: Exporting results")
     # Progress bar 
     plot_bar: dict = {"bar": None}
@@ -209,10 +216,11 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
                 type=click.Path(exists=True, dir_okay=False, path_type=Path))
 
 def main(config_path: Path) -> None:
-    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config."""
+    """CLI entry: run the 3-step pipeline (search → load+annotate → export) from a YAML config.
+    """
     # Configure logging
     logging.basicConfig(
-        level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(), # set ``MSPECVIZ_LOG_LEVEL=ERROR`` for a quiet run
+        level=os.environ.get("MSPECVIZ_LOG_LEVEL", "INFO").upper(), # set MSPECVIZ_LOG_LEVEL=ERROR for a quiet run
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         datefmt="%H:%M:%S",
     )

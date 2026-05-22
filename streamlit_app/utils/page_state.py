@@ -1,4 +1,6 @@
-"""Analysis-cache I/O, directory-browser listings, and ``run_settings.json`` (de)serialization — used by Search & Load (write), Explore (read), and Export (read + settings)."""
+"""Analysis-cache I/O, directory-browser listings, and run_settings.json 
+(de)serialization — used by Search & Load (write), Explore (read), and Export (read + settings).
+"""
 import json
 import logging
 import pickle
@@ -36,12 +38,14 @@ _PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
 
 
 def _analysis_cache_path() -> Path:
-    """Return the analysis-cache directory inside the active workspace."""
+    """Return the analysis-cache directory inside the active workspace.
+    """
     return Path(st.session_state.workspace) / ANALYSIS_CACHE_DIR
 
 
 def save_analysis_cache() -> None:
-    """Write every Search-&-Load result to ``analysis_cache/`` so the Explore and Export views survive a reload."""
+    """Write every Search-&-Load result to analysis_cache/ so the Explore and Export views survive a reload.
+    """
     cache_dir = _analysis_cache_path()
     cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -84,7 +88,9 @@ def save_analysis_cache() -> None:
 
 @st.cache_resource(show_spinner="Restoring analysis from cache...")
 def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
-    """Read every analysis-cache file from disk; ``_cache_modification_time`` busts @st.cache_resource when files change."""
+    """Read every analysis-cache file from disk; _cache_modification_time 
+    busts @st.cache_resource when files change.
+    """
     cache_dir = Path(cache_dir_str)
     cached_data: dict = {}
 
@@ -120,7 +126,9 @@ def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
 
 
 def load_analysis_cache() -> bool:
-    """Hydrate the on-disk analysis cache back into session_state — returns ``False`` if nothing to restore."""
+    """Hydrate the on-disk analysis cache back into session_state — 
+    returns False if nothing to restore.
+    """
     # Discover: locate workspace cache dir, bail if no metadata marker
     cache_dir = _analysis_cache_path()
     meta_path = cache_dir / "meta.json"
@@ -146,8 +154,8 @@ def load_analysis_cache() -> bool:
         return True
 
     except (ModuleNotFoundError, AttributeError, ImportError) as error:
-        # Pickle was written against an older module layout (e.g. the ``loader_models`` ->
-        # ``loaded_spectrum`` rename). Cache is permanently unloadable — wipe it so the user
+        # Pickle was written against an older module layout (e.g. the loader_models ->
+        # loaded_spectrum rename). Cache is permanently unloadable — wipe it so the user
         # doesn't see this warning on every rerun.
         logger.warning(
             "Analysis cache from a previous code version is unreadable (%s); "
@@ -161,7 +169,9 @@ def load_analysis_cache() -> bool:
 
 
 def clear_analysis_cache() -> None:
-    """Delete the workspace cache directory and invalidate the in-memory ``@st.cache_resource`` entry."""
+    """Delete the workspace cache directory and invalidate the 
+    in-memory @st.cache_resource entry.
+    """
     cache_dir = _analysis_cache_path()
     if cache_dir.exists():
         shutil.rmtree(cache_dir)
@@ -170,14 +180,16 @@ def clear_analysis_cache() -> None:
 
 
 def restore_analysis_if_needed():
-    """Hydrate the analysis cache when a view loads on a fresh rerun without ``data_ready`` set."""
+    """Hydrate the analysis cache when a view loads on a fresh rerun without data_ready set.
+    """
     if not st.session_state.get(get_state_key('data_ready'), False):
         load_analysis_cache()
 
 
 @st.cache_data(ttl=10)
 def list_subdirectories(path: str) -> list:
-    """Directory-browser helper: list immediate subdirectories of ``path`` (cached 10s)."""
+    """Directory-browser helper: list immediate subdirectories of path (cached 10s).
+    """
     try:
         return sorted(str(d) for d in Path(path).iterdir() if d.is_dir())
     except (PermissionError, OSError):
@@ -186,7 +198,8 @@ def list_subdirectories(path: str) -> list:
 
 @st.cache_data(ttl=10)
 def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files: int = 5000) -> list:
-    """Directory-browser helper: list files in ``path`` matching ``extensions``, capped at ``_max_files`` (cached 10s)."""
+    """Directory-browser helper: list files in path matching extensions, capped at _max_files (cached 10s).
+    """
     try:
         files: list = []
         for extension in extensions:
@@ -206,9 +219,9 @@ def list_files(path: str, extensions: tuple, recursive: bool = False, _max_files
 # ---------------------------------------------------------------------------
 # run_settings.json serialization
 # ---------------------------------------------------------------------------
-# Canonical field list lives in ``core.export.RUN_SETTINGS_FIELDS``. A few of those
-# fields live under different session-state keys in Streamlit (e.g. ``idxml_files`` ->
-# ``selected_idxmls``); the map below names the differences.
+# Canonical field list lives in core.export.RUN_SETTINGS_FIELDS. A few of those
+# fields live under different session-state keys in Streamlit (e.g. idxml_files ->
+# selected_idxmls); the map below names the differences.
 _STREAMLIT_PARAM_KEY_OVERRIDES: dict[str, str] = {
     "idxml_files": "selected_idxmls",
     "mzml_files":  "selected_mzmls",
@@ -216,12 +229,14 @@ _STREAMLIT_PARAM_KEY_OVERRIDES: dict[str, str] = {
 
 
 def _streamlit_param_key(run_settings_key: str) -> str:
-    """Translate a ``run_settings.json`` field name to its Streamlit session-state key."""
+    """Translate a run_settings.json field name to its Streamlit session-state key.
+    """
     return _STREAMLIT_PARAM_KEY_OVERRIDES.get(run_settings_key, run_settings_key)
 
 
 def build_run_settings() -> dict:
-    """Snapshot the active Setup widgets into a ``run_settings.json``-shaped dict for the Export tab."""
+    """Snapshot the active Setup widgets into a run_settings.json-shaped dict for the Export tab.
+    """
     params = load_params()
     return _build_run_settings_core(
         getter=lambda key, default: get_param(params, _streamlit_param_key(key), default),
@@ -230,7 +245,9 @@ def build_run_settings() -> dict:
 
 
 def apply_run_settings(run_settings: dict):
-    """Restore a previously exported ``run_settings.json`` into session_state — writes the widget key and its ``_persisted`` backup so values survive page navigation."""
+    """Restore a previously exported run_settings.json into session_state — 
+    writes the widget key and its _persisted backup so values survive page navigation.
+    """
     updates: list[tuple[str, object]] = [
         (_streamlit_param_key(rs_key), run_settings.get(rs_key, default))
         for rs_key, default in RUN_SETTINGS_FIELDS

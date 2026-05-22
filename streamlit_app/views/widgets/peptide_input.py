@@ -1,4 +1,4 @@
-"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via :func:`core.search.count_psms_in_idxmls`)."""
+"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via core.search.count_psms_in_idxmls)."""
 from collections import Counter
 
 import streamlit as st
@@ -11,7 +11,7 @@ from streamlit_app.utils.state import STATE_PREFIX, get_state_key
 
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Run :func:`count_psms_in_idxmls` with a live Streamlit progress bar; return ``(counts, errors)``."""
+    """Run count_psms_in_idxmls with a live Streamlit progress bar; return (counts, errors)."""
     # Setup: error accumulator + progress-status context
     errors: list[str] = []
     n = len(idxmls)
@@ -54,7 +54,7 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
 
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
-    """Return cached PSM counts for ``idxmls``; render a Scan button when no cache exists."""
+    """Return cached PSM counts for idxmls; render a Scan button when no cache exists."""
     # Cache lookup: keys for the counts dict and the list of files last scanned
     scan_key = '_idxml_psm_counts'
     scan_files_key = '_idxml_scan_files'
@@ -78,7 +78,7 @@ def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
 
 
 def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:
-    """Render the substring filter + min-PSM threshold; return ``(filter_text, min_psm)``."""
+    """Render the substring filter + min-PSM threshold; return (filter_text, min_psm)."""
     f_col1, f_col2 = st.columns([2, 1])
     with f_col1:
         filter_text = st.text_input(
@@ -116,7 +116,7 @@ def _render_pick_multiselect(psm_counts: dict, filter_text: str, min_psm: int) -
 
 
 def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) -> None:
-    """Stage ``selected`` into ``pending_key`` (replace or append to the textarea) and rerun."""
+    """Stage selected into pending_key (replace or append to the textarea) and rerun."""
     if mode == "append":
         existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
         peps = list(dict.fromkeys(existing + selected))

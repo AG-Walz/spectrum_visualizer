@@ -1,4 +1,16 @@
-"""Per-query workflow (annotate, match, score) plus plot-task building (called by ``pipeline.streaming_orchestration``, ``cli.main``, and ``streamlit_app.views``)."""
+"""Per-query workflow layer: annotate one query spectrum, resolve its references,
+score every (query, reference) pair, and package the results either as comparison
+rows or as ComparisonTask plot jobs.
+process_query_result is the per-query step of the streaming pipeline; it
+delegates the annotation phases to core.pipeline.annotation_steps and the
+scoring to core.annotation.comparison_metrics. build_plot_tasks converts
+already-annotated queries into one plot task per pair, pre-computing the metrics
+overlay so the parallel plot workers never recompute it.
+(process_query_result called by core.pipeline.streaming_orchestration;
+build_plot_tasks called by core.export.export_pipeline;
+build_psm_to_variant_mapping and format_spectrum_labels also used by
+streamlit_app.views.explore.mirror_plots.)
+"""
 from pathlib import Path
 
 from core.annotation.comparison_metrics import (
@@ -17,8 +29,14 @@ from core.spectra.loaded_spectrum import source_label, spectrum_lookup_key
 
 
 def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str, str]:
-    """Build ``"Query: <file> (RT: ...)"`` and matching reference label; reference label is ``""`` when no reference is given."""
+    """Build the human-readable plot labels for a (query, reference) pair.
+    Returns (query_label, reference_label); each label is the source file
+    name with its retention time appended, e.g. "Query: run01.mzML (RT: 42.3)".
+    The reference label is "" when reference_spectrum is None (a
+    single, unpaired query).
+    """
     query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
+    # Guard clause: an unpaired query has no reference label to build
     if reference_spectrum is None:
         return query_label, ""
     reference_label = f"Ref: {source_label(reference_spectrum)} (RT: {reference_spectrum.rt:.1f})"
@@ -26,15 +44,22 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str
 
 
 def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str, str]:
-    """Map each PSM id to its peptide-variant key; accepts the Streamlit dict shape or the CLI list-of-tuples shape."""
+    """Map each PSM id to its peptide-variant key.
+    Returns {psm_id: variant_key}. annotated_queries may arrive in two
+    shapes: the Streamlit dict {psm_id: (spectrum, frame)} or the CLI
+    list-of-tuples [(psm_id, spectrum, frame), ...]; both are normalised
+    before matching. A PSM whose spectrum key has no annotated query is simply
+    omitted from the result.
+    """
     # Normalise input: handle Streamlit's dict shape and the CLI list-of-tuples shape uniformly
     if isinstance(annotated_queries, dict):
         items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
     else:
         items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
+    # Invert to a spectrum-key lookup so each variant PSM can find its PSM id
     spec_to_psm_id = {spectrum_lookup_key(spec): psm_id for psm_id, spec in items}
 
-    # Walk variants: match each PSM's spectrum key back to the annotated query's PSM id
+    # Walk variants: rebuild each PSM's spectrum key and resolve it to a PSM id
     psm_id_to_variant_key: dict[str, str] = {}
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
@@ -50,7 +75,13 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
                          koina_model: str = DEFAULTS.koina_model,
                          koina_collision_energy: int = DEFAULTS.koina_collision_energy,
                          koina_instrument_type: str = DEFAULTS.koina_instrument_type):
-    """Annotate one query, resolve its references (experimental or Koina), and score every pair; return ``(psm_id, spectrum, frame, rows)`` or ``None``."""
+    """Annotate one query spectrum, resolve its references, and score every pair.
+    Resolves references from the experimental reference_store cache, with an
+    optional Koina AI fallback when no experimental reference exists. Returns
+    (psm_id, query_spectrum, query_frame, comparison_rows), where
+    comparison_rows holds one metrics dict per (query, reference) pair, or
+    None when the query has no matching PSM in the search results.
+    """
     # PSM lookup: skip spectra that have no matching PSM in the search results
     psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
     if psm_id is None:
@@ -72,6 +103,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     # Compute metrics: one comparison row per (query, reference) pair
     query_spectrum = result.query_spectrum
     base_sequence = query_spectrum.base_sequence
+    # Modification column is blank for the unmodified variant (variant key == bare sequence)
     modification = result.variant_key if result.variant_key != base_sequence else ""
     comparison_rows = []
     for reference_spectrum, reference_frame in references:
@@ -105,7 +137,12 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
-    """Build one ``ComparisonTask`` per (query, reference) pair; metrics text is pre-computed here so plot workers don't recompute it."""
+    """Build the list of ComparisonTask plot jobs for a set of annotated queries.
+    Emits one "mirror" task per (query, reference) pair; a query with no
+    reference yields one "single" task only when plot_unpaired_queries is
+    set. The metrics overlay text is pre-computed here so the parallel plot
+    workers never recompute it. Returns [ComparisonTask, ...] ordered by psm_id.
+    """
     # Setup: normalise format_dirs, derive export_formats, build PSM->variant lookup
     if format_dirs is None:
         format_dirs = {}

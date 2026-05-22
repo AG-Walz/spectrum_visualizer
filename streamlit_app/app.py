@@ -1,11 +1,13 @@
-"""MSpecViz Streamlit entry: navigation only — pages live in ``streamlit_app/views/``; invoke via ``streamlit run streamlit_app/app.py`` from the project root."""
+"""MSpecViz Streamlit entry: navigation only — pages live in streamlit_app/views/; 
+invoke via streamlit run streamlit_app/app.py from the project root.
+"""
 import sys
 import json
 from pathlib import Path
 import streamlit as st
 
-# Path setup: put project root on sys.path so ``import streamlit_app.*`` and
-# ``import core.*`` resolve when Streamlit launches this file directly.
+# Path setup: put project root on sys.path so import streamlit_app.* and
+# import core.* resolve when Streamlit launches this file directly.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))

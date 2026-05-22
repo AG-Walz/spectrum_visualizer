@@ -1,7 +1,7 @@
 """Koina REST API client — runs ML models to predict MS/MS fragmentation spectrum (m/z + intensity) 
 from peptide sequences; used as fallback reference when no experimental reference mzML exists 
-(called by ``core.pipeline``)."""
-
+(called by core.pipeline).
+"""
 import logging
 from typing import Optional
 import pandas as pd
@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 
 def convert_peptide_to_unimod(peptidoform_str: str) -> str:
     """Rewrite a ProForma peptidoform in Koina's UniMod-bracket notation 
-    (e.g. ``"PEPM[Oxidation]IDEK" -> "PEPM[UNIMOD:35]IDEK"``)."""
-
+    (e.g. "PEPM[Oxidation]IDEK" -> "PEPM[UNIMOD:35]IDEK").
+    """
     p = Peptidoform(peptidoform_str.split("/")[0])
     fmt = lambda mod: f"[UNIMOD:{mod.definition['id']}]"
     parts = [f"{fmt(m)}-" for m in p.properties.get("n_term") or []]
@@ -34,8 +34,9 @@ def predict_koina_spectrum(
     collision_energy: int = DEFAULTS.koina_collision_energy,
     instrument_type: str = DEFAULTS.koina_instrument_type,
 ) -> Optional[pd.DataFrame]:
-    """Call Koina for a predicted MS/MS spectrum; return ``DataFrame[mz, intensity, annotation]`` or ``None`` on failure."""
-
+    """Call Koina for a predicted MS/MS spectrum; 
+    return DataFrame[mz, intensity, annotation] or None on failure.
+    """
     # Convert peptide sequence to UniMod notation
     try:
         unimod_seq = convert_peptide_to_unimod(peptidoform_str)
@@ -76,7 +77,8 @@ def predict_koina_spectrum(
 
 
 def get_koina_settings(settings: dict) -> dict:
-    """Pull Koina configuration settings from the provided settings, defaulting any missing keys."""
+    """Pull Koina configuration settings from the provided settings, defaulting any missing keys.
+    """
     koina_cfg = settings.get("koina", {})
     return {
         "enabled": koina_cfg.get("enabled", True),

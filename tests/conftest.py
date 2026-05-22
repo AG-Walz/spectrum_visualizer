@@ -24,7 +24,7 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip ``@pytest.mark.integration`` tests when the small_dataset fixtures are absent."""
+    """Auto-skip @pytest.mark.integration tests when the small_dataset fixtures are absent."""
     if IDXML_PATH.exists():
         return
     skip_marker = pytest.mark.skip(reason=f"Test data not found: {SMALL_DATASET}")
@@ -58,9 +58,9 @@ def app_settings():
 def make_peptide_match(peptidoform="PEPTIDEK", base_seq=None,
                        spectrum_id="index=1", charge=2, score=0.95,
                        idxml_file="test.idXML", mzml_filename="test.mzML"):
-    """Build a ``psm_utils.PSM`` test double with the metadata our pipeline expects.
+    """Build a psm_utils.PSM test double with the metadata our pipeline expects.
 
-    ``base_seq`` is kept for call-site compatibility but ignored; ``mzml_filename`` stem becomes ``psm.run``."""
+    base_seq is kept for call-site compatibility but ignored; mzml_filename stem becomes psm.run."""
     del base_seq  # PSM derives base sequence from peptidoform.sequence
     proforma = peptidoform if "/" in peptidoform else f"{peptidoform}/{charge}"
     run_name = mzml_filename.rsplit(".", 1)[0] if mzml_filename else ""

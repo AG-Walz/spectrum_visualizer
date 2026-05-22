@@ -1,4 +1,5 @@
-"""Peak annotation + spectrum comparison metrics (re-exported flat for ``core.pipeline``)."""
+"""Peak annotation + spectrum comparison metrics (re-exported flat for core.pipeline).
+"""
 from core.annotation.peak_matching import (
     annotate_spectrum,
     prepare_koina_spectrum_for_plot,

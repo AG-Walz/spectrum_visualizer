@@ -1,7 +1,8 @@
 """Peptide-search orchestration layer, dispatching the tasks of searching for target peptides
  across idXML files and summarising results for the UI; It uses core.helpers.run_tasks 
 to parallelize the file-wise workers in core.search.idxml_workers;
-(called by ``cli.main`` and ``streamlit_app.views.search_load``)."""
+(called by cli.main and streamlit_app.views.search_load).
+"""
 import logging
 from collections import Counter
 from pathlib import Path
@@ -24,8 +25,8 @@ def count_psms_in_idxmls(
 ) -> "Counter[str]":
     """Small dispatcher run before peptide search to count by base sequence (ignoring modifications)
     across idXMLs; The result populates the "Pick peptides from idXML" tab in Streamlit
-    keyed by base sequence (drives the Setup peptide-preview)."""
-
+    keyed by base sequence (drives the Setup peptide-preview).
+    """
     # Setup PSM counter, progress and error callbacks
     merged: Counter = Counter()
     total = len(idxml_paths)
@@ -56,8 +57,9 @@ def search_peptides_in_idxmls(
     error_callback: Optional[Callable] = None,
     workers: int = 1,
 ) -> Dict[str, PSMList]:
-    """Search ``target_peptides`` across all idXMLs; return ``{variant_key: PSMList}`` with per-PSM resolution metadata stamped."""
-
+    """Search target_peptides across all idXMLs; return {variant_key: PSMList} 
+    with per-PSM resolution metadata stamped.
+    """
     # Normalise inputs: target peptides are stripped, uppercased, and deduped into a set 
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
     progress = progress_callback or (lambda *_: None)
@@ -103,8 +105,8 @@ _SUMMARY_SCHEMA = {
 }
 
 def summarize_search_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame:
-    """Turn the variant groups returned by search_peptides_in_idxmls into a summary LazyFrame with one row per variant for display"""
-
+    """Turn the variant groups returned by search_peptides_in_idxmls into a summary LazyFrame with one row per variant for display
+    """
     # Flatten variant groups into one row per PSM, carrying variant & resolution metadata
     rows = []
     for variant_key, psm_list in variant_groups.items():

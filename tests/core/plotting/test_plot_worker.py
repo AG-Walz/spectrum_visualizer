@@ -1,4 +1,4 @@
-"""Unit tests for ``core.plotting.plot_worker`` (``ComparisonTask`` → PNG, mirror + single)."""
+"""Unit tests for core.plotting.plot_worker (ComparisonTask → PNG, mirror + single)."""
 from pathlib import Path
 
 import numpy as np
@@ -20,14 +20,14 @@ PEPTIDEK_Y2_PLUS = 276.1554
 # ---------------------------------------------------------------------------
 
 def _make_annotated_frame(peptidoform="PEPTIDEK", charge=2):
-    """Build a real annotated DataFrame via ``prepare_spectrum_for_plot``."""
+    """Build a real annotated DataFrame via prepare_spectrum_for_plot."""
     mz = np.array([PEPTIDEK_B2_PLUS, PEPTIDEK_Y2_PLUS, 500.0, 600.0])
     intensity = np.array([1000.0, 800.0, 200.0, 150.0])
     return prepare_spectrum_for_plot(mz, intensity, peptidoform, charge=charge)
 
 
 def _make_single_task(tmp_path, skip_plot=False):
-    """Build a single-spectrum ``ComparisonTask`` writing into ``tmp_path/png``."""
+    """Build a single-spectrum ComparisonTask writing into tmp_path/png."""
     png_dir = str(tmp_path / "png")
     (tmp_path / "png").mkdir(parents=True, exist_ok=True)
     return ComparisonTask(
@@ -49,7 +49,7 @@ def _make_single_task(tmp_path, skip_plot=False):
 
 
 def _make_mirror_task(tmp_path, skip_plot=False):
-    """Build a mirror ``ComparisonTask`` with both query and reference frames populated."""
+    """Build a mirror ComparisonTask with both query and reference frames populated."""
     png_dir = str(tmp_path / "png")
     (tmp_path / "png").mkdir(parents=True, exist_ok=True)
     return ComparisonTask(

@@ -1,6 +1,6 @@
 """Explore tab — dispatcher for Spectrum Explorer / Mirror Plots / Comparison Metrics sub-views.
-
-Registered in ``app.py``; sub-views are ``@st.fragment``s so interactions stay scoped."""
+Registered in app.py; sub-views are @st.fragments so interactions stay scoped.
+"""
 import logging
 
 import matplotlib.pyplot as plt
@@ -28,7 +28,8 @@ logger = logging.getLogger(__name__)
 
 @st.fragment
 def comparison_metrics_fragment():
-    """Render per-PSM metrics table, per-peptidoform summary stats, and summary plots."""
+    """Render per-PSM metrics table, per-peptidoform summary stats, and summary plots.
+    """
     # Guard: bail when Search & Load hasn't produced a comparison frame
     comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
     if comparison_frame is None or comparison_frame.empty:
@@ -77,7 +78,8 @@ def comparison_metrics_fragment():
 
 
 def render():
-    """Render title, gate on Search & Load completion, then dispatch to the chosen sub-view."""
+    """Render title, gate on Search & Load completion, then dispatch to the chosen sub-view.
+    """
     # Restore analysis: rehydrate session state when the workspace has cached results
     restore_analysis_if_needed()
     st.title("Explore")

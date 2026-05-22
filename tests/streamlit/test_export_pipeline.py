@@ -1,4 +1,4 @@
-"""Integration tests for ``streamlit_app.views.export.export_actions._run_export`` (mocked Streamlit)."""
+"""Integration tests for streamlit_app.views.export.export_actions._run_export (mocked Streamlit)."""
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -93,7 +93,7 @@ def _make_psm_lazyframe():
 
 
 def _build_session_state(tmp_path):
-    """Assemble the ``peptide_mirror.*`` session_state ``_run_export`` reads end-to-end."""
+    """Assemble the peptide_mirror.* session_state _run_export reads end-to-end."""
     query_spectrum = _make_loaded_spectrum()
     query_frame = _make_annotated_frame()
     reference_spectrum = _make_loaded_spectrum(source_file="ref.mzML", is_ref=True)
@@ -118,11 +118,11 @@ def _build_session_state(tmp_path):
 
 
 class TestRunExport:
-    """Drive ``_run_export`` outside the live app and check each format produces its artefacts."""
+    """Drive _run_export outside the live app and check each format produces its artefacts."""
 
     @pytest.fixture
     def mock_st(self, tmp_path):
-        """Patch ``st`` + helper modules so ``_run_export`` runs end-to-end without a Streamlit runtime."""
+        """Patch st + helper modules so _run_export runs end-to-end without a Streamlit runtime."""
         state = _build_session_state(tmp_path)
 
         with patch("streamlit_app.views.export.export_actions.st") as mock_st, \
@@ -180,7 +180,7 @@ class TestRunExport:
         assert (export_root / "run_settings.json").exists()
 
     def test_csv_columns_round_trip(self, mock_st):
-        """CSV export round-trip: ``Peptide`` column survives and row count matches ``comparison_frame``."""
+        """CSV export round-trip: Peptide column survives and row count matches comparison_frame."""
         _, tmp_path = mock_st
         export_dir = self._invoke_export(tmp_path, do_csv=True)
         export_root = list(Path(export_dir).iterdir())[0]
@@ -189,12 +189,12 @@ class TestRunExport:
         assert "Peptide" in frame.columns
 
     def test_export_creates_versioned_directory(self, mock_st):
-        """Streamlit reuses the CLI's ``{project}_{NNN}_{YYYYMMDD}`` versioned layout."""
+        """Streamlit reuses the CLI's {project}_{NNN}_{YYYYMMDD} versioned layout."""
         _, tmp_path = mock_st
         export_dir = self._invoke_export(tmp_path, do_parquet=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
-        # Expected layout: ``MSpecViz_analysis_001_20260420`` (NNN counter + YYYYMMDD)
+        # Expected layout: MSpecViz_analysis_001_20260420 (NNN counter + YYYYMMDD)
         assert export_root.name.startswith("MSpecViz_analysis_")
         parts = export_root.name.rsplit("_", 2)
         assert parts[1].isdigit() and len(parts[1]) == 3

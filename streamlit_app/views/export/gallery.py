@@ -1,4 +1,6 @@
-"""Plot-gallery browser — called by ``export_page.py`` and ``export_actions.py`` to render the per-run expandable view of exported PNG/SVG/HTML plots, grouped by peptide variant then reference."""
+"""Plot-gallery browser — called by export_page.py and export_actions.py 
+to render the per-run expandable view of exported PNG/SVG/HTML plots, grouped by peptide variant then reference.
+"""
 from __future__ import annotations
 
 from pathlib import Path
@@ -7,7 +9,8 @@ import streamlit as st
 
 
 def _pick_browse_format(root_dir: Path) -> tuple[Path, str] | None:
-    """Return ``(subdir, format)`` for inline preview — prefer SVG, fall back to PNG, ``None`` if neither exists."""
+    """Return (subdir, format) for inline preview — prefer SVG, fall back to PNG, None if neither exists.
+    """
     for subdir, output_format in [(root_dir / "svg", "svg"), (root_dir / "png", "png")]:
         if subdir.exists():
             return subdir, output_format
@@ -15,7 +18,8 @@ def _pick_browse_format(root_dir: Path) -> tuple[Path, str] | None:
 
 
 def _group_files_by_reference(plot_files: list[Path]) -> dict[str, list[Path]]:
-    """Bucket ``..._vs_<reference>.<ext>`` plot files by their reference stem."""
+    """Bucket ..._vs_<reference>.<ext> plot files by their reference stem.
+    """
     ref_groups: dict[str, list[Path]] = {}
     for plot_file in plot_files:
         ref_stem = (
@@ -28,7 +32,8 @@ def _group_files_by_reference(plot_files: list[Path]) -> dict[str, list[Path]]:
 
 
 def _show_plot(plot_file: Path, browse_format: str) -> None:
-    """Render one plot inline — ``st.image`` for PNG, raw markup for SVG."""
+    """Render one plot inline — st.image for PNG, raw markup for SVG.
+    """
     if browse_format == "png":
         st.image(str(plot_file), caption=plot_file.stem, width="stretch")
     elif browse_format == "svg":
@@ -36,7 +41,8 @@ def _show_plot(plot_file: Path, browse_format: str) -> None:
 
 
 def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: Path) -> None:
-    """Render PNG/SVG/HTML download buttons for one plot stem, skipping formats that weren't exported."""
+    """Render PNG/SVG/HTML download buttons for one plot stem, skipping formats that weren't exported.
+    """
     run_id = root_dir.name
     dl_formats = [
         ("png", "PNG", "image/png", root_dir / "png"),
@@ -58,7 +64,8 @@ def _render_reference_group(
     ref_stem: str, ref_files: list[Path], peptide_dir_name: str,
     browse_format: str, root_dir: Path,
 ) -> None:
-    """Render the inner expander for one reference stem, capped at 20 plots."""
+    """Render the inner expander for one reference stem, capped at 20 plots.
+    """
     sub_label = (
         f"Reference: {ref_stem}" if ref_stem != "(no reference)"
         else "Single spectra"
@@ -72,7 +79,8 @@ def _render_reference_group(
 
 
 def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -> None:
-    """Render the outer expander for one peptide-variant subdirectory."""
+    """Render the outer expander for one peptide-variant subdirectory.
+    """
     plot_files = sorted(peptide_dir.glob(f"*.{browse_format}"))
     if not plot_files:
         return
@@ -82,7 +90,8 @@ def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -
 
 
 def _render_plot_gallery(root_dir: Path) -> None:
-    """Render the gallery for plots saved under ``root_dir``, grouped peptide-variant then reference."""
+    """Render the gallery for plots saved under root_dir, grouped peptide-variant then reference.
+    """
     # Pick preview format: SVG if present, else PNG, else bail
     browse = _pick_browse_format(root_dir)
     if browse is None:

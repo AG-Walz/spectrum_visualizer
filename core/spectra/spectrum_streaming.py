@@ -1,4 +1,18 @@
-"""Streaming mzML loader — orchestrates reference-first loading so each query can be compared against its references on arrival (driven by ``pipeline.streaming_orchestration``)."""
+"""Streaming mzML loader — orchestration layer that drives spectrum extraction in
+reference-first order so each query can be compared against its references the
+moment it arrives.
+The single public entry point is load_spectra_streaming: it partitions the
+mzML files into references and queries, dispatches the picklable per-file worker
+(spectra.mzml_workers._load_spectra_from_mzml) through helpers.run_tasks,
+and replays the loaded spectra to caller-supplied callbacks. References are loaded
+and bucketed by peptide variant first; only then are queries streamed, each one
+handed to on_query_ready packaged as a StreamingResult carrying its
+matching reference spectra.
+Called by pipeline.streaming_orchestration, which wires the metric-computing
+callback into on_query_ready; also exercised directly by the integration
+tests. Consumes the LoadResult / LoadedSpectrum / StreamingResult
+dataclasses from spectra.loaded_spectrum.
+"""
 import logging
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
@@ -16,9 +30,13 @@ def build_mzml_to_matches_map(
     variant_groups: Dict[str, PSMList],
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Group PSMs by the mzML they live in; return ``{path_key: [(psm, variant_key), ...]}``.
-
-    Prefers ``psm.metadata["mzml_resolved_path"]``, falls back to a stem match against ``psm.run``."""
+    """Group PSMs by the mzML file they live in; return {path_key: [(psm, variant_key), ...]}.
+    path_key is the resolved, lower-cased absolute path of an mzML file. Each
+    PSM is filed under exactly one file: the resolver prefers the pre-computed
+    psm.metadata["mzml_resolved_path"] and falls back to matching psm.run
+    against the mzML filename stem. PSMs that resolve to no available file (or
+    carry an empty psm.run) are silently dropped.
+    """
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
 
@@ -41,7 +59,12 @@ def build_mzml_to_matches_map(
 
 
 def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
-    """Pack ``(path_str, display_name, matches)`` tuples for every file with at least one match."""
+    """Pack (path_str, display_name, matches) task tuples for every file in
+    file_keys that has at least one PSM match.
+    file_keys is the references or queries subset; files with no matches are
+    skipped so the worker is never dispatched on a file it has nothing to do in.
+    The resulting tuples are the per-file work units handed to the mzML worker.
+    """
     return [
         (str(mzml_path_map[key]), mzml_path_map[key].name, mzml_to_matches[key])
         for key in file_keys if key in mzml_to_matches
@@ -50,7 +73,14 @@ def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
 
 def _execute_load_tasks(file_tasks, is_reference, workers,
                         on_file_start, on_file_complete, error_callback) -> List[LoadResult]:
-    """Run the mzML worker over ``file_tasks`` (sequential or parallel) and return all ``LoadResult``s; fires the progress callbacks along the way."""
+    """Run the mzML worker over file_tasks (sequential or parallel) and return
+    a list of per-file LoadResult objects, firing the progress callbacks along the way.
+    workers selects sequential (1) versus ProcessPoolExecutor dispatch
+    via run_tasks. A crashed worker is reported through error_callback and
+    its file is skipped rather than aborting the whole run; per-spectrum errors
+    inside a successful result are forwarded the same way. is_reference is
+    stamped onto every task so the worker knows which kind of file it is loading.
+    """
     # Setup: short-circuit on empty, wire optional callbacks
     if not file_tasks:
         return []
@@ -82,7 +112,14 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
 def _split_reference_and_query_keys(
     mzml_path_map: Dict[str, Path], reference_substring: str,
 ) -> Tuple[Dict[str, Path], Dict[str, Path]]:
-    """Split mzML paths into ``(references, queries)`` by case-insensitive substring match; empty needle means every file is a query."""
+    """Split the mzML path map into (references, queries) by case-insensitive
+    substring match against the full path string.
+    A file lands in references when reference_substring appears anywhere
+    in its path; everything else is a query. An empty or missing
+    reference_substring short-circuits the test so every file is a query —
+    the no-experimental-reference case, where the pipeline later falls back to
+    Koina-predicted references.
+    """
     needle = reference_substring.lower() if reference_substring else None
     references: Dict[str, Path] = {}
     queries: Dict[str, Path] = {}
@@ -96,7 +133,13 @@ def _filter_already_loaded(
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]],
     skip_ids: set,
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Drop ``(variant_key, spectrum_id)`` pairs found in ``skip_ids`` (used to resume from a partial run)."""
+    """Drop matches whose (variant_key, spectrum_id) pair is in skip_ids,
+    returning the trimmed mzml_to_matches map.
+    Powers resuming a partial run: spectra already persisted in an earlier pass
+    are skipped so only the remainder is reloaded. Files left with no surviving
+    matches are dropped entirely (the walrus guard keeps only non-empty lists).
+    Logs how many spectra were skipped versus how many remain.
+    """
     before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
         path_key: kept for path_key, matches in mzml_to_matches.items()
@@ -112,7 +155,13 @@ def _collect_reference_spectra(
     ref_results: List[LoadResult], variant_groups: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[LoadedSpectrum]]:
-    """Bucket every reference spectrum by ``variant_key`` and fire the per-variant callback once references are in."""
+    """Bucket every loaded reference spectrum by variant_key and fire the
+    per-variant callback once references are in; return {variant_key: [LoadedSpectrum]}.
+    The returned map has one slot for every known variant — including variants
+    that got zero reference spectra — so a later query lookup never raises a
+    KeyError. on_reference_loaded is invoked only for variants that
+    actually received references.
+    """
     # Bucket: one slot per known variant, fan out the loaded spectra
     reference_spectra: Dict[str, List[LoadedSpectrum]] = {variant_key: [] for variant_key in variant_groups}
     for result in ref_results:
@@ -134,7 +183,13 @@ def _stream_query_results(
     reference_spectra: Dict[str, List[LoadedSpectrum]],
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
-    """Fire ``on_query_ready`` once per loaded query spectrum, attaching its variant's reference spectra."""
+    """Fire on_query_ready once per loaded query spectrum, each call carrying a
+    StreamingResult that pairs the query with its variant's reference spectra.
+    Returns nothing — the loaded spectra reach the caller purely through the
+    callback. When no callback is supplied the query results are simply
+    discarded, since this function exists only to replay them downstream.
+    """
+    # Nothing to replay to: bail before touching any results
     if not on_query_ready:
         return
     for result in query_results:
@@ -158,14 +213,27 @@ def load_spectra_streaming(
     workers: int = 1,
     skip_ids: Optional[set] = None,
 ) -> Dict[str, List[LoadedSpectrum]]:
-    """Load references first, then stream each query through ``on_query_ready``; return ``{variant_key: [reference_spectra]}``.
-
-    ``reference_substring`` (case-insensitive) partitions ``mzml_paths``; loading refs first lets queries compute metrics on arrival."""
-    # Partition inputs: bucket paths into refs/queries, group PSMs by mzML
+    """Load references first, then stream each query through on_query_ready;
+    return {variant_key: [reference_spectra]}.
+    The public entry point of the streaming loader. reference_substring
+    (case-insensitive) partitions mzml_paths into reference and query files;
+    references are loaded and bucketed by peptide variant up front so that each
+    query, on arrival, can already be compared against its references. Spectra
+    are surfaced through the optional callbacks rather than collected in bulk:
+    on_query_ready receives a StreamingResult per query, the on_file_*
+    and error_callback hooks drive progress reporting. workers controls
+    sequential versus parallel per-file dispatch; skip_ids resumes a partial
+    run by dropping already-loaded spectra. The returned reference map is the
+    only bulk result — every query spectrum has already flowed through the
+    callback by the time this returns.
+    """
+    # Partition inputs: resolve paths to a canonical key map, split into
+    # references/queries, then group every PSM under the mzML it belongs to
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     reference_keys, query_keys = _split_reference_and_query_keys(mzml_path_map, reference_substring)
 
     mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
+    # Resume support: trim matches already persisted by an earlier pass
     if skip_ids:
         mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
 

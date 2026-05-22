@@ -1,4 +1,16 @@
-"""Summary-plot orchestrator: aggregates the comparison table by peptidoform and dispatches to ``summary_dual_axis`` / ``summary_ridgeline`` (called by ``core.export.export_pipeline`` and ``cli.main``)."""
+"""Summary-plot orchestrator: aggregates the comparison table by peptidoform and dispatches to summary_dual_axis / summary_ridgeline.
+Role — top-level coordinator for the summary-plot layer; the only module here
+that touches both the raw comparison data and the per-type renderers. What it
+produces — prepare_summary_data turns a comparison table into a per-peptidoform
+aggregate frame (count, median, mean, std, 95% confidence interval, dominant
+charge); generate_all_summary_plots runs that aggregation once and writes the
+requested figure types to <output_dir>/summary/ in each requested file format.
+Call relationships — generate_all_summary_plots is called by
+core.export.export_pipeline (and indirectly cli.main); prepare_summary_data
+is also called directly by streamlit_app.views.explore.explore_page for the
+in-app preview. Dispatches to plot_classic_dual_axis and plot_ridgeline,
+and draws metric names/labels from core.plotting._summary_shared.
+"""
 import logging
 from pathlib import Path
 
@@ -17,7 +29,19 @@ def prepare_summary_data(
     source: str | Path | pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Load the comparison table and aggregate per-peptidoform stats; return ``(raw_frame, aggregated_frame)`` with count, median, mean, std, 95% CI, and dominant charge."""
+    """Load the comparison table and aggregate per-peptidoform stats for metric.
+    source is either a CSV path or an already-built comparison DataFrame;
+    the latter is copied so callers' frames are never mutated. A peptidoform
+    label is synthesised per row from the modification string (falling back to
+    the bare Peptide when unmodified) joined with the precursor Charge.
+    Rows with a missing value in metric are dropped before aggregation.
+    Returns (raw_frame, aggregated_frame): raw_frame is the per-row table
+    augmented with the peptidoform column, and aggregated_frame carries
+    one row per peptidoform with count, median, mean, std, q25,
+    q75, the 95% confidence interval (ci_lo/ci_hi), and the dominant
+    charge — sorted ascending by count.
+    Raises ValueError when metric is not a column of the input table.
+    """
     # Load: accept either an on-disk CSV path or an already-built DataFrame
     if isinstance(source, (str, Path)):
         raw_frame = pd.read_csv(source, low_memory=False)
@@ -65,7 +89,18 @@ def generate_all_summary_plots(
     formats: list[str] | None = None,
     export_resolution: int = 300,
 ) -> dict[str, dict[str, str]]:
-    """Render every requested summary plot type into ``<output_dir>/summary/`` in each requested format; return ``{plot_type: {format: path}}``."""
+    """Render every requested summary plot type into <output_dir>/summary/.
+    source is passed straight through to prepare_summary_data, which runs
+    once so the aggregation is shared across all plot types. plot_types defaults
+    to DEFAULTS.summary_plot_types and formats defaults to ["png"];
+    each recognised type (dual_axis, ridgeline) is rendered once and saved
+    under every requested format. The ridgeline figure for the default metric is
+    given the special basename ridgeline_r2_binned.
+    Unknown plot types, renderer ValueErrors, and per-file OSErrors are
+    logged and skipped rather than raised, so one bad type/format does not abort
+    the rest. Returns {plot_type: {format: path}} covering only the files
+    that were written successfully.
+    """
     # Resolve defaults: fall back to configured plot types + PNG-only output
     if plot_types is None:
         plot_types = list(DEFAULTS.summary_plot_types)

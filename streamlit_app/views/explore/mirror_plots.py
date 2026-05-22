@@ -1,6 +1,6 @@
 """Mirror Plots sub-view of the Explore tab — Plotly mirror plot driven by a two-stage picker.
-
-Rendered by ``explore_page.py``: peptide selectbox + two ``Table``s (query left, reference right)."""
+Rendered by explore_page.py: peptide selectbox + two Tables (query left, reference right).
+"""
 from __future__ import annotations
 
 import hashlib
@@ -29,16 +29,17 @@ from core.spectra.mzml_native_ids import extract_id_number
 
 
 def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: dict) -> list:
-    """Return variants that have at least one query PSM AND at least one reference loaded."""
+    """Return variants that have at least one query PSM AND at least one reference loaded.
+    """
     has_query = set(psm_to_vk.values())
     return [vk for vk in variant_groups
             if vk in has_query and reference_store.get(vk)]
 
 
 def _ref_row_id(variant_key: str, position: int) -> int:
-    """Hash ``(variant_key, position)`` into a unique row id so the reference Table refreshes per peptide.
-
-    Plain positional ids collide across peptides; salting with ``variant_key`` busts the Vue render-cache."""
+    """Hash (variant_key, position) into a unique row id so the reference Table refreshes per peptide.
+    Plain positional ids collide across peptides; salting with variant_key busts the Vue render-cache.
+    """
     digest = hashlib.md5(f"{variant_key}|{position}".encode()).digest()
     return int.from_bytes(digest[:4], "big", signed=False) & 0x7FFFFFFF
 
@@ -56,7 +57,8 @@ _PICKER_QUERY_SCHEMA = {
 def _build_picker_frames(
     variant_key: str, annotated_queries: dict, reference_store: dict, psm_to_vk: dict,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
-    """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real ``psm_id``."""
+    """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real psm_id.
+    """
     def picker_columns(spec) -> dict:
         # Pull match.score if present; None for NaN or no-match (e.g. Koina-only)
         score = None
@@ -96,7 +98,8 @@ def _build_picker_frames(
 
 
 def _picker_column_definitions() -> list[dict]:
-    """Return Tabulator column defs for the picker — same ``money`` formatter idiom as ``explorer.py``."""
+    """Return Tabulator column defs for the picker — same money formatter idiom as explorer.py.
+    """
     return [
         {"field": "mzml", "title": "mzML", "sorter": "string"},
         {"field": "scan", "title": "Scan", "sorter": "number", "hozAlign": "right"},
@@ -113,7 +116,8 @@ def _picker_column_definitions() -> list[dict]:
 
 
 def _resolve_picker_cache_path(params: dict) -> str:
-    """Return the picker's component-cache directory (same dir as Explorer, distinct ``cache_id``s)."""
+    """Return the picker's component-cache directory (same dir as Explorer, distinct cache_ids).
+    """
     export_dir = get_param(params, "export_directory", "")
     cache_path = export_dir or str(Path(st.session_state.workspace) / "exports")
     os.makedirs(cache_path, exist_ok=True)
@@ -121,7 +125,8 @@ def _resolve_picker_cache_path(params: dict) -> str:
 
 
 def _get_picker_state_manager() -> StateManager:
-    """Lazily build the picker's ``StateManager`` (distinct ``session_key`` from the Explorer)."""
+    """Lazily build the picker's StateManager (distinct session_key from the Explorer).
+    """
     if "mspecviz_mirror_picker_sm" not in st.session_state:
         st.session_state["mspecviz_mirror_picker_sm"] = StateManager(
             session_key="mspecviz_mirror_picker_state",
@@ -130,9 +135,9 @@ def _get_picker_state_manager() -> StateManager:
 
 
 def _clear_picker_selections(state_manager: StateManager) -> None:
-    """Reset both ``StateManager`` selections AND Tabulator's component-local trackers.
-
-    ``regenerate_cache=True`` only rewrites the parquet cache; without this the old row stays highlighted."""
+    """Reset both StateManager selections AND Tabulator's component-local trackers.
+    regenerate_cache=True only rewrites the parquet cache; without this the old row stays highlighted.
+    """
     state_manager.clear_selection("selected_ref_row")
     state_manager.clear_selection("selected_query_psm")
     for tracker_key in ("_svc_table_last_selection", "_svc_table_last_sort_filter"):
@@ -142,7 +147,8 @@ def _clear_picker_selections(state_manager: StateManager) -> None:
 
 
 def _render_metrics_expander(metrics: dict) -> None:
-    """Show the 7 similarity metrics + ion counts for one query/reference pair in a collapsed expander."""
+    """Show the 7 similarity metrics + ion counts for one query/reference pair in a collapsed expander.
+    """
     with st.expander("Comparison Metrics", expanded=False):
         metric_data = {
             METRIC_SHORT_TO_DISPLAY[key]: (
@@ -158,7 +164,8 @@ def _render_metrics_expander(metrics: dict) -> None:
 
 def _render_mirror_pair(query_spectrum, query_frame,
                         reference_spectrum, reference_frame) -> None:
-    """Compute metrics, draw the Plotly mirror plot, and show the metrics expander below it."""
+    """Compute metrics, draw the Plotly mirror plot, and show the metrics expander below it.
+    """
     metrics = compute_all_metrics(query_frame, reference_frame)
     query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
     title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
@@ -176,7 +183,8 @@ def _render_picker_tables(
     ref_frame: pl.LazyFrame, query_frame: pl.LazyFrame,
     cache_path: str, state_manager: StateManager,
 ) -> None:
-    """Render the two side-by-side openms_insight ``Table``s wired to *state_manager*."""
+    """Render the two side-by-side openms_insight Tables wired to *state_manager*.
+    """
     columns = _picker_column_definitions()
     left_column, right_column = st.columns(2)
     # default_row=-1 disables Tabulator's row-0 auto-selection on first render;
@@ -205,7 +213,8 @@ def _render_picker_tables(
 
 @st.fragment
 def mirror_plots_fragment(params: dict):
-    """Render the Mirror Plots sub-view — peptide selectbox -> two pickers -> mirror plot."""
+    """Render the Mirror Plots sub-view — peptide selectbox -> two pickers -> mirror plot.
+    """
     # Pull session state: annotated queries, references, and variant groups from Search & Load
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     reference_store = st.session_state.get(get_state_key("reference_store"), {})
@@ -279,7 +288,7 @@ def mirror_plots_fragment(params: dict):
     refs = reference_store.get(chosen, [])
     # Rebuild the hashed-id reverse index for this variant so a stale ref_id
     # from a previous peptide (after auto-fill races) resolves to None and we
-    # bail safely. See `_ref_row_id` for the hashing rationale.
+    # bail safely. See _ref_row_id for the hashing rationale.
     ref_index = {_ref_row_id(chosen, i): i for i in range(len(refs))}
     if ref_id not in ref_index:
         return

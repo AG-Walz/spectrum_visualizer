@@ -1,4 +1,4 @@
-"""AppTest GUI smoke tests for ``streamlit_app/`` (page launches + Mirror-Plots picker render)."""
+"""AppTest GUI smoke tests for streamlit_app/ (page launches + Mirror-Plots picker render)."""
 from streamlit.testing.v1 import AppTest
 import numpy as np
 import pandas as pd
@@ -17,7 +17,7 @@ STATE_PREFIX = "peptide_mirror"
 
 @pytest.fixture
 def launch(request):
-    """Build an AppTest for the file in ``request.param`` and seed ``session_state.settings``."""
+    """Build an AppTest for the file in request.param and seed session_state.settings."""
     test = AppTest.from_file(request.param)
 
     # Seed session_state.settings from the real config so page_setup() succeeds.
@@ -47,7 +47,7 @@ def test_launch(launch):
 def _seed_mirror_picker_state(at: AppTest) -> None:
     """Inject one variant + one query + one experimental ref so the picker fragment renders end-to-end.
 
-    Annotation frames carry the columns ``compute_all_metrics`` requires so the auto-rendered first-pair plot doesn't blow up."""
+    Annotation frames carry the columns compute_all_metrics requires so the auto-rendered first-pair plot doesn't blow up."""
     match = make_peptide_match(
         peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
         spectrum_id="scan=42", charge=2, score=0.9, mzml_filename="q.mzML",

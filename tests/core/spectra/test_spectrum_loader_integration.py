@@ -1,4 +1,4 @@
-"""Integration tests for ``core.spectra.spectrum_loader`` against real mzML fixtures."""
+"""Integration tests for core.spectra.spectrum_loader against real mzML fixtures."""
 import pytest
 from pathlib import Path
 

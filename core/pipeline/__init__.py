@@ -1,4 +1,5 @@
-"""Streaming-annotation pipeline shared by ``cli.main`` and ``streamlit_app.views.search_load``."""
+"""Streaming-annotation pipeline shared by cli.main and streamlit_app.views.search_load.
+"""
 from core.pipeline.kwargs_builders import (
     build_annotation_kwargs,
     build_koina_kwargs,

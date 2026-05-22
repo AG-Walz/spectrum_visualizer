@@ -1,6 +1,6 @@
 """Rendered as the Export tab — format checkboxes, run button, history browser, and ZIP download.
-
-Sections are ``@st.fragment``s; heavy work lives in ``export_actions.py`` and ``gallery.py``."""
+Sections are @st.fragments; heavy work lives in export_actions.py and gallery.py.
+"""
 import io
 import json
 import logging
@@ -23,7 +23,8 @@ logger = logging.getLogger(__name__)
 
 
 def _list_export_runs(export_path: Path) -> list[tuple[Path, dict]]:
-    """Scan ``export_path`` for past runs; return ``[(run_dir, run_settings_dict)]`` newest-first."""
+    """Scan export_path for past runs; return [(run_dir, run_settings_dict)] newest-first.
+    """
     runs = []
     for settings_file in sorted(export_path.glob("*/run_settings.json"), reverse=True):
         try:
@@ -36,7 +37,8 @@ def _list_export_runs(export_path: Path) -> list[tuple[Path, dict]]:
 
 
 def _format_run_label(run_dir: Path, run_settings: dict) -> str:
-    """Build the one-line expander label (name, date, peptide/file counts) for one historical run."""
+    """Build the one-line expander label (name, date, peptide/file counts) for one historical run.
+    """
     peptides = run_settings.get("peptides", [])
     idxml_count = len(run_settings.get("idxml_files", []))
     mzml_count = len(run_settings.get("mzml_files", []))
@@ -50,7 +52,8 @@ def _format_run_label(run_dir: Path, run_settings: dict) -> str:
 
 
 def _render_run_metadata(run_settings: dict) -> None:
-    """Render the metadata column (peptides, files, tolerance, timestamps) inside a history expander."""
+    """Render the metadata column (peptides, files, tolerance, timestamps) inside a history expander.
+    """
     peptides = run_settings.get("peptides", [])
     pep_preview = ", ".join(peptides[:3])
     if len(peptides) > 3:
@@ -69,7 +72,8 @@ def _render_run_metadata(run_settings: dict) -> None:
 
 
 def _render_run_action_buttons(run_dir: Path, run_settings: dict) -> None:
-    """Render Reload/Delete buttons for one historical run, with a two-step confirm before delete."""
+    """Render Reload/Delete buttons for one historical run, with a two-step confirm before delete.
+    """
     # Reload: rehydrate this run's parameters into session state
     if st.button("Reload settings", key=f"reload_{run_dir.name}"):
         apply_run_settings(run_settings)
@@ -98,7 +102,8 @@ def _render_run_action_buttons(run_dir: Path, run_settings: dict) -> None:
 
 
 def _render_history_run(run_dir: Path, run_settings: dict) -> None:
-    """Render the full expander (metadata, actions, embedded gallery) for one historical run."""
+    """Render the full expander (metadata, actions, embedded gallery) for one historical run.
+    """
     with st.expander(_format_run_label(run_dir, run_settings), expanded=False):
         col_meta, col_actions = st.columns([3, 1])
         with col_meta:
@@ -110,7 +115,8 @@ def _render_history_run(run_dir: Path, run_settings: dict) -> None:
 
 @st.fragment
 def export_history_fragment(export_dir: str):
-    """Browse past export runs in ``export_dir``, with reload-settings and delete actions per run."""
+    """Browse past export runs in export_dir, with reload-settings and delete actions per run.
+    """
     st.subheader("Export History")
 
     # Empty states: directory missing or no completed runs inside
@@ -132,7 +138,9 @@ def export_history_fragment(export_dir: str):
 
 @st.fragment
 def zip_download_fragment(export_root: Path) -> None:
-    """Render a download button that zips ``export_root`` on click (deferred so the zip isn't built on every rerun)."""
+    """Render a download button that zips export_root on click 
+    (deferred so the zip isn't built on every rerun).
+    """
     def _make_zip() -> bytes:
         buffer = io.BytesIO()
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zip_file:
@@ -152,13 +160,14 @@ def zip_download_fragment(export_root: Path) -> None:
 
 @st.fragment
 def export_controls_fragment():
-    """Render the export-directory input, format checkboxes, and the "Export All" trigger button."""
+    """Render the export-directory input, format checkboxes, and the "Export All" trigger button.
+    """
     # Guard: Search & Load must have populated session state first
     if not st.session_state.get(get_state_key("data_ready")):
         st.info("Load data first (Search & Load page).")
         return
 
-    # Export directory: default to ``<workspace>/exports`` when unset
+    # Export directory: default to <workspace>/exports when unset
     workspace = st.session_state.get("workspace", None)
     export_fallback = str(Path(workspace) / "exports") if workspace else "./exports"
     export_default = params.get("export_directory", "") or export_fallback
@@ -183,7 +192,7 @@ def export_controls_fragment():
         export_summary = st.checkbox("Summary Analysis Plots", value=True,
                                      key=f"{STATE_PREFIX}_exp_summary")
 
-    # Trigger: dispatch ``_run_export`` with the chosen flags
+    # Trigger: dispatch _run_export with the chosen flags
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
         _run_export(
             params,
@@ -194,7 +203,8 @@ def export_controls_fragment():
 
 
 def render():
-    """Page entry point: rebuild analysis cache, render the three fragments, then persist params."""
+    """Page entry point: rebuild analysis cache, render the three fragments, then persist params.
+    """
     # Restore cached analysis (if any) and render the page header
     restore_analysis_if_needed()
     st.title("Export")

@@ -1,7 +1,7 @@
 """User-tunable pipeline parameters, including option collections and default values. 
 Used across the streamlit app's views and CLI commands 
-(imported by Setup, Search & Load, and Export views, plus the CLI config loader)."""
-
+(imported by Setup, Search & Load, and Export views, plus the CLI config loader).
+"""
 from dataclasses import dataclass
 
 # Catalogues of valid choices surfaced in the UI and CLI config
@@ -47,8 +47,8 @@ IMAGE_FORMATS: tuple[str, ...] = ("png", "svg", "pdf", "html")
 
 @dataclass(frozen=True)
 class Defaults:
-    """Canonical default values for every tunable parameter; instantiated once as ``DEFAULTS`` and treated as read-only."""
-
+    """Canonical default values for every tunable parameter; instantiated once as DEFAULTS and treated as read-only.
+    """
     # --- Annotation ---------------------------------------------------------
     ion_types: tuple[str, ...] = ("b", "y")
     mz_tolerance: float = 0.02                 # Da

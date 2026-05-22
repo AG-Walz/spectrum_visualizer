@@ -1,4 +1,6 @@
-"""Spectrum loading + Koina prediction — public API for ``from core.spectra import ...`` (imported by ``pipeline``, ``streamlit_app``, ``cli``)."""
+"""Spectrum loading + Koina prediction — public API for from core.spectra import ... 
+(imported by pipeline, streamlit_app, cli).
+"""
 from core.spectra.koina_prediction import (
     convert_peptide_to_unimod,
     get_koina_settings,

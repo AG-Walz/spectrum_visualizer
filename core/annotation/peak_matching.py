@@ -1,6 +1,6 @@
 """Peak annotation: Match experimental or Koina m/z peaks to theoretical fragments of a peptidoform 
-using ``spectrum_utils.annotate_proforma`` (called by ``core.pipeline.annotation_steps``)."""
-
+using spectrum_utils.annotate_proforma (called by core.pipeline.annotation_steps).
+"""
 import logging
 import numpy as np
 import pandas as pd
@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 def get_ion_type(annotation: str) -> str:
-    """Maps the first character of an annotation string to a colour-bucket key."""
+    """Maps the first character of an annotation string to a colour-bucket key.
+    """
     # Ion-type prefix used for plot colouring
     _ION_PREFIX = {
     "a": "a", "b": "b", "c": "c", "x": "x", "y": "y", "z": "z",
@@ -22,8 +23,8 @@ def get_ion_type(annotation: str) -> str:
 
 
 def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
-    """Convert an annotated ``spectrum_utils.MsmsSpectrum`` to a standardized DataFrame (1 row per peak)."""
-    
+    """Convert an annotated spectrum_utils.MsmsSpectrum to a standardized DataFrame (1 row per peak).
+    """
     # Accumulators: one entry per peak, filled in order
     annotations: list[str] = []
     ion_types: list[str] = []
@@ -69,9 +70,9 @@ def annotate_spectrum(
     add_neutral_losses: bool = False,
     precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
-    """Match experimental peaks to theoretical fragments of a given ``peptidoform``; 
-    Silently block precursor-ion matches to always pass the real result.query_spectrum.precursor_mz."""
-    
+    """Match experimental peaks to theoretical fragments of a given peptidoform; 
+    Silently block precursor-ion matches to always pass the real result.query_spectrum.precursor_mz.
+    """ 
     # Define ion_types from the UI selection, defaulting to all if the user didn't specify any
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
@@ -128,8 +129,8 @@ def annotate_spectrum(
 def _filter_and_normalize(
     annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
-    """Drop annotations whose ion type the user didn't ask for and optionally normalise to max=1."""
-    
+    """Drop annotations whose ion type the user didn't ask for and optionally normalise to max=1.
+    """
     if annotated.empty:
         return annotated
 
@@ -177,7 +178,7 @@ def prepare_spectrum_for_plot(
 
 def _parse_koina_charge(annotation: str) -> int:
     """Extract the fragment charge out of a Koina label, which encodes both 
-     a trailing digit ``y3+2`` -> 2, and repeated plus signs ``y7++`` -> 2."""
+     a trailing digit y3+2 -> 2, and repeated plus signs y7++ -> 2."""
     if not annotation:
         return 0
     plus_count = len(annotation) - len(annotation.rstrip("+"))

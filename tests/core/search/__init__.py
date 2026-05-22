@@ -1,1 +1,1 @@
-"""Tests for ``core.search`` (idXML scanning + result summarisation)."""
+"""Tests for core.search (idXML scanning + result summarisation)."""

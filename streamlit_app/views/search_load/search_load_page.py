@@ -1,6 +1,6 @@
 """Rendered as the Search & Load tab — the big "Run" button plus the per-variant results table.
 
-Heavy lifting lives in ``search_load_actions.py``; this module handles layout, validation, and session state."""
+Heavy lifting lives in search_load_actions.py; this module handles layout, validation, and session state."""
 import streamlit as st
 
 from streamlit_app.utils.state import (
@@ -67,7 +67,7 @@ def search_results_fragment():
             if st.button("Search & Load Spectra", key=f"{STATE_PREFIX}_load_btn", type="primary"):
                 run_search_and_load(params)
 
-            # Section 3: post-load summary — only after the action has set ``data_ready``
+            # Section 3: post-load summary — only after the action has set data_ready
             if st.session_state.get(get_state_key("data_ready")):
                 comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
                 if comparison_frame is not None and not comparison_frame.empty:

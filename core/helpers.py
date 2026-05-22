@@ -1,5 +1,5 @@
-"""Shared text-parsing, time-formatting, input-validation, and parallel-dispatch utilities."""
-
+"""Shared text-parsing, time-formatting, input-validation, and parallel-dispatch utilities.
+"""
 from collections import Counter
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, List, Sequence, Tuple
@@ -7,11 +7,13 @@ from joblib import Parallel, delayed
 
 
 class DuplicateBasenameError(ValueError):
-    """Two or more selected files share the same basename — refuse to start."""
+    """Two or more selected files share the same basename — refuse to start.
+    """
 
 
 def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
-    """Raise :class:`DuplicateBasenameError` if any two ``paths`` share a basename."""
+    """Raise DuplicateBasenameError if any two paths share a basename.
+    """
     duplicates = sorted(
         name for name, count in Counter(Path(path).name for path in paths).items()
         if count > 1
@@ -23,12 +25,14 @@ def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
         )
 
 def parse_peptide_list(text: str) -> List[str]:
-    """Parse newline-separated peptide list, uppercased and stripped."""
+    """Parse newline-separated peptide list, uppercased and stripped.
+    """
     return [line.strip().upper() for line in text.splitlines() if line.strip()]
 
 
 def format_time(seconds: float) -> str:
-    """Format seconds as human-readable duration (e.g. ``"2m 30s"``)."""
+    """Format seconds as human-readable duration (e.g. "2m 30s").
+    """
     if seconds < 60:
         return f"{seconds:.0f}s"
     if seconds < 3600:
@@ -42,7 +46,8 @@ def format_time(seconds: float) -> str:
 
 def _carry(task: Any, worker: Callable) -> Tuple[Any, bool, Any]:
     """Wrapper that catches exceptions from a worker and returns them as values 
-    ``(task, ok, result_or_error)`` with ``ok`` as a boolean flag."""
+    (task, ok, result_or_error) with ok as a boolean flag.
+    """
     args = task if isinstance(task, tuple) else (task,)
     try:
         return task, True, worker(*args)
@@ -57,8 +62,8 @@ def run_tasks(
 ) -> Iterator[Tuple[Any, bool, Any]]:
     """Utility that dispatches a function (worker) across a list of tasks,
      either one at a time (workers = 1) or in parallel across multiple processes;
-     returns ``(task, ok, result_or_error)`` tuples."""
-
+     returns (task, ok, result_or_error) tuples.
+     """
     # If empty input return nothing
     if not tasks:
         return

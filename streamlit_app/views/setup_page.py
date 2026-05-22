@@ -1,6 +1,6 @@
 """Setup tab — pick idXML/mzML files, enter peptides, configure reference + annotation + Koina.
 
-Registered in ``app.py`` via ``st.Page()``; outputs land in ``params`` and feed Search & Load."""
+Registered in app.py via st.Page(); outputs land in params and feed Search & Load."""
 from pathlib import Path
 
 import streamlit as st
@@ -19,7 +19,7 @@ from core.helpers import (
 
 
 def _get_nested_value(source: dict, *keys, default=None):
-    """Walk nested dicts safely — ``_get_nested_value(d, 'a', 'b')`` returns ``d['a']['b']`` or *default*."""
+    """Walk nested dicts safely — _get_nested_value(d, 'a', 'b') returns d['a']['b'] or *default*."""
     current = source
     for key in keys:
         if isinstance(current, dict):
@@ -132,7 +132,7 @@ def reference_selection_fragment():
 
 
 def settings_fragment():
-    """Render annotation, display, performance, and Koina prediction widgets — all writing into ``params``."""
+    """Render annotation, display, performance, and Koina prediction widgets — all writing into params."""
     st.subheader("Settings")
     available_ions = _get_nested_value(st.session_state.get("settings", {}), "ion_types", "available",
                                  default=['a', 'b', 'c', 'x', 'y', 'z', 'precursor', 'immonium'])

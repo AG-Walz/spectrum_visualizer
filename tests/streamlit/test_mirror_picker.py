@@ -1,4 +1,4 @@
-"""Pure-function tests for ``streamlit_app.views.explore.mirror_plots`` (picker frames + eligibility)."""
+"""Pure-function tests for streamlit_app.views.explore.mirror_plots (picker frames + eligibility)."""
 from __future__ import annotations
 
 import numpy as np
@@ -17,7 +17,7 @@ from tests.conftest import make_peptide_match
 def _spec(source_file: str, spectrum_id: str, charge: int = 2,
           rt: float = 12.5, peptidoform: str = "PEPTIDEK",
           match=None, is_ref: bool = False) -> LoadedSpectrum:
-    """Build a tiny two-peak ``LoadedSpectrum`` for picker-frame tests."""
+    """Build a tiny two-peak LoadedSpectrum for picker-frame tests."""
     return LoadedSpectrum(
         spectrum_id=spectrum_id,
         mz=np.array([100.0, 200.0]),
@@ -163,5 +163,5 @@ class TestBuildPickerFrames:
             "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
         )
         # pl.Float32 cannot represent NaN-as-null distinctly without the
-        # explicit conversion in ``_safe_score`` — verify it lands as null.
+        # explicit conversion in _safe_score — verify it lands as null.
         assert query_lazy.collect().row(0, named=True)["score"] is None

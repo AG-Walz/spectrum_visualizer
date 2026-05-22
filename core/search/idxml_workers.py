@@ -1,6 +1,7 @@
 """idXML scanning workers, which open and read the peptide identifications out of them, 
-designed to be dispatched across multiple processes by the ``run_tasks`` utility in ``helpers.py``
-(used by ``core.search.peptide_search``)."""
+designed to be dispatched across multiple processes by the run_tasks utility in helpers.py
+(used by core.search.peptide_search).
+"""
 import logging
 from collections import Counter
 from pathlib import Path
@@ -11,7 +12,8 @@ logger = logging.getLogger(__name__)
 
 def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
     """Simple reader for the Setup page (before peptides are chosen) - Count PSMs per base sequence in one idXML. 
-    Returns a dict mapping unmodified peptide sequence to count, e.g. ``{"PEPTIDE": 42}``."""
+    Returns a dict mapping unmodified peptide sequence to count, e.g. {"PEPTIDE": 42}.
+    """
     counts: Counter = Counter()
     try:
         for psm in IdXMLReader(str(idxml_path)):
@@ -29,8 +31,8 @@ def search_single_idxml(
     target_set: Set[str], mzml_by_stem: Dict[str, str],
 ) -> Tuple[str, list, list]:
     """Scan one idXML file for target peptides; return the matching PSMs
-     with extracted metadata attached ``(name, matches, errors)``."""
-    
+     with extracted metadata attached (name, matches, errors).
+    """
     # Open psm_utils' idxml-reader, which yields PSMs one at a time
     matches: list = []
     try:

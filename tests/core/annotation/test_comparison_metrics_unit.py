@@ -1,4 +1,4 @@
-"""Unit tests for the seven comparison metrics in ``core.annotation`` (hand-built frames, no real spectra)."""
+"""Unit tests for the seven comparison metrics in core.annotation (hand-built frames, no real spectra)."""
 import math
 
 import pandas as pd
@@ -19,7 +19,7 @@ from core.annotation import (
 # ---------------------------------------------------------------------------
 
 def _make_df(mz, intensity, annotations, is_annotated=None):
-    """Build a DataFrame shaped like ``prepare_spectrum_for_plot`` output."""
+    """Build a DataFrame shaped like prepare_spectrum_for_plot output."""
     n = len(mz)
     if is_annotated is None:
         is_annotated = [a != "unannotated" for a in annotations]
@@ -32,7 +32,7 @@ def _make_df(mz, intensity, annotations, is_annotated=None):
 
 
 def _identical_pair():
-    """Return ``(query, reference)`` where both are the same five-peak annotated frame."""
+    """Return (query, reference) where both are the same five-peak annotated frame."""
     mz = [100.0, 200.0, 300.0, 400.0, 500.0]
     intensity = [0.5, 1.0, 0.3, 0.8, 0.6]
     annotations = ["b1", "b2", "y1", "y2", "y3"]
@@ -41,14 +41,14 @@ def _identical_pair():
 
 
 def _disjoint_pair():
-    """Return ``(query, reference)`` with no overlapping annotations (shared==0)."""
+    """Return (query, reference) with no overlapping annotations (shared==0)."""
     query = _make_df([100.0, 200.0], [1.0, 0.5], ["b1", "b2"])
     reference = _make_df([300.0, 400.0], [0.8, 0.4], ["y1", "y2"])
     return query, reference
 
 
 def _partial_overlap_pair():
-    """Return ``(query, reference)`` sharing exactly one annotation (b1)."""
+    """Return (query, reference) sharing exactly one annotation (b1)."""
     query = _make_df([100.0, 200.0, 300.0], [1.0, 0.5, 0.3], ["b1", "b2", "unannotated"])
     reference = _make_df([100.0, 200.0, 400.0], [0.9, 0.6, 0.4], ["b1", "y1", "unannotated"])
     return query, reference
@@ -119,7 +119,7 @@ class TestSpectralEntropy:
 
 
 class TestSetMetricsViaComputeAll:
-    """Dice / Jaccard / SharedRatio are only exposed through ``compute_all_metrics``."""
+    """Dice / Jaccard / SharedRatio are only exposed through compute_all_metrics."""
 
     def test_identical_returns_perfect(self):
         query, reference = _identical_pair()

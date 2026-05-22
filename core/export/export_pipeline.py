@@ -1,13 +1,20 @@
-"""Top-level export orchestrator (called by ``cli.main`` and ``streamlit_app.views.export.export_actions``).
-
-``run_export`` plans a versioned folder, writes parquet + CSV/XLSX, dispatches plot workers, writes ``run_settings.json``."""
+"""Top-level export orchestrator that turns analysis results into an on-disk run folder.
+run_export is the single entry point: it plans (and commits) a versioned export
+folder, writes the four parquet LazyFrames, the comparison table as CSV/XLSX, the
+per-PSM mirror plots (rendered across a worker pool), and the dual-axis / ridgeline /
+heatmap summary plots — returning an ExportResult that lists every saved file.
+The ExportSelection / PlotSettings / ExportCallbacks dataclasses let each
+frontend describe one export run without passing a long argument list.
+(Called by cli.main._run_export and streamlit_app.views.export.export_actions;
+re-exported by core.export. Dispatches to core.pipeline.build_plot_tasks,
+core.plotting.process_single_task / generate_all_summary_plots, and the
+folder helpers in core.export.export_directories.)
+"""
 from __future__ import annotations
-
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
-
 import pandas as pd
 
 from core.helpers import run_tasks
@@ -22,14 +29,20 @@ from core.plotting import generate_all_summary_plots, process_single_task
 logger = logging.getLogger(__name__)
 
 
+# Two shapes a frontend may hand in: a list [(psm_id, spec, df), ...] or a
+# dict {psm_id: (spec, df)} — run_export normalises both into a list.
 AnnotatedQueries = list[tuple] | dict[str, tuple]
+# The four openms_insight LazyFrames written one parquet file each.
 _PARQUET_FRAMES = ("psm", "peaks", "sequence", "heatmap")
+# Raster/vector image formats accepted for plots — distinct from html,
+# which is handled on its own track because it is interactive, not a picture.
 _PICTURE_FORMATS = ("png", "svg", "pdf")
 
 
 @dataclass
 class ExportSelection:
-    """Which artefact groups to write (parquet / CSV / mirror plots / summaries / HTML)."""
+    """Which artefact groups to write (parquet / CSV / mirror plots / summaries / HTML).
+    """
     parquet: bool = True
     csv: bool = True
     mirror_plots: bool = True
@@ -39,7 +52,8 @@ class ExportSelection:
 
 @dataclass
 class PlotSettings:
-    """Figure size, image formats, DPI, and plot-worker count."""
+    """Figure size, image formats, DPI, and plot-worker count.
+    """
     export_formats: list[str] = field(default_factory=lambda: ["png", "svg"])
     figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
@@ -49,7 +63,8 @@ class PlotSettings:
 
 @dataclass
 class ExportCallbacks:
-    """Optional UI hooks for step messages, plot progress, and warnings (no-op when ``None``)."""
+    """Optional UI hooks for step messages, plot progress, and warnings (no-op when None).
+    """
     on_step: Callable[[str], None] | None = None
     on_plot_progress: Callable[[int, int], None] | None = None
     on_warning: Callable[[str], None] | None = None
@@ -57,7 +72,8 @@ class ExportCallbacks:
 
 @dataclass
 class ExportResult:
-    """Final outcome: the chosen folder, every saved file, and per-group plot counts."""
+    """Final outcome: the chosen folder, every saved file, and per-group plot counts.
+    """
     export_root: Path
     saved_files: list[str]
     mirror_plot_count: int = 0
@@ -67,7 +83,12 @@ class ExportResult:
 def _resolve_format_dirs(
     root_dir: Path, export_formats: list[str],
 ) -> tuple[dict[str, str], str]:
-    """Map each requested format to its subfolder path (no folders created)."""
+    """Map each requested format to its subfolder path under root_dir.
+    Returns (format_dirs, html_dir) where format_dirs is {fmt: path} for
+    every picture format present in export_formats and html_dir is the html
+    subfolder path (empty string when html is not requested). Paths are strings only —
+    the directories themselves are created later by the plot workers.
+    """
     format_dirs = {fmt: str(root_dir / fmt) for fmt in _PICTURE_FORMATS if fmt in export_formats}
     html_dir = str(root_dir / "html") if "html" in export_formats else ""
     return format_dirs, html_dir
@@ -84,7 +105,12 @@ def _run_plot_tasks(
     on_progress: Callable[[int, int], None],
     on_warning: Callable[[str], None],
 ) -> int:
-    """Build one mirror plot per ``(query, reference)`` pair and render via a worker pool."""
+    """Build one mirror plot per (query, reference) pair and render via a worker pool.
+    Each successfully rendered task contributes its non-empty per-format output paths
+    to saved_files (mutated in place). Returns the count of files written; 0 when
+    no tasks were produced. Worker failures are reported through on_warning rather
+    than raised, so a single bad PSM does not abort the whole export.
+    """
     # Resolve format set: append html when requested, map each to a subdir
     base_formats = list(plot_settings.export_formats)
     if do_html and "html" not in base_formats:
@@ -129,7 +155,11 @@ def _run_summary_plots(
     export_formats: list[str],
     saved_files: list[str],
 ) -> int:
-    """Render dual-axis / ridgeline / heatmap summaries (picture formats only; falls back to PNG)."""
+    """Render dual-axis / ridgeline / heatmap summaries from the comparison table.
+    Summaries are picture-only — html is filtered out, and an empty format set falls
+    back to ["png"]. Appends every written path to saved_files and returns the
+    count; returns 0 when there is no comparison frame or it is empty.
+    """
     if comparison_frame is None or comparison_frame.empty:
         return 0
     summary_formats = [f for f in export_formats if f in _PICTURE_FORMATS] or ["png"]
@@ -158,8 +188,15 @@ def run_export(
     callbacks: ExportCallbacks | None = None,
 ) -> ExportResult:
     """Run a full export end-to-end: versioned dir, parquets, CSV/XLSX, plots, summaries.
-
-    Returns an ``ExportResult`` listing every saved file; dispatches each artefact group in ``selection``."""
+    Keyword-only entry point shared by both frontends. Allocates (or reuses) a versioned
+    folder for project_name under export_directory, writes run_settings.json,
+    then runs each artefact stage gated by selection. run_settings.json is always
+    counted as saved even when every stage is disabled.
+    Returns an ExportResult whose saved_files lists every written path and whose
+    mirror_plot_count / summary_plot_count report per-group totals. Stage failures
+    that are recoverable (a bad plot worker, a missing XLSX engine) are surfaced through
+    callbacks.on_warning rather than raised.
+    """
     # Normalise inputs: defaults for missing dataclasses, no-op for missing callbacks
     selection = selection or ExportSelection()
     plot_settings = plot_settings or PlotSettings()

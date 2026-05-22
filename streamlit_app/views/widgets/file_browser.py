@@ -1,4 +1,4 @@
-"""Directory-browser + file-picker widget for the Setup page: breadcrumbs, sub-folder grid, glob-filtered multiselect — selections persist in ``st.session_state[state_key]``."""
+"""Directory-browser + file-picker widget for the Setup page: breadcrumbs, sub-folder grid, glob-filtered multiselect — selections persist in st.session_state[state_key]."""
 from pathlib import Path
 
 import streamlit as st
@@ -7,7 +7,7 @@ from streamlit_app.utils.page_state import list_files, list_subdirectories
 
 
 def _browser_keys(key_prefix: str) -> dict:
-    """Return the per-browser ``session_state`` widget keys derived from ``key_prefix``."""
+    """Return the per-browser session_state widget keys derived from key_prefix."""
     return {
         "dir": f"{key_prefix}_dir",
         "nav": f"{key_prefix}_nav_to",
@@ -18,7 +18,7 @@ def _browser_keys(key_prefix: str) -> dict:
 
 
 def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: dict) -> None:
-    """Seed ``session_state`` slots (selection list, current directory, path input) on first run."""
+    """Seed session_state slots (selection list, current directory, path input) on first run."""
     if state_key not in st.session_state:
         st.session_state[state_key] = params.get(state_key, [])
     if keys["dir"] not in st.session_state:
@@ -106,7 +106,7 @@ def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> Non
 
 
 def _list_browser_files(current_dir: str, extensions: list, recursive: bool):
-    """List files in ``current_dir`` matching ``extensions``; return ``(labels, label→path)``."""
+    """List files in current_dir matching extensions; return (labels, label→path)."""
     all_files = [Path(path) for path in list_files(current_dir, tuple(extensions), recursive)]
     current_path = Path(current_dir)
     file_labels = ([str(f.relative_to(current_path)) for f in all_files]
@@ -127,7 +127,7 @@ def _selections_outside_scope(state_key: str, file_labels, label_to_path,
 
 def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
                        current_dir: str, extensions: list, recursive: bool) -> None:
-    """Render the filter input + select-all + multiselect and persist picks to ``session_state[state_key]``."""
+    """Render the filter input + select-all + multiselect and persist picks to session_state[state_key]."""
     # List + filter files in the current view by the substring filter input
     file_labels, label_to_path = _list_browser_files(current_dir, extensions, recursive)
     filter_text = st.text_input("Filter files", key=f"{key_prefix}_filter",
@@ -193,9 +193,9 @@ def render_directory_browser(
     key_prefix: str, extensions: list, state_key: str,
     default_dir: str = "/", params: dict | None = None,
 ):
-    """Render the directory browser + file picker on the Setup page; persists selections to ``session_state[state_key]``.
+    """Render the directory browser + file picker on the Setup page; persists selections to session_state[state_key].
 
-    ``key_prefix`` namespaces widget keys; ``extensions`` filters listed files; ``params`` seeds initial dir + selection."""
+    key_prefix namespaces widget keys; extensions filters listed files; params seeds initial dir + selection."""
     # Bootstrap: initialise state + consume any pending navigation request
     params = params or {}
     keys = _browser_keys(key_prefix)

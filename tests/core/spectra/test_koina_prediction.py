@@ -1,4 +1,4 @@
-"""Unit + network-integration tests for ``core.spectra.koina_prediction`` (Koina AI fallback)."""
+"""Unit + network-integration tests for core.spectra.koina_prediction (Koina AI fallback)."""
 import numpy as np
 import pandas as pd
 import pytest
@@ -115,7 +115,7 @@ class TestPredictKoinaSpectrum:
 @pytest.mark.slow
 class TestKoinaPipelineIntegration:
     def test_predict_and_annotate_native(self):
-        """Predict via Koina then preserve native ``y3+1``-style annotations through ``prepare_koina_spectrum_for_plot``."""
+        """Predict via Koina then preserve native y3+1-style annotations through prepare_koina_spectrum_for_plot."""
         predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
         assert predicted is not None
 

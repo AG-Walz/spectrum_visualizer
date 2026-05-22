@@ -1,4 +1,4 @@
-"""Load and save each workspace's ``params.json`` — called by ``state_sidebar``, ``page_state``, and Setup."""
+"""Load and save each workspace's params.json — called by state_sidebar, page_state, and Setup."""
 from __future__ import annotations
 
 import json
@@ -12,7 +12,7 @@ import streamlit as st
 from streamlit_app.utils.state.state_core import _persisted_key
 
 
-# Canonical list of widget keys ``save_params`` writes to ``params.json``. Listing every key
+# Canonical list of widget keys save_params writes to params.json. Listing every key
 # explicitly (not just those already on disk) lets first-ever saves capture widget values, and
 # lets _flush_and_switch_workspace pop them when switching workspaces.
 _PARAM_KEYS: tuple[str, ...] = (
@@ -29,7 +29,7 @@ _PARAM_KEYS: tuple[str, ...] = (
 
 
 def load_params(default: bool = False) -> dict[str, Any]:
-    """Load the current workspace's ``params.json`` — empty dict if workspaces disabled or no file yet."""
+    """Load the current workspace's params.json — empty dict if workspaces disabled or no file yet."""
     # Short-circuit: workspaces disabled or caller asked for defaults
     if default or not st.session_state.settings.get("enable_workspaces", False):
         return {}
@@ -42,7 +42,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         raw_params = json.load(handle)
 
-    # Migrate legacy hyphenated keys (``reference-substring``) to snake_case. Pre-migration
+    # Migrate legacy hyphenated keys (reference-substring) to snake_case. Pre-migration
     # workspaces would otherwise hold stale hyphen keys that save_params cannot sync.
     migrated: dict[str, Any] = {key: value for key, value in raw_params.items() if "-" not in key}
     for key, value in raw_params.items():
@@ -52,7 +52,7 @@ def load_params(default: bool = False) -> dict[str, Any]:
 
 
 def save_params(params: dict[str, Any]) -> None:
-    """Pull live widget values (or ``_persisted`` backups) into ``params`` and write atomically to ``params.json``."""
+    """Pull live widget values (or _persisted backups) into params and write atomically to params.json."""
     # Short-circuit: workspaces disabled means nothing to persist
     if not st.session_state.settings.get("enable_workspaces", False):
         return
@@ -70,7 +70,7 @@ def save_params(params: dict[str, Any]) -> None:
                 params[key] = st.session_state[persisted]
 
     # Atomic write via unique staging file. A single rerun can call save_params from the sidebar
-    # plus several setup fragments; sharing one ``params.json.tmp`` path between them — or between
+    # plus several setup fragments; sharing one params.json.tmp path between them — or between
     # browser tabs on the same workspace — made the second mover's os.replace fail.
     params_path = Path(st.session_state.workspace, "params.json")
     params_path.parent.mkdir(parents=True, exist_ok=True)

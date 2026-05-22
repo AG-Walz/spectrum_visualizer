@@ -2,8 +2,8 @@
 Given two already-annotated spectra (a query and a reference of the same peptide), 
 it produces 7 similarity scores that appear in the comparison table, 
 the export spreadsheet, and the corner overlay of every mirror plot.
-(called by ``core.pipeline.query_processing`` and ``core.plotting.plot_worker``)."""
-
+(called by core.pipeline.query_processing and core.plotting.plot_worker).
+"""
 import logging
 import math
 import numpy as np
@@ -31,8 +31,8 @@ def compute_spectral_entropy_similarity(
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> float:
     """Wraper for spectral entropy similarity between two annotated spectra 
-    (Li et al., Nature Methods 2021)"""
-
+    (Li et al., Nature Methods 2021)
+    """
     # Return NaN for empty spectra 
     if query_frame.empty or reference_frame.empty:
         return float("nan")
@@ -62,8 +62,8 @@ def compute_all_metrics(
     tolerance_da: float = DEFAULTS.mz_tolerance,
 ) -> dict[str, float | int]:
     """Compute one row of the comparison table: 7 similarity metrics (3 Intensity based: R2m, R2b, Cos, 
-    1 Entropy-based: Ent, 3 Ion-matching: Dice, Jacc, ShR) plus peak/annotation counts."""
-    
+    1 Entropy-based: Ent, 3 Ion-matching: Dice, Jacc, ShR) plus peak/annotation counts.
+    """
     # Align the query and reference spectra on their shared annotated ions
     query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
     n_shared = len(query_intensities)
@@ -95,8 +95,8 @@ def compute_all_metrics(
 
 
 def format_metrics_text(metrics: dict[str, float | int]) -> str:
-    """Format the 7 metrics as a multi-line string for the mirror-plot corner overlay."""
-    
+    """Format the 7 metrics as a multi-line string for the mirror-plot corner overlay.
+    """
     # Format None and NaN as "N/A"
     def _fmt(value) -> str:
         if value is None or (isinstance(value, float) and math.isnan(value)):

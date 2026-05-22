@@ -1,4 +1,4 @@
-"""Sidebar, workspace switcher, and ``page_setup()`` — the entry point called at the top of every Streamlit view."""
+"""Sidebar, workspace switcher, and page_setup() — the entry point called at the top of every Streamlit view."""
 from __future__ import annotations
 
 import json
@@ -19,7 +19,7 @@ from streamlit_app.utils.state.state_workspace import (
 
 
 def _flush_and_switch_workspace(params: dict) -> None:
-    """Workspace-dropdown ``on_change``: save the outgoing workspace, wipe stale state, then rerun on the new one."""
+    """Workspace-dropdown on_change: save the outgoing workspace, wipe stale state, then rerun on the new one."""
     # Flush: write the OUTGOING workspace's params.json before mutating state. Without this,
     # peptides typed in a text_area whose blur event races with the dropdown on_change are lost.
     save_params(params)
@@ -30,7 +30,7 @@ def _flush_and_switch_workspace(params: dict) -> None:
     for key in (*_PARAM_KEYS, *params.keys()):
         st.session_state.pop(key, None)
 
-    # Reset analysis: clear page-namespaced keys and ``_persisted`` widget backups so stale
+    # Reset analysis: clear page-namespaced keys and _persisted widget backups so stale
     # analysis state from the previous workspace doesn't show up in the new one.
     stale_keys = [key for key in st.session_state if key.startswith(STATE_PREFIX)]
     for key in stale_keys:

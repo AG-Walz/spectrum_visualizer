@@ -1,4 +1,4 @@
-"""Unit + integration tests for ``core.search`` (``summarize_search_results`` + idXML scan)."""
+"""Unit + integration tests for core.search (summarize_search_results + idXML scan)."""
 import pytest
 import polars as pl
 from psm_utils import PSMList
@@ -11,7 +11,7 @@ from tests.conftest import make_peptide_match
 
 
 class TestSummarizeSearchResults:
-    """Pure-data tests for ``summarize_search_results`` (LazyFrame columns, counts, empties)."""
+    """Pure-data tests for summarize_search_results (LazyFrame columns, counts, empties)."""
 
     def test_returns_lazyframe(self):
         result = summarize_search_results({
