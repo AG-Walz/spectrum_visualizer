@@ -1,12 +1,8 @@
-"""Versioned export-folder allocation and fingerprinting.
-Core helper that decides where each export run writes its artefacts and stamps every
-folder with a settings fingerprint. Folders follow the naming scheme
-{project}_{NNN}_{YYYYMMDD}/ where NNN is a zero-padded incrementing version
-number. Each folder carries a run_settings.json recording the settings used, a
-_fingerprint hash of those settings, and creation / last-run timestamps.
-The fingerprint enables idempotent re-runs: a run whose settings hash matches an
-existing folder reuses that folder (re-dated to today) instead of allocating a new
-version, so the Export-history view never accumulates duplicate runs.
+"""Export-folder allocation and renaming.
+Core helper that decides where each export run writes its plots and names every
+folder with a scheme {project}_{NNN}_{YYYYMMDD}/ where NNN is a zero-padded version
+number. Each folder carries a run_settings.json recording the settings used, a creation 
+and last-run timestamps, so the Export-history view never accumulates duplicate runs.
 (called by core.export.export_pipeline and tests.core.export.test_export_directories.)
 """
 import hashlib
@@ -20,25 +16,20 @@ logger = logging.getLogger(__name__)
 
 
 def sanitize_filename(name: str) -> str:
-    """Make name safe to use as a filesystem path component.
-    Replaces characters that are illegal or troublesome on common filesystems with
-    underscores, collapses runs of underscores into one, trims leading/trailing
-    underscores and spaces, and caps the result at 100 characters. Returns the
-    cleaned string (may be empty if name held only unsafe characters).
+    """Make user provided name safe to use as a filesystem path component.
     """
     # Replace each filesystem-unsafe character with an underscore
     sanitized = re.sub(r'[<>:"/\\|?*\[\]]', '_', name)
     # Collapse consecutive underscores, then strip stray edge underscores/spaces
     sanitized = re.sub(r'_+', '_', sanitized)
     sanitized = sanitized.strip('_ ')
-    # Cap length to keep folder names well within filesystem limits
+    # Return cleaned string with a maximum length of 100 characters
     return sanitized[:100]
 
 
 def _settings_fingerprint(run_settings: dict) -> str:
-    """Return a 16-character SHA-256 hash identifying a settings dict.
-    Identical settings always yield the same hash regardless of key order — keys are
-    sorted and non-JSON-serialisable values are coerced via str before hashing.
+    """Return a 16-character SHA-256 hash identifying a settings dictionary.
+    Identical settings always yield the same hash regardless of key order.
     Used to detect re-runs with unchanged settings.
     """
     # Canonical JSON: sorted keys make the hash order-independent
@@ -48,9 +39,7 @@ def _settings_fingerprint(run_settings: dict) -> str:
 
 def _entry_fingerprint(settings_file: Path) -> str | None:
     """Read the _fingerprint value stored in a run_settings.json file.
-    Returns the fingerprint string, or None if the file is missing the key or
-    cannot be parsed — a corrupt settings file is treated as a non-match rather than
-    a fatal error.
+    Returns the fingerprint string, or None if the file is missing.
     """
     try:
         with open(settings_file, encoding="utf-8") as f:
@@ -64,13 +53,9 @@ def _scan_existing_dirs(
     base: Path, pattern: re.Pattern, fingerprint: str,
 ) -> tuple[int, Path | None, int | None]:
     """Scan base for existing export folders matching the project naming scheme.
-    Walks the immediate children of base, considering only directories whose name
-    matches pattern (the {project}_{NNN}_{YYYYMMDD} regex). Returns
-    (max_number, match_entry, match_number) where max_number is the highest
-    version number seen (0 if none), and match_entry / match_number point
-    at the first folder whose stored fingerprint equals fingerprint (both None
-    when no folder matches). The caller reuses match_entry or allocates
-    max_number + 1.
+    Walks the immediate children of the user-defined base folder, considering only directories whose 
+    name match the regex pattern {project}_{NNN}_{YYYYMMDD}. Returns max_number (highest version number seen), 
+    match_entry and match_number point matching the stored fingerprint.
     """
     max_number = 0
     match_entry = None
@@ -101,11 +86,7 @@ def _scan_existing_dirs(
 
 def _rename_or_reuse_match(prefix: str, match_entry: Path,
                            match_number: int, today: str) -> Path:
-    """Re-date a fingerprint-matching export folder to today's date.
-    Renames match_entry so its date suffix becomes today while keeping its
-    version number, marking the reused run as current. Returns the new path. Falls
-    back to the original path unchanged when the date is already today (no rename
-    needed) or when the rename fails.
+    """Re-date a fingerprint-matching export folder to current (today's) date while keeping its version number.
     """
     new_path = match_entry.with_name(f"{prefix}_{match_number:03d}_{today}")
     # Folder is already dated today — nothing to rename
@@ -127,7 +108,7 @@ def find_or_create_export_directory(
     project_name: str,
     run_settings: dict,
 ) -> Path:
-    """Decide the export folder for a run under base_dir.
+    """Decide the export folder for a run.
     Returns a Path named {project}_{NNN}_{YYYYMMDD}. When a prior folder
     carries the same settings fingerprint, that folder is reused (re-dated to today
     via _rename_or_reuse_match); otherwise the next free version number

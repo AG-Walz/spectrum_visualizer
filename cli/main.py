@@ -59,7 +59,7 @@ def _expand_globs(patterns: list) -> list:
     return result
 
 
-def _load_peptides(source) -> list:
+def _resolve_peptide_source(source) -> list:
     """Resolve the peptide loading source (which can be a YAML list, 
     a file path from which to read peptides, or raw comma/newline strings) 
     into a list of upper-cased sequences.
@@ -98,7 +98,7 @@ def _load_config(path: str) -> SimpleNamespace:
         sys.exit("Error: 'peptide_source' is required.")
     
     # Resolve the peptide source into a list of sequences 
-    config.peptides = _load_peptides(config.peptide_source)
+    config.peptides = _resolve_peptide_source(config.peptide_source)
     if not config.peptides:
         sys.exit("Error: peptide list is empty.")
     return config
