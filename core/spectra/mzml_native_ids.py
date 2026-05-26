@@ -1,14 +1,14 @@
 """mzML native-ID parsing helpers for mass-spectrometry spectrum identifiers.
 Provides regexes plus two functions that turn raw mzML nativeID strings into a
 canonical form and a plain integer 
-(imported by core.spectra.mzml_lookup for its scan-vs-index detection, ID matching and binary
-search and streamlit_app/views/explore/mirror_plots.py to derive a scan value for display.)
+(imported by core.spectra.spectrum_streaming for its scan-vs-index detection, ID matching
+and binary search, and streamlit_app/views/explore/mirror_plots.py to derive a scan value for display.)
 """
 import re
 from typing import Optional
 
 # Native-ID tag prefixes — the three conventions an mzML nativeID may use to key a
-# spectrum number. Consumed by mzml_lookup to decide which numbering scheme a run uses.
+# spectrum number. Consumed by spectrum_streaming to decide which numbering scheme a run uses.
 SCAN_TAG = "scan="
 INDEX_TAG = "index="
 SPECTRUM_TAG = "spectrum="

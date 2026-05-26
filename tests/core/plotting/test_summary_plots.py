@@ -1,4 +1,4 @@
-"""Unit tests for core.plotting.summary_pipeline (dual-axis + ridgeline summary renderers)."""
+"""Unit tests for core.plotting.summary (dual-axis + ridgeline summary renderers)."""
 from pathlib import Path
 
 import numpy as np

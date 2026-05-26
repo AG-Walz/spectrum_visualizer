@@ -1,33 +1,127 @@
 """ProcessPoolExecutor-picklable worker that renders one peptide-spectrum comparison to disk.
-Role — leaf of the export pipeline: a stateless, picklable worker function executed
-inside a ProcessPoolExecutor pool, one invocation per ComparisonTask.
-Produces — for a single task, computes the 7 comparison metrics (mirror tasks only)
-and writes the requested output files: a matplotlib static figure as PNG/SVG/PDF
-under per-variant subdirectories, and optionally a standalone Plotly HTML plot.
-Each invocation returns a ComparisonResult carrying the written paths plus one
-summary-CSV row, never raising — failures are reported via the result's error field.
-Call relationships — process_single_task is dispatched by core.export.export_pipeline
-through core.helpers.run_tasks across the worker pool (re-exported via
+
+This module bundles the picklable work-unit dataclasses (`ComparisonTask` input,
+`ComparisonResult` output) and the stateless worker entry point
+(`process_single_task`) that runs inside a ProcessPoolExecutor pool.
+
+For a single task, the worker computes the 7 comparison metrics (mirror tasks
+only) and writes the requested output files: a Matplotlib static figure as
+PNG/SVG/PDF under per-variant subdirectories, and optionally a standalone
+Plotly HTML plot. Each invocation returns a ComparisonResult carrying the
+written paths plus one summary-CSV row, never raising — failures are reported
+via the result's error field so one bad task cannot abort the whole pool.
+
+`process_single_task` is dispatched by core.export.run_export through
+core.helpers.run_tasks across the worker pool (re-exported via
 core.plotting.process_single_task). It calls core.annotation.comparison_metrics
 for metric computation and formatting, and core.plotting.mirror.create_spectrum_plot
-for both the matplotlib and Plotly figures. ComparisonTask / ComparisonResult
-come from core.plotting.plot_task_dataclasses.
+for both the Matplotlib and Plotly figures.
 """
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Optional
 
 # Force the non-interactive Agg backend before pyplot is imported — worker processes
 # have no display and must render figures purely to disk.
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
+import pandas as pd  # noqa: E402
 
 from core.annotation.comparison_metrics import compute_all_metrics, format_metrics_text
 from core.plotting.mirror import create_spectrum_plot
-from core.plotting.plot_task_dataclasses import ComparisonResult, ComparisonTask
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# Picklable work-unit dataclasses (shipped across the ProcessPool boundary)
+# ============================================================================
+
+@dataclass
+class ComparisonTask:
+    """Picklable bundle of everything a worker needs to render one plot.
+    One instance describes a single mirror or single-spectrum plot job:
+    the annotated spectra, the labels, the on-disk output locations, and the
+    export parameters. Created in batches by
+    core.pipeline.query_processing.build_plot_tasks and consumed by
+    core.plotting.plot_worker.process_single_task inside a worker process.
+    All fields hold picklable values only (DataFrames, strings, numbers) so the
+    whole object survives being shipped to a ProcessPoolExecutor worker.
+    """
+    task_id: int          # Stable index — paired back to a ComparisonResult
+    task_type: str        # "mirror" (query vs reference) or "single" (query only)
+
+    # --- Annotated spectra -------------------------------------------------
+    # Annotated peak DataFrames carried by value so workers need no shared state.
+    query_frame: pd.DataFrame
+    reference_frame: Optional[pd.DataFrame] = None  # None for "single" tasks
+
+    # --- Plot labels -------------------------------------------------------
+    query_label: str = ""
+    reference_label: str = ""
+    plot_title: str = ""
+
+    # --- Export paths ------------------------------------------------------
+    # Plain strings — workers create any missing subdirectories themselves.
+    folder_name: str = ""
+    safe_filename: str = ""
+    png_dir: str = ""
+    svg_dir: str = ""
+    pdf_dir: str = ""
+
+    # --- Plot / export parameters -----------------------------------------
+    export_formats: list[str] = field(default_factory=lambda: ["png"])
+    figure_size: tuple[int, int] = (12, 8)  # inches (width, height)
+    export_resolution: int = 300            # DPI for raster output
+
+    # Output path for the interactive Plotly HTML — empty string skips HTML.
+    html_plot_path: str = ""
+
+    # Skip plot rendering entirely (metrics-only run — plot already on disk).
+    skip_plot: bool = False
+
+    # Pre-formatted metrics box: lets the caller compute metrics once in the
+    # main process and reuse the text across workers instead of recomputing.
+    metrics_text: str = ""
+
+    # --- Summary metadata --------------------------------------------------
+    # Echoed verbatim into the summary-CSV row built for mirror tasks.
+    query_file: str = ""
+    reference_file: str = ""
+    peptide: str = ""
+    modification: str = ""
+    charge: int = 0
+
+
+@dataclass
+class ComparisonResult:
+    """Worker output for one ComparisonTask.
+    Returned by core.plotting.plot_worker.process_single_task and collected
+    back in the main process to report progress and assemble the summary CSV.
+    Carries the success flag, the on-disk path written for each rendered format,
+    and — for mirror tasks — the metrics row destined for the summary CSV.
+    """
+    task_id: int        # Matches the originating ComparisonTask.task_id
+    task_type: str       # Copied from the task ("mirror" or "single")
+    success: bool        # False when rendering raised — see error
+    error: str = ""      # Exception text when success is False, else ""
+
+    # --- Rendered output paths --------------------------------------------
+    # Empty string for any format not requested or not produced.
+    png_path: str = ""
+    svg_path: str = ""
+    pdf_path: str = ""
+    html_path: str = ""
+
+    # Per-task metrics row for the summary CSV — populated for mirror tasks only.
+    summary_row: Optional[dict] = None
+
+
+# ============================================================================
+# Worker entry point + per-format save helpers
+# ============================================================================
 
 def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
     """Compose one row of the comparison CSV for a single mirror task.

@@ -1,5 +1,5 @@
-"""Unit tests for core.dataframes.insight_frames._proforma_to_openms_str (peptidoform string conversion)."""
-from core.dataframes.insight_frames import _proforma_to_openms_str
+"""Unit tests for core.dataframes._proforma_to_openms_str (peptidoform string conversion)."""
+from core.dataframes import _proforma_to_openms_str
 
 
 class TestProformaToOpenmsStr:

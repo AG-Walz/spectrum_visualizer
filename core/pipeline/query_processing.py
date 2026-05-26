@@ -1,32 +1,143 @@
 """Per-query workflow layer: annotate one query spectrum, resolve its references,
 score every (query, reference) pair, and package the results either as comparison
 rows or as ComparisonTask plot jobs.
-process_query_result is the per-query step of the streaming pipeline; it
-delegates the annotation phases to core.pipeline.annotation_steps and the
-scoring to core.annotation.comparison_metrics. build_plot_tasks converts
-already-annotated queries into one plot task per pair, pre-computing the metrics
-overlay so the parallel plot workers never recompute it.
-(process_query_result called by core.pipeline.streaming_orchestration;
-build_plot_tasks called by core.export.export_pipeline;
+
+`process_query_result` is the per-query step of the streaming pipeline; it runs
+through the annotation phases (annotate query, cache experimental references,
+optional Koina AI fallback) and the scoring via core.annotation.comparison_metrics.
+`build_plot_tasks` converts already-annotated queries into one plot task per pair,
+pre-computing the metrics overlay so the parallel plot workers never recompute it.
+
+process_query_result called by core.pipeline.streaming_orchestration;
+build_plot_tasks called by core.export.run_export;
 build_psm_to_variant_mapping and format_spectrum_labels also used by
-streamlit_app.views.explore.mirror_plots.)
+streamlit_app.views.explore.mirror_plots.
 """
 from pathlib import Path
+
+import numpy as np
+from psm_utils import Peptidoform
 
 from core.annotation.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     format_metrics_text,
 )
-from core.defaults import DEFAULTS
-from core.pipeline.annotation_steps import (
-    _annotate_query_spectrum,
-    _cache_reference_spectra,
-    _try_koina_fallback,
+from core.annotation.peak_matching import (
+    prepare_koina_spectrum_for_plot,
+    prepare_spectrum_for_plot,
 )
-from core.plotting.plot_task_dataclasses import ComparisonTask
-from core.spectra.loaded_spectrum import source_label, spectrum_lookup_key
+from core.defaults import DEFAULTS
+from core.plotting.plot_worker import ComparisonTask
+from core.spectra.koina_prediction import predict_koina_spectrum
+from core.spectra.loaded_spectrum import LoadedSpectrum, source_label, spectrum_lookup_key
 
+
+# ============================================================================
+# Per-query annotation phases (annotate query, cache references, Koina fallback)
+# ============================================================================
+
+def get_koina_prediction(
+    peptidoform, charge, annotation_kwargs,
+    koina_model: str = DEFAULTS.koina_model,
+    koina_collision_energy: int = DEFAULTS.koina_collision_energy,
+    koina_instrument_type: str = DEFAULTS.koina_instrument_type,
+):
+    """Predict a spectrum with Koina and wrap it as an annotated reference;
+    return (spectrum, frame) or None.
+    """
+    # Predict: call Koina with model + CE + instrument, bail on empty frame
+    predicted_frame = predict_koina_spectrum(
+        peptidoform_str=peptidoform,
+        charge=charge,
+        model_id=koina_model,
+        collision_energy=koina_collision_energy,
+        instrument_type=koina_instrument_type,
+    )
+    if predicted_frame is None or predicted_frame.empty:
+        return None
+
+    # Wrap prediction: build a synthetic LoadedSpectrum tagged as reference
+    reference_spectrum = LoadedSpectrum(
+        spectrum_id="koina_prediction",
+        mz=predicted_frame["mz"].to_numpy(dtype=np.float64),
+        intensity=predicted_frame["intensity"].to_numpy(dtype=np.float64),
+        precursor_mz=0.0,
+        precursor_charge=charge,
+        peptidoform=peptidoform,
+        base_sequence=Peptidoform(peptidoform).sequence,
+        rt=0.0,
+        source_file=f"Koina:{koina_model}",
+        is_reference=True,
+    )
+
+    # Annotate: reuse Koina's native AI-predicted ion labels directly
+    reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
+    return (reference_spectrum, reference_frame)
+
+
+def _annotate_query_spectrum(result, annotation_kwargs):
+    """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame.
+    """
+    return prepare_spectrum_for_plot(
+        result.query_spectrum.mz,
+        result.query_spectrum.intensity,
+        result.query_spectrum.peptidoform,
+        result.query_spectrum.precursor_charge,
+        precursor_mz=result.query_spectrum.precursor_mz,
+        **annotation_kwargs,
+    )
+
+
+def _cache_reference_spectra(result, reference_store, annotation_kwargs):
+    """Annotate every reference spectrum for this peptide variant and stash them in
+    reference_store (once per variant).
+    """
+    variant_key = result.variant_key
+    # Guard: skip if this variant is already cached or has no references to annotate
+    if variant_key in reference_store or not result.reference_spectra:
+        return
+    # Annotate each experimental reference against its own theoretical fragments
+    ref_list = []
+    for reference_spectrum in result.reference_spectra:
+        reference_frame = prepare_spectrum_for_plot(
+            reference_spectrum.mz, reference_spectrum.intensity,
+            reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
+            precursor_mz=reference_spectrum.precursor_mz,
+            **annotation_kwargs,
+        )
+        ref_list.append((reference_spectrum, reference_frame))
+    reference_store[variant_key] = ref_list
+
+
+def _try_koina_fallback(result, reference_store, annotation_kwargs,
+                        koina_model, koina_collision_energy, koina_instrument_type):
+    """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list.
+    """
+    variant_key = result.variant_key
+    # Prefer experimental references: only fall back to Koina when the cache is empty
+    references = reference_store.get(variant_key, [])
+    if references:
+        return references
+    # Request an AI-predicted reference for this peptidoform + charge
+    koina_ref = get_koina_prediction(
+        result.query_spectrum.peptidoform,
+        result.query_spectrum.precursor_charge,
+        annotation_kwargs,
+        koina_model=koina_model,
+        koina_collision_energy=koina_collision_energy,
+        koina_instrument_type=koina_instrument_type,
+    )
+    # On success, cache the synthetic reference; on failure, return the empty list
+    if koina_ref is not None:
+        reference_store[variant_key] = [koina_ref]
+        return reference_store[variant_key]
+    return references
+
+
+# ============================================================================
+# Label/lookup helpers (also imported by streamlit_app.views.explore.mirror_plots)
+# ============================================================================
 
 def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str, str]:
     """Build the human-readable plot labels for a (query, reference) pair.
@@ -69,6 +180,10 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str,
                 psm_id_to_variant_key[psm_id] = variant_key
     return psm_id_to_variant_key
 
+
+# ============================================================================
+# Per-query orchestration + plot-task builder
+# ============================================================================
 
 def process_query_result(result, psm_lookup, annotation_kwargs,
                          reference_store, koina_enabled=False,

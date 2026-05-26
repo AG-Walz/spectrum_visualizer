@@ -1,21 +1,95 @@
 """Peptide-lookup orchestration layer, dispatching the tasks of looking up target peptides
  across idXML files and summarising results for the UI; It uses core.helpers.run_tasks
-to parallelize the file-wise workers in core.peptide_lookup.idxml_workers;
+to parallelize file-wise workersacross multiple processes.
 (called by cli.main and streamlit_app.views.load_annotate).
 """
 import logging
 from collections import Counter
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set
+from typing import Callable, Dict, List, Optional, Set, Tuple
 
 import polars as pl
 from psm_utils import PSMList
+from psm_utils.io.idxml import IdXMLReader
 
 from core.helpers import run_tasks
-from core.peptide_lookup.idxml_workers import lookup_peptides_in_single_idxml, count_psms_per_peptide
 
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# idXML scanning workers (dispatched across processes by run_tasks)
+# ============================================================================
+
+def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
+    """Simple reader for the Setup page (before peptides are chosen) - Count PSMs per base sequence in one idXML.
+    Returns a dict mapping unmodified peptide sequence to count, e.g. {"PEPTIDE": 42}.
+    """
+    counts: Counter = Counter()
+    try:
+        for psm in IdXMLReader(str(idxml_path)):
+            # Only count if there's a sequence (skip empty PSMs) and ignore modifications
+            if psm.peptidoform.sequence:
+                counts[psm.peptidoform.sequence.upper()] += 1
+    # On parse errors, return whatever it counted before the error and log a warning
+    except Exception as error:
+        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {error}")
+    return counts
+
+
+def lookup_peptides_in_single_idxml(
+    idxml_path: str, idxml_name: str,
+    target_set: Set[str], mzml_by_stem: Dict[str, str],
+) -> Tuple[str, list, list]:
+    """Scan one idXML file for target peptides; return the matching PSMs
+     with extracted metadata attached (name, matches, errors).
+    """
+    # Open psm_utils' idxml-reader, which yields PSMs one at a time
+    matches: list = []
+    try:
+        reader = IdXMLReader(str(idxml_path))
+    # Catch file-level errors, returning empty results with an error message instead of crashing the whole lookup
+    except Exception as load_error:
+        return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
+
+    # Fill a list with all PSMs, to surface parse errors as partial results
+    psms: list = []
+    parse_error: str | None = None
+    try:
+        for psm in reader:
+            psms.append(psm)
+    except Exception as error:
+        parse_error = str(error)
+
+    # Filter & annotate: keep target hits, stamp resolution metadata on each PSM
+    for psm in psms:
+        # Skip if no sequence or not in target set
+        if psm.peptidoform.sequence not in target_set:
+            continue
+        # Annotate with idXML file
+        psm.metadata["idxml_file"] = idxml_name
+        psm.metadata["idxml_resolved_path"] = str(idxml_path)
+        # Annotate with mzML path if possible (match by run name, case-insensitive)
+        if psm.run:
+            resolved = mzml_by_stem.get(psm.run.lower(), "")
+            if resolved:
+                psm.metadata["mzml_resolved_path"] = resolved
+        # Append modified sequence and metadata-enriched PSM to results (later becomes the variant_key)
+        matches.append((psm.peptidoform.modified_sequence, psm))
+
+    # Surface partial-read errors so the orchestrator can warn the user
+    errors = []
+    if parse_error is not None:
+        errors.append(
+            f"{idxml_name}: stopped after {len(psms)} PSMs — parse error: {parse_error}. "
+            f"Try _pout_filtered.idXML for complete results."
+        )
+    return idxml_name, matches, errors
+
+
+# ============================================================================
+# Orchestration layer (called from cli.main and streamlit_app)
+# ============================================================================
 
 def count_psms_in_idxmls(
     idxml_paths: List[str],
@@ -60,7 +134,7 @@ def lookup_peptides_in_idxmls(
     """Look up target_peptides across all idXMLs; return {variant_key: PSMList}
     with per-PSM resolution metadata stamped.
     """
-    # Normalise inputs: target peptides are stripped, uppercased, and deduped into a set 
+    # Normalise inputs: target peptides are stripped, uppercased, and deduped into a set
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
@@ -126,7 +200,7 @@ def summarize_lookup_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame
     if not rows:
         return pl.DataFrame(schema=_SUMMARY_SCHEMA).lazy()
 
-    # Aggregate groups by variant (base sequence + modification) and count PSMs, 
+    # Aggregate groups by variant (base sequence + modification) and count PSMs,
     # idXML files, and resolution status for summary display in the GUI
     return (
         pl.DataFrame(rows).lazy()

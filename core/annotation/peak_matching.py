@@ -1,5 +1,5 @@
-"""Peak annotation: Match experimental or Koina m/z peaks to theoretical fragments of a peptidoform 
-using spectrum_utils.annotate_proforma (called by core.pipeline.annotation_steps).
+"""Peak annotation: Match experimental or Koina m/z peaks to theoretical fragments of a peptidoform
+using spectrum_utils.annotate_proforma (called by core.pipeline.query_processing).
 """
 import logging
 import numpy as np

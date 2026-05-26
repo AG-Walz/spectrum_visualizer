@@ -1,7 +1,7 @@
-"""Unit tests for core.export.export_directories (fingerprinted versioned export folders)."""
+"""Unit tests for core.export (fingerprinted versioned export folders)."""
 import pytest
 
-from core.export.export_directories import (
+from core.export import (
     find_or_create_export_directory,
     commit_export_directory,
     sanitize_filename,

@@ -12,9 +12,11 @@ if TYPE_CHECKING:
 
 @dataclass
 class LoadedSpectrum:
-    """Single loaded MS2 spectrum object(peak arrays + metadata)
-    created in mzml_workers._build_loaded_spectrum wrapping pyopenms.MSSpectrum and its PSM together
-    and in annotation_steps building synthetic LoadedSpectra without PSM
+    """Single loaded MS2 spectrum object (peak arrays + metadata)
+    created in core.spectra.spectrum_streaming._build_loaded_spectrum wrapping
+    pyopenms.MSSpectrum and its PSM together, and in
+    core.pipeline.query_processing.get_koina_prediction building synthetic
+    LoadedSpectra without PSM.
     """
     spectrum_id: str
     mz: np.ndarray
@@ -37,9 +39,9 @@ def source_label(spectrum) -> str:
 
 @dataclass
 class StreamingResult:
-    """Single query (experimental) spectrum plus its peptide variant key and 
+    """Single query (experimental) spectrum plus its peptide variant key and
     all the matching reference spectra (yielded by load_spectra_streaming
-    and consumed by process_query_results and annotation_steps).
+    and consumed by core.pipeline.query_processing.process_query_result).
     """
     query_spectrum: LoadedSpectrum
     reference_spectra: List[LoadedSpectrum]

@@ -20,7 +20,7 @@ if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
 # Imports from core package
-from core.common.defaults import DEFAULTS  # noqa: E402
+from core.defaults import DEFAULTS  # noqa: E402
 from core.dataframes import build_psm_table, build_visualization_frames  # noqa: E402
 from core.export import (  # noqa: E402
     ExportCallbacks, ExportSelection, PlotSettings,
