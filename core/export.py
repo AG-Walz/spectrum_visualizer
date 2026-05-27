@@ -1,8 +1,5 @@
 """Shared export orchestration (called by cli.main and streamlit_app.views.export).
-
-Combines three layers in one file so both frontends produce byte-identical outputs:
-
-- `run_settings.json` schema + builder (`RUN_SETTINGS_FIELDS`, `build_run_settings`).
+- `run_settings.json` schematizes and 
 - Export-folder allocation/renaming with settings fingerprinting
   (`find_or_create_export_directory`, `commit_export_directory`,
   `sanitize_filename`); folders follow {project}_{NNN}_{YYYYMMDD}/ and reuse

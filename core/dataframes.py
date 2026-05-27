@@ -1,12 +1,7 @@
 """Polars LazyFrames feeding openms_insight Table/LinePlot/SequenceView/Heatmap.
-
-Combines two layers:
-
 - `build_psm_table` flattens peptidoform variant_groups into the per-PSM table
-  that drives the openms_insight Table selector. It also returns a
-  "spectrum_id|peptidoform" → psm_id lookup so downstream code can attach
-  peaks, sequence and heatmap rows back to the integer PSM id that cross-links
-  every component.
+  that drives the openms_insight Table selector. It returns a "spectrum_id|peptidoform" 
+  psm_id lookup to attach peaks, sequence and heatmap rows back to the integer PSM id.
 - `build_peaks_dataframe`, `build_sequence_dataframe`, `build_heatmap_dataframe`
   turn the annotated-spectra tuples produced upstream into the per-peak /
   per-PSM LazyFrames that the LinePlot, SequenceView and Heatmap consume.
