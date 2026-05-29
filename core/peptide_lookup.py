@@ -27,7 +27,7 @@ def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
     """
     counts: Counter = Counter()
     try:
-        for psm in IdXMLReader(str(idxml_path)):
+        for psm in IdXMLReader(idxml_path):
             # Only count if there's a sequence (skip empty PSMs) and ignore modifications
             if psm.peptidoform.sequence:
                 counts[psm.peptidoform.sequence.upper()] += 1
@@ -47,7 +47,7 @@ def lookup_peptides_in_single_idxml(
     # Open psm_utils' idxml-reader, which yields PSMs one at a time
     matches: list = []
     try:
-        reader = IdXMLReader(str(idxml_path))
+        reader = IdXMLReader(idxml_path)
     # Catch file-level errors, returning empty results with an error message instead of crashing the whole lookup
     except Exception as load_error:
         return idxml_name, matches, [f"No peptide identifications in {idxml_name}: {load_error}"]
@@ -68,7 +68,7 @@ def lookup_peptides_in_single_idxml(
             continue
         # Annotate with idXML file
         psm.metadata["idxml_file"] = idxml_name
-        psm.metadata["idxml_resolved_path"] = str(idxml_path)
+        psm.metadata["idxml_resolved_path"] = idxml_path
         # Annotate with mzML path if possible (match by run name, case-insensitive)
         if psm.run:
             resolved = mzml_by_stem.get(psm.run.lower(), "")
@@ -144,7 +144,7 @@ def lookup_peptides_in_idxmls(
         return {}
 
     # Build tasks: pack each idXML into the 4-tuple (path, name, target_set, mzml_by_stem) lookup_peptides_in_single_idxml expects
-    mzml_by_stem = {Path(path).stem.lower(): str(path) for path in (mzml_paths or [])}
+    mzml_by_stem = {Path(path).stem.lower(): path for path in (mzml_paths or [])}
     tasks = [(path, Path(path).name, target_set, mzml_by_stem) for path in idxml_paths]
     total = len(idxml_paths)
     variant_groups: Dict[str, PSMList] = {}

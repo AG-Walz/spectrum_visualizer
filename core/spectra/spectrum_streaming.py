@@ -189,7 +189,7 @@ def open_indexed_mzml_fast(
     """
     # Open the file on disc and probe its native-ID format and index offset.
     indexed_exp = oms.OnDiscMSExperiment()
-    indexed_exp.openFile(str(mzml_path))
+    indexed_exp.openFile(mzml_path)
     n_spectra = indexed_exp.getNrSpectra()
 
     # Seed the map with the file-describing sentinels read by find_spectrum_index.
@@ -401,10 +401,31 @@ def build_mzml_to_matches_map(
 
     # Bucket: file each PSM under its resolved mzML path key
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
+    dropped_examples: list[str] = []
+    dropped_count = 0
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
             if psm.run and (path_key := resolve(psm)):
                 mzml_to_matches.setdefault(path_key, []).append((psm, variant_key))
+            else:
+                dropped_count += 1
+                if len(dropped_examples) < 5:
+                    resolved = psm.metadata.get("mzml_resolved_path", "")
+                    key = str(Path(resolved).resolve()).lower() if resolved else ""
+                    dropped_examples.append(
+                        f"psm.run={psm.run!r} resolved_path={resolved!r} "
+                        f"key={key!r} in_map={key in available_mzml_paths} "
+                        f"stem_hit={stem_to_key.get((psm.run or '').lower())!r}"
+                    )
+    if dropped_count:
+        logger.warning(
+            "build_mzml_to_matches_map dropped %d/%d PSMs. "
+            "Available stems sample: %s. First dropped: %s",
+            dropped_count,
+            sum(len(g) for g in variant_groups.values()),
+            list(stem_to_key.keys())[:3],
+            dropped_examples,
+        )
     return mzml_to_matches
 
 
