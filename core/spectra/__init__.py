@@ -6,7 +6,7 @@ from core.spectra.koina_prediction import (
     get_koina_settings,
     predict_koina_spectrum,
 )
-from core.spectra.loaded_spectrum import LoadedSpectrum, spectrum_lookup_key
+from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key, spectrum_lookup_key
 from core.spectra.spectrum_streaming import load_spectra_streaming
 
 __all__ = [
@@ -15,5 +15,6 @@ __all__ = [
     "get_koina_settings",
     "load_spectra_streaming",
     "predict_koina_spectrum",
+    "psm_lookup_key",
     "spectrum_lookup_key",
 ]

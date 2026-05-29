@@ -18,7 +18,7 @@ import polars as pl
 from psm_utils import Peptidoform, PSMList
 from psm_utils.peptidoform import PeptidoformException
 
-from core.spectra.loaded_spectrum import LoadedSpectrum
+from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key
 
 logger = logging.getLogger(__name__)
 
@@ -86,29 +86,22 @@ def build_psm_table(
     """
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
-    # PSM ids are assigned sequentially across all variants — global, not per-variant.
-    psm_id = 0
 
-    # Walk variants and their PSMs: emit one row per PSM, carrying variant-level fields for grouping
+    # Walk every PSM under every variant: id is the row index — globally
+    # sequential. A variant_key equal to the bare sequence means unmodified.
+    # Optional fields are coerced to schema-safe defaults so the Polars schema
+    # never has to widen a column to Null.
     for variant_key, psm_list in variant_groups.items():
-        if not psm_list:
-            continue
-        # Variant-level fields — derived once and repeated on every PSM row of the group.
-        # A variant_key equal to the bare sequence means no modifications were applied.
-        base_sequence = psm_list[0].peptidoform.sequence.upper()
-        modification = variant_key if variant_key != base_sequence else "(unmodified)"
-
         for psm in psm_list:
+            psm_id = len(rows)
             peptidoform_str = psm.peptidoform.modified_sequence
-            # Key must match spectrum_lookup_key() in spectrum_loader
-            psm_lookup[f"{psm.spectrum_id}|{peptidoform_str}"] = psm_id
-            # Coerce missing/optional PSM attributes to schema-safe defaults so the
-            # Polars schema never has to widen a column to Null.
+            base_sequence = psm.peptidoform.sequence.upper()
+            psm_lookup[psm_lookup_key(psm)] = psm_id
             rows.append({
                 "id": psm_id,
                 "variant_key": variant_key,
                 "base_sequence": base_sequence,
-                "modification": modification,
+                "modification": variant_key if variant_key != base_sequence else "(unmodified)",
                 "display_label": variant_key,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,
@@ -117,9 +110,7 @@ def build_psm_table(
                 "spectrum_id": psm.spectrum_id,
                 "idxml_file": psm.metadata.get("idxml_file", ""),
             })
-            psm_id += 1
 
-    # Materialise schema-enforced LazyFrame and return alongside the lookup
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
     logger.info(f"PSM table: {len(rows)} rows across {len(variant_groups)} variants")
     return df, psm_lookup

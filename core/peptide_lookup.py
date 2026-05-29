@@ -21,20 +21,31 @@ logger = logging.getLogger(__name__)
 # idXML scanning workers (dispatched across processes by run_tasks)
 # ============================================================================
 
-def count_psms_per_peptide(idxml_path: str) -> Dict[str, int]:
-    """Simple reader for the Setup page (before peptides are chosen) - Count PSMs per base sequence in one idXML.
-    Returns a dict mapping unmodified peptide sequence to count, e.g. {"PEPTIDE": 42}.
+def count_psms_per_peptide(psm_list: PSMList) -> Counter:
+    """Count PSMs per base sequence in an already-loaded PSMList.
+    Returns a Counter keyed by uppercased unmodified peptide sequence,
+    e.g. Counter({"PEPTIDE": 42}). Used by the Setup page to populate the
+    "Pick peptides from idXML" tab.
     """
-    counts: Counter = Counter()
+    return Counter(
+        psm.peptidoform.sequence.upper()
+        for psm in psm_list
+        if psm.peptidoform.sequence
+    )
+
+
+def _count_psms_in_idxml(idxml_path: str) -> Counter:
+    """Worker dispatched per idXML by count_psms_in_idxmls: load PSMs into a
+    PSMList, then delegate the counting to count_psms_per_peptide.
+    On parse errors, returns counts for whatever was read before the error.
+    """
+    psms: list = []
     try:
         for psm in IdXMLReader(idxml_path):
-            # Only count if there's a sequence (skip empty PSMs) and ignore modifications
-            if psm.peptidoform.sequence:
-                counts[psm.peptidoform.sequence.upper()] += 1
-    # On parse errors, return whatever it counted before the error and log a warning
+            psms.append(psm)
     except Exception as error:
-        logger.warning(f"count_psms_per_peptide failed for {Path(idxml_path).name}: {error}")
-    return counts
+        logger.warning(f"_count_psms_in_idxml partial read for {Path(idxml_path).name}: {error}")
+    return count_psms_per_peptide(PSMList(psm_list=psms))
 
 
 def lookup_peptides_in_single_idxml(
@@ -109,7 +120,7 @@ def count_psms_in_idxmls(
 
     # Dispatch the PSM counter worker across idXML paths,  and surfacing errors via callback;
     for completed, (task, ok, result) in enumerate(run_tasks(
-        tasks=idxml_paths, worker=count_psms_per_peptide, workers=workers,
+        tasks=idxml_paths, worker=_count_psms_in_idxml, workers=workers,
     ), start=1):
         # On success, merge the per-file counters into the global counter
         if ok:

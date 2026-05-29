@@ -30,7 +30,7 @@ from core.annotation.peak_matching import (
 from core.defaults import DEFAULTS
 from core.plotting.plot_worker import ComparisonTask
 from core.spectra.koina_prediction import predict_koina_spectrum
-from core.spectra.loaded_spectrum import LoadedSpectrum, source_label, spectrum_lookup_key
+from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key, source_label, spectrum_lookup_key
 
 
 # ============================================================================
@@ -174,8 +174,7 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str,
     psm_id_to_variant_key: dict[str, str] = {}
     for variant_key, psm_list in variant_groups.items():
         for psm in psm_list:
-            key = f"{psm.spectrum_id}|{psm.peptidoform.modified_sequence}"
-            psm_id = spec_to_psm_id.get(key)
+            psm_id = spec_to_psm_id.get(psm_lookup_key(psm))
             if psm_id is not None:
                 psm_id_to_variant_key[psm_id] = variant_key
     return psm_id_to_variant_key
