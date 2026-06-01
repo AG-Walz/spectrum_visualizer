@@ -5,7 +5,6 @@ import numpy as np
 
 from psm_utils import PSMList
 
-from core.spectra.loaded_spectrum import LoadedSpectrum
 from streamlit_app.views.explore.mirror_plots import (
     _build_picker_frames,
     _eligible_variants,
@@ -16,31 +15,18 @@ from tests.conftest import make_peptide_match
 
 def _spec(source_file: str, spectrum_id: str, charge: int = 2,
           rt: float = 12.5, peptidoform: str = "PEPTIDEK",
-          match=None, is_ref: bool = False, score: float = 0.95) -> LoadedSpectrum:
-    """Build a tiny two-peak LoadedSpectrum for picker-frame tests.
+          match=None, is_ref: bool = False, score: float = 0.95):
+    """Build a carrier PSM (two-peak spectrum on psm.spectrum) for picker tests.
 
-    Every spectrum is PSM-backed in production, so a carrier match is attached
-    when not supplied — run derived from source_file so source_label(psm) matches."""
-    mz = np.array([100.0, 200.0])
-    intensity = np.array([1000.0, 2000.0])
-    if match is None:
-        match = make_peptide_match(spectrum_id=spectrum_id, peptidoform=peptidoform,
-                                   charge=charge, score=score, mzml_filename=source_file)
-        match.retention_time = rt
-        match.spectrum = {"mz": mz, "intensity": intensity}
-    return LoadedSpectrum(
-        spectrum_id=spectrum_id,
-        mz=mz,
-        intensity=intensity,
-        precursor_mz=400.0,
-        precursor_charge=charge,
-        peptidoform=peptidoform,
-        base_sequence="PEPTIDEK",
-        source_file=source_file,
-        is_reference=is_ref,
-        rt=rt,
-        match=match,
-    )
+    run is derived from source_file so source_label(psm) matches; is_ref is kept
+    for call-site compatibility but the carrier no longer flags it."""
+    if match is not None:
+        return match
+    psm = make_peptide_match(spectrum_id=spectrum_id, peptidoform=peptidoform,
+                             charge=charge, score=score, mzml_filename=source_file)
+    psm.retention_time = rt
+    psm.spectrum = {"mz": np.array([100.0, 200.0]), "intensity": np.array([1000.0, 2000.0])}
+    return psm
 
 
 def _empty_plist() -> PSMList:

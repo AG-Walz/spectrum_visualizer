@@ -244,18 +244,18 @@ def build_heatmap_dataframe(psms: list[PSM]) -> pl.LazyFrame:
 
 def build_visualization_frames(annotated_queries, psm_frame=None) -> dict:
     """Bundle the peaks / sequence / heatmap LazyFrames into the dict openms_insight expects.
-    annotated_queries is the list of (psm_id, LoadedSpectrum, annotated_frame)
+    annotated_queries is the list of (psm_id, query_psm, annotated_frame)
     tuples returned by run_streaming_annotation; each builder receives the
     projection it needs — the sequence and heatmap builders read the carrier
-    PSM (spec.match), which now holds the peaks and metadata. Returns
-    {"peaks", "sequence", "heatmap"} LazyFrames, plus a "psm" entry when an
-    already-built psm_frame is supplied.
+    PSM, which holds the peaks and metadata. Returns {"peaks", "sequence",
+    "heatmap"} LazyFrames, plus a "psm" entry when an already-built psm_frame is
+    supplied.
     """
     # Project the tuples down to what each builder consumes.
     frames = {
         "peaks":    build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries]),
-        "sequence": build_sequence_dataframe([(psm_id, spec.match) for psm_id, spec, _ in annotated_queries]),
-        "heatmap":  build_heatmap_dataframe([spec.match for _, spec, _ in annotated_queries]),
+        "sequence": build_sequence_dataframe([(psm_id, psm) for psm_id, psm, _ in annotated_queries]),
+        "heatmap":  build_heatmap_dataframe([psm for _, psm, _ in annotated_queries]),
     }
     # Pass through a precomputed PSM table when the caller already has one.
     if psm_frame is not None:

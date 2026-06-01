@@ -11,32 +11,19 @@ from core.annotation import METRIC_SHORT_TO_DISPLAY
 from psm_utils import PSMList
 
 from tests.conftest import make_peptide_match
-from core.spectra import LoadedSpectrum
 from streamlit_app.views.export.export_actions import _run_export
 
 
-def _make_loaded_spectrum(peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
-                          source_file="query.mzML", is_ref=False):
+def _make_psm(peptidoform="PEPTIDEK", source_file="query.mzML"):
+    """Build a carrier PSM (peaks on psm.spectrum) — the unit the pipeline streams."""
     mz = np.array([100.0, 200.0, 300.0, 400.0])
     intensity = np.array([1000.0, 2000.0, 3000.0, 500.0])
-    # Every spectrum is PSM-backed in production; attach a carrier match so the
-    # consumers that read spec.match (annotation, plot tasks) work.
-    match = make_peptide_match(peptidoform=peptidoform, spectrum_id="index=1", charge=2)
-    match.spectrum = {"mz": mz, "intensity": intensity}
-    match.retention_time = 120.0
-    return LoadedSpectrum(
-        spectrum_id="index=1",
-        mz=mz,
-        intensity=intensity,
-        precursor_mz=500.0,
-        precursor_charge=2,
-        peptidoform=peptidoform,
-        base_sequence=base_seq,
-        source_file=source_file,
-        is_reference=is_ref,
-        rt=120.0,
-        match=match,
-    )
+    psm = make_peptide_match(peptidoform=peptidoform, spectrum_id="index=1",
+                             charge=2, mzml_filename=source_file)
+    psm.spectrum = {"mz": mz, "intensity": intensity}
+    psm.retention_time = 120.0
+    psm.precursor_mz = 500.0
+    return psm
 
 
 def _make_annotated_frame():
@@ -102,9 +89,9 @@ def _make_psm_lazyframe():
 
 def _build_session_state(tmp_path):
     """Assemble the peptide_mirror.* session_state _run_export reads end-to-end."""
-    query_spectrum = _make_loaded_spectrum()
+    query_spectrum = _make_psm()
     query_frame = _make_annotated_frame()
-    reference_spectrum = _make_loaded_spectrum(source_file="ref.mzML", is_ref=True)
+    reference_spectrum = _make_psm(source_file="ref.mzML")
     reference_frame = _make_annotated_frame()
 
     return {

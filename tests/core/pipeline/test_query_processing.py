@@ -14,16 +14,14 @@ def test_get_koina_prediction_attaches_synthetic_psm(monkeypatch):
     monkeypatch.setattr(query_processing, "predict_koina_spectrum", lambda **_: predicted)
     monkeypatch.setattr(query_processing, "prepare_koina_spectrum_for_plot", lambda frame, **_: frame)
 
-    spectrum, frame = query_processing.get_koina_prediction("PEPTIDEK", 2, {})
+    psm, frame = query_processing.get_koina_prediction("PEPTIDEK", 2, {})
 
-    psm = spectrum.match
     assert isinstance(psm, PSM)
     assert psm.peptidoform.modified_sequence == "PEPTIDEK"
     assert psm.get_precursor_charge() == 2
+    assert psm.run == "Koina:ms2pip_timsTOF2024"
     assert np.array_equal(psm.spectrum["mz"], predicted["mz"].to_numpy())
     assert np.array_equal(psm.spectrum["intensity"], predicted["intensity"].to_numpy())
-    # LoadedSpectrum arrays still match the PSM's (additive, behavior-preserving).
-    assert np.array_equal(spectrum.mz, psm.spectrum["mz"])
 
 
 def test_get_koina_prediction_returns_none_on_empty(monkeypatch):

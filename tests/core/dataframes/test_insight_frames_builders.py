@@ -174,16 +174,16 @@ class TestBuildFromRealData:
         annotated = []
 
         def on_query(result):
-            key = psm_lookup_key(result.query_spectrum.match)
-            psm_id = psm_lookup.get(key)
+            psm = result.query_spectrum
+            psm_id = psm_lookup.get(psm_lookup_key(psm))
             if psm_id is None:
                 return
             frame = prepare_spectrum_for_plot(
-                result.query_spectrum.mz, result.query_spectrum.intensity,
-                result.query_spectrum.peptidoform, result.query_spectrum.precursor_charge,
+                psm.spectrum["mz"], psm.spectrum["intensity"],
+                psm.peptidoform.modified_sequence, psm.get_precursor_charge() or 0,
                 ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
             )
-            annotated.append((psm_id, result.query_spectrum, frame))
+            annotated.append((psm_id, psm, frame))
 
         mzml_path_list = [Path(p) for p in mzml_paths]
         load_spectra_streaming(
@@ -196,8 +196,8 @@ class TestBuildFromRealData:
         assert len(annotated) == 2
 
         peaks_frame = build_peaks_dataframe([(psm_id, frame) for psm_id, _, frame in annotated])
-        sequence_frame = build_sequence_dataframe([(psm_id, spectrum.match) for psm_id, spectrum, _ in annotated])
-        heatmap_frame = build_heatmap_dataframe([spectrum.match for _, spectrum, _ in annotated])
+        sequence_frame = build_sequence_dataframe([(psm_id, psm) for psm_id, psm, _ in annotated])
+        heatmap_frame = build_heatmap_dataframe([psm for _, psm, _ in annotated])
 
         assert dict(peaks_frame.collect_schema()) == PEAKS_SCHEMA
         assert dict(sequence_frame.collect_schema()) == SEQUENCE_SCHEMA

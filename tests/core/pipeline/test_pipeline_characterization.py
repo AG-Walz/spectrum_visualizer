@@ -11,7 +11,6 @@ don't read as regressions, but pin schemas and row counts exactly.
 """
 import copy
 
-import numpy as np
 import pytest
 
 from core.dataframes import (
@@ -104,24 +103,20 @@ class TestSingleSpectrumPipelineCharacterization:
                 assert psm.provenance_data.get("idxml_file") == psm.metadata.get("idxml_file")
                 assert psm.provenance_data.get("idxml_file")
 
-    def test_spectrum_fields_stamped_on_matched_psm(self, pipeline_output):
-        # Streaming stamps precursor m/z, RT, and ion mobility onto the matched PSM.
-        for _psm_id, spectrum, _query_frame in pipeline_output["annotated_queries"]:
-            psm = spectrum.match
-            assert psm is not None
+    def test_spectrum_fields_stamped_on_carrier_psm(self, pipeline_output):
+        # Streaming stamps precursor m/z, RT, and ion mobility onto the carrier PSM.
+        for _psm_id, psm, _query_frame in pipeline_output["annotated_queries"]:
             assert psm.precursor_mz is not None and psm.precursor_mz > 0
             assert psm.retention_time is not None and psm.retention_time > 0
             # ion_mobility is None for non-IM data; just assert the field is set.
             assert hasattr(psm, "ion_mobility")
 
-    def test_peaks_attached_to_matched_psm(self, pipeline_output):
-        # Step 2: the matched PSM carries its peak arrays on psm.spectrum,
-        # identical to the arrays LoadedSpectrum still exposes.
-        for _psm_id, spectrum, _query_frame in pipeline_output["annotated_queries"]:
-            psm = spectrum.match
+    def test_peaks_attached_to_carrier_psm(self, pipeline_output):
+        # Step 2: the carrier PSM holds its peak arrays on psm.spectrum.
+        for _psm_id, psm, _query_frame in pipeline_output["annotated_queries"]:
             assert isinstance(psm.spectrum, dict)
-            assert np.array_equal(psm.spectrum["mz"], spectrum.mz)
-            assert np.array_equal(psm.spectrum["intensity"], spectrum.intensity)
+            assert len(psm.spectrum["mz"]) > 0
+            assert len(psm.spectrum["mz"]) == len(psm.spectrum["intensity"])
 
     # --- Visualization frames ---------------------------------------------
 

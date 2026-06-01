@@ -39,24 +39,24 @@ def source_label(psm) -> str:
 
 @dataclass
 class StreamingResult:
-    """Single query (experimental) spectrum plus its peptide variant key and
-    all the matching reference spectra (yielded by load_spectra_streaming
-    and consumed by core.pipeline.query_processing.process_query_result).
+    """Single query spectrum (a carrier PSM) plus its peptide variant key and the
+    matching reference PSMs (yielded by load_spectra_streaming and consumed by
+    core.pipeline.query_processing.process_query_result).
     """
-    query_spectrum: LoadedSpectrum
-    reference_spectra: List[LoadedSpectrum]
+    query_spectrum: "PSM"
+    reference_spectra: List["PSM"]
     variant_key: str
 
 
 @dataclass
 class LoadResult:
-    """Per-file output from _load_spectra_from_mzml; 
-    loaded is [(variant_key, LoadedSpectrum), ...] so the orchestrator 
-    can extract each spectrum by peptide variant without rescanning.
+    """Per-file output from _load_spectra_from_mzml;
+    loaded is [(variant_key, PSM), ...] so the orchestrator can extract each
+    spectrum (carrier PSM) by peptide variant without rescanning.
     """
     display_name: str
     is_reference: bool
-    loaded: List[Tuple[str, LoadedSpectrum]]
+    loaded: List[Tuple[str, "PSM"]]
     loaded_count: int
     not_found_count: int
     errors: List[str]

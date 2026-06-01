@@ -59,9 +59,8 @@ def _build_picker_frames(
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real psm_id.
     """
-    def picker_columns(spec) -> dict:
-        # Every spectrum is PSM-backed; read display fields off the carrier PSM.
-        psm = spec.match
+    def picker_columns(psm) -> dict:
+        # Each spectrum is a carrier PSM; read the display fields off it.
         # score is None for no search score (Koina) or NaN
         raw = psm.score
         score = float(raw) if raw is not None and raw == raw else None
@@ -75,13 +74,13 @@ def _build_picker_frames(
 
     # Reference rows: hashed per (variant_key, position) — see _ref_row_id docstring
     ref_rows = [
-        {"id": _ref_row_id(variant_key, i), **picker_columns(spec)}
-        for i, (spec, _) in enumerate(reference_store.get(variant_key, []))
+        {"id": _ref_row_id(variant_key, i), **picker_columns(psm)}
+        for i, (psm, _) in enumerate(reference_store.get(variant_key, []))
     ]
     # Query rows: filter all annotated queries down to the chosen variant
     query_rows = [
-        {"psm_id": psm_id, **picker_columns(spec)}
-        for psm_id, (spec, _) in annotated_queries.items()
+        {"psm_id": psm_id, **picker_columns(psm)}
+        for psm_id, (psm, _) in annotated_queries.items()
         if psm_to_vk.get(psm_id) == variant_key
     ]
 
@@ -168,7 +167,7 @@ def _render_mirror_pair(query_spectrum, query_frame,
     """
     metrics = compute_all_metrics(query_frame, reference_frame)
     query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
-    query_psm = query_spectrum.match
+    query_psm = query_spectrum
     title = f"{query_psm.peptidoform.modified_sequence} +{query_psm.get_precursor_charge() or 0}"
     fig = create_spectrum_plot(
         query_frame, reference_frame,

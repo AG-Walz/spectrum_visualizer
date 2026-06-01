@@ -8,7 +8,6 @@ from pathlib import Path
 
 from psm_utils import PSMList
 
-from core.spectra.loaded_spectrum import LoadedSpectrum
 from tests.conftest import make_peptide_match
 
 SETTINGS_PATH = Path(__file__).resolve().parents[2] / "streamlit_app" / "config" / "settings.json"
@@ -48,39 +47,29 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
     """Inject one variant + one query + one experimental ref so the picker fragment renders end-to-end.
 
     Annotation frames carry the columns compute_all_metrics requires so the auto-rendered first-pair plot doesn't blow up."""
-    match = make_peptide_match(
-        peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
-        spectrum_id="scan=42", charge=2, score=0.9, mzml_filename="q.mzML",
+    peaks = {"mz": np.array([100.0, 200.0]), "intensity": np.array([1000.0, 2000.0])}
+    # Query and reference are carrier PSMs (peaks on psm.spectrum).
+    query_psm = make_peptide_match(
+        peptidoform="PEPTIDEK", spectrum_id="scan=42", charge=2, score=0.9, mzml_filename="q.mzML",
     )
-    match.retention_time = 12.5
-    # Experimental references are PSM-backed too; carry a match so the consumers
-    # that read spec.match (labels, picker) work.
-    ref_match = make_peptide_match(
-        peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
-        spectrum_id="scan=10", charge=2, score=0.8, mzml_filename="ref.mzML",
+    query_psm.retention_time = 12.5
+    query_psm.spectrum = peaks
+    ref_psm = make_peptide_match(
+        peptidoform="PEPTIDEK", spectrum_id="scan=10", charge=2, score=0.8, mzml_filename="ref.mzML",
     )
-    ref_match.retention_time = 11.0
-    spec_kwargs = dict(
-        mz=np.array([100.0, 200.0]),
-        intensity=np.array([1000.0, 2000.0]),
-        precursor_mz=400.0, precursor_charge=2,
-        peptidoform="PEPTIDEK", base_sequence="PEPTIDEK",
-    )
+    ref_psm.retention_time = 11.0
+    ref_psm.spectrum = peaks
     annotated_frame = pd.DataFrame({
         "mz": [100.0, 200.0],
         "intensity": [1000.0, 2000.0],
         "annotation": ["b1", "y2"],
         "is_annotated": [True, True],
     })
-    query_spec = LoadedSpectrum(spectrum_id="scan=42", source_file="q.mzML",
-                                rt=12.5, match=match, **spec_kwargs)
-    ref_spec = LoadedSpectrum(spectrum_id="scan=10", source_file="ref.mzML",
-                              rt=11.0, is_reference=True, match=ref_match, **spec_kwargs)
     variant_key = "PEPTIDEK"
-    variant_groups = {variant_key: PSMList(psm_list=[match])}
+    variant_groups = {variant_key: PSMList(psm_list=[query_psm])}
     at.session_state[f"{STATE_PREFIX}.variant_groups"] = variant_groups
-    at.session_state[f"{STATE_PREFIX}.annotated_queries"] = {0: (query_spec, annotated_frame)}
-    at.session_state[f"{STATE_PREFIX}.reference_store"] = {variant_key: [(ref_spec, annotated_frame)]}
+    at.session_state[f"{STATE_PREFIX}.annotated_queries"] = {0: (query_psm, annotated_frame)}
+    at.session_state[f"{STATE_PREFIX}.reference_store"] = {variant_key: [(ref_psm, annotated_frame)]}
     at.session_state[f"{STATE_PREFIX}.data_ready"] = True
 
 

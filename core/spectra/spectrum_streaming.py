@@ -7,7 +7,7 @@ Combines three layers in one file:
   spectrum by its native ID (scan=N / index=N / spectrum=N).
 - Per-file worker (`_load_spectra_from_mzml`): the unit of work farmed out by
   the streaming stage. Opens one mzML and extracts the spectra named by a batch
-  of PSMs, returning a `LoadResult` that bundles the wrapped `LoadedSpectrum`
+  of PSMs, returning a `LoadResult` that bundles the prepared PSM carriers
   objects, per-spectrum counts and any errors. Must stay picklable and free of
   process-global state — runs in a ProcessPoolExecutor worker.
 - Orchestration (`load_spectra_streaming`): drives spectrum extraction in
@@ -30,7 +30,6 @@ from psm_utils import PSM, PSMList
 from core.helpers import run_tasks
 from core.spectra.loaded_spectrum import (
     LoadResult,
-    LoadedSpectrum,
     StreamingResult,
 )
 from core.spectra.mzml_native_ids import (
@@ -274,58 +273,25 @@ def find_spectrum_index(
 # Per-file mzML worker (picklable; runs in ProcessPoolExecutor)
 # ============================================================================
 
-def _build_loaded_spectrum(
-    spectrum, psm: PSM, display_name: str, is_reference: bool,
-) -> LoadedSpectrum:
-    """Wrap a pyopenms MSSpectrum and its matched PSM into a single LoadedSpectrum.
-    Pulls the peak arrays, precursor m/z and charge, retention time, and
-    peptidoform off the raw objects. When the spectrum carries no precursor
-    block — or its charge is unset — the precursor charge falls back to the
-    PSM's charge, and precursor_mz defaults to 0.0. Returns the fully
-    populated LoadedSpectrum; runs inside a worker process, so the result
-    must stay picklable.
+def _prepare_loaded_psm(spectrum, psm: PSM) -> PSM:
+    """Stamp the loaded mzML spectrum's peaks and acquisition metadata onto the
+    matched PSM and return it — the PSM is the carrier the pipeline streams.
+    Attaches the peak arrays to psm.spectrum and pulls precursor m/z (None when
+    the spectrum carries no precursor block), retention time, and ion mobility
+    (None when unset; getDriftTime() is -1.0 for non-IM data). The precursor
+    charge is the PSM's identification charge (peptidoform). Runs inside a worker
+    process, so the result must stay picklable.
     """
     mz_array, intensity_array = spectrum.get_peaks()
-    # PSM charge is the fallback precursor charge when the spectrum lacks one
-    psm_charge = psm.get_precursor_charge() or 0
-    # Precursor: pull m/z and charge from the spectrum, falling back to psm_charge
     precursors = spectrum.getPrecursors()
-    if precursors:
-        prec = precursors[0]
-        precursor_mz = prec.getMZ()
-        precursor_charge = prec.getCharge() if prec.getCharge() > 0 else psm_charge
-    else:
-        precursor_mz = 0.0
-        precursor_charge = psm_charge
-    retention_time = spectrum.getRT()
-
-    # PSMList-native migration (Step 1): dual-write the spectrum-derived values
-    # onto the matched PSM so it can later carry them without LoadedSpectrum.
-    # Additive — no consumer reads these yet; LoadedSpectrum stays authoritative.
-    # getDriftTime() is -1.0 when ion mobility is unset (non-IM data).
+    precursor_mz = precursors[0].getMZ() if precursors else 0.0
     drift_time = spectrum.getDriftTime()
-    psm.precursor_mz = precursor_mz if precursor_mz > 0 else None
-    psm.retention_time = retention_time
-    psm.ion_mobility = drift_time if drift_time and drift_time > 0 else None
 
-    # PSMList-native migration (Step 2): attach the peak arrays to the PSM so it
-    # carries the spectrum directly. Still additive — LoadedSpectrum below holds
-    # the same arrays and stays the value object consumers read until Step 3.
     psm.spectrum = {"mz": mz_array, "intensity": intensity_array}
-
-    return LoadedSpectrum(
-        spectrum_id=psm.spectrum_id,
-        mz=mz_array,
-        intensity=intensity_array,
-        precursor_mz=precursor_mz,
-        precursor_charge=precursor_charge,
-        peptidoform=psm.peptidoform.modified_sequence,
-        base_sequence=psm.peptidoform.sequence.upper(),
-        source_file=display_name,
-        is_reference=is_reference,
-        rt=retention_time,
-        match=psm,
-    )
+    psm.precursor_mz = precursor_mz if precursor_mz > 0 else None
+    psm.retention_time = spectrum.getRT()
+    psm.ion_mobility = drift_time if drift_time and drift_time > 0 else None
+    return psm
 
 
 def _load_spectra_from_mzml(
@@ -337,17 +303,17 @@ def _load_spectra_from_mzml(
     """Worker entry point — open one mzML and load every spectrum named in matches_for_file.
     matches_for_file is a list of (PSM, variant_key) pairs; each PSM's
     spectrum_id is resolved to an array position via a targeted index, the
-    spectrum is fetched, and it is wrapped into a LoadedSpectrum tagged with
+    spectrum is fetched, and it is prepared as a PSM carrier tagged with
     its variant key. Errors are collected per spectrum (and once for the whole
     file if it fails to open) rather than raised — a failure on one spectrum or
     file never aborts the batch.
     Returns a LoadResult carrying loaded as a list of
-    (variant_key, LoadedSpectrum) pairs, plus the loaded / not-found counts
+    (variant_key, PSM) pairs, plus the loaded / not-found counts
     and the error list. Runs inside a ProcessPoolExecutor worker, so the
     return value must remain picklable.
     """
-    # Per-file accumulators — successfully loaded spectra and error strings
-    loaded: List[Tuple[str, LoadedSpectrum]] = []
+    # Per-file accumulators — successfully loaded PSM carriers and error strings
+    loaded: List[Tuple[str, PSM]] = []
     errors: List[str] = []
 
     try:
@@ -366,9 +332,7 @@ def _load_spectra_from_mzml(
                     errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
                     continue
                 spectrum = indexed_exp.getSpectrum(spectrum_index)
-                loaded.append((variant_key, _build_loaded_spectrum(
-                    spectrum, psm, display_name, is_reference,
-                )))
+                loaded.append((variant_key, _prepare_loaded_psm(spectrum, psm)))
             # Per-spectrum failure: keep going so the rest of the batch loads
             except Exception as error:
                 errors.append(f"Error loading {psm.spectrum_id}: {error}")
@@ -541,16 +505,16 @@ def _filter_already_loaded(
 def _collect_reference_spectra(
     ref_results: List[LoadResult], variant_groups: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
-) -> Dict[str, List[LoadedSpectrum]]:
+) -> Dict[str, List[PSM]]:
     """Bucket every loaded reference spectrum by variant_key and fire the
-    per-variant callback once references are in; return {variant_key: [LoadedSpectrum]}.
+    per-variant callback once references are in; return {variant_key: [PSM]}.
     The returned map has one slot for every known variant — including variants
     that got zero reference spectra — so a later query lookup never raises a
     KeyError. on_reference_loaded is invoked only for variants that
     actually received references.
     """
     # Bucket: one slot per known variant, fan out the loaded spectra
-    reference_spectra: Dict[str, List[LoadedSpectrum]] = {variant_key: [] for variant_key in variant_groups}
+    reference_spectra: Dict[str, List[PSM]] = {variant_key: [] for variant_key in variant_groups}
     for result in ref_results:
         for variant_key, spectrum in result.loaded:
             reference_spectra[variant_key].append(spectrum)
@@ -567,7 +531,7 @@ def _collect_reference_spectra(
 
 def _stream_query_results(
     query_results: List[LoadResult],
-    reference_spectra: Dict[str, List[LoadedSpectrum]],
+    reference_spectra: Dict[str, List[PSM]],
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
     """Fire on_query_ready once per loaded query spectrum, each call carrying a
@@ -599,7 +563,7 @@ def load_spectra_streaming(
     error_callback: Optional[Callable[[str], None]] = None,
     workers: int = 1,
     skip_ids: Optional[set] = None,
-) -> Dict[str, List[LoadedSpectrum]]:
+) -> Dict[str, List[PSM]]:
     """Load references first, then stream each query through on_query_ready;
     return {variant_key: [reference_spectra]}.
     The public entry point of the streaming loader. reference_substring

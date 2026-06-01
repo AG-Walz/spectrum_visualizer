@@ -21,8 +21,8 @@ class TestLoadRealSpectra:
         def on_query(result):
             nonlocal total_peaks
             spectra.append(result.query_spectrum)
-            keys.append(psm_lookup_key(result.query_spectrum.match))
-            total_peaks += len(result.query_spectrum.mz)
+            keys.append(psm_lookup_key(result.query_spectrum))
+            total_peaks += len(result.query_spectrum.spectrum["mz"])
 
         load_spectra_streaming(
             variant_groups=variant_groups, mzml_paths=mzml_path_list,
@@ -34,13 +34,13 @@ class TestLoadRealSpectra:
         assert len(loaded_spectra["spectra"]) == 2
 
     def test_spectrum_has_expected_fields(self, loaded_spectra):
-        for spec in loaded_spectra["spectra"]:
-            assert spec.mz is not None and len(spec.mz) > 0
-            assert spec.intensity is not None and len(spec.intensity) > 0
-            assert spec.peptidoform is not None
-            assert spec.precursor_charge > 0
-            assert spec.rt > 0
-            assert spec.source_file != ""
+        for psm in loaded_spectra["spectra"]:
+            assert len(psm.spectrum["mz"]) > 0
+            assert len(psm.spectrum["intensity"]) > 0
+            assert psm.peptidoform.modified_sequence
+            assert psm.get_precursor_charge() > 0
+            assert psm.retention_time > 0
+            assert psm.run != ""
 
     def test_psm_lookup_keys_unique(self, loaded_spectra):
         keys = loaded_spectra["keys"]
