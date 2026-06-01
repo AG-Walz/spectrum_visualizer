@@ -6,9 +6,7 @@ import pytest
 
 from core.annotation import (
     compute_all_metrics,
-    compute_cosine_similarity,
     compute_r2_binned,
-    compute_r2_matching,
     compute_spectral_entropy_similarity,
     format_metrics_text,
 )
@@ -54,22 +52,23 @@ def _partial_overlap_pair():
     return query, reference
 
 
-@pytest.mark.parametrize("metric_fn, identical_value, disjoint_value", [
-    (compute_r2_matching, 1.0, float("nan")),
-    (compute_cosine_similarity, 1.0, float("nan")),
+# R2m (matched R²) and Cos are computed inside compute_all_metrics; assert on its output keys.
+@pytest.mark.parametrize("metric_key, identical_value, disjoint_value", [
+    ("R2m", 1.0, float("nan")),
+    ("Cos", 1.0, float("nan")),
 ])
 class TestMetricBehavior:
-    def test_identical_returns_perfect(self, metric_fn, identical_value, disjoint_value):
+    def test_identical_returns_perfect(self, metric_key, identical_value, disjoint_value):
         query, reference = _identical_pair()
-        result = metric_fn(query, reference)
+        result = compute_all_metrics(query, reference)[metric_key]
         if math.isnan(identical_value):
             assert math.isnan(result)
         else:
             assert result == pytest.approx(identical_value, abs=1e-6)
 
-    def test_disjoint_returns_expected(self, metric_fn, identical_value, disjoint_value):
+    def test_disjoint_returns_expected(self, metric_key, identical_value, disjoint_value):
         query, reference = _disjoint_pair()
-        result = metric_fn(query, reference)
+        result = compute_all_metrics(query, reference)[metric_key]
         if math.isnan(disjoint_value):
             assert math.isnan(result)
         else:
@@ -79,14 +78,14 @@ class TestMetricBehavior:
 class TestR2Matching:
     def test_partial_overlap(self):
         query, reference = _partial_overlap_pair()
-        result = compute_r2_matching(query, reference)
+        result = compute_all_metrics(query, reference)["R2m"]
         # Only "b1" is shared — need >=2 shared points for a regression
         assert math.isnan(result)
 
     def test_good_correlation(self):
         query = _make_df([100, 200, 300], [0.2, 0.5, 1.0], ["b1", "b2", "b3"])
         reference = _make_df([100, 200, 300], [0.25, 0.55, 0.95], ["b1", "b2", "b3"])
-        result = compute_r2_matching(query, reference)
+        result = compute_all_metrics(query, reference)["R2m"]
         assert result > 0.9
 
 

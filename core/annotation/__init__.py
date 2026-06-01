@@ -8,9 +8,7 @@ from core.annotation.peak_matching import (
 from core.annotation.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
-    compute_cosine_similarity,
     compute_r2_binned,
-    compute_r2_matching,
     compute_spectral_entropy_similarity,
     format_metrics_text,
 )
@@ -23,9 +21,7 @@ __all__ = [
     # comparison_metrics
     "METRIC_SHORT_TO_DISPLAY",
     "compute_all_metrics",
-    "compute_cosine_similarity",
     "compute_r2_binned",
-    "compute_r2_matching",
     "compute_spectral_entropy_similarity",
     "format_metrics_text",
 ]

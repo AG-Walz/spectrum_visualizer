@@ -42,8 +42,6 @@ ION_COLORS: dict[str, str] = {
     "unannotated": "#9E9E9E",  # grey        (Material Grey 500)
 }
 
-IMAGE_FORMATS: tuple[str, ...] = ("png", "svg", "pdf", "html")
-
 
 @dataclass(frozen=True)
 class Defaults:
@@ -67,7 +65,7 @@ class Defaults:
     # --- Export -------------------------------------------------------------
     export_directory: str = "./exports"
     project_name: str = "MSpecViz_analysis"
-    export_formats: tuple[str, ...] = ("png",)  # CLI batch list: any of IMAGE_FORMATS
+    export_formats: tuple[str, ...] = ("png",)  # CLI batch list: any of png/svg/pdf/html
     image_format: str = "png"                  # Streamlit single-image picker default
     export_resolution: int = 300               # raster resolution (png/pdf)
     figure_size: tuple[int, int] = (12, 8)     # [width, height] in inches

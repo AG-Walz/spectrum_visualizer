@@ -13,7 +13,7 @@ Pure helpers with no domain logic. Imported by everything.
 
 | Module | What it holds |
 |---|---|
-| `defaults.py` | The frozen `Defaults` dataclass + `DEFAULTS` instance (single source of truth for every tunable parameter), the `KOINA_MODELS` catalogue, `INSTRUMENT_TYPES`, `ION_COLORS` (Material-Design palette), and `IMAGE_FORMATS` |
+| `defaults.py` | The frozen `Defaults` dataclass + `DEFAULTS` instance (single source of truth for every tunable parameter), the `KOINA_MODELS` catalogue, `INSTRUMENT_TYPES`, and `ION_COLORS` (Material-Design palette) |
 | `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename across directories), and `run_tasks()` — the single dispatcher every parallel worker uses. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers can update progress bars and surface per-file errors in the parent process. Falls back to a sequential loop when `workers=1` |
 
 `STATE_PREFIX` (the Streamlit session-state namespace) lives in
@@ -60,8 +60,7 @@ inside `annotate_spectrum()` — there is no separate `peak_theory` module.
 | Module | What it holds |
 |---|---|
 | `peak_matching.py` | `annotate_spectrum()` (proforma → annotated `MsmsSpectrum`), `prepare_spectrum_for_plot()` (main entry point used by the pipeline), `prepare_koina_spectrum_for_plot()` (Koina-output variant), `get_ion_type()` for bucket resolution |
-| `intensity_metrics.py` | Intensity-based metrics: `compute_r2_matching` (R²m), `compute_r2_binned` (R²b), `compute_cosine_similarity` (Cos). All take aligned query/reference DataFrames; return NaN on zero-norm or <2 shared points |
-| `comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY` |
+| `comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_r2_binned()` (R²b on a shared m/z grid — the one intensity scorer still called on its own), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY`. R²m and Cos are computed inline by `compute_all_metrics` via the private `_r2_from_arrays`/`_cosine_from_arrays` helpers. All return NaN on zero-norm or <2 shared points |
 
 See [../metrics/comparison.md](../metrics/comparison.md) for formulas,
 ranges, and interpretation.

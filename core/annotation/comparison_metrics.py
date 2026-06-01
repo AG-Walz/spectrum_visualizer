@@ -75,13 +75,6 @@ def _cosine_from_arrays(query_intensities: np.ndarray, reference_intensities: np
 # Public intensity scorers
 # ============================================================================
 
-def compute_r2_matching(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
-    """R² on intensities of ions annotated in both spectra (R2m column).
-    """
-    query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
-    return _r2_from_arrays(query_intensities, reference_intensities)
-
-
 def compute_r2_binned(
     query_frame: pd.DataFrame,
     reference_frame: pd.DataFrame,
@@ -110,13 +103,6 @@ def compute_r2_binned(
     if shared_mask.sum() < 2:
         return float("nan")
     return float(linregress(query_sums[shared_mask], reference_sums[shared_mask]).rvalue ** 2)
-
-
-def compute_cosine_similarity(query_frame: pd.DataFrame, reference_frame: pd.DataFrame) -> float:
-    """Cosine similarity on intensities of ions annotated in both spectra (Cos column).
-    """
-    query_intensities, reference_intensities = _get_matching_intensities(query_frame, reference_frame)
-    return _cosine_from_arrays(query_intensities, reference_intensities)
 
 
 # ============================================================================
