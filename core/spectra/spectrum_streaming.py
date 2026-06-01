@@ -361,11 +361,14 @@ def build_mzml_to_matches_map(
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
     """Group PSMs by the mzML file they live in; return {path_key: [(psm, variant_key), ...]}.
-    path_key is the resolved, lower-cased absolute path of an mzML file. Each
-    PSM is filed under exactly one file: the resolver prefers the pre-computed
-    psm.metadata["mzml_resolved_path"] and falls back to matching psm.run
-    against the mzML filename stem. PSMs that resolve to no available file (or
-    carry an empty psm.run) are silently dropped.
+    path_key is the resolved, lower-cased absolute path of an mzML file. PSMs are
+    bucketed by run via PSMList.get_psm_dict(), and each run is resolved to one
+    available mzML path — preferring the pre-computed
+    psm.metadata["mzml_resolved_path"], falling back to matching psm.run against
+    the mzML filename stem. (Both derive from psm.run, so a whole run resolves
+    together.) variant_key is the PSM's modified peptidoform — the same key its
+    variant group is keyed on. PSMs whose run resolves to no available file (or
+    carry an empty run) are silently dropped.
     """
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
@@ -377,32 +380,38 @@ def build_mzml_to_matches_map(
             key = str(Path(resolved).resolve()).lower()
             if key in available_mzml_paths:
                 return key
-        return stem_to_key.get(psm.run.lower())
+        return stem_to_key.get((psm.run or "").lower())
 
-    # Bucket: file each PSM under its resolved mzML path key
+    # Flatten to one PSMList and let get_psm_dict() bucket by collection -> run ->
+    # spectrum_id; resolve each run to its mzML once (all its PSMs share a run).
+    all_psms = PSMList(psm_list=[psm for psm_list in variant_groups.values() for psm in psm_list])
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
     dropped_examples: list[str] = []
     dropped_count = 0
-    for variant_key, psm_list in variant_groups.items():
-        for psm in psm_list:
-            if psm.run and (path_key := resolve(psm)):
-                mzml_to_matches.setdefault(path_key, []).append((psm, variant_key))
+    for runs in all_psms.get_psm_dict().values():
+        for run, spectra in runs.items():
+            run_psms = [psm for psm_group in spectra.values() for psm in psm_group]
+            path_key = resolve(run_psms[0]) if run else None
+            if path_key:
+                mzml_to_matches.setdefault(path_key, []).extend(
+                    (psm, psm.peptidoform.modified_sequence) for psm in run_psms
+                )
             else:
-                dropped_count += 1
+                dropped_count += len(run_psms)
                 if len(dropped_examples) < 5:
-                    resolved = psm.metadata.get("mzml_resolved_path", "")
+                    resolved = run_psms[0].metadata.get("mzml_resolved_path", "")
                     key = str(Path(resolved).resolve()).lower() if resolved else ""
                     dropped_examples.append(
-                        f"psm.run={psm.run!r} resolved_path={resolved!r} "
+                        f"psm.run={run!r} resolved_path={resolved!r} "
                         f"key={key!r} in_map={key in available_mzml_paths} "
-                        f"stem_hit={stem_to_key.get((psm.run or '').lower())!r}"
+                        f"stem_hit={stem_to_key.get((run or '').lower())!r}"
                     )
     if dropped_count:
         logger.warning(
             "build_mzml_to_matches_map dropped %d/%d PSMs. "
             "Available stems sample: %s. First dropped: %s",
             dropped_count,
-            sum(len(g) for g in variant_groups.values()),
+            len(all_psms),
             list(stem_to_key.keys())[:3],
             dropped_examples,
         )
