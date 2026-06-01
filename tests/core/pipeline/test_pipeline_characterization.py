@@ -94,6 +94,25 @@ class TestSingleSpectrumPipelineCharacterization:
         assert pipeline_output["reference_store"] == {}
         assert pipeline_output["comparison_rows"] == []
 
+    # --- Step 1: native PSM fields dual-written at load --------------------
+
+    def test_provenance_data_mirrors_idxml_metadata(self, pipeline_output):
+        # Lookup mirrors idxml_file/path into the native PSM.provenance_data dict.
+        for psm_list in pipeline_output["variant_groups"].values():
+            for psm in psm_list:
+                assert psm.provenance_data.get("idxml_file") == psm.metadata.get("idxml_file")
+                assert psm.provenance_data.get("idxml_file")
+
+    def test_spectrum_fields_stamped_on_matched_psm(self, pipeline_output):
+        # Streaming stamps precursor m/z, RT, and ion mobility onto the matched PSM.
+        for _psm_id, spectrum, _query_frame in pipeline_output["annotated_queries"]:
+            psm = spectrum.match
+            assert psm is not None
+            assert psm.precursor_mz is not None and psm.precursor_mz > 0
+            assert psm.retention_time is not None and psm.retention_time > 0
+            # ion_mobility is None for non-IM data; just assert the field is set.
+            assert hasattr(psm, "ion_mobility")
+
     # --- Visualization frames ---------------------------------------------
 
     def test_frame_bundle_keys(self, pipeline_output):

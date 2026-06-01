@@ -80,11 +80,20 @@ def lookup_peptides_in_single_idxml(
         # Annotate with idXML file
         psm.metadata["idxml_file"] = idxml_name
         psm.metadata["idxml_resolved_path"] = idxml_path
+        # PSMList-native migration (Step 1): mirror the same provenance into the
+        # native PSM.provenance_data dict. Additive dual-write — no consumer reads
+        # it yet; psm.metadata stays the source of truth for now.
+        psm.provenance_data = {
+            **(psm.provenance_data or {}),
+            "idxml_file": idxml_name,
+            "idxml_resolved_path": idxml_path,
+        }
         # Annotate with mzML path if possible (match by run name, case-insensitive)
         if psm.run:
             resolved = mzml_by_stem.get(psm.run.lower(), "")
             if resolved:
                 psm.metadata["mzml_resolved_path"] = resolved
+                psm.provenance_data["mzml_resolved_path"] = resolved
         # Append modified sequence and metadata-enriched PSM to results (later becomes the variant_key)
         matches.append((psm.peptidoform.modified_sequence, psm))
 

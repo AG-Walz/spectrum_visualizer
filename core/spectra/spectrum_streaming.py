@@ -297,6 +297,17 @@ def _build_loaded_spectrum(
     else:
         precursor_mz = 0.0
         precursor_charge = psm_charge
+    retention_time = spectrum.getRT()
+
+    # PSMList-native migration (Step 1): dual-write the spectrum-derived values
+    # onto the matched PSM so it can later carry them without LoadedSpectrum.
+    # Additive — no consumer reads these yet; LoadedSpectrum stays authoritative.
+    # getDriftTime() is -1.0 when ion mobility is unset (non-IM data).
+    drift_time = spectrum.getDriftTime()
+    psm.precursor_mz = precursor_mz if precursor_mz > 0 else None
+    psm.retention_time = retention_time
+    psm.ion_mobility = drift_time if drift_time and drift_time > 0 else None
+
     return LoadedSpectrum(
         spectrum_id=psm.spectrum_id,
         mz=mz_array,
@@ -307,7 +318,7 @@ def _build_loaded_spectrum(
         base_sequence=psm.peptidoform.sequence.upper(),
         source_file=display_name,
         is_reference=is_reference,
-        rt=spectrum.getRT(),
+        rt=retention_time,
         match=psm,
     )
 
