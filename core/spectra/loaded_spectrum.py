@@ -62,15 +62,9 @@ class LoadResult:
     errors: List[str]
 
 
-def spectrum_lookup_key(spec: "LoadedSpectrum") -> str:
-    """Return "spectrum_id|peptidoform"  — stable per-PSM key for joining peaks/sequence DataFrames.
-    Pairs both fields because spectrum IDs alone collide across mzML files and across peptidoforms.
-    """
-    return f"{spec.spectrum_id}|{spec.peptidoform}"
-
-
 def psm_lookup_key(psm: "PSM") -> str:
-    """PSM-side counterpart to spectrum_lookup_key — same "spectrum_id|peptidoform"
-    format so PSMs and LoadedSpectra hash to identical keys when joining tables.
+    """Return "spectrum_id|peptidoform" — the stable per-PSM key for joining the
+    peaks/sequence/PSM DataFrames. Pairs both fields because spectrum IDs alone
+    collide across mzML files and across peptidoforms.
     """
     return f"{psm.spectrum_id}|{psm.peptidoform.modified_sequence}"

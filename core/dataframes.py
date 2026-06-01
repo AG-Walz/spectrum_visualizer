@@ -82,7 +82,7 @@ def build_psm_table(
     fields shared by its siblings. Returns (lazyframe, psm_lookup) where the
     LazyFrame matches PSM_TABLE_SCHEMA and psm_lookup maps
     "spectrum_id|peptidoform" to the integer id — the same key shape that
-    spectrum_lookup_key() produces, so loaded spectra resolve to their PSM row.
+    psm_lookup_key() produces, so loaded spectra resolve to their PSM row.
     """
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}

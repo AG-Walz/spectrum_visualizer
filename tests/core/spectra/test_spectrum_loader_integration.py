@@ -3,7 +3,7 @@ import pytest
 from pathlib import Path
 
 from core.peptide_lookup import lookup_peptides_in_idxmls
-from core.spectra import load_spectra_streaming, spectrum_lookup_key
+from core.spectra import load_spectra_streaming, psm_lookup_key
 
 
 @pytest.mark.integration
@@ -21,7 +21,7 @@ class TestLoadRealSpectra:
         def on_query(result):
             nonlocal total_peaks
             spectra.append(result.query_spectrum)
-            keys.append(spectrum_lookup_key(result.query_spectrum))
+            keys.append(psm_lookup_key(result.query_spectrum.match))
             total_peaks += len(result.query_spectrum.mz)
 
         load_spectra_streaming(
@@ -42,7 +42,7 @@ class TestLoadRealSpectra:
             assert spec.rt > 0
             assert spec.source_file != ""
 
-    def test_spectrum_lookup_keys_unique(self, loaded_spectra):
+    def test_psm_lookup_keys_unique(self, loaded_spectra):
         keys = loaded_spectra["keys"]
         assert len(keys) == 2
         assert len(set(keys)) == 2

@@ -30,7 +30,7 @@ from core.annotation.peak_matching import (
 from core.defaults import DEFAULTS
 from core.plotting.plot_worker import ComparisonTask
 from core.spectra.koina_prediction import predict_koina_spectrum
-from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key, source_label, spectrum_lookup_key
+from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key, source_label
 
 
 # ============================================================================
@@ -189,8 +189,8 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str,
         items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
     else:
         items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
-    # Invert to a spectrum-key lookup so each variant PSM can find its PSM id
-    spec_to_psm_id = {spectrum_lookup_key(spec): psm_id for psm_id, spec in items}
+    # Invert to a per-PSM-key lookup so each variant PSM can find its PSM id
+    spec_to_psm_id = {psm_lookup_key(spec.match): psm_id for psm_id, spec in items}
 
     # Walk variants: rebuild each PSM's spectrum key and resolve it to a PSM id
     psm_id_to_variant_key: dict[str, str] = {}
@@ -219,7 +219,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     None when the query has no matching PSM in the lookup results.
     """
     # PSM lookup: skip spectra that have no matching PSM in the lookup results
-    psm_id = psm_lookup.get(spectrum_lookup_key(result.query_spectrum))
+    psm_id = psm_lookup.get(psm_lookup_key(result.query_spectrum.match))
     if psm_id is None:
         return None
 

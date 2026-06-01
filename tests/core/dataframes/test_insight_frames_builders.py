@@ -20,7 +20,7 @@ from core.dataframes import (
 from psm_utils import PSMList
 
 from core.peptide_lookup import lookup_peptides_in_idxmls
-from core.spectra import load_spectra_streaming, spectrum_lookup_key
+from core.spectra import load_spectra_streaming, psm_lookup_key
 
 from tests.conftest import make_peptide_match
 
@@ -174,7 +174,7 @@ class TestBuildFromRealData:
         annotated = []
 
         def on_query(result):
-            key = spectrum_lookup_key(result.query_spectrum)
+            key = psm_lookup_key(result.query_spectrum.match)
             psm_id = psm_lookup.get(key)
             if psm_id is None:
                 return
