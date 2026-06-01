@@ -16,7 +16,7 @@ streamlit_app.views.explore.mirror_plots.
 from pathlib import Path
 
 import numpy as np
-from psm_utils import Peptidoform
+from psm_utils import Peptidoform, PSM
 
 from core.annotation.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
@@ -57,11 +57,26 @@ def get_koina_prediction(
     if predicted_frame is None or predicted_frame.empty:
         return None
 
+    koina_mz = predicted_frame["mz"].to_numpy(dtype=np.float64)
+    koina_intensity = predicted_frame["intensity"].to_numpy(dtype=np.float64)
+
+    # PSMList-native migration (Step 3): back the Koina reference with a synthetic
+    # PSM that carries the predicted peaks, so predicted references are PSM-backed
+    # like experimental ones (no idXML provenance). Charge is embedded in the
+    # peptidoform so get_precursor_charge() resolves it.
+    koina_psm = PSM(
+        peptidoform=Peptidoform(f"{peptidoform}/{charge}"),
+        spectrum_id="koina_prediction",
+        run=f"Koina:{koina_model}",
+        spectrum={"mz": koina_mz, "intensity": koina_intensity},
+        retention_time=0.0,
+    )
+
     # Wrap prediction: build a synthetic LoadedSpectrum tagged as reference
     reference_spectrum = LoadedSpectrum(
         spectrum_id="koina_prediction",
-        mz=predicted_frame["mz"].to_numpy(dtype=np.float64),
-        intensity=predicted_frame["intensity"].to_numpy(dtype=np.float64),
+        mz=koina_mz,
+        intensity=koina_intensity,
         precursor_mz=0.0,
         precursor_charge=charge,
         peptidoform=peptidoform,
@@ -69,6 +84,7 @@ def get_koina_prediction(
         rt=0.0,
         source_file=f"Koina:{koina_model}",
         is_reference=True,
+        match=koina_psm,
     )
 
     # Annotate: reuse Koina's native AI-predicted ion labels directly
@@ -78,13 +94,15 @@ def get_koina_prediction(
 
 def _annotate_query_spectrum(result, annotation_kwargs):
     """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame.
+    Reads the spectrum data off the carrier PSM (result.query_spectrum.match).
     """
+    psm = result.query_spectrum.match
     return prepare_spectrum_for_plot(
-        result.query_spectrum.mz,
-        result.query_spectrum.intensity,
-        result.query_spectrum.peptidoform,
-        result.query_spectrum.precursor_charge,
-        precursor_mz=result.query_spectrum.precursor_mz,
+        psm.spectrum["mz"],
+        psm.spectrum["intensity"],
+        psm.peptidoform.modified_sequence,
+        psm.get_precursor_charge() or 0,
+        precursor_mz=psm.precursor_mz or 0.0,
         **annotation_kwargs,
     )
 
@@ -97,13 +115,15 @@ def _cache_reference_spectra(result, reference_store, annotation_kwargs):
     # Guard: skip if this variant is already cached or has no references to annotate
     if variant_key in reference_store or not result.reference_spectra:
         return
-    # Annotate each experimental reference against its own theoretical fragments
+    # Annotate each experimental reference against its own theoretical fragments,
+    # reading the spectrum data off the carrier PSM (reference_spectrum.match).
     ref_list = []
     for reference_spectrum in result.reference_spectra:
+        psm = reference_spectrum.match
         reference_frame = prepare_spectrum_for_plot(
-            reference_spectrum.mz, reference_spectrum.intensity,
-            reference_spectrum.peptidoform, reference_spectrum.precursor_charge,
-            precursor_mz=reference_spectrum.precursor_mz,
+            psm.spectrum["mz"], psm.spectrum["intensity"],
+            psm.peptidoform.modified_sequence, psm.get_precursor_charge() or 0,
+            precursor_mz=psm.precursor_mz or 0.0,
             **annotation_kwargs,
         )
         ref_list.append((reference_spectrum, reference_frame))

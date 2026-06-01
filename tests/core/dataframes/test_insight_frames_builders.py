@@ -20,7 +20,7 @@ from core.dataframes import (
 from psm_utils import PSMList
 
 from core.peptide_lookup import lookup_peptides_in_idxmls
-from core.spectra import LoadedSpectrum, load_spectra_streaming, spectrum_lookup_key
+from core.spectra import load_spectra_streaming, spectrum_lookup_key
 
 from tests.conftest import make_peptide_match
 
@@ -44,16 +44,17 @@ def _make_annotated_frame(n_peaks=5):
     })
 
 
-def _make_loaded_spectrum(spectrum_id="index=1", peptidoform="PEPTIDEK",
-                          charge=2, rt=120.0, n_peaks=5):
-    """Build a synthetic LoadedSpectrum (linear m/z + intensity ramps)."""
-    return LoadedSpectrum(
-        spectrum_id=spectrum_id,
-        mz=np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
-        intensity=np.linspace(100.0, 1000.0, n_peaks).astype(np.float64),
-        precursor_mz=500.0, precursor_charge=charge, peptidoform=peptidoform,
-        base_sequence="PEPTIDEK", source_file="test.mzML", rt=rt,
-    )
+def _make_psm(spectrum_id="index=1", peptidoform="PEPTIDEK",
+              charge=2, rt=120.0, n_peaks=5):
+    """Build a synthetic PSM carrying its peaks on psm.spectrum + retention_time —
+    the Step 3 carrier shape the sequence/heatmap builders now read."""
+    psm = make_peptide_match(spectrum_id=spectrum_id, peptidoform=peptidoform, charge=charge)
+    psm.spectrum = {
+        "mz": np.linspace(100.0, 600.0, n_peaks).astype(np.float64),
+        "intensity": np.linspace(100.0, 1000.0, n_peaks).astype(np.float64),
+    }
+    psm.retention_time = rt
+    return psm
 
 
 class TestBuildPsmTable:
@@ -115,8 +116,8 @@ class TestBuildSequenceDataframe:
     def test_basic_build(self):
         """Sequence DF from two spectra: LazyFrame, schema, row count."""
         spectra = [
-            (0, _make_loaded_spectrum(spectrum_id="index=1")),
-            (1, _make_loaded_spectrum(spectrum_id="index=2")),
+            (0, _make_psm(spectrum_id="index=1")),
+            (1, _make_psm(spectrum_id="index=2")),
         ]
         frame = build_sequence_dataframe(spectra)
         assert isinstance(frame, pl.LazyFrame)
@@ -127,7 +128,7 @@ class TestBuildSequenceDataframe:
         assert len(build_sequence_dataframe([]).collect()) == 0
 
     def test_sequence_is_openms_notation(self):
-        spectra = [(0, _make_loaded_spectrum(peptidoform="PEPTM[Oxidation]IDEK"))]
+        spectra = [(0, _make_psm(peptidoform="PEPTM[Oxidation]IDEK"))]
         seq = build_sequence_dataframe(spectra).collect()["sequence"][0]
         assert "(" in seq or "PEPTM" in seq
 
@@ -135,7 +136,7 @@ class TestBuildSequenceDataframe:
 class TestBuildHeatmapDataframe:
     def test_basic_build(self):
         """Heatmap DF from one ten-peak spectrum: LazyFrame, schema, point count."""
-        spectra = [_make_loaded_spectrum(n_peaks=10)]
+        spectra = [_make_psm(n_peaks=10)]
         frame = build_heatmap_dataframe(spectra)
         assert isinstance(frame, pl.LazyFrame)
         assert dict(frame.collect_schema()) == HEATMAP_SCHEMA
@@ -146,8 +147,8 @@ class TestBuildHeatmapDataframe:
 
     def test_multiple_spectra(self):
         spectra = [
-            _make_loaded_spectrum(rt=100.0, n_peaks=3),
-            _make_loaded_spectrum(rt=200.0, n_peaks=4),
+            _make_psm(rt=100.0, n_peaks=3),
+            _make_psm(rt=200.0, n_peaks=4),
         ]
         assert len(build_heatmap_dataframe(spectra).collect()) == 7
 
@@ -195,8 +196,8 @@ class TestBuildFromRealData:
         assert len(annotated) == 2
 
         peaks_frame = build_peaks_dataframe([(psm_id, frame) for psm_id, _, frame in annotated])
-        sequence_frame = build_sequence_dataframe([(psm_id, spectrum) for psm_id, spectrum, _ in annotated])
-        heatmap_frame = build_heatmap_dataframe([spectrum for _, spectrum, _ in annotated])
+        sequence_frame = build_sequence_dataframe([(psm_id, spectrum.match) for psm_id, spectrum, _ in annotated])
+        heatmap_frame = build_heatmap_dataframe([spectrum.match for _, spectrum, _ in annotated])
 
         assert dict(peaks_frame.collect_schema()) == PEAKS_SCHEMA
         assert dict(sequence_frame.collect_schema()) == SEQUENCE_SCHEMA

@@ -15,10 +15,10 @@ import logging
 import numpy as np
 import pandas as pd
 import polars as pl
-from psm_utils import Peptidoform, PSMList
+from psm_utils import Peptidoform, PSM, PSMList
 from psm_utils.peptidoform import PeptidoformException
 
-from core.spectra.loaded_spectrum import LoadedSpectrum, psm_lookup_key
+from core.spectra.loaded_spectrum import psm_lookup_key
 
 logger = logging.getLogger(__name__)
 
@@ -184,26 +184,27 @@ def build_peaks_dataframe(
 
 
 def build_sequence_dataframe(
-    psm_spectra: list[tuple[int, LoadedSpectrum]],
+    psm_entries: list[tuple[int, PSM]],
 ) -> pl.LazyFrame:
     """Build the per-PSM sequence LazyFrame feeding the openms_insight SequenceView.
-    Takes (psm_id, LoadedSpectrum) pairs and returns a LazyFrame with one
-    row per PSM matching SEQUENCE_SCHEMA; the peptidoform is converted to
-    OpenMS parenthesised-mod notation. An empty (but typed) frame is returned when
-    no PSMs are given.
+    Takes (psm_id, PSM) pairs and returns a LazyFrame with one row per PSM
+    matching SEQUENCE_SCHEMA; the peptidoform is converted to OpenMS
+    parenthesised-mod notation. An empty (but typed) frame is returned when no
+    PSMs are given. The charge is the identification charge carried by the
+    peptidoform (equals the spectrum precursor charge for confident PSMs).
     """
     # No PSMs — return a typed-empty LazyFrame.
-    if not psm_spectra:
+    if not psm_entries:
         return pl.DataFrame(schema=SEQUENCE_SCHEMA).lazy()
 
     # One row per PSM: sequence in SequenceView notation plus the linking psm_id.
     rows = [
         {
-            "sequence": _proforma_to_openms_str(spectrum.peptidoform),
-            "precursor_charge": int(spectrum.precursor_charge),
+            "sequence": _proforma_to_openms_str(psm.peptidoform.modified_sequence),
+            "precursor_charge": int(psm.get_precursor_charge() or 0),
             "psm_id": psm_id,
         }
-        for psm_id, spectrum in psm_spectra
+        for psm_id, psm in psm_entries
     ]
 
     sequence_frame = pl.DataFrame(rows, schema=SEQUENCE_SCHEMA)
@@ -211,22 +212,23 @@ def build_sequence_dataframe(
     return sequence_frame.lazy()
 
 
-def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
+def build_heatmap_dataframe(psms: list[PSM]) -> pl.LazyFrame:
     """Stack peaks into an RT x m/z LazyFrame feeding the openms_insight Heatmap.
-    Each spectrum contributes one row per peak — its scalar retention time is
-    broadcast across every m/z value. Returns a LazyFrame matching
-    HEATMAP_SCHEMA, or a typed-empty frame when no spectrum has peaks.
+    Each PSM contributes one row per peak (read off psm.spectrum) — its scalar
+    retention time is broadcast across every m/z value. Returns a LazyFrame
+    matching HEATMAP_SCHEMA, or a typed-empty frame when no PSM has peaks.
     """
-    # Per-spectrum chunks: broadcast the scalar RT across the m/z axis.
+    # Per-PSM chunks: broadcast the scalar RT across the m/z axis.
     chunks: list[pl.DataFrame] = []
-    for spectrum in spectra:
+    for psm in psms:
+        mz = psm.spectrum["mz"]
         # Skip empty spectra — keeps the concat below clean.
-        if len(spectrum.mz) == 0:
+        if len(mz) == 0:
             continue
         chunk = pl.DataFrame({
-            "x": np.full(len(spectrum.mz), spectrum.rt, dtype="float32"),
-            "y": spectrum.mz.astype("float32"),
-            "intensity": spectrum.intensity.astype("float32"),
+            "x": np.full(len(mz), psm.retention_time or 0.0, dtype="float32"),
+            "y": mz.astype("float32"),
+            "intensity": psm.spectrum["intensity"].astype("float32"),
         })
         chunks.append(chunk)
 
@@ -244,14 +246,16 @@ def build_visualization_frames(annotated_queries, psm_frame=None) -> dict:
     """Bundle the peaks / sequence / heatmap LazyFrames into the dict openms_insight expects.
     annotated_queries is the list of (psm_id, LoadedSpectrum, annotated_frame)
     tuples returned by run_streaming_annotation; each builder receives the
-    projection it needs. Returns {"peaks", "sequence", "heatmap"} LazyFrames,
-    plus a "psm" entry when an already-built psm_frame is supplied.
+    projection it needs — the sequence and heatmap builders read the carrier
+    PSM (spec.match), which now holds the peaks and metadata. Returns
+    {"peaks", "sequence", "heatmap"} LazyFrames, plus a "psm" entry when an
+    already-built psm_frame is supplied.
     """
     # Project the tuples down to what each builder consumes.
     frames = {
         "peaks":    build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries]),
-        "sequence": build_sequence_dataframe([(psm_id, spec) for psm_id, spec, _ in annotated_queries]),
-        "heatmap":  build_heatmap_dataframe([spec for _, spec, _ in annotated_queries]),
+        "sequence": build_sequence_dataframe([(psm_id, spec.match) for psm_id, spec, _ in annotated_queries]),
+        "heatmap":  build_heatmap_dataframe([spec.match for _, spec, _ in annotated_queries]),
     }
     # Pass through a precomputed PSM table when the caller already has one.
     if psm_frame is not None:

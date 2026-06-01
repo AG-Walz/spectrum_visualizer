@@ -36,6 +36,13 @@ _LAZYFRAME_KEYS = ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame"
 # Keys whose values are pickle-safe Python objects
 _PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
 
+# On-disk cache layout version. Bump whenever the pickled object shape changes
+# (e.g. PSMs gaining their peak arrays in the PSMList-native migration) so caches
+# written by an older code version are cleared and regenerated from inputs rather
+# than hydrating semantically-stale objects. Distinct from the runtime
+# "cache_version" re-render counter in session state.
+CACHE_SCHEMA_VERSION = 1
+
 
 def _analysis_cache_path() -> Path:
     """Return the analysis-cache directory inside the active workspace.
@@ -79,6 +86,7 @@ def save_analysis_cache() -> None:
     metadata = {
         "saved_at": datetime.now().isoformat(),
         "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
+        "schema_version": CACHE_SCHEMA_VERSION,
     }
     with open(cache_dir / "meta.json", "w") as handle:
         json.dump(metadata, handle)
@@ -134,6 +142,22 @@ def load_analysis_cache() -> bool:
     meta_path = cache_dir / "meta.json"
 
     if not meta_path.exists():
+        return False
+
+    # Schema gate: a cache written by an older data layout (e.g. before PSMs
+    # carried their peak arrays) is cleared and regenerated from inputs rather
+    # than hydrating semantically-stale objects. Checked before any unpickling.
+    try:
+        with open(meta_path) as handle:
+            on_disk_schema = json.load(handle).get("schema_version")
+    except (OSError, ValueError):
+        on_disk_schema = None
+    if on_disk_schema != CACHE_SCHEMA_VERSION:
+        logger.info(
+            "Analysis cache schema_version=%s != current %s; clearing to regenerate.",
+            on_disk_schema, CACHE_SCHEMA_VERSION,
+        )
+        clear_analysis_cache()
         return False
 
     try:

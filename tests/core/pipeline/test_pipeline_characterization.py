@@ -11,6 +11,7 @@ don't read as regressions, but pin schemas and row counts exactly.
 """
 import copy
 
+import numpy as np
 import pytest
 
 from core.dataframes import (
@@ -112,6 +113,15 @@ class TestSingleSpectrumPipelineCharacterization:
             assert psm.retention_time is not None and psm.retention_time > 0
             # ion_mobility is None for non-IM data; just assert the field is set.
             assert hasattr(psm, "ion_mobility")
+
+    def test_peaks_attached_to_matched_psm(self, pipeline_output):
+        # Step 2: the matched PSM carries its peak arrays on psm.spectrum,
+        # identical to the arrays LoadedSpectrum still exposes.
+        for _psm_id, spectrum, _query_frame in pipeline_output["annotated_queries"]:
+            psm = spectrum.match
+            assert isinstance(psm.spectrum, dict)
+            assert np.array_equal(psm.spectrum["mz"], spectrum.mz)
+            assert np.array_equal(psm.spectrum["intensity"], spectrum.intensity)
 
     # --- Visualization frames ---------------------------------------------
 

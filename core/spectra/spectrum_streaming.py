@@ -308,6 +308,11 @@ def _build_loaded_spectrum(
     psm.retention_time = retention_time
     psm.ion_mobility = drift_time if drift_time and drift_time > 0 else None
 
+    # PSMList-native migration (Step 2): attach the peak arrays to the PSM so it
+    # carries the spectrum directly. Still additive — LoadedSpectrum below holds
+    # the same arrays and stays the value object consumers read until Step 3.
+    psm.spectrum = {"mz": mz_array, "intensity": intensity_array}
+
     return LoadedSpectrum(
         spectrum_id=psm.spectrum_id,
         mz=mz_array,
