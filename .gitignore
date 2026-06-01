@@ -25,7 +25,9 @@ plots/
 cache/
 
 # Test/example data (keep locally, not in repo)
+tests/
 test_output/
+examples/
 example-data/
 
 # Removed standalone scripts/tools
@@ -55,4 +57,4 @@ Thumbs.db
 
 # Standalone scripts (not part of the application)
 main.py
-examples/
+
