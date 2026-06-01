@@ -79,11 +79,11 @@ def get_koina_prediction(
     return (reference_psm, reference_frame)
 
 
-def _annotate_query_spectrum(result, annotation_kwargs):
+def _annotate_query_spectrum(streaming_result, annotation_kwargs):
     """Match the query spectrum's peaks against theoretical fragment ions; return the annotated frame.
     The query spectrum is the carrier PSM (peaks on psm.spectrum).
     """
-    psm = result.query_spectrum
+    psm = streaming_result.query_psm
     return prepare_spectrum_for_plot(
         psm.spectrum["mz"],
         psm.spectrum["intensity"],
@@ -94,42 +94,41 @@ def _annotate_query_spectrum(result, annotation_kwargs):
     )
 
 
-def _cache_reference_spectra(result, reference_store, annotation_kwargs):
+def _cache_reference_spectra(streaming_result, reference_store, annotation_kwargs):
     """Annotate every reference spectrum for this peptide variant and stash them in
     reference_store (once per variant).
     """
-    variant_key = result.variant_key
+    variant_key = streaming_result.variant_key
     # Guard: skip if this variant is already cached or has no references to annotate
-    if variant_key in reference_store or not result.reference_spectra:
+    if variant_key in reference_store or not streaming_result.reference_psms:
         return
     # Annotate each experimental reference against its own theoretical fragments;
     # each reference is itself the carrier PSM.
-    ref_list = []
-    for reference_spectrum in result.reference_spectra:
-        psm = reference_spectrum
+    annotated_references = []
+    for reference_psm in streaming_result.reference_psms:
         reference_frame = prepare_spectrum_for_plot(
-            psm.spectrum["mz"], psm.spectrum["intensity"],
-            psm.peptidoform.modified_sequence, psm.get_precursor_charge() or 0,
-            precursor_mz=psm.precursor_mz or 0.0,
+            reference_psm.spectrum["mz"], reference_psm.spectrum["intensity"],
+            reference_psm.peptidoform.modified_sequence, reference_psm.get_precursor_charge() or 0,
+            precursor_mz=reference_psm.precursor_mz or 0.0,
             **annotation_kwargs,
         )
-        ref_list.append((reference_spectrum, reference_frame))
-    reference_store[variant_key] = ref_list
+        annotated_references.append((reference_psm, reference_frame))
+    reference_store[variant_key] = annotated_references
 
 
-def _try_koina_fallback(result, reference_store, annotation_kwargs,
+def _try_koina_fallback(streaming_result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
     """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list.
     """
-    variant_key = result.variant_key
+    variant_key = streaming_result.variant_key
     # Prefer experimental references: only fall back to Koina when the cache is empty
     references = reference_store.get(variant_key, [])
     if references:
         return references
     # Request an AI-predicted reference for this peptidoform + charge
     koina_ref = get_koina_prediction(
-        result.query_spectrum.peptidoform.modified_sequence,
-        result.query_spectrum.get_precursor_charge() or 0,
+        streaming_result.query_psm.peptidoform.modified_sequence,
+        streaming_result.query_psm.get_precursor_charge() or 0,
         annotation_kwargs,
         koina_model=koina_model,
         koina_collision_energy=koina_collision_energy,
@@ -146,19 +145,17 @@ def _try_koina_fallback(result, reference_store, annotation_kwargs,
 # Label/lookup helpers (also imported by streamlit_app.views.explore.mirror_plots)
 # ============================================================================
 
-def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str, str]:
+def format_spectrum_labels(query_psm, reference_psm=None) -> tuple[str, str]:
     """Build the human-readable plot labels for a (query, reference) pair.
     Returns (query_label, reference_label); each label is the source file
     name with its retention time appended, e.g. "Query: run01.mzML (RT: 42.3)".
-    The reference label is "" when reference_spectrum is None (a
+    The reference label is "" when reference_psm is None (a
     single, unpaired query).
     """
-    query_psm = query_spectrum
     query_label = f"Query: {source_label(query_psm)} (RT: {query_psm.retention_time:.1f})"
     # Guard clause: an unpaired query has no reference label to build
-    if reference_spectrum is None:
+    if reference_psm is None:
         return query_label, ""
-    reference_psm = reference_spectrum
     reference_label = f"Ref: {source_label(reference_psm)} (RT: {reference_psm.retention_time:.1f})"
     return query_label, reference_label
 
@@ -193,7 +190,7 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str,
 # Per-query orchestration + plot-task builder
 # ============================================================================
 
-def process_query_result(result, psm_lookup, annotation_kwargs,
+def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
                          reference_store, koina_enabled=False,
                          koina_model: str = DEFAULTS.koina_model,
                          koina_collision_energy: int = DEFAULTS.koina_collision_energy,
@@ -201,38 +198,36 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     """Annotate one query spectrum, resolve its references, and score every pair.
     Resolves references from the experimental reference_store cache, with an
     optional Koina AI fallback when no experimental reference exists. Returns
-    (psm_id, query_spectrum, query_frame, comparison_rows), where
+    (psm_id, query_psm, query_frame, comparison_rows), where
     comparison_rows holds one metrics dict per (query, reference) pair, or
     None when the query has no matching PSM in the lookup results.
     """
     # PSM lookup: skip spectra that have no matching PSM in the lookup results
-    psm_id = psm_lookup.get(psm_lookup_key(result.query_spectrum))
+    psm_id = psm_lookup.get(psm_lookup_key(streaming_result.query_psm))
     if psm_id is None:
         return None
 
     # Annotate query + warm reference cache for this variant (once)
-    query_frame = _annotate_query_spectrum(result, annotation_kwargs)
-    _cache_reference_spectra(result, reference_store, annotation_kwargs)
+    query_frame = _annotate_query_spectrum(streaming_result, annotation_kwargs)
+    _cache_reference_spectra(streaming_result, reference_store, annotation_kwargs)
 
     # Resolve references: experimental cache first, optional Koina AI fallback
     if koina_enabled:
         references = _try_koina_fallback(
-            result, reference_store, annotation_kwargs,
+            streaming_result, reference_store, annotation_kwargs,
             koina_model, koina_collision_energy, koina_instrument_type,
         )
     else:
-        references = reference_store.get(result.variant_key, [])
+        references = reference_store.get(streaming_result.variant_key, [])
 
     # Compute metrics: one comparison row per (query, reference) pair. The query
     # spectrum and each reference are carrier PSMs read directly.
-    query_spectrum = result.query_spectrum
-    query_psm = query_spectrum
+    query_psm = streaming_result.query_psm
     base_sequence = query_psm.peptidoform.sequence.upper()
     # Modification column is blank for the unmodified variant
-    modification = result.variant_key if query_psm.peptidoform.is_modified else ""
+    modification = streaming_result.variant_key if query_psm.peptidoform.is_modified else ""
     comparison_rows = []
-    for reference_spectrum, reference_frame in references:
-        reference_psm = reference_spectrum
+    for reference_psm, reference_frame in references:
         metrics = compute_all_metrics(query_frame, reference_frame)
         # Identity columns: per-PSM metadata + query/reference labels and RTs
         row: dict = {
@@ -257,7 +252,7 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
         ):
             row[count_key] = metrics.get(count_key, 0)
         comparison_rows.append(row)
-    return (psm_id, query_spectrum, query_frame, comparison_rows)
+    return (psm_id, query_psm, query_frame, comparison_rows)
 
 
 def build_plot_tasks(annotated_queries, reference_store, variant_groups,
@@ -281,9 +276,8 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     # Build tasks: iterate PSMs in stable order, mirror when refs exist else single
     tasks: list[ComparisonTask] = []
     task_id = 0
-    for psm_id, query_spectrum, query_frame in sorted(annotated_queries, key=lambda x: x[0]):
+    for psm_id, query_psm, query_frame in sorted(annotated_queries, key=lambda x: x[0]):
         # Identity fields off the carrier PSM; source_label still reads the spectrum.
-        query_psm = query_spectrum
         peptidoform = query_psm.peptidoform.modified_sequence
         charge = query_psm.get_precursor_charge() or 0
         variant_key = psm_id_to_variant_key.get(psm_id)
@@ -294,11 +288,11 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
 
         if references:
             # Mirror tasks: one per reference, with metrics + HTML output
-            for reference_spectrum, reference_frame in references:
+            for reference_psm, reference_frame in references:
                 task_id += 1
                 metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
-                query_label, reference_label = format_spectrum_labels(query_spectrum, reference_spectrum)
-                safe_filename = sanitize_fn(f"{query_src}_vs_{source_label(reference_spectrum)}")
+                query_label, reference_label = format_spectrum_labels(query_psm, reference_psm)
+                safe_filename = sanitize_fn(f"{query_src}_vs_{source_label(reference_psm)}")
                 html_path = (
                     str(Path(html_dir) / folder_name / f"{safe_filename}.html")
                     if html_dir else ""

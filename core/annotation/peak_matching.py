@@ -71,7 +71,7 @@ def annotate_spectrum(
     precursor_mz: float = 0.0,
 ) -> pd.DataFrame:
     """Match experimental peaks to theoretical fragments of a given peptidoform; 
-    Silently block precursor-ion matches to always pass the real result.query_spectrum.precursor_mz.
+    Silently block precursor-ion matches to always pass the real streaming_result.query_psm.precursor_mz.
     """ 
     # Define ion_types from the UI selection, defaulting to all if the user didn't specify any
     if ion_types is None:

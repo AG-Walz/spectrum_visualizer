@@ -49,26 +49,26 @@ def _build_plot_settings(params: dict) -> PlotSettings:
     )
 
 
-def _show_export_summary(result, status) -> None:
+def _show_export_summary(export_result, status) -> None:
     """Stamp mirror/summary plot counts into the status block and mark it complete.
     """
-    if result.mirror_plot_count:
-        st.caption(f"  Generated {result.mirror_plot_count} mirror plot file(s)")
-    if result.summary_plot_count:
-        st.caption(f"  Generated {result.summary_plot_count} summary plot(s)")
+    if export_result.mirror_plot_count:
+        st.caption(f"  Generated {export_result.mirror_plot_count} mirror plot file(s)")
+    if export_result.summary_plot_count:
+        st.caption(f"  Generated {export_result.summary_plot_count} summary plot(s)")
     status.update(
-        label=f"Exported {len(result.saved_files)} files to {result.export_root}",
+        label=f"Exported {len(export_result.saved_files)} files to {export_result.export_root}",
         state="complete",
     )
 
 
-def _show_saved_files_expander(result) -> None:
+def _show_saved_files_expander(export_result) -> None:
     """Render a collapsed expander listing every file written by the export.
     """
-    if not result.saved_files:
+    if not export_result.saved_files:
         return
-    with st.expander(f"Exported files ({len(result.saved_files)})", expanded=False):
-        for file_path in result.saved_files:
+    with st.expander(f"Exported files ({len(export_result.saved_files)})", expanded=False):
+        for file_path in export_result.saved_files:
             st.caption(f"  {file_path}")
 
 
@@ -91,7 +91,7 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
 
     # Dispatch: run shared export pipeline inside a live st.status block
     with st.status("Exporting...", expanded=True) as status:
-        result = run_export(
+        export_result = run_export(
             export_directory=export_dir,
             project_name=DEFAULTS.project_name,
             run_settings=build_run_settings(),
@@ -104,9 +104,9 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
             plot_settings=plot_settings,
             callbacks=ExportCallbacks(on_step=st.caption, on_warning=st.warning),
         )
-        _show_export_summary(result, status)
+        _show_export_summary(export_result, status)
 
     # Post-export: list saved files and open the plot gallery below
-    _show_saved_files_expander(result)
-    _render_plot_gallery(result.export_root)
-    return result.export_root
+    _show_saved_files_expander(export_result)
+    _render_plot_gallery(export_result.export_root)
+    return export_result.export_root

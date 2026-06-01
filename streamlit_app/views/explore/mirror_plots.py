@@ -161,13 +161,12 @@ def _render_metrics_expander(metrics: dict) -> None:
         st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
 
 
-def _render_mirror_pair(query_spectrum, query_frame,
-                        reference_spectrum, reference_frame) -> None:
+def _render_mirror_pair(query_psm, query_frame,
+                        reference_psm, reference_frame) -> None:
     """Compute metrics, draw the Plotly mirror plot, and show the metrics expander below it.
     """
     metrics = compute_all_metrics(query_frame, reference_frame)
-    query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
-    query_psm = query_spectrum
+    query_label, ref_label = format_spectrum_labels(query_psm, reference_psm)
     title = f"{query_psm.peptidoform.modified_sequence} +{query_psm.get_precursor_charge() or 0}"
     fig = create_spectrum_plot(
         query_frame, reference_frame,
@@ -263,11 +262,11 @@ def mirror_plots_fragment(params: dict):
         st.session_state[last_variant_key] = chosen
 
     # Picker tables: two side-by-side openms_insight Tables for the chosen variant
-    ref_frame, query_frame = _build_picker_frames(
+    reference_picker_frame, query_picker_frame = _build_picker_frames(
         chosen, annotated_queries, reference_store, psm_to_vk,
     )
     _render_picker_tables(
-        ref_frame, query_frame, _resolve_picker_cache_path(params), state_manager,
+        reference_picker_frame, query_picker_frame, _resolve_picker_cache_path(params), state_manager,
     )
 
     # Read selections from the StateManager. openms_insight's bridge auto-fills
@@ -277,13 +276,13 @@ def mirror_plots_fragment(params: dict):
     # side. None-checks below are defensive for AppTest (no Vue running).
     state = state_manager.get_state_for_vue()
     ref_id = state.get("selected_ref_row")
-    query_psm = state.get("selected_query_psm")
-    if ref_id is None or query_psm is None:
+    selected_query_psm_id = state.get("selected_query_psm")
+    if ref_id is None or selected_query_psm_id is None:
         st.info("Pick one row in each table to render the mirror plot.")
         return
 
     # Resolve picks: map both row ids back to the in-memory spectra
-    if query_psm not in annotated_queries:
+    if selected_query_psm_id not in annotated_queries:
         return
     refs = reference_store.get(chosen, [])
     # Rebuild the hashed-id reverse index for this variant so a stale ref_id
@@ -294,6 +293,6 @@ def mirror_plots_fragment(params: dict):
         return
 
     # Render: compute metrics and draw the mirror plot for the chosen pair
-    query_spectrum, query_anno = annotated_queries[query_psm]
-    reference_spectrum, reference_anno = refs[ref_index[ref_id]]
-    _render_mirror_pair(query_spectrum, query_anno, reference_spectrum, reference_anno)
+    query_psm, query_frame = annotated_queries[selected_query_psm_id]
+    reference_psm, reference_frame = refs[ref_index[ref_id]]
+    _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame)

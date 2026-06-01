@@ -17,7 +17,7 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
     n = len(idxmls)
     with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
         # Dispatch: parallel scan with progress + error callbacks
-        merged = count_psms_in_idxmls(
+        psm_counts = count_psms_in_idxmls(
             idxmls,
             workers=min(workers, n),
             progress_callback=lambda done, total, _msg: tracker.update(done, total, units="files"),
@@ -29,8 +29,8 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
             for error in errors[:5]:
                 st.caption(error)
         else:
-            tracker.finalize(f"{len(merged)} peptides from {n} files")
-    return merged, errors
+            tracker.finalize(f"{len(psm_counts)} peptides from {n} files")
+    return psm_counts, errors
 
 
 def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
@@ -70,8 +70,8 @@ def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
     st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
     if st.button(f"Scan {n} files for peptides",
                  key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-        merged, _errors = _scan_idxmls_for_psm_counts(idxmls, workers)
-        st.session_state[scan_key] = dict(sorted(merged.items()))
+        scanned_psm_counts, _errors = _scan_idxmls_for_psm_counts(idxmls, workers)
+        st.session_state[scan_key] = dict(sorted(scanned_psm_counts.items()))
         st.session_state[scan_files_key] = idxmls
         st.rerun()
     return psm_counts

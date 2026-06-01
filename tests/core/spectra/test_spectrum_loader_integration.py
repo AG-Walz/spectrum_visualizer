@@ -20,9 +20,9 @@ class TestLoadRealSpectra:
 
         def on_query(result):
             nonlocal total_peaks
-            spectra.append(result.query_spectrum)
-            keys.append(psm_lookup_key(result.query_spectrum))
-            total_peaks += len(result.query_spectrum.spectrum["mz"])
+            spectra.append(result.query_psm)
+            keys.append(psm_lookup_key(result.query_psm))
+            total_peaks += len(result.query_psm.spectrum["mz"])
 
         load_spectra_streaming(
             variant_groups=variant_groups, mzml_paths=mzml_path_list,

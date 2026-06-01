@@ -19,9 +19,9 @@ from streamlit_app.views.load_annotate.load_annotate_actions import (
 params = page_setup()
 
 
-def display_lookup_results(results: dict) -> None:
+def display_lookup_results(variant_groups: dict) -> None:
     """Render the per-variant lookup-results table (peptide, modification, PSM count, file resolution)."""
-    summary_frame = summarize_lookup_results(results).collect().to_pandas()
+    summary_frame = summarize_lookup_results(variant_groups).collect().to_pandas()
     if not summary_frame.empty:
         display_frame = summary_frame.rename(columns={
             "base_sequence": "Peptide", "modification": "Modification",

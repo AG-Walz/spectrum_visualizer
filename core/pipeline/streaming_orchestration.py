@@ -35,7 +35,7 @@ def make_query_ready_callback(
     # closure can mutate (a plain int would be read-only from inside on_query_ready).
     loaded_count = [0]
 
-    def on_query_ready(result):
+    def on_query_ready(streaming_result):
         """Annotate one streamed query spectrum and record it into the shared buffers.
         Invoked once per query spectrum by load_spectra_streaming. Delegates to
         process_query_result; a None result means the spectrum has no matching
@@ -45,14 +45,14 @@ def make_query_ready_callback(
         """
         # Annotate the query, resolve its references, and score every pair.
         processed = process_query_result(
-            result, psm_lookup, annotation_kwargs, reference_store, **koina_kwargs,
+            streaming_result, psm_lookup, annotation_kwargs, reference_store, **koina_kwargs,
         )
         # Skip spectra with no matching PSM in the lookup results.
         if processed is None:
             return
         # Buffer the annotated query and its per-pair metric rows for the caller.
-        psm_id, query_spectrum, query_frame, rows = processed
-        annotated_queries.append((psm_id, query_spectrum, query_frame))
+        psm_id, query_psm, query_frame, rows = processed
+        annotated_queries.append((psm_id, query_psm, query_frame))
         comparison_rows.extend(rows)
         # Advance the running count and report progress to the frontend.
         loaded_count[0] += 1
@@ -80,7 +80,7 @@ def run_streaming_annotation(
     streaming load. The optional on_* callbacks let the frontend track progress,
     file lifecycle, and errors; any left None fall back to a no-op. Returns
     (annotated_queries, reference_store, comparison_rows) — respectively the
-    (psm_id, query_spectrum, query_frame) tuples, the experimental reference
+    (psm_id, query_psm, query_frame) tuples, the experimental reference
     cache keyed by variant, and the flat list of comparison-metric dicts.
     """
     # Init buffers: shared accumulators the on_query_ready callback writes into;

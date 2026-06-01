@@ -174,7 +174,7 @@ class TestBuildFromRealData:
         annotated = []
 
         def on_query(result):
-            psm = result.query_spectrum
+            psm = result.query_psm
             psm_id = psm_lookup.get(psm_lookup_key(psm))
             if psm_id is None:
                 return

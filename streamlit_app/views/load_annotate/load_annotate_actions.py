@@ -26,22 +26,22 @@ from core.peptide_lookup import lookup_peptides_in_idxmls
 logger = logging.getLogger(__name__)
 
 
-def _show_lookup_results_summary(results, error_messages, tracker, params: dict) -> None:
+def _show_lookup_results_summary(variant_groups, error_messages, tracker, params: dict) -> None:
     """Finalize the lookup status block with PSM/variant counts and any warnings.
     """
     # Empty path: mark the status block as an error and bail
-    if not results:
+    if not variant_groups:
         tracker.finalize("No matches found", state="error")
         return
 
     # Success path: report PSM/variant counts and persist params
-    total_matches = sum(len(psm_list) for psm_list in results.values())
-    tracker.finalize(f"Found {total_matches} PSMs across {len(results)} variants")
+    total_matches = sum(len(psm_list) for psm_list in variant_groups.values())
+    tracker.finalize(f"Found {total_matches} PSMs across {len(variant_groups)} variants")
     save_params(params)
 
     # Warnings: count PSMs whose mzML couldn't be resolved + collapse per-file parse errors
     unresolved = sum(
-        1 for psm_list in results.values()
+        1 for psm_list in variant_groups.values()
         for psm in psm_list
         if not psm.metadata.get("mzml_resolved_path")
     )
@@ -61,7 +61,7 @@ def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
 
     # Dispatch parallel idXML scan inside a progress status block; stash and summarize results
     with progress_status("Looking up peptides...") as tracker:
-        results = lookup_peptides_in_idxmls(
+        variant_groups = lookup_peptides_in_idxmls(
             idxmls, peptides, mzml_paths=mzmls,
             progress_callback=lambda current, total, message: tracker.update(
                 current, total, units="files", message=message,
@@ -69,8 +69,8 @@ def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
             error_callback=error_messages.append,
             workers=get_param(params, "workers", DEFAULTS.workers),
         )
-        st.session_state[get_state_key("variant_groups")] = results
-        _show_lookup_results_summary(results, error_messages, tracker, params)
+        st.session_state[get_state_key("variant_groups")] = variant_groups
+        _show_lookup_results_summary(variant_groups, error_messages, tracker, params)
 
 
 def _params_getter(params: dict):

@@ -307,13 +307,13 @@ def _load_spectra_from_mzml(
     its variant key. Errors are collected per spectrum (and once for the whole
     file if it fails to open) rather than raised — a failure on one spectrum or
     file never aborts the batch.
-    Returns a LoadResult carrying loaded as a list of
+    Returns a LoadResult carrying variant_key_psm_pairs as a list of
     (variant_key, PSM) pairs, plus the loaded / not-found counts
     and the error list. Runs inside a ProcessPoolExecutor worker, so the
     return value must remain picklable.
     """
     # Per-file accumulators — successfully loaded PSM carriers and error strings
-    loaded: List[Tuple[str, PSM]] = []
+    variant_key_psm_pairs: List[Tuple[str, PSM]] = []
     errors: List[str] = []
 
     try:
@@ -332,7 +332,7 @@ def _load_spectra_from_mzml(
                     errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
                     continue
                 spectrum = indexed_exp.getSpectrum(spectrum_index)
-                loaded.append((variant_key, _prepare_loaded_psm(spectrum, psm)))
+                variant_key_psm_pairs.append((variant_key, _prepare_loaded_psm(spectrum, psm)))
             # Per-spectrum failure: keep going so the rest of the batch loads
             except Exception as error:
                 errors.append(f"Error loading {psm.spectrum_id}: {error}")
@@ -345,9 +345,9 @@ def _load_spectra_from_mzml(
     return LoadResult(
         display_name=display_name,
         is_reference=is_reference,
-        loaded=loaded,
-        loaded_count=len(loaded),
-        not_found_count=len(matches_for_file) - len(loaded),
+        variant_key_psm_pairs=variant_key_psm_pairs,
+        loaded_count=len(variant_key_psm_pairs),
+        not_found_count=len(matches_for_file) - len(variant_key_psm_pairs),
         errors=errors,
     )
 
@@ -524,9 +524,9 @@ def _collect_reference_spectra(
     """
     # Bucket: one slot per known variant, fan out the loaded spectra
     reference_spectra: Dict[str, List[PSM]] = {variant_key: [] for variant_key in variant_groups}
-    for result in ref_results:
-        for variant_key, spectrum in result.loaded:
-            reference_spectra[variant_key].append(spectrum)
+    for load_result in ref_results:
+        for variant_key, reference_psm in load_result.variant_key_psm_pairs:
+            reference_spectra[variant_key].append(reference_psm)
 
     # Notify: per-variant callback only fires for variants that actually got refs
     notify = on_reference_loaded or (lambda *_: None)
@@ -552,11 +552,11 @@ def _stream_query_results(
     # Nothing to replay to: bail before touching any results
     if not on_query_ready:
         return
-    for result in query_results:
-        for variant_key, loaded in result.loaded:
+    for load_result in query_results:
+        for variant_key, query_psm in load_result.variant_key_psm_pairs:
             on_query_ready(StreamingResult(
-                query_spectrum=loaded,
-                reference_spectra=reference_spectra[variant_key],
+                query_psm=query_psm,
+                reference_psms=reference_spectra[variant_key],
                 variant_key=variant_key,
             ))
 
