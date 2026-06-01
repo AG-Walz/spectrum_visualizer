@@ -27,15 +27,19 @@ class TestCLI:
                                 encoding="utf-8", errors="replace")
         assert result.returncode != 0
 
-    def test_full_pipeline_with_test_data(self, tmp_path):
-        source_config = PROJECT_ROOT / "cli" / "config" / "config_example.yaml"
-        if not source_config.exists():
-            pytest.skip("config_example.yaml not found")
-
-        # Arrange: clone the example YAML but redirect export_directory to tmp_path
-        # so the test never writes into the developer's real exports folder.
-        config_data = yaml.safe_load(source_config.read_text(encoding="utf-8")) or {}
-        config_data["export_directory"] = str(tmp_path)
+    def test_full_pipeline_with_test_data(self, tmp_path, idxml_path, mzml_paths, target_peptides):
+        # Build the config from the in-repo examples/ fixtures rather than cloning
+        # config_example.yaml (whose paths point at developer-specific data). All
+        # other keys fall back to DEFAULTS. export_directory -> tmp_path so the
+        # test never writes into the developer's real exports folder.
+        config_data = {
+            "idxml_files": [idxml_path],
+            "mzml_files": list(mzml_paths),
+            "peptide_source": list(target_peptides),
+            "reference_substring": "",
+            "export_formats": ["png"],
+            "export_directory": str(tmp_path),
+        }
         config_path = tmp_path / "test_config.yaml"
         config_path.write_text(yaml.safe_dump(config_data), encoding="utf-8")
 

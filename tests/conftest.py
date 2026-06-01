@@ -13,9 +13,11 @@ from psm_utils import PSM, Peptidoform
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
-SMALL_DATASET = Path("/mnt/volume/nacho/data/ProCa_runs/small_dataset")
-IDXML_PATH = SMALL_DATASET / "ProT001_1_pout_filtered.idXML"
-MZML_DIR = SMALL_DATASET
+# In-repo fixture set (examples/) — portable, replaces the old external
+# /mnt/volume/nacho/data/ProCa_runs/small_dataset path that was removed.
+SMALL_DATASET = PROJECT_ROOT / "examples"
+IDXML_PATH = SMALL_DATASET / "idXML" / "ProT001_1_pout_filtered.idXML"
+MZML_DIR = SMALL_DATASET / "mzML"
 
 
 def pytest_configure(config):

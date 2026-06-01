@@ -7,10 +7,11 @@
 
 # --- 1. Main parameters ---
 
+# Paths are relative to the project root (run the CLI from there).
 idxml_files:
-  - /mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML
+  - examples/idXML/ProT001_1_pout_filtered.idXML
 mzml_files:
-  - /mnt/volume/nacho/data/ProCa_runs/small_dataset/231204_DF_ProCa_ProT001_*.mzML
+  - examples/mzML/231204_DF_ProCa_ProT001_*.mzML
 
 # "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
 # A .txt file must hold one peptide per line (commas are not separators).
