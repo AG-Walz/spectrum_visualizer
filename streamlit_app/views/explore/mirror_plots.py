@@ -24,7 +24,7 @@ from core.pipeline import (
     format_spectrum_labels,
 )
 from core.plotting import create_spectrum_plot
-from core.spectra.loaded_spectrum import source_label
+from core.spectra.streaming_types import source_label
 from core.spectra.mzml_native_ids import extract_id_number
 
 

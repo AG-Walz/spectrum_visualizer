@@ -30,7 +30,7 @@ from core.annotation.peak_matching import (
 from core.defaults import DEFAULTS
 from core.plotting.plot_worker import ComparisonTask
 from core.spectra.koina_prediction import predict_koina_spectrum
-from core.spectra.loaded_spectrum import psm_lookup_key, source_label
+from core.spectra.streaming_types import psm_lookup_key, source_label
 
 
 # ============================================================================

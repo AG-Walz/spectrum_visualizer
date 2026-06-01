@@ -28,7 +28,7 @@ import pyopenms as oms
 from psm_utils import PSM, PSMList
 
 from core.helpers import run_tasks
-from core.spectra.loaded_spectrum import (
+from core.spectra.streaming_types import (
     LoadResult,
     StreamingResult,
 )

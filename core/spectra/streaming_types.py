@@ -1,33 +1,13 @@
-"""Shared dataclasses for the mzML loader (split out so callers can import the types without pulling in pyopenms).
+"""Streaming carrier types + PSM helpers for the mzML loader (split out so
+callers can import the types without pulling in pyopenms). The carrier the
+pipeline streams is the psm_utils PSM itself, with its peaks attached to
+psm.spectrum; these dataclasses just bundle it with its variant key.
 """
 from dataclasses import dataclass
-from typing import List, Optional, Tuple, TYPE_CHECKING
-
-import numpy as np
+from typing import List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from psm_utils import PSM
-
-
-@dataclass
-class LoadedSpectrum:
-    """Single loaded MS2 spectrum object (peak arrays + metadata)
-    created in core.spectra.spectrum_streaming._build_loaded_spectrum wrapping
-    pyopenms.MSSpectrum and its PSM together, and in
-    core.pipeline.query_processing.get_koina_prediction building synthetic
-    LoadedSpectra without PSM.
-    """
-    spectrum_id: str
-    mz: np.ndarray
-    intensity: np.ndarray
-    precursor_mz: float
-    precursor_charge: int
-    peptidoform: str
-    base_sequence: str
-    source_file: str
-    is_reference: bool = False
-    rt: float = 0.0
-    match: Optional["PSM"] = None # koina spectra have no PSM match
 
 
 def source_label(psm) -> str:

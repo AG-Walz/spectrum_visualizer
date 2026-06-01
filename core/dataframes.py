@@ -18,7 +18,7 @@ import polars as pl
 from psm_utils import Peptidoform, PSM, PSMList
 from psm_utils.peptidoform import PeptidoformException
 
-from core.spectra.loaded_spectrum import psm_lookup_key
+from core.spectra.streaming_types import psm_lookup_key
 
 logger = logging.getLogger(__name__)
 
