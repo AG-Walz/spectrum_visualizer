@@ -166,11 +166,13 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str
     The reference label is "" when reference_spectrum is None (a
     single, unpaired query).
     """
-    query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.match.retention_time:.1f})"
+    query_psm = query_spectrum.match
+    query_label = f"Query: {source_label(query_psm)} (RT: {query_psm.retention_time:.1f})"
     # Guard clause: an unpaired query has no reference label to build
     if reference_spectrum is None:
         return query_label, ""
-    reference_label = f"Ref: {source_label(reference_spectrum)} (RT: {reference_spectrum.match.retention_time:.1f})"
+    reference_psm = reference_spectrum.match
+    reference_label = f"Ref: {source_label(reference_psm)} (RT: {reference_psm.retention_time:.1f})"
     return query_label, reference_label
 
 
@@ -252,8 +254,8 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
             "Peptide": base_sequence,
             "Modification": modification,
             "Charge": query_psm.get_precursor_charge() or 0,
-            "Query": source_label(query_spectrum),
-            "Reference": source_label(reference_spectrum),
+            "Query": source_label(query_psm),
+            "Reference": source_label(reference_psm),
             "query_spectrum_id": query_psm.spectrum_id,
             "ref_spectrum_id": reference_psm.spectrum_id,
             "query_rt": query_psm.retention_time,
@@ -302,7 +304,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
         references = reference_store.get(variant_key, []) if variant_key else []
         folder_name = sanitize_fn(peptidoform)
         plot_title = f"{peptidoform} +{charge}"
-        query_src = source_label(query_spectrum)
+        query_src = source_label(query_psm)
 
         if references:
             # Mirror tasks: one per reference, with metrics + HTML output
@@ -310,7 +312,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                 task_id += 1
                 metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
                 query_label, reference_label = format_spectrum_labels(query_spectrum, reference_spectrum)
-                safe_filename = sanitize_fn(f"{query_src}_vs_{source_label(reference_spectrum)}")
+                safe_filename = sanitize_fn(f"{query_src}_vs_{source_label(reference_spectrum.match)}")
                 html_path = (
                     str(Path(html_dir) / folder_name / f"{safe_filename}.html")
                     if html_dir else ""

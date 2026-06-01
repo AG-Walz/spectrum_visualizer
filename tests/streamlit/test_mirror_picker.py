@@ -16,12 +16,22 @@ from tests.conftest import make_peptide_match
 
 def _spec(source_file: str, spectrum_id: str, charge: int = 2,
           rt: float = 12.5, peptidoform: str = "PEPTIDEK",
-          match=None, is_ref: bool = False) -> LoadedSpectrum:
-    """Build a tiny two-peak LoadedSpectrum for picker-frame tests."""
+          match=None, is_ref: bool = False, score: float = 0.95) -> LoadedSpectrum:
+    """Build a tiny two-peak LoadedSpectrum for picker-frame tests.
+
+    Every spectrum is PSM-backed in production, so a carrier match is attached
+    when not supplied — run derived from source_file so source_label(psm) matches."""
+    mz = np.array([100.0, 200.0])
+    intensity = np.array([1000.0, 2000.0])
+    if match is None:
+        match = make_peptide_match(spectrum_id=spectrum_id, peptidoform=peptidoform,
+                                   charge=charge, score=score, mzml_filename=source_file)
+        match.retention_time = rt
+        match.spectrum = {"mz": mz, "intensity": intensity}
     return LoadedSpectrum(
         spectrum_id=spectrum_id,
-        mz=np.array([100.0, 200.0]),
-        intensity=np.array([1000.0, 2000.0]),
+        mz=mz,
+        intensity=intensity,
         precursor_mz=400.0,
         precursor_charge=charge,
         peptidoform=peptidoform,
@@ -69,10 +79,10 @@ class TestEligibleVariants:
 
 class TestBuildPickerFrames:
     def test_columns_and_keys(self):
-        match = make_peptide_match(score=0.875)
-        annotated_queries = {7: (_spec("q1.mzML", "scan=42", match=match), None)}
+        annotated_queries = {7: (_spec("q1.mzML", "scan=42", score=0.875), None)}
         reference_store = {
-            "PEPTIDEK": [(_spec("r1.mzML", "scan=10", is_ref=True), None)]
+            # score 0.5 is exact in Float32 (the picker's score dtype)
+            "PEPTIDEK": [(_spec("r1.mzML", "scan=10", is_ref=True, score=0.5), None)]
         }
         psm_to_vk = {7: "PEPTIDEK"}
 
@@ -86,7 +96,8 @@ class TestBuildPickerFrames:
         assert query.columns == ["psm_id", "mzml", "scan", "rt", "charge", "score"]
         assert ref.row(0, named=True) == {
             "id": _ref_row_id("PEPTIDEK", 0),
-            "mzml": "r1", "scan": 10, "rt": 12.5, "charge": 2, "score": None,
+            # Experimental references are PSM-backed, so they now carry a score.
+            "mzml": "r1", "scan": 10, "rt": 12.5, "charge": 2, "score": 0.5,
         }
         assert query.row(0, named=True) == {
             "psm_id": 7, "mzml": "q1", "scan": 42, "rt": 12.5, "charge": 2, "score": 0.875,
@@ -105,11 +116,11 @@ class TestBuildPickerFrames:
         assert _ref_row_id("VARIANT_A|", 0) == ids_for_a[0]
 
     def test_koina_reference_renders_as_blank_scan(self):
-        # Koina spectra use spectrum_id="koina_prediction" (no digits, no match)
-        # ⇒ scan + score must be None so the Tabulator cell renders blank.
-        annotated_queries = {0: (_spec("q.mzML", "scan=1", match=make_peptide_match()), None)}
+        # Koina spectra use spectrum_id="koina_prediction" (no digits) and have
+        # no search score ⇒ scan + score must be None so the cell renders blank.
+        annotated_queries = {0: (_spec("q.mzML", "scan=1"), None)}
         reference_store = {
-            "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True), None)]
+            "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True, score=None), None)]
         }
         psm_to_vk = {0: "PEPTIDEK"}
 
@@ -117,9 +128,7 @@ class TestBuildPickerFrames:
             "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
         )
         row = ref_lazy.collect().row(0, named=True)
-        # LoadedSpectrum.source_label returns the source_file stem
-        # ("Koina:ms2pip") when set — it only falls back to bare "Koina"
-        # if source_file is empty.
+        # source_label returns the PSM run ("Koina:ms2pip") for Koina references.
         assert row["mzml"] == "Koina:ms2pip"
         assert row["scan"] is None
         assert row["score"] is None
@@ -127,8 +136,8 @@ class TestBuildPickerFrames:
     def test_filters_queries_by_variant_key(self):
         # Two queries, only one matches the chosen variant — the other is dropped.
         annotated_queries = {
-            5: (_spec("q.mzML", "scan=5", match=make_peptide_match(peptidoform="A")), None),
-            6: (_spec("q.mzML", "scan=6", match=make_peptide_match(peptidoform="B")), None),
+            5: (_spec("q.mzML", "scan=5", peptidoform="A"), None),
+            6: (_spec("q.mzML", "scan=6", peptidoform="B"), None),
         }
         reference_store = {
             "A": [(_spec("r.mzML", "scan=1", is_ref=True), None)],
@@ -153,8 +162,7 @@ class TestBuildPickerFrames:
         assert query.columns == ["psm_id", "mzml", "scan", "rt", "charge", "score"]
 
     def test_nan_score_becomes_none(self):
-        match = make_peptide_match(score=float("nan"))
-        annotated_queries = {0: (_spec("q.mzML", "scan=1", match=match), None)}
+        annotated_queries = {0: (_spec("q.mzML", "scan=1", score=float("nan")), None)}
         reference_store = {
             "PEPTIDEK": [(_spec("r.mzML", "scan=1", is_ref=True), None)]
         }

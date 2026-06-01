@@ -1,7 +1,6 @@
 """Shared dataclasses for the mzML loader (split out so callers can import the types without pulling in pyopenms).
 """
 from dataclasses import dataclass
-from pathlib import Path
 from typing import List, Optional, Tuple, TYPE_CHECKING
 
 import numpy as np
@@ -31,10 +30,11 @@ class LoadedSpectrum:
     match: Optional["PSM"] = None # koina spectra have no PSM match
 
 
-def source_label(spectrum) -> str:
-    """Returns filename stem for plot titles or picker tables and Koina for synthetic reference spectra.
+def source_label(psm) -> str:
+    """Return the run name for plot titles / picker tables, read off the PSM.
+    Koina references carry run="Koina:<model>"; falls back to "Koina" when unset.
     """
-    return Path(spectrum.source_file).stem if spectrum.source_file else "Koina"
+    return psm.run or "Koina"
 
 
 @dataclass

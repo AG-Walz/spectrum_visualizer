@@ -60,16 +60,16 @@ def _build_picker_frames(
     """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real psm_id.
     """
     def picker_columns(spec) -> dict:
-        # Pull match.score if present; None for NaN or no-match (e.g. Koina-only)
-        score = None
-        if spec.match is not None:
-            raw = spec.match.score
-            score = float(raw) if raw == raw else None
+        # Every spectrum is PSM-backed; read display fields off the carrier PSM.
+        psm = spec.match
+        # score is None for no search score (Koina) or NaN
+        raw = psm.score
+        score = float(raw) if raw is not None and raw == raw else None
         return {
-            "mzml": source_label(spec),
-            "scan": extract_id_number(spec.spectrum_id),
-            "rt": float(spec.rt) if spec.rt is not None else None,
-            "charge": int(spec.precursor_charge or 0),
+            "mzml": source_label(psm),
+            "scan": extract_id_number(psm.spectrum_id),
+            "rt": float(psm.retention_time) if psm.retention_time is not None else None,
+            "charge": int(psm.get_precursor_charge() or 0),
             "score": score,
         }
 
