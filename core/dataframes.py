@@ -101,7 +101,7 @@ def build_psm_table(
                 "id": psm_id,
                 "variant_key": variant_key,
                 "base_sequence": base_sequence,
-                "modification": variant_key if variant_key != base_sequence else "(unmodified)",
+                "modification": variant_key if psm.peptidoform.is_modified else "(unmodified)",
                 "display_label": variant_key,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,

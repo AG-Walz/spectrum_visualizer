@@ -22,6 +22,8 @@ def test_get_koina_prediction_attaches_synthetic_psm(monkeypatch):
     assert psm.run == "Koina:ms2pip_timsTOF2024"
     assert np.array_equal(psm.spectrum["mz"], predicted["mz"].to_numpy())
     assert np.array_equal(psm.spectrum["intensity"], predicted["intensity"].to_numpy())
+    # Step 5b: precursor m/z is the theoretical m/z (no measured precursor).
+    assert psm.precursor_mz == psm.peptidoform.theoretical_mz
 
 
 def test_get_koina_prediction_returns_none_on_empty(monkeypatch):

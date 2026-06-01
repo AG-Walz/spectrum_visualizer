@@ -63,8 +63,8 @@ def get_koina_prediction(
     # Back the Koina reference with a synthetic PSM carrier holding the predicted
     # peaks, so predicted references are PSMs like experimental ones (no idXML
     # provenance, run="Koina:<model>"). Charge is embedded in the peptidoform so
-    # get_precursor_charge() resolves it; precursor_mz is unknown (filled in
-    # Step 5 from the theoretical m/z).
+    # get_precursor_charge() resolves it; precursor_mz is the theoretical m/z
+    # (no measured precursor for a predicted spectrum).
     reference_psm = PSM(
         peptidoform=Peptidoform(f"{peptidoform}/{charge}"),
         spectrum_id="koina_prediction",
@@ -72,6 +72,7 @@ def get_koina_prediction(
         spectrum={"mz": koina_mz, "intensity": koina_intensity},
         retention_time=0.0,
     )
+    reference_psm.precursor_mz = reference_psm.peptidoform.theoretical_mz
 
     # Annotate: reuse Koina's native AI-predicted ion labels directly
     reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
@@ -227,8 +228,8 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     query_spectrum = result.query_spectrum
     query_psm = query_spectrum
     base_sequence = query_psm.peptidoform.sequence.upper()
-    # Modification column is blank for the unmodified variant (variant key == bare sequence)
-    modification = result.variant_key if result.variant_key != base_sequence else ""
+    # Modification column is blank for the unmodified variant
+    modification = result.variant_key if query_psm.peptidoform.is_modified else ""
     comparison_rows = []
     for reference_spectrum, reference_frame in references:
         reference_psm = reference_spectrum

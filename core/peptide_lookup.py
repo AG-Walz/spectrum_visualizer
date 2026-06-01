@@ -207,7 +207,7 @@ def summarize_lookup_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame
         if not psm_list:
             continue
         base = psm_list[0].peptidoform.sequence.upper()
-        modification = variant_key if variant_key != base else "(unmodified)"
+        modification = variant_key if psm_list[0].peptidoform.is_modified else "(unmodified)"
         rows.extend({
             "base_sequence": base,
             "modification": modification,
