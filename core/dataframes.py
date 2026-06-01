@@ -212,7 +212,7 @@ def build_sequence_dataframe(
 
 
 def build_heatmap_dataframe(spectra: list[LoadedSpectrum]) -> pl.LazyFrame:
-    """Stack peaks into an RT × m/z LazyFrame feeding the openms_insight Heatmap.
+    """Stack peaks into an RT x m/z LazyFrame feeding the openms_insight Heatmap.
     Each spectrum contributes one row per peak — its scalar retention time is
     broadcast across every m/z value. Returns a LazyFrame matching
     HEATMAP_SCHEMA, or a typed-empty frame when no spectrum has peaks.
