@@ -168,7 +168,8 @@ def _render_mirror_pair(query_spectrum, query_frame,
     """
     metrics = compute_all_metrics(query_frame, reference_frame)
     query_label, ref_label = format_spectrum_labels(query_spectrum, reference_spectrum)
-    title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
+    query_psm = query_spectrum.match
+    title = f"{query_psm.peptidoform.modified_sequence} +{query_psm.get_precursor_charge() or 0}"
     fig = create_spectrum_plot(
         query_frame, reference_frame,
         backend="ms_plotly",

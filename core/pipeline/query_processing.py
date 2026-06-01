@@ -166,11 +166,11 @@ def format_spectrum_labels(query_spectrum, reference_spectrum=None) -> tuple[str
     The reference label is "" when reference_spectrum is None (a
     single, unpaired query).
     """
-    query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.rt:.1f})"
+    query_label = f"Query: {source_label(query_spectrum)} (RT: {query_spectrum.match.retention_time:.1f})"
     # Guard clause: an unpaired query has no reference label to build
     if reference_spectrum is None:
         return query_label, ""
-    reference_label = f"Ref: {source_label(reference_spectrum)} (RT: {reference_spectrum.rt:.1f})"
+    reference_label = f"Ref: {source_label(reference_spectrum)} (RT: {reference_spectrum.match.retention_time:.1f})"
     return query_label, reference_label
 
 
@@ -234,26 +234,30 @@ def process_query_result(result, psm_lookup, annotation_kwargs,
     else:
         references = reference_store.get(result.variant_key, [])
 
-    # Compute metrics: one comparison row per (query, reference) pair
+    # Compute metrics: one comparison row per (query, reference) pair. Identity
+    # fields are read off the carrier PSM (.match); source_label still reads the
+    # spectrum until Step 4 reworks it to take a PSM.
     query_spectrum = result.query_spectrum
-    base_sequence = query_spectrum.base_sequence
+    query_psm = query_spectrum.match
+    base_sequence = query_psm.peptidoform.sequence.upper()
     # Modification column is blank for the unmodified variant (variant key == bare sequence)
     modification = result.variant_key if result.variant_key != base_sequence else ""
     comparison_rows = []
     for reference_spectrum, reference_frame in references:
+        reference_psm = reference_spectrum.match
         metrics = compute_all_metrics(query_frame, reference_frame)
         # Identity columns: per-PSM metadata + query/reference labels and RTs
         row: dict = {
             "psm_id": psm_id,
             "Peptide": base_sequence,
             "Modification": modification,
-            "Charge": query_spectrum.precursor_charge,
+            "Charge": query_psm.get_precursor_charge() or 0,
             "Query": source_label(query_spectrum),
             "Reference": source_label(reference_spectrum),
-            "query_spectrum_id": query_spectrum.spectrum_id,
-            "ref_spectrum_id": reference_spectrum.spectrum_id,
-            "query_rt": query_spectrum.rt,
-            "ref_rt": reference_spectrum.rt,
+            "query_spectrum_id": query_psm.spectrum_id,
+            "ref_spectrum_id": reference_psm.spectrum_id,
+            "query_rt": query_psm.retention_time,
+            "ref_rt": reference_psm.retention_time,
         }
         # Metric columns: short keys -> display names, NaN for missing values
         for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
@@ -290,10 +294,14 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     tasks: list[ComparisonTask] = []
     task_id = 0
     for psm_id, query_spectrum, query_frame in sorted(annotated_queries, key=lambda x: x[0]):
+        # Identity fields off the carrier PSM; source_label still reads the spectrum.
+        query_psm = query_spectrum.match
+        peptidoform = query_psm.peptidoform.modified_sequence
+        charge = query_psm.get_precursor_charge() or 0
         variant_key = psm_id_to_variant_key.get(psm_id)
         references = reference_store.get(variant_key, []) if variant_key else []
-        folder_name = sanitize_fn(query_spectrum.peptidoform)
-        plot_title = f"{query_spectrum.peptidoform} +{query_spectrum.precursor_charge}"
+        folder_name = sanitize_fn(peptidoform)
+        plot_title = f"{peptidoform} +{charge}"
         query_src = source_label(query_spectrum)
 
         if references:
@@ -316,7 +324,7 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
                     export_formats=export_formats,
                     figure_size=figure_size, export_resolution=export_resolution,
                     html_plot_path=html_path, metrics_text=metrics_text,
-                    peptide=query_spectrum.peptidoform, charge=query_spectrum.precursor_charge,
+                    peptide=peptidoform, charge=charge,
                 ))
         elif plot_unpaired_queries:
             # Single task: unpaired query, no metrics overlay, no HTML
@@ -324,13 +332,13 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
             tasks.append(ComparisonTask(
                 task_id=task_id, task_type="single",
                 query_frame=query_frame, reference_frame=None,
-                query_label=f"{query_src} (RT: {query_spectrum.rt:.1f})", reference_label="",
+                query_label=f"{query_src} (RT: {query_psm.retention_time:.1f})", reference_label="",
                 plot_title=plot_title, folder_name=folder_name,
                 safe_filename=sanitize_fn(query_src),
                 png_dir=png_dir, svg_dir=svg_dir, pdf_dir=pdf_dir,
                 export_formats=[f for f in export_formats if f != "html"],
                 figure_size=figure_size, export_resolution=export_resolution,
                 html_plot_path="", metrics_text="",
-                peptide=query_spectrum.peptidoform, charge=query_spectrum.precursor_charge,
+                peptide=peptidoform, charge=charge,
             ))
     return tasks

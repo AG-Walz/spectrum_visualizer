@@ -52,6 +52,14 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
         peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
         spectrum_id="scan=42", charge=2, score=0.9, mzml_filename="q.mzML",
     )
+    match.retention_time = 12.5
+    # Experimental references are PSM-backed too; carry a match so the consumers
+    # that read spec.match (labels, picker) work.
+    ref_match = make_peptide_match(
+        peptidoform="PEPTIDEK", base_seq="PEPTIDEK",
+        spectrum_id="scan=10", charge=2, score=0.8, mzml_filename="ref.mzML",
+    )
+    ref_match.retention_time = 11.0
     spec_kwargs = dict(
         mz=np.array([100.0, 200.0]),
         intensity=np.array([1000.0, 2000.0]),
@@ -67,7 +75,7 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
     query_spec = LoadedSpectrum(spectrum_id="scan=42", source_file="q.mzML",
                                 rt=12.5, match=match, **spec_kwargs)
     ref_spec = LoadedSpectrum(spectrum_id="scan=10", source_file="ref.mzML",
-                              rt=11.0, is_reference=True, **spec_kwargs)
+                              rt=11.0, is_reference=True, match=ref_match, **spec_kwargs)
     variant_key = "PEPTIDEK"
     variant_groups = {variant_key: PSMList(psm_list=[match])}
     at.session_state[f"{STATE_PREFIX}.variant_groups"] = variant_groups
