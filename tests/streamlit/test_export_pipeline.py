@@ -150,19 +150,19 @@ class TestRunExport:
 
     def _invoke_export(self, tmp_path, **flags):
         export_dir = str(tmp_path / "exports")
-        defaults = dict(do_parquet=False, do_csv=False, do_mirror=False,
-                        do_summary=False, do_html=False)
+        defaults = dict(export_parquet=False, export_csv=False, export_mirror=False,
+                        export_summary=False, export_html=False)
         defaults.update(flags)
         _run_export({}, export_dir, **defaults)
         return export_dir
 
     @pytest.mark.parametrize("flag, check", [
         # (selection flag, callable(export_root) -> asserts artefact exists)
-        ("do_parquet", lambda root: list(root.glob("*.parquet"))),
-        ("do_csv",     lambda root: [root / "comparison_summary.csv"]
+        ("export_parquet", lambda root: list(root.glob("*.parquet"))),
+        ("export_csv",     lambda root: [root / "comparison_summary.csv"]
                                     if (root / "comparison_summary.csv").exists() else []),
-        ("do_mirror",  lambda root: list(root.rglob("*.png")) + list(root.rglob("*.svg"))),
-        ("do_summary", lambda root: list((root / "summary").rglob("*.*"))
+        ("export_mirror",  lambda root: list(root.rglob("*.png")) + list(root.rglob("*.svg"))),
+        ("export_summary", lambda root: list((root / "summary").rglob("*.*"))
                                     if (root / "summary").exists() else []),
     ], ids=["parquet", "csv", "mirror", "summary"])
     def test_each_format_writes_expected_artefacts(self, mock_st, flag, check):
@@ -177,7 +177,7 @@ class TestRunExport:
     def test_csv_columns_round_trip(self, mock_st):
         """CSV export round-trip: Peptide column survives and row count matches comparison_frame."""
         _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_csv=True)
+        export_dir = self._invoke_export(tmp_path, export_csv=True)
         export_root = list(Path(export_dir).iterdir())[0]
         frame = pd.read_csv(export_root / "comparison_summary.csv")
         assert len(frame) == 2
@@ -186,7 +186,7 @@ class TestRunExport:
     def test_export_creates_versioned_directory(self, mock_st):
         """Streamlit reuses the CLI's {project}_{NNN}_{YYYYMMDD} versioned layout."""
         _, tmp_path = mock_st
-        export_dir = self._invoke_export(tmp_path, do_parquet=True)
+        export_dir = self._invoke_export(tmp_path, export_parquet=True)
 
         export_root = list(Path(export_dir).iterdir())[0]
         # Expected layout: MSpecViz_analysis_001_20260420 (NNN counter + YYYYMMDD)

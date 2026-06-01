@@ -95,7 +95,8 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
 
     # Stash annotation payloads + comparison rows for the Explore page
     st.session_state[get_state_key("annotated_queries")] = {
-        psm_id: (spec, df) for psm_id, spec, df in annotated_queries
+        psm_id: (query_psm, annotated_peaks_frame)
+        for psm_id, query_psm, annotated_peaks_frame in annotated_queries
     }
     st.session_state[get_state_key("reference_store")] = reference_store
     st.session_state[get_state_key("comparison_frame")] = (

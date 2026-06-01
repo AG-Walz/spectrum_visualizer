@@ -28,12 +28,12 @@ from core.spectra.streaming_types import source_label
 from core.spectra.mzml_native_ids import extract_id_number
 
 
-def _eligible_variants(variant_groups: dict, reference_store: dict, psm_to_vk: dict) -> list:
+def _eligible_variants(variant_groups: dict, reference_store: dict, psm_id_to_variant_key: dict) -> list:
     """Return variants that have at least one query PSM AND at least one reference loaded.
     """
-    has_query = set(psm_to_vk.values())
-    return [vk for vk in variant_groups
-            if vk in has_query and reference_store.get(vk)]
+    variant_keys_with_query = set(psm_id_to_variant_key.values())
+    return [variant_key for variant_key in variant_groups
+            if variant_key in variant_keys_with_query and reference_store.get(variant_key)]
 
 
 def _ref_row_id(variant_key: str, position: int) -> int:
@@ -55,7 +55,7 @@ _PICKER_QUERY_SCHEMA = {
 
 
 def _build_picker_frames(
-    variant_key: str, annotated_queries: dict, reference_store: dict, psm_to_vk: dict,
+    variant_key: str, annotated_queries: dict, reference_store: dict, psm_id_to_variant_key: dict,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real psm_id.
     """
@@ -81,7 +81,7 @@ def _build_picker_frames(
     query_rows = [
         {"psm_id": psm_id, **picker_columns(psm)}
         for psm_id, (psm, _) in annotated_queries.items()
-        if psm_to_vk.get(psm_id) == variant_key
+        if psm_id_to_variant_key.get(psm_id) == variant_key
     ]
 
     # Materialise: typed-empty LazyFrame when no rows so the Table still renders
@@ -224,16 +224,16 @@ def mirror_plots_fragment(params: dict):
         return
 
     # Eligibility: variants needing both a query PSM and a reference to mirror
-    psm_to_vk = build_psm_to_variant_mapping(variant_groups, annotated_queries)
-    eligible = _eligible_variants(variant_groups, reference_store, psm_to_vk)
+    psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
+    eligible = _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key)
 
     # Hidden caption: surface how many variants were dropped for missing a reference pair
-    has_query = set(psm_to_vk.values())
-    queryful = sum(1 for variant_key in variant_groups if variant_key in has_query)
-    hidden = queryful - len(eligible)
-    if hidden:
+    variant_keys_with_query = set(psm_id_to_variant_key.values())
+    variants_with_query_count = sum(1 for variant_key in variant_groups if variant_key in variant_keys_with_query)
+    hidden_variant_count = variants_with_query_count - len(eligible)
+    if hidden_variant_count:
         st.caption(
-            f"{hidden} peptide(s) hidden — no reference / experimental pair available."
+            f"{hidden_variant_count} peptide(s) hidden — no reference / experimental pair available."
         )
     if not eligible:
         query_count = len(annotated_queries)
@@ -263,7 +263,7 @@ def mirror_plots_fragment(params: dict):
 
     # Picker tables: two side-by-side openms_insight Tables for the chosen variant
     reference_picker_frame, query_picker_frame = _build_picker_frames(
-        chosen, annotated_queries, reference_store, psm_to_vk,
+        chosen, annotated_queries, reference_store, psm_id_to_variant_key,
     )
     _render_picker_tables(
         reference_picker_frame, query_picker_frame, _resolve_picker_cache_path(params), state_manager,

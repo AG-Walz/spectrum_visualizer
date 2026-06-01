@@ -119,10 +119,10 @@ def _commit_picked_peptides(selected: list[str], pending_key: str, mode: str) ->
     """Stage selected into pending_key (replace or append to the textarea) and rerun."""
     if mode == "append":
         existing = parse_peptide_list(st.session_state.get('target_peptides', ''))
-        peps = list(dict.fromkeys(existing + selected))
+        target_peptides = list(dict.fromkeys(existing + selected))
     else:
-        peps = selected
-    st.session_state[pending_key] = "\n".join(peps)
+        target_peptides = selected
+    st.session_state[pending_key] = "\n".join(target_peptides)
     st.rerun()
 
 

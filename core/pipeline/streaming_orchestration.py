@@ -44,14 +44,14 @@ def make_query_ready_callback(
         extended into comparison_rows, and the progress counter advances. Returns None.
         """
         # Annotate the query, resolve its references, and score every pair.
-        processed = process_query_result(
+        annotation_outcome = process_query_result(
             streaming_result, psm_lookup, annotation_kwargs, reference_store, **koina_kwargs,
         )
         # Skip spectra with no matching PSM in the lookup results.
-        if processed is None:
+        if annotation_outcome is None:
             return
         # Buffer the annotated query and its per-pair metric rows for the caller.
-        psm_id, query_psm, query_frame, rows = processed
+        psm_id, query_psm, query_frame, rows = annotation_outcome
         annotated_queries.append((psm_id, query_psm, query_frame))
         comparison_rows.extend(rows)
         # Advance the running count and report progress to the frontend.

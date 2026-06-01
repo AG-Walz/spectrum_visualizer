@@ -11,11 +11,12 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from streamlit_app.views.widgets.file_browser import render_directory_browser
 from streamlit_app.views.widgets.peptide_input import render_peptide_input
-from core.defaults import DEFAULTS
+from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 from core.helpers import (
     DuplicateBasenameError,
     ensure_unique_basenames,
 )
+from core.spectra import get_koina_settings
 
 
 def _get_nested_value(source: dict, *keys, default=None):
@@ -28,13 +29,11 @@ def _get_nested_value(source: dict, *keys, default=None):
             return default
     return current if current is not None else default
 
-from core.defaults import INSTRUMENT_TYPES, KOINA_MODELS
-from core.spectra import get_koina_settings
 
 params = page_setup()
 
 
-def file_selection_fragment():
+def render_file_selection():
     """Render side-by-side directory browsers for idXML (identifications) and mzML (spectra)."""
     # Resolve starting directories: workspace override beats settings.json default
     _settings = st.session_state.get("settings", {})
@@ -78,7 +77,7 @@ def file_selection_fragment():
     save_params(params)
 
 
-def reference_selection_fragment():
+def render_reference_selection():
     """Configure the substring that splits selected mzMLs into reference vs query files."""
     # Guard: require mzML selections before showing the reference UI
     st.subheader("Reference Identification")
@@ -131,7 +130,7 @@ def reference_selection_fragment():
     save_params(params)
 
 
-def settings_fragment():
+def render_settings():
     """Render annotation, display, performance, and Koina prediction widgets — all writing into params."""
     st.subheader("Settings")
     available_ions = _get_nested_value(st.session_state.get("settings", {}), "ion_types", "available",
@@ -221,16 +220,16 @@ def render():
     st.caption("Configure files, peptides, reference, and annotation settings")
 
     # Files: idXML + mzML directory browsers
-    file_selection_fragment()
+    render_file_selection()
     st.markdown("---")
     # Peptides: target sequence list input (handled by shared widget)
     render_peptide_input(params)
     st.markdown("---")
     # Reference: substring that splits mzMLs into reference vs query
-    reference_selection_fragment()
+    render_reference_selection()
     st.markdown("---")
     # Settings: annotation, performance, Koina
-    settings_fragment()
+    render_settings()
 
     save_params(params)
 

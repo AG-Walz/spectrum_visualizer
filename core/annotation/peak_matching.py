@@ -33,20 +33,20 @@ def _spec_to_dataframe(spec: MsmsSpectrum) -> pd.DataFrame:
 
     # Walk through all annotated peaks, else mark as unannotated
     for peak_ann in spec.annotation:
-        fa_list = peak_ann.fragment_annotations if peak_ann else []
-        if not fa_list:
+        fragment_annotations = peak_ann.fragment_annotations if peak_ann else []
+        if not fragment_annotations:
             annotations.append("unannotated")
             ion_types.append("unannotated")
             charges.append(0)
             flags.append(False)
             continue
-        # Take the first annotation if there are multiple 
-        fa = fa_list[0]
+        # Take the first annotation if there are multiple
+        fragment_annotation = fragment_annotations[0]
         # Reconstruct the annotation string as {ion_type}{loss_suffix}+{charge}
-        loss_suffix = f"-{fa.neutral_loss}" if fa.neutral_loss else ""
-        annotations.append(f"{fa.ion_type}{loss_suffix}+{fa.charge}")
-        ion_types.append(get_ion_type(fa.ion_type))
-        charges.append(int(fa.charge))
+        loss_suffix = f"-{fragment_annotation.neutral_loss}" if fragment_annotation.neutral_loss else ""
+        annotations.append(f"{fragment_annotation.ion_type}{loss_suffix}+{fragment_annotation.charge}")
+        ion_types.append(get_ion_type(fragment_annotation.ion_type))
+        charges.append(int(fragment_annotation.charge))
         flags.append(True)
 
     # Pack the columns into a peaks-frame schema
@@ -127,29 +127,29 @@ def annotate_spectrum(
 
 
 def _filter_and_normalize(
-    annotated: pd.DataFrame, ion_types: list[str], normalize: bool,
+    annotated_peaks: pd.DataFrame, ion_types: list[str], normalize: bool,
 ) -> pd.DataFrame:
     """Drop annotations whose ion type the user didn't ask for and optionally normalise to max=1.
     """
-    if annotated.empty:
-        return annotated
+    if annotated_peaks.empty:
+        return annotated_peaks
 
     # Mask peaks outside the requested ion_types, which lose their label but stay in the dataframe
     keep_letters = set(ion_types) | {"unannotated"}
-    unwanted = ~annotated["ion_type"].isin(keep_letters)
+    unwanted = ~annotated_peaks["ion_type"].isin(keep_letters)
     if unwanted.any():
-        annotated.loc[unwanted, "annotation"] = "unannotated"
-        annotated.loc[unwanted, "ion_type"] = "unannotated"
-        annotated.loc[unwanted, "is_annotated"] = False
-        annotated.loc[unwanted, "charge"] = 0
+        annotated_peaks.loc[unwanted, "annotation"] = "unannotated"
+        annotated_peaks.loc[unwanted, "ion_type"] = "unannotated"
+        annotated_peaks.loc[unwanted, "is_annotated"] = False
+        annotated_peaks.loc[unwanted, "charge"] = 0
 
     # Normalise: rescale so the tallest peak sits at intensity 1.0 (mirror-plot convention)
     if normalize:
-        max_intensity = annotated["intensity"].max()
+        max_intensity = annotated_peaks["intensity"].max()
         if max_intensity and max_intensity > 0:
-            annotated["intensity"] = annotated["intensity"] / max_intensity
+            annotated_peaks["intensity"] = annotated_peaks["intensity"] / max_intensity
 
-    return annotated
+    return annotated_peaks
 
 
 def prepare_spectrum_for_plot(
@@ -166,14 +166,14 @@ def prepare_spectrum_for_plot(
     """Annotate an experimental spectrum, filter by ion types, and optionally normalise."""
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
-    annotated = annotate_spectrum(
+    annotated_peaks = annotate_spectrum(
         mz, intensity, peptidoform, charge,
         mz_tolerance=mz_tolerance,
         ion_types=ion_types,
         add_neutral_losses=add_neutral_losses,
         precursor_mz=precursor_mz,
     )
-    return _filter_and_normalize(annotated, ion_types, normalize)
+    return _filter_and_normalize(annotated_peaks, ion_types, normalize)
 
 
 def _parse_koina_charge(annotation: str) -> int:
@@ -200,12 +200,12 @@ def prepare_koina_spectrum_for_plot(
     if ion_types is None:
         ion_types = list(DEFAULTS.ion_types)
 
-    annotated = pd.DataFrame({
+    annotated_peaks = pd.DataFrame({
         "mz": koina_frame["mz"].values,
         "intensity": koina_frame["intensity"].values.astype(float),
         "annotation": koina_frame["annotation"].values,
         "charge": koina_frame["annotation"].apply(_parse_koina_charge).values,
         "is_annotated": True,
     })
-    annotated["ion_type"] = annotated["annotation"].apply(get_ion_type)
-    return _filter_and_normalize(annotated, ion_types, normalize)
+    annotated_peaks["ion_type"] = annotated_peaks["annotation"].apply(get_ion_type)
+    return _filter_and_normalize(annotated_peaks, ion_types, normalize)

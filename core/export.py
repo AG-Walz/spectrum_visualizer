@@ -219,10 +219,10 @@ def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
     if settings_file.exists():
         try:
             with open(settings_file, encoding="utf-8") as f:
-                saved = json.load(f)
-            saved["_last_run"] = datetime.now().isoformat()
+                existing_settings = json.load(f)
+            existing_settings["_last_run"] = datetime.now().isoformat()
             with open(settings_file, "w", encoding="utf-8") as f:
-                json.dump(saved, f, indent=2, default=str)
+                json.dump(existing_settings, f, indent=2, default=str)
         except (json.JSONDecodeError, OSError) as error:
             logger.warning(f"Could not update run_settings.json: {error}")
     # Fresh folder: stamp fingerprint + creation time, write new file
@@ -455,9 +455,13 @@ def run_export(
     mirror_plot_count = 0
     if selection.mirror_plots or selection.html:
         on_step("Generating mirror plots...")
-        # Normalise annotated_queries: dict {psm_id: (spec, df)} or list [(psm_id, spec, df)]
+        # Normalise annotated_queries: dict {psm_id: (query_psm, annotated_peaks_frame)}
+        # or list [(psm_id, query_psm, annotated_peaks_frame)]
         if isinstance(annotated_queries, dict):
-            queries_list = [(psm_id, spec, df) for psm_id, (spec, df) in annotated_queries.items()]
+            queries_list = [
+                (psm_id, query_psm, annotated_peaks_frame)
+                for psm_id, (query_psm, annotated_peaks_frame) in annotated_queries.items()
+            ]
         else:
             queries_list = list(annotated_queries)
         mirror_plot_count = _run_plot_tasks(

@@ -72,8 +72,8 @@ def _show_saved_files_expander(export_result) -> None:
             st.caption(f"  {file_path}")
 
 
-def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
-                do_mirror: bool, do_summary: bool, do_html: bool) -> Path | None:
+def _run_export(params: dict, export_dir: str, export_parquet: bool, export_csv: bool,
+                export_mirror: bool, export_summary: bool, export_html: bool) -> Path | None:
     """Drive core.export.run_export from the Export button and render the resulting gallery.
     """
     # Guard: refuse to export when Load & Annotate hasn't populated session state
@@ -84,8 +84,8 @@ def _run_export(params: dict, export_dir: str, do_parquet: bool, do_csv: bool,
 
     # Build config: format selection + plot settings shared with the CLI orchestrator
     selection = ExportSelection(
-        parquet=do_parquet, csv=do_csv,
-        mirror_plots=do_mirror, summary_plots=do_summary, html=do_html,
+        parquet=export_parquet, csv=export_csv,
+        mirror_plots=export_mirror, summary_plots=export_summary, html=export_html,
     )
     plot_settings = _build_plot_settings(params)
 

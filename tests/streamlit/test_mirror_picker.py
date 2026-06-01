@@ -38,27 +38,27 @@ class TestEligibleVariants:
     def test_keeps_variants_with_both_query_and_reference(self):
         variant_groups = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
-        psm_to_vk = {0: "PEPTIDEK"}
-        assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == ["PEPTIDEK"]
+        psm_id_to_variant_key = {0: "PEPTIDEK"}
+        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == ["PEPTIDEK"]
 
     def test_drops_variant_with_no_reference(self):
         variant_groups = {"PEPTIDEK": _empty_plist()}
         reference_store: dict = {}
-        psm_to_vk = {0: "PEPTIDEK"}
-        assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == []
+        psm_id_to_variant_key = {0: "PEPTIDEK"}
+        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == []
 
     def test_drops_variant_with_no_query(self):
         variant_groups = {"PEPTIDEK": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
-        psm_to_vk: dict = {}
-        assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == []
+        psm_id_to_variant_key: dict = {}
+        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == []
 
     def test_preserves_variant_groups_order(self):
         variant_groups = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
         reference_store = {vk: [(_spec("ref.mzML", "scan=1", is_ref=True), None)]
                            for vk in variant_groups}
-        psm_to_vk = {0: "AAA", 1: "BBB", 2: "CCC"}
-        assert _eligible_variants(variant_groups, reference_store, psm_to_vk) == [
+        psm_id_to_variant_key = {0: "AAA", 1: "BBB", 2: "CCC"}
+        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == [
             "AAA", "BBB", "CCC",
         ]
 
@@ -70,10 +70,10 @@ class TestBuildPickerFrames:
             # score 0.5 is exact in Float32 (the picker's score dtype)
             "PEPTIDEK": [(_spec("r1.mzML", "scan=10", is_ref=True, score=0.5), None)]
         }
-        psm_to_vk = {7: "PEPTIDEK"}
+        psm_id_to_variant_key = {7: "PEPTIDEK"}
 
         ref_lazy, query_lazy = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
         )
         ref = ref_lazy.collect()
         query = query_lazy.collect()
@@ -108,10 +108,10 @@ class TestBuildPickerFrames:
         reference_store = {
             "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True, score=None), None)]
         }
-        psm_to_vk = {0: "PEPTIDEK"}
+        psm_id_to_variant_key = {0: "PEPTIDEK"}
 
         ref_lazy, _ = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
         )
         row = ref_lazy.collect().row(0, named=True)
         # source_label returns the PSM run ("Koina:ms2pip") for Koina references.
@@ -129,10 +129,10 @@ class TestBuildPickerFrames:
             "A": [(_spec("r.mzML", "scan=1", is_ref=True), None)],
             "B": [(_spec("r.mzML", "scan=2", is_ref=True), None)],
         }
-        psm_to_vk = {5: "A", 6: "B"}
+        psm_id_to_variant_key = {5: "A", 6: "B"}
 
         _, query_lazy = _build_picker_frames(
-            "A", annotated_queries, reference_store, psm_to_vk,
+            "A", annotated_queries, reference_store, psm_id_to_variant_key,
         )
         df = query_lazy.collect()
         assert df.height == 1
@@ -152,9 +152,9 @@ class TestBuildPickerFrames:
         reference_store = {
             "PEPTIDEK": [(_spec("r.mzML", "scan=1", is_ref=True), None)]
         }
-        psm_to_vk = {0: "PEPTIDEK"}
+        psm_id_to_variant_key = {0: "PEPTIDEK"}
         _, query_lazy = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_to_vk,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
         )
         # pl.Float32 cannot represent NaN-as-null distinctly without the
         # explicit conversion in _safe_score — verify it lands as null.

@@ -27,13 +27,13 @@ def _needs_cache_regen():
     Call mark_rendered() after a successful render so the next rerun short-circuits.
     """
     cache_version = st.session_state.get(get_state_key("cache_version"), 0)
-    reg_key = get_state_key("cache_rendered_version")
-    needs = st.session_state.get(reg_key, -1) != cache_version
+    rendered_version_state_key = get_state_key("cache_rendered_version")
+    needs_regeneration = st.session_state.get(rendered_version_state_key, -1) != cache_version
 
     def mark_rendered():
-        st.session_state[reg_key] = cache_version
+        st.session_state[rendered_version_state_key] = cache_version
 
-    return needs, mark_rendered
+    return needs_regeneration, mark_rendered
 
 
 def _resolve_cache_path(params: dict) -> str:
@@ -48,9 +48,9 @@ def _resolve_cache_path(params: dict) -> str:
 def _get_state_manager() -> StateManager:
     """Lazily build the cross-component StateManager and stash it in session state.
     """
-    if "mspecviz_sm" not in st.session_state:
-        st.session_state["mspecviz_sm"] = StateManager(session_key="mspecviz_state")
-    return st.session_state["mspecviz_sm"]
+    if "explorer_state_manager" not in st.session_state:
+        st.session_state["explorer_state_manager"] = StateManager(session_key="mspecviz_state")
+    return st.session_state["explorer_state_manager"]
 
 
 def _show_selected_psm_banner(psm_frame: pl.LazyFrame | None, state_manager: StateManager) -> None:
@@ -96,12 +96,12 @@ def _render_sequence_view(
     st.subheader("Sequence Coverage")
     # Rename peaks columns: SequenceView expects peak_id/mass/intensity
     if needs_regeneration:
-        peaks_for_sv = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
+        peaks_for_sequence_view = peaks_frame.with_row_index("peak_id").rename({"x": "mass", "y": "intensity"})
     else:
-        peaks_for_sv = None
+        peaks_for_sequence_view = None
     sequence_view = _create_component(
         SequenceView, "sequence_view", cache_path, needs_regeneration,
-        sequence_data=sequence_frame, peaks_data=peaks_for_sv,
+        sequence_data=sequence_frame, peaks_data=peaks_for_sequence_view,
         filters={"selected_psm": "psm_id"},
         annotation_config={
             "ion_types": get_param(params, "ion_types", DEFAULTS.ion_types),

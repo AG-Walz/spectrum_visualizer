@@ -55,13 +55,13 @@ def _render_run_metadata(run_settings: dict) -> None:
     """Render the metadata column (peptides, files, tolerance, timestamps) inside a history expander.
     """
     peptides = run_settings.get("peptides", [])
-    pep_preview = ", ".join(peptides[:3])
+    peptide_preview = ", ".join(peptides[:3])
     if len(peptides) > 3:
-        pep_preview += f" ... +{len(peptides) - 3}"
+        peptide_preview += f" ... +{len(peptides) - 3}"
     idxml_count = len(run_settings.get("idxml_files", []))
     mzml_count = len(run_settings.get("mzml_files", []))
 
-    st.markdown(f"**Peptides:** {pep_preview or '--'}")
+    st.markdown(f"**Peptides:** {peptide_preview or '--'}")
     st.markdown(f"**Files:** {idxml_count} idXML, {mzml_count} mzML")
     st.markdown(f"**Reference substring:** `{run_settings.get('reference_substring') or '--'}`")
     st.markdown(f"**Ion types:** {', '.join(run_settings.get('ion_types', []))}")

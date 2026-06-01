@@ -503,7 +503,7 @@ def _filter_already_loaded(
     before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
         path_key: kept for path_key, matches in mzml_to_matches.items()
-        if (kept := [(psm, vk) for psm, vk in matches if (vk, psm.spectrum_id) not in skip_ids])
+        if (kept := [(psm, variant_key) for psm, variant_key in matches if (variant_key, psm.spectrum_id) not in skip_ids])
     }
     after = sum(len(matches) for matches in filtered.values())
     if before > after:
