@@ -44,7 +44,7 @@ def test_launch(launch):
 
 
 def _seed_mirror_picker_state(at: AppTest) -> None:
-    """Inject one variant + one query + one experimental ref so the picker fragment renders end-to-end.
+    """Inject one peptidoform + one query + one experimental ref so the picker fragment renders end-to-end.
 
     Annotation frames carry the columns compute_all_metrics requires so the auto-rendered first-pair plot doesn't blow up."""
     peaks = {"mz": np.array([100.0, 200.0]), "intensity": np.array([1000.0, 2000.0])}
@@ -65,11 +65,11 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
         "annotation": ["b1", "y2"],
         "is_annotated": [True, True],
     })
-    variant_key = "PEPTIDEK"
-    variant_groups = {variant_key: PSMList(psm_list=[query_psm])}
-    at.session_state[f"{STATE_PREFIX}.variant_groups"] = variant_groups
+    peptidoform = "PEPTIDEK"
+    grouped_psms = {peptidoform: PSMList(psm_list=[query_psm])}
+    at.session_state[f"{STATE_PREFIX}.grouped_psms"] = grouped_psms
     at.session_state[f"{STATE_PREFIX}.annotated_queries"] = {0: (query_psm, annotated_frame)}
-    at.session_state[f"{STATE_PREFIX}.reference_store"] = {variant_key: [(ref_psm, annotated_frame)]}
+    at.session_state[f"{STATE_PREFIX}.reference_store"] = {peptidoform: [(ref_psm, annotated_frame)]}
     at.session_state[f"{STATE_PREFIX}.data_ready"] = True
 
 

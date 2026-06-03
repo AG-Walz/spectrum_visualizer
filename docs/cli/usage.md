@@ -111,7 +111,7 @@ Typical successful run:
 ```text
 [INFO] Step 1: Looking up peptides in idXML files
 Looking up: 100%|██████████| 1/1 [00:01<00:00,  1.2file/s]
-[INFO] Found 2 PSMs across 2 variants
+[INFO] Found 2 PSMs across 2 peptidoforms
 [INFO] Step 2: Loading and annotating spectra
 Loading:   100%|██████████| 2/2 [00:14<00:00,  7.1s/spec]
 [INFO] Step 3: Exporting results

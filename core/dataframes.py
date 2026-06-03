@@ -1,5 +1,5 @@
 """Polars LazyFrames feeding openms_insight Table/LinePlot/SequenceView/Heatmap.
-- `build_psm_table` flattens peptidoform variant_groups into the per-PSM table
+- `build_psm_table` flattens grouped_psms into the per-PSM table
   that drives the openms_insight Table selector. It returns a "spectrum_id|peptidoform" 
   psm_id lookup to attach peaks, sequence and heatmap rows back to the integer PSM id.
 - `build_peaks_dataframe`, `build_sequence_dataframe`, `build_heatmap_dataframe`
@@ -32,11 +32,10 @@ logger = logging.getLogger(__name__)
 # integer PSM key the openms_insight components cross-link on.
 PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
     "id": pl.Int32,             # Sequential 0-based PSM id — the cross-link key
-    "variant_key": pl.String,   # Peptidoform variant this PSM belongs to (group label)
     "base_sequence": pl.String, # Bare amino-acid sequence, uppercase, no modifications
     "modification": pl.String,  # Modification descriptor, or "(unmodified)"
-    "display_label": pl.String, # Human-facing label shown in the Table (mirrors variant_key)
-    "peptidoform": pl.String,   # Full modified sequence (ProForma string)
+    "display_label": pl.String, # Human-facing label shown in the Table (mirrors peptidoform)
+    "peptidoform": pl.String,   # Full modified sequence (ProForma string) — the grouping key
     "charge": pl.Int32,         # Precursor charge state
     "score": pl.Float32,        # Search-engine score for this PSM
     "source_file": pl.String,   # mzML run the spectrum came from
@@ -74,11 +73,11 @@ HEATMAP_SCHEMA: dict[str, pl.DataType] = {
 # ============================================================================
 
 def build_psm_table(
-    variant_groups: dict[str, PSMList],
+    grouped_psms: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
-    """Flatten variant_groups into the per-PSM table and its id lookup. Each key in
-    variant_groups maps each peptidoform variant key to a PSMList; every PSM
-    becomes one row carrying both PSM-level fields and the variant-level grouping
+    """Flatten grouped_psms into the per-PSM table and its id lookup. Each key in
+    grouped_psms maps a peptidoform to its PSMList; every PSM becomes one row
+    carrying both PSM-level fields and the peptidoform-level grouping
     fields shared by its siblings. Returns (lazyframe, psm_lookup) where the
     LazyFrame matches PSM_TABLE_SCHEMA and psm_lookup maps
     "spectrum_id|peptidoform" to the integer id — the same key shape that
@@ -87,11 +86,11 @@ def build_psm_table(
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
 
-    # Walk every PSM under every variant: id is the row index — globally
-    # sequential. A variant_key equal to the bare sequence means unmodified.
+    # Walk every PSM under every peptidoform: id is the row index — globally
+    # sequential. A peptidoform equal to the bare sequence means unmodified.
     # Optional fields are coerced to schema-safe defaults so the Polars schema
     # never has to widen a column to Null.
-    for variant_key, psm_list in variant_groups.items():
+    for peptidoform, psm_list in grouped_psms.items():
         for psm in psm_list:
             psm_id = len(rows)
             peptidoform_str = psm.peptidoform.modified_sequence
@@ -99,10 +98,9 @@ def build_psm_table(
             psm_lookup[psm_lookup_key(psm)] = psm_id
             rows.append({
                 "id": psm_id,
-                "variant_key": variant_key,
                 "base_sequence": base_sequence,
-                "modification": variant_key if psm.peptidoform.is_modified else "(unmodified)",
-                "display_label": variant_key,
+                "modification": peptidoform if psm.peptidoform.is_modified else "(unmodified)",
+                "display_label": peptidoform,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,
                 "score": float(psm.score) if psm.score is not None else 0.0,
@@ -112,7 +110,7 @@ def build_psm_table(
             })
 
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
-    logger.info(f"PSM table: {len(rows)} rows across {len(variant_groups)} variants")
+    logger.info(f"PSM table: {len(rows)} rows across {len(grouped_psms)} peptidoforms")
     return df, psm_lookup
 
 

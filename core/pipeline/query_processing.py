@@ -10,7 +10,7 @@ pre-computing the metrics overlay so the parallel plot workers never recompute i
 
 process_query_result called by core.pipeline.streaming_orchestration;
 build_plot_tasks called by core.export.run_export;
-build_psm_to_variant_mapping and format_spectrum_labels also used by
+build_psm_to_peptidoform_mapping and format_spectrum_labels also used by
 streamlit_app.views.explore.mirror_plots.
 """
 from pathlib import Path
@@ -95,10 +95,10 @@ def _annotate_query_spectrum(streaming_result, annotation_kwargs):
 
 
 def _cache_reference_spectra(streaming_result, reference_store, annotation_kwargs):
-    """Annotate this peptide variant's reference spectra and cache them in reference_store."""
-    variant_key = streaming_result.variant_key
-    # Guard: skip if this variant is already cached or has no references to annotate
-    if variant_key in reference_store or not streaming_result.reference_psms:
+    """Annotate this peptidoform's reference spectra and cache them in reference_store."""
+    peptidoform = streaming_result.peptidoform
+    # Guard: skip if this peptidoform is already cached or has no references to annotate
+    if peptidoform in reference_store or not streaming_result.reference_psms:
         return
     # Annotate each experimental reference against its own theoretical fragments;
     # each reference is itself the carrier PSM.
@@ -111,16 +111,16 @@ def _cache_reference_spectra(streaming_result, reference_store, annotation_kwarg
             **annotation_kwargs,
         )
         annotated_references.append((reference_psm, reference_frame))
-    reference_store[variant_key] = annotated_references
+    reference_store[peptidoform] = annotated_references
 
 
 def _try_koina_fallback(streaming_result, reference_store, annotation_kwargs,
                         koina_model, koina_collision_energy, koina_instrument_type):
-    """When no experimental reference exists for this variant, request a Koina prediction; return the resolved list.
+    """When no experimental reference exists for this peptidoform, request a Koina prediction; return the resolved list.
     """
-    variant_key = streaming_result.variant_key
+    peptidoform = streaming_result.peptidoform
     # Prefer experimental references: only fall back to Koina when the cache is empty
-    references = reference_store.get(variant_key, [])
+    references = reference_store.get(peptidoform, [])
     if references:
         return references
     # Request an AI-predicted reference for this peptidoform + charge
@@ -134,8 +134,8 @@ def _try_koina_fallback(streaming_result, reference_store, annotation_kwargs,
     )
     # On success, cache the synthetic reference; on failure, return the empty list
     if koina_ref is not None:
-        reference_store[variant_key] = [koina_ref]
-        return reference_store[variant_key]
+        reference_store[peptidoform] = [koina_ref]
+        return reference_store[peptidoform]
     return references
 
 
@@ -158,9 +158,9 @@ def format_spectrum_labels(query_psm, reference_psm=None) -> tuple[str, str]:
     return query_label, reference_label
 
 
-def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str, str]:
-    """Map each PSM id to its peptide-variant key.
-    Returns {psm_id: variant_key}. annotated_queries may arrive in two
+def build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries) -> dict[str, str]:
+    """Map each PSM id to its peptidoform key.
+    Returns {psm_id: peptidoform}. annotated_queries may arrive in two
     shapes: the Streamlit dict {psm_id: (spectrum, frame)} or the CLI
     list-of-tuples [(psm_id, spectrum, frame), ...]; both are normalised
     before matching. A PSM whose spectrum key has no annotated query is simply
@@ -171,17 +171,17 @@ def build_psm_to_variant_mapping(variant_groups, annotated_queries) -> dict[str,
         items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
     else:
         items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
-    # Invert to a per-PSM-key lookup so each variant PSM can find its PSM id
+    # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id
     spec_to_psm_id = {psm_lookup_key(spec): psm_id for psm_id, spec in items}
 
-    # Walk variants: rebuild each PSM's spectrum key and resolve it to a PSM id
-    psm_id_to_variant_key: dict[str, str] = {}
-    for variant_key, psm_list in variant_groups.items():
+    # Walk peptidoforms: rebuild each PSM's spectrum key and resolve it to a PSM id
+    psm_id_to_peptidoform: dict[str, str] = {}
+    for peptidoform, psm_list in grouped_psms.items():
         for psm in psm_list:
             psm_id = spec_to_psm_id.get(psm_lookup_key(psm))
             if psm_id is not None:
-                psm_id_to_variant_key[psm_id] = variant_key
-    return psm_id_to_variant_key
+                psm_id_to_peptidoform[psm_id] = peptidoform
+    return psm_id_to_peptidoform
 
 
 # ============================================================================
@@ -205,7 +205,7 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
     if psm_id is None:
         return None
 
-    # Annotate query + warm reference cache for this variant (once)
+    # Annotate query + warm reference cache for this peptidoform (once)
     query_frame = _annotate_query_spectrum(streaming_result, annotation_kwargs)
     _cache_reference_spectra(streaming_result, reference_store, annotation_kwargs)
 
@@ -216,14 +216,14 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
             koina_model, koina_collision_energy, koina_instrument_type,
         )
     else:
-        references = reference_store.get(streaming_result.variant_key, [])
+        references = reference_store.get(streaming_result.peptidoform, [])
 
     # Compute metrics: one comparison row per (query, reference) pair. The query
     # spectrum and each reference are carrier PSMs read directly.
     query_psm = streaming_result.query_psm
     base_sequence = query_psm.peptidoform.sequence.upper()
-    # Modification column is blank for the unmodified variant
-    modification = streaming_result.variant_key if query_psm.peptidoform.is_modified else ""
+    # Modification column is blank for the unmodified peptidoform
+    modification = streaming_result.peptidoform if query_psm.peptidoform.is_modified else ""
     comparison_rows = []
     for reference_psm, reference_frame in references:
         metrics = compute_all_metrics(query_frame, reference_frame)
@@ -253,7 +253,7 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
     return (psm_id, query_psm, query_frame, comparison_rows)
 
 
-def build_plot_tasks(annotated_queries, reference_store, variant_groups,
+def build_plot_tasks(annotated_queries, reference_store, grouped_psms,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
     """Build the list of ComparisonTask plot jobs for a set of annotated queries.
@@ -262,11 +262,11 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
     set. The metrics overlay text is pre-computed here so the parallel plot
     workers never recompute it. Returns [ComparisonTask, ...] ordered by psm_id.
     """
-    # Setup: normalise format_dirs, derive export_formats, build PSM->variant lookup
+    # Setup: normalise format_dirs, derive export_formats, build PSM->peptidoform lookup
     if format_dirs is None:
         format_dirs = {}
     export_formats = [*format_dirs] + (["html"] if html_dir else [])
-    psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
+    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries)
     png_dir = format_dirs.get("png", "")
     svg_dir = format_dirs.get("svg", "")
     pdf_dir = format_dirs.get("pdf", "")
@@ -278,8 +278,8 @@ def build_plot_tasks(annotated_queries, reference_store, variant_groups,
         # Identity fields off the carrier PSM; source_label still reads the spectrum.
         peptidoform = query_psm.peptidoform.modified_sequence
         charge = query_psm.get_precursor_charge() or 0
-        variant_key = psm_id_to_variant_key.get(psm_id)
-        references = reference_store.get(variant_key, []) if variant_key else []
+        peptidoform = psm_id_to_peptidoform.get(psm_id)
+        references = reference_store.get(peptidoform, []) if peptidoform else []
         folder_name = sanitize_fn(peptidoform)
         plot_title = f"{peptidoform} +{charge}"
         query_src = source_label(query_psm)

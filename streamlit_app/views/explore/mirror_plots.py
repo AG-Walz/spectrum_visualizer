@@ -20,7 +20,7 @@ from core.annotation import (
 )
 from core.defaults import DEFAULTS
 from core.pipeline import (
-    build_psm_to_variant_mapping,
+    build_psm_to_peptidoform_mapping,
     format_spectrum_labels,
 )
 from core.plotting import create_spectrum_plot
@@ -28,19 +28,19 @@ from core.spectra.streaming_types import source_label
 from core.spectra.mzml_native_ids import extract_id_number
 
 
-def _eligible_variants(variant_groups: dict, reference_store: dict, psm_id_to_variant_key: dict) -> list:
-    """Return variants that have at least one query PSM AND at least one reference loaded.
+def _eligible_peptidoforms(grouped_psms: dict, reference_store: dict, psm_id_to_peptidoform: dict) -> list:
+    """Return peptidoforms that have at least one query PSM AND at least one reference loaded.
     """
-    variant_keys_with_query = set(psm_id_to_variant_key.values())
-    return [variant_key for variant_key in variant_groups
-            if variant_key in variant_keys_with_query and reference_store.get(variant_key)]
+    peptidoforms_with_query = set(psm_id_to_peptidoform.values())
+    return [peptidoform for peptidoform in grouped_psms
+            if peptidoform in peptidoforms_with_query and reference_store.get(peptidoform)]
 
 
-def _ref_row_id(variant_key: str, position: int) -> int:
-    """Hash (variant_key, position) into a unique row id so the reference Table refreshes per peptide.
-    Plain positional ids collide across peptides; salting with variant_key busts the Vue render-cache.
+def _ref_row_id(peptidoform: str, position: int) -> int:
+    """Hash (peptidoform, position) into a unique row id so the reference Table refreshes per peptide.
+    Plain positional ids collide across peptides; salting with peptidoform busts the Vue render-cache.
     """
-    digest = hashlib.md5(f"{variant_key}|{position}".encode()).digest()
+    digest = hashlib.md5(f"{peptidoform}|{position}".encode()).digest()
     return int.from_bytes(digest[:4], "big", signed=False) & 0x7FFFFFFF
 
 
@@ -55,7 +55,7 @@ _PICKER_QUERY_SCHEMA = {
 
 
 def _build_picker_frames(
-    variant_key: str, annotated_queries: dict, reference_store: dict, psm_id_to_variant_key: dict,
+    peptidoform: str, annotated_queries: dict, reference_store: dict, psm_id_to_peptidoform: dict,
 ) -> tuple[pl.LazyFrame, pl.LazyFrame]:
     """Build (reference, query) LazyFrames for the picker — refs use hashed ids, queries use real psm_id.
     """
@@ -72,16 +72,16 @@ def _build_picker_frames(
             "score": score,
         }
 
-    # Reference rows: hashed per (variant_key, position) — see _ref_row_id docstring
+    # Reference rows: hashed per (peptidoform, position) — see _ref_row_id docstring
     ref_rows = [
-        {"id": _ref_row_id(variant_key, i), **picker_columns(psm)}
-        for i, (psm, _) in enumerate(reference_store.get(variant_key, []))
+        {"id": _ref_row_id(peptidoform, i), **picker_columns(psm)}
+        for i, (psm, _) in enumerate(reference_store.get(peptidoform, []))
     ]
-    # Query rows: filter all annotated queries down to the chosen variant
+    # Query rows: filter all annotated queries down to the chosen peptidoform
     query_rows = [
         {"psm_id": psm_id, **picker_columns(psm)}
         for psm_id, (psm, _) in annotated_queries.items()
-        if psm_id_to_variant_key.get(psm_id) == variant_key
+        if psm_id_to_peptidoform.get(psm_id) == peptidoform
     ]
 
     # Materialise: typed-empty LazyFrame when no rows so the Table still renders
@@ -214,26 +214,26 @@ def _render_picker_tables(
 def mirror_plots_fragment(params: dict):
     """Render the Mirror Plots sub-view — peptide selectbox -> two pickers -> mirror plot.
     """
-    # Pull session state: annotated queries, references, and variant groups from Load & Annotate
+    # Pull session state: annotated queries, references, and grouped PSMs from Load & Annotate
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     reference_store = st.session_state.get(get_state_key("reference_store"), {})
-    variant_groups = st.session_state.get(get_state_key("variant_groups"), {})
+    grouped_psms = st.session_state.get(get_state_key("grouped_psms"), {})
 
     if not annotated_queries:
         st.info("No annotated spectra available.")
         return
 
-    # Eligibility: variants needing both a query PSM and a reference to mirror
-    psm_id_to_variant_key = build_psm_to_variant_mapping(variant_groups, annotated_queries)
-    eligible = _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key)
+    # Eligibility: peptidoforms needing both a query PSM and a reference to mirror
+    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries)
+    eligible = _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform)
 
-    # Hidden caption: surface how many variants were dropped for missing a reference pair
-    variant_keys_with_query = set(psm_id_to_variant_key.values())
-    variants_with_query_count = sum(1 for variant_key in variant_groups if variant_key in variant_keys_with_query)
-    hidden_variant_count = variants_with_query_count - len(eligible)
-    if hidden_variant_count:
+    # Hidden caption: surface how many peptidoforms were dropped for missing a reference pair
+    peptidoforms_with_query = set(psm_id_to_peptidoform.values())
+    peptidoforms_with_query_count = sum(1 for peptidoform in grouped_psms if peptidoform in peptidoforms_with_query)
+    hidden_peptidoform_count = peptidoforms_with_query_count - len(eligible)
+    if hidden_peptidoform_count:
         st.caption(
-            f"{hidden_variant_count} peptide(s) hidden — no reference / experimental pair available."
+            f"{hidden_peptidoform_count} peptide(s) hidden — no reference / experimental pair available."
         )
     if not eligible:
         query_count = len(annotated_queries)
@@ -244,26 +244,26 @@ def mirror_plots_fragment(params: dict):
         )
         return
 
-    # Peptide selector: snap a stale selection back to a still-eligible variant
-    selectbox_key = f"{STATE_PREFIX}_mirror_chosen_variant"
+    # Peptide selector: snap a stale selection back to a still-eligible peptidoform
+    selectbox_key = f"{STATE_PREFIX}_mirror_chosen_peptidoform"
     if st.session_state.get(selectbox_key) not in eligible:
         st.session_state[selectbox_key] = eligible[0]
     chosen = st.selectbox(
         "Peptide", options=eligible,
-        format_func=lambda variant_key: variant_key,
+        format_func=lambda peptidoform: peptidoform,
         key=selectbox_key,
     )
 
-    # Variant switch: clear Tabulator + StateManager state so stale picks don't carry over
+    # Peptidoform switch: clear Tabulator + StateManager state so stale picks don't carry over
     state_manager = _get_picker_state_manager()
-    last_variant_key = f"{STATE_PREFIX}_mirror_last_variant"
-    if st.session_state.get(last_variant_key) != chosen:
+    last_peptidoform = f"{STATE_PREFIX}_mirror_last_peptidoform"
+    if st.session_state.get(last_peptidoform) != chosen:
         _clear_picker_selections(state_manager)
-        st.session_state[last_variant_key] = chosen
+        st.session_state[last_peptidoform] = chosen
 
-    # Picker tables: two side-by-side openms_insight Tables for the chosen variant
+    # Picker tables: two side-by-side openms_insight Tables for the chosen peptidoform
     reference_picker_frame, query_picker_frame = _build_picker_frames(
-        chosen, annotated_queries, reference_store, psm_id_to_variant_key,
+        chosen, annotated_queries, reference_store, psm_id_to_peptidoform,
     )
     _render_picker_tables(
         reference_picker_frame, query_picker_frame, _resolve_picker_cache_path(params), state_manager,
@@ -285,7 +285,7 @@ def mirror_plots_fragment(params: dict):
     if selected_query_psm_id not in annotated_queries:
         return
     refs = reference_store.get(chosen, [])
-    # Rebuild the hashed-id reverse index for this variant so a stale ref_id
+    # Rebuild the hashed-id reverse index for this peptidoform so a stale ref_id
     # from a previous peptide (after auto-fill races) resolves to None and we
     # bail safely. See _ref_row_id for the hashing rationale.
     ref_index = {_ref_row_id(chosen, i): i for i in range(len(refs))}

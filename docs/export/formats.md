@@ -27,10 +27,9 @@ in `core/dataframes/psm_tables.py`.
 | Column | Type | Description |
 |---|---|---|
 | `id` | Int32 | Unique PSM identifier (sequential, starting at 0) |
-| `variant_key` | String | Peptide variant group key |
 | `base_sequence` | String | Unmodified peptide sequence |
 | `modification` | String | Modification state (e.g., "Oxidation" or "(unmodified)") |
-| `display_label` | String | Human-readable label for the variant |
+| `display_label` | String | Human-readable label for the peptidoform |
 | `peptidoform` | String | Full ProForma peptidoform string |
 | `charge` | Int32 | Precursor charge state |
 | `score` | Float32 | Search engine score |
@@ -91,7 +90,7 @@ emitted.
 |---|---|
 | `psm_id` | Foreign key matching `id` in `psm.parquet` |
 | `Peptide` | Base sequence (uppercase, unmodified) |
-| `Modification` | Modification state (empty string when variant_key == base_sequence) |
+| `Modification` | Modification state (empty string when peptidoform == base_sequence) |
 | `Charge` | Precursor charge |
 | `Query` | Source label of the query spectrum (`<basename>:<spectrum_id>`) |
 | `Reference` | Source label of the reference (or `Koina/<model>` for an AI-predicted reference) |

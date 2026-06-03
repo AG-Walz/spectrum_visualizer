@@ -34,7 +34,7 @@ ANALYSIS_CACHE_DIR = "analysis_cache"
 _LAZYFRAME_KEYS = ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame")
 
 # Keys whose values are pickle-safe Python objects
-_PICKLE_KEYS = ("annotated_queries", "reference_store", "variant_groups")
+_PICKLE_KEYS = ("annotated_queries", "reference_store", "grouped_psms")
 
 # On-disk cache layout version. Bump whenever the pickled object shape changes
 # (e.g. PSMs gaining their peak arrays in the PSMList-native migration) so caches
@@ -75,7 +75,7 @@ def save_analysis_cache() -> None:
         with open(cache_dir / "psm_lookup.json", "w") as handle:
             json.dump(psm_lookup, handle)
 
-    # Complex Python objects (annotated_queries, reference_store, variant_groups) -> pickle
+    # Complex Python objects (annotated_queries, reference_store, grouped_psms) -> pickle
     for key in _PICKLE_KEYS:
         cached_value = st.session_state.get(get_state_key(key))
         if cached_value is not None:
@@ -119,7 +119,7 @@ def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
         with open(lookup_path, "r") as handle:
             cached_data["psm_lookup"] = json.load(handle)
 
-    # Pickled objects: annotated_queries, reference_store, variant_groups
+    # Pickled objects: annotated_queries, reference_store, grouped_psms
     for key in _PICKLE_KEYS:
         pickle_path = cache_dir / f"{key}.pkl"
         if pickle_path.exists():

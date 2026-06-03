@@ -171,8 +171,8 @@ leaving the app. Both live in `streamlit_app/views/export/`.
 Rendered by `gallery._render_plot_gallery(root_dir)`. After an export
 completes, the Export tab shows an expandable tree:
 
-- Outer expander: one per peptide-variant subdirectory.
-- Inner expander: one per reference spectrum within that variant.
+- Outer expander: one per peptidoform subdirectory.
+- Inner expander: one per reference spectrum within that peptidoform.
 - Per-plot: inline image preview (PNG or SVG) plus a download button
   for each exported format.
 

@@ -6,7 +6,7 @@ from core.pipeline.kwargs_builders import (
 )
 from core.pipeline.query_processing import (
     build_plot_tasks,
-    build_psm_to_variant_mapping,
+    build_psm_to_peptidoform_mapping,
     format_spectrum_labels,
     process_query_result,
 )
@@ -19,7 +19,7 @@ __all__ = [
     "build_annotation_kwargs",
     "build_koina_kwargs",
     "build_plot_tasks",
-    "build_psm_to_variant_mapping",
+    "build_psm_to_peptidoform_mapping",
     "format_spectrum_labels",
     "make_query_ready_callback",
     "process_query_result",

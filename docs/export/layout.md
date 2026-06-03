@@ -102,7 +102,7 @@ MSpecViz_analysis_001_20260327/
 
 Format subdirectories (`png/`, `svg/`, `pdf/`, `html/`) are created only
 for the formats you select via `export_formats`. Within each format
-directory, plots are organised into subdirectories by peptide variant
+directory, plots are organised into subdirectories by peptidoform
 (base sequence plus modification state).
 
 Note: there is **no** `heatmap_all_metrics.png`. Only two summary plot

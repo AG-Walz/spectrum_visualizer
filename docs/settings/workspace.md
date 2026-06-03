@@ -80,7 +80,7 @@ contract between views — written by one view, read by another.
 | `selected_idxmls`, `selected_mzmls`, `target_peptides`, `reference_substring` | Setup | Load & Annotate | Input definitions. |
 | `ion_types`, `mz_tolerance`, `add_neutral_losses`, `intensity_mode` | Setup | Load & Annotate, Export | Annotation parameters. |
 | `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Load & Annotate, Export | Runtime / AI-prediction parameters. |
-| `variant_groups` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[variant_key, PSMList]` returned by `lookup_peptides_in_idxmls`. |
+| `grouped_psms` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[peptidoform, PSMList]` returned by `lookup_peptides_in_idxmls`. |
 | `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Load & Annotate (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
 | `annotated_queries`, `reference_store`, `comparison_frame` | Load & Annotate (stage 2) | Explore, Export | Annotated spectra + metrics. |
 | `data_ready` | Load & Annotate (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |

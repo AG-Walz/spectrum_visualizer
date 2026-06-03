@@ -7,7 +7,7 @@ from psm_utils import PSMList
 
 from streamlit_app.views.explore.mirror_plots import (
     _build_picker_frames,
-    _eligible_variants,
+    _eligible_peptidoforms,
     _ref_row_id,
 )
 from tests.conftest import make_peptide_match
@@ -34,31 +34,31 @@ def _empty_plist() -> PSMList:
     return PSMList(psm_list=[])
 
 
-class TestEligibleVariants:
-    def test_keeps_variants_with_both_query_and_reference(self):
-        variant_groups = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
+class TestEligiblePeptidoforms:
+    def test_keeps_peptidoforms_with_both_query_and_reference(self):
+        grouped_psms = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
-        psm_id_to_variant_key = {0: "PEPTIDEK"}
-        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == ["PEPTIDEK"]
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == ["PEPTIDEK"]
 
-    def test_drops_variant_with_no_reference(self):
-        variant_groups = {"PEPTIDEK": _empty_plist()}
+    def test_drops_peptidoform_with_no_reference(self):
+        grouped_psms = {"PEPTIDEK": _empty_plist()}
         reference_store: dict = {}
-        psm_id_to_variant_key = {0: "PEPTIDEK"}
-        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == []
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == []
 
-    def test_drops_variant_with_no_query(self):
-        variant_groups = {"PEPTIDEK": _empty_plist()}
+    def test_drops_peptidoform_with_no_query(self):
+        grouped_psms = {"PEPTIDEK": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
-        psm_id_to_variant_key: dict = {}
-        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == []
+        psm_id_to_peptidoform: dict = {}
+        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == []
 
-    def test_preserves_variant_groups_order(self):
-        variant_groups = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
+    def test_preserves_grouped_psms_order(self):
+        grouped_psms = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
         reference_store = {vk: [(_spec("ref.mzML", "scan=1", is_ref=True), None)]
-                           for vk in variant_groups}
-        psm_id_to_variant_key = {0: "AAA", 1: "BBB", 2: "CCC"}
-        assert _eligible_variants(variant_groups, reference_store, psm_id_to_variant_key) == [
+                           for vk in grouped_psms}
+        psm_id_to_peptidoform = {0: "AAA", 1: "BBB", 2: "CCC"}
+        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == [
             "AAA", "BBB", "CCC",
         ]
 
@@ -70,10 +70,10 @@ class TestBuildPickerFrames:
             # score 0.5 is exact in Float32 (the picker's score dtype)
             "PEPTIDEK": [(_spec("r1.mzML", "scan=10", is_ref=True, score=0.5), None)]
         }
-        psm_id_to_variant_key = {7: "PEPTIDEK"}
+        psm_id_to_peptidoform = {7: "PEPTIDEK"}
 
         ref_lazy, query_lazy = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
         )
         ref = ref_lazy.collect()
         query = query_lazy.collect()
@@ -91,15 +91,15 @@ class TestBuildPickerFrames:
 
     def test_ref_row_ids_differ_across_peptides(self):
         # The whole point of _ref_row_id: same positional index across
-        # different variant_keys must produce DIFFERENT ids — otherwise the
+        # different peptidoforms must produce DIFFERENT ids — otherwise the
         # openms_insight render-cache key collides on the auto-filled
         # selection and the reference table never refreshes when the
         # peptide changes.
-        ids_for_a = [_ref_row_id("VARIANT_A|", i) for i in range(3)]
-        ids_for_b = [_ref_row_id("VARIANT_B|", i) for i in range(3)]
+        ids_for_a = [_ref_row_id("PEPTIDOFORM_A|", i) for i in range(3)]
+        ids_for_b = [_ref_row_id("PEPTIDOFORM_B|", i) for i in range(3)]
         assert set(ids_for_a).isdisjoint(ids_for_b)
         # And the function must be deterministic across calls.
-        assert _ref_row_id("VARIANT_A|", 0) == ids_for_a[0]
+        assert _ref_row_id("PEPTIDOFORM_A|", 0) == ids_for_a[0]
 
     def test_koina_reference_renders_as_blank_scan(self):
         # Koina spectra use spectrum_id="koina_prediction" (no digits) and have
@@ -108,10 +108,10 @@ class TestBuildPickerFrames:
         reference_store = {
             "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True, score=None), None)]
         }
-        psm_id_to_variant_key = {0: "PEPTIDEK"}
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
 
         ref_lazy, _ = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
         )
         row = ref_lazy.collect().row(0, named=True)
         # source_label returns the PSM run ("Koina:ms2pip") for Koina references.
@@ -119,8 +119,8 @@ class TestBuildPickerFrames:
         assert row["scan"] is None
         assert row["score"] is None
 
-    def test_filters_queries_by_variant_key(self):
-        # Two queries, only one matches the chosen variant — the other is dropped.
+    def test_filters_queries_by_peptidoform(self):
+        # Two queries, only one matches the chosen peptidoform — the other is dropped.
         annotated_queries = {
             5: (_spec("q.mzML", "scan=5", peptidoform="A"), None),
             6: (_spec("q.mzML", "scan=6", peptidoform="B"), None),
@@ -129,10 +129,10 @@ class TestBuildPickerFrames:
             "A": [(_spec("r.mzML", "scan=1", is_ref=True), None)],
             "B": [(_spec("r.mzML", "scan=2", is_ref=True), None)],
         }
-        psm_id_to_variant_key = {5: "A", 6: "B"}
+        psm_id_to_peptidoform = {5: "A", 6: "B"}
 
         _, query_lazy = _build_picker_frames(
-            "A", annotated_queries, reference_store, psm_id_to_variant_key,
+            "A", annotated_queries, reference_store, psm_id_to_peptidoform,
         )
         df = query_lazy.collect()
         assert df.height == 1
@@ -152,9 +152,9 @@ class TestBuildPickerFrames:
         reference_store = {
             "PEPTIDEK": [(_spec("r.mzML", "scan=1", is_ref=True), None)]
         }
-        psm_id_to_variant_key = {0: "PEPTIDEK"}
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
         _, query_lazy = _build_picker_frames(
-            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_variant_key,
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
         )
         # pl.Float32 cannot represent NaN-as-null distinctly without the
         # explicit conversion in _safe_score — verify it lands as null.

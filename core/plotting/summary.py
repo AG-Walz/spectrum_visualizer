@@ -66,7 +66,7 @@ def _metric_label(metric: str) -> str:
 
 def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
     """Compute a figure height (in inches) that scales with the number of rows.
-    Allocates per_row inches per variant row but never returns less than
+    Allocates per_row inches per peptidoform row but never returns less than
     minimum, keeping small plots legible while letting tall ones grow.
     """
     return max(minimum, per_row * n)
@@ -105,13 +105,13 @@ def plot_classic_dual_axis(
     """
     # Order rows so the most-counted peptidoform sits at the top of the chart.
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
-    variant_count = len(aggregated_frame)
+    peptidoform_count = len(aggregated_frame)
     # Auto-size height to the row count when the caller gave no explicit size.
     if figure_size is None:
-        figure_size = (14, _auto_height(variant_count))
+        figure_size = (14, _auto_height(peptidoform_count))
 
     fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
-    y_pos = np.arange(variant_count)
+    y_pos = np.arange(peptidoform_count)
     labels = aggregated_frame["peptidoform"].tolist()
 
     # Count bars on the bottom axis (one bar per peptidoform)
@@ -193,11 +193,11 @@ def plot_ridgeline(
     the peptidoform count. Returns the assembled Matplotlib Figure (DPI set
     to export_resolution); the caller is responsible for saving or closing it.
     """
-    variant_count = len(aggregated_frame)
+    peptidoform_count = len(aggregated_frame)
     # Auto-size the figure height so every ridge gets vertical room; width is
     # fixed at 14 inches.
     if figure_size is None:
-        figure_size = (14, _auto_height(variant_count, per_row=0.5))
+        figure_size = (14, _auto_height(peptidoform_count, per_row=0.5))
 
     # Colour each ridge by its median value (RdYlGn so high = green, low = red).
     cmap = plt.cm.RdYlGn
@@ -218,9 +218,9 @@ def plot_ridgeline(
 
     # === Ridges ===
     # Drawn bottom (highest count) to top (lowest count): aggregated row i sits on
-    # baseline y = variant_count - 1 - i, and a lower ridge overdraws the one above.
-    for i in range(variant_count):
-        baseline = variant_count - 1 - i
+    # baseline y = peptidoform_count - 1 - i, and a lower ridge overdraws the one above.
+    for i in range(peptidoform_count):
+        baseline = peptidoform_count - 1 - i
         # Gather this peptidoform's metric values from the raw rows, dropping
         # NaN/inf so the KDE only sees usable numbers.
         values = raw_frame.loc[raw_frame["peptidoform"] == peptidoforms[i], metric].to_numpy(dtype=float)
@@ -252,8 +252,8 @@ def plot_ridgeline(
         ridge_ax.plot(_RIDGE_GRID, ridge, color="white", linewidth=0.8, zorder=i)
 
     ridge_ax.set_xlim(0.0, 1.0)
-    ridge_ax.set_ylim(-0.4, variant_count - 1 + _RIDGE_HEIGHT + 0.4)
-    ridge_ax.set_yticks(range(variant_count))
+    ridge_ax.set_ylim(-0.4, peptidoform_count - 1 + _RIDGE_HEIGHT + 0.4)
+    ridge_ax.set_yticks(range(peptidoform_count))
     ridge_ax.set_yticklabels(peptidoforms[::-1])  # y = 0 is the last (highest-count) peptidoform
     ridge_ax.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
     ridge_ax.tick_params(axis="y", length=0)
@@ -262,7 +262,7 @@ def plot_ridgeline(
 
     # === Count sidebar ===
     # Shares the ridge y-axis, so bar i lines up with the baseline of ridge i.
-    bar_ax.barh(range(variant_count), counts[::-1], height=0.6,
+    bar_ax.barh(range(peptidoform_count), counts[::-1], height=0.6,
                 color=_RIDGE_BAR_COLOR, alpha=0.8, edgecolor=_RIDGE_BAR_EDGE, linewidth=0.5)
     bar_ax.set_xlabel("Count", fontsize=10, fontweight="bold")
     bar_ax.tick_params(axis="y", left=False, labelleft=False)

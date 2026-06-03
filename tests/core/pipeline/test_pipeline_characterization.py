@@ -34,17 +34,17 @@ class TestSingleSpectrumPipelineCharacterization:
     @pytest.fixture(scope="class")
     def pipeline_output(self, idxml_path, mzml_paths, target_peptides):
         """Run the whole CLI default pipeline once; share results across tests."""
-        variant_groups = lookup_peptides(
+        grouped_psms = lookup_peptides(
             load_idxmls([idxml_path]), target_peptides, mzml_paths=mzml_paths,
         )
         # The CLI deep-copies before annotating because streaming stamps PSMs.
-        variant_groups = copy.deepcopy(variant_groups)
-        psm_frame, psm_lookup = build_psm_table(variant_groups)
+        grouped_psms = copy.deepcopy(grouped_psms)
+        psm_frame, psm_lookup = build_psm_table(grouped_psms)
 
         # getter returning the default keeps Koina off and uses DEFAULTS settings.
         getter = lambda key, default: default
         annotated_queries, reference_store, comparison_rows = run_streaming_annotation(
-            variant_groups=variant_groups,
+            grouped_psms=grouped_psms,
             mzml_paths=mzml_paths,
             reference_substring="",
             psm_lookup=psm_lookup,
@@ -54,7 +54,7 @@ class TestSingleSpectrumPipelineCharacterization:
         )
         frames = build_visualization_frames(annotated_queries, psm_frame)
         return {
-            "variant_groups": variant_groups,
+            "grouped_psms": grouped_psms,
             "psm_frame": psm_frame.collect(),
             "annotated_queries": annotated_queries,
             "reference_store": reference_store,
@@ -64,10 +64,10 @@ class TestSingleSpectrumPipelineCharacterization:
 
     # --- Step 1: lookup ----------------------------------------------------
 
-    def test_lookup_finds_two_psms_in_two_variants(self, pipeline_output):
-        variant_groups = pipeline_output["variant_groups"]
-        assert set(variant_groups) == {"ASDDFDQASY", "RTEFNLNQY"}
-        assert sum(len(group) for group in variant_groups.values()) == 2
+    def test_lookup_finds_two_psms_in_two_peptidoforms(self, pipeline_output):
+        grouped_psms = pipeline_output["grouped_psms"]
+        assert set(grouped_psms) == {"ASDDFDQASY", "RTEFNLNQY"}
+        assert sum(len(group) for group in grouped_psms.values()) == 2
 
     # --- PSM selector table ------------------------------------------------
 
@@ -98,7 +98,7 @@ class TestSingleSpectrumPipelineCharacterization:
 
     def test_provenance_data_mirrors_idxml_metadata(self, pipeline_output):
         # Lookup mirrors idxml_file/path into the native PSM.provenance_data dict.
-        for psm_list in pipeline_output["variant_groups"].values():
+        for psm_list in pipeline_output["grouped_psms"].values():
             for psm in psm_list:
                 assert psm.provenance_data.get("idxml_file") == psm.metadata.get("idxml_file")
                 assert psm.provenance_data.get("idxml_file")

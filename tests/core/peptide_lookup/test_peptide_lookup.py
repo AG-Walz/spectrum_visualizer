@@ -39,13 +39,13 @@ class TestSummarizeLookupResults:
         df = result.collect()
         assert df["psm_count"][0] == 2
 
-    def test_empty_variant_groups(self):
+    def test_empty_grouped_psms(self):
         result = summarize_lookup_results({})
         assert isinstance(result, pl.LazyFrame)
         df = result.collect()
         assert len(df) == 0
 
-    def test_multiple_variants(self):
+    def test_multiple_peptidoforms(self):
         result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),
             "AAAVAAAK": PSMList(psm_list=[make_peptide_match(peptidoform="AAAVAAAK")]),
@@ -72,7 +72,7 @@ class TestLookupWithRealData:
         assert "ASDDFDQASY" in lookup_results
         assert "RTEFNLNQY" in lookup_results
 
-    def test_each_variant_has_one_psm_with_valid_fields(self, lookup_results):
+    def test_each_peptidoform_has_one_psm_with_valid_fields(self, lookup_results):
         for key, psm_list in lookup_results.items():
             assert len(psm_list) == 1
             psm = psm_list[0]

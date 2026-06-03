@@ -1,6 +1,6 @@
 """Peptide-lookup layer: load idXML files once into a PSMList (parallel file I/O via
 core.helpers.run_tasks), then scan that in-memory PSMList — count PSMs per peptide for
-the Setup picker, and group target-peptide hits into variant_groups for the pipeline.
+the Setup picker, and group target-peptide hits into grouped_psms for the pipeline.
 Loading is separated from scanning so the same files are never parsed twice.
 (called by cli.main and streamlit_app.views.load_annotate / widgets.peptide_input).
 """
@@ -133,7 +133,7 @@ def lookup_peptides(
     mzml_paths: Optional[List[str]] = None,
 ) -> Dict[str, PSMList]:
     """Group the target-peptide PSMs from an already-loaded PSMList into
-    {variant_key: PSMList}, resolving each hit's mzML path and stamping it.
+    {peptidoform: PSMList}, resolving each hit's mzML path and stamping it.
 
     Pure in-memory work: no idXML is re-read (see load_idxmls). Target hits are
     selected with a PSMList boolean mask, then grouped by modified sequence.
@@ -153,9 +153,9 @@ def lookup_peptides(
     )
     hits = psm_list[is_target]
 
-    # Resolve each hit's mzML path (depends on the current selection) and group by variant
+    # Resolve each hit's mzML path (depends on the current selection) and group by peptidoform
     mzml_by_stem = {Path(path).stem.lower(): path for path in (mzml_paths or [])}
-    variant_groups: Dict[str, PSMList] = {}
+    grouped_psms: Dict[str, PSMList] = {}
     for psm in hits:
         # Annotate with mzML path if possible (match by run name, case-insensitive)
         if psm.run:
@@ -163,35 +163,35 @@ def lookup_peptides(
             if resolved:
                 psm.metadata["mzml_resolved_path"] = resolved
                 psm.provenance_data = {**(psm.provenance_data or {}), "mzml_resolved_path": resolved}
-        # Group under the modified sequence (the variant_key)
-        variant_groups.setdefault(psm.peptidoform.modified_sequence, PSMList(psm_list=[])).append(psm)
+        # Group under the modified sequence (the peptidoform)
+        grouped_psms.setdefault(psm.peptidoform.modified_sequence, PSMList(psm_list=[])).append(psm)
 
-    total_psms = sum(len(group) for group in variant_groups.values())
-    logger.info(f"Found {total_psms} PSMs across {len(variant_groups)} variants")
-    return variant_groups
+    total_psms = sum(len(group) for group in grouped_psms.values())
+    logger.info(f"Found {total_psms} PSMs across {len(grouped_psms)} peptidoforms")
+    return grouped_psms
 
 
-# LazyFrame schema for the per-variant summary consumed by the openms_insight Table
+# LazyFrame schema for the per-peptidoform summary consumed by the openms_insight Table
 _SUMMARY_SCHEMA = {
     "id": pl.UInt32, "base_sequence": pl.String, "modification": pl.String,
     "display_label": pl.String, "psm_count": pl.Int32,
     "idxml_files": pl.Int32, "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
 }
 
-def summarize_lookup_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame:
-    """Turn the variant groups returned by lookup_peptides into a summary LazyFrame with one row per variant for display
+def summarize_lookup_results(grouped_psms: Dict[str, PSMList]) -> pl.LazyFrame:
+    """Turn the grouped PSMs returned by lookup_peptides into a summary LazyFrame with one row per peptidoform for display
     """
-    # Flatten variant groups into one row per PSM, carrying variant & resolution metadata
+    # Flatten grouped PSMs into one row per PSM, carrying peptidoform & resolution metadata
     rows = []
-    for variant_key, psm_list in variant_groups.items():
+    for peptidoform, psm_list in grouped_psms.items():
         if not psm_list:
             continue
         base = psm_list[0].peptidoform.sequence.upper()
-        modification = variant_key if psm_list[0].peptidoform.is_modified else "(unmodified)"
+        modification = peptidoform if psm_list[0].peptidoform.is_modified else "(unmodified)"
         rows.extend({
             "base_sequence": base,
             "modification": modification,
-            "display_label": variant_key,
+            "display_label": peptidoform,
             "idxml_file": psm.metadata.get("idxml_file", ""),
             "mzml_resolved": bool(psm.metadata.get("mzml_resolved_path")),
         } for psm in psm_list)
@@ -200,7 +200,7 @@ def summarize_lookup_results(variant_groups: Dict[str, PSMList]) -> pl.LazyFrame
     if not rows:
         return pl.DataFrame(schema=_SUMMARY_SCHEMA).lazy()
 
-    # Aggregate groups by variant (base sequence + modification) and count PSMs,
+    # Aggregate groups by peptidoform (base sequence + modification) and count PSMs,
     # idXML files, and resolution status for summary display in the GUI
     return (
         pl.DataFrame(rows).lazy()

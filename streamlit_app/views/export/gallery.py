@@ -1,5 +1,5 @@
 """Plot-gallery browser — called by export_page.py and export_actions.py 
-to render the per-run expandable view of exported PNG/SVG/HTML plots, grouped by peptide variant then reference.
+to render the per-run expandable view of exported PNG/SVG/HTML plots, grouped by peptidoform then reference.
 """
 from __future__ import annotations
 
@@ -79,7 +79,7 @@ def _render_reference_group(
 
 
 def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -> None:
-    """Render the outer expander for one peptide-variant subdirectory.
+    """Render the outer expander for one peptidoform subdirectory.
     """
     plot_files = sorted(peptide_dir.glob(f"*.{browse_format}"))
     if not plot_files:
@@ -90,7 +90,7 @@ def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -
 
 
 def _render_plot_gallery(root_dir: Path) -> None:
-    """Render the gallery for plots saved under root_dir, grouped peptide-variant then reference.
+    """Render the gallery for plots saved under root_dir, grouped peptidoform then reference.
     """
     # Pick preview format: SVG if present, else PNG, else bail
     browse = _pick_browse_format(root_dir)
@@ -98,17 +98,17 @@ def _render_plot_gallery(root_dir: Path) -> None:
         return
     browse_dir, browse_format = browse
 
-    # Discover peptide variants: one subdirectory per peptidoform
+    # Discover peptidoforms: one subdirectory per peptidoform
     peptide_dirs = sorted([d for d in browse_dir.iterdir() if d.is_dir()])
     if not peptide_dirs:
         return
 
-    # Header: variant count + total plot count
+    # Header: peptidoform count + total plot count
     st.markdown("---")
     st.subheader("Browse Plots")
     total_plots = sum(len(list(d.glob(f"*.{browse_format}"))) for d in peptide_dirs)
-    st.caption(f"{len(peptide_dirs)} peptide variants, {total_plots} plots")
+    st.caption(f"{len(peptide_dirs)} peptidoforms, {total_plots} plots")
 
-    # Render one outer expander per peptide variant
+    # Render one outer expander per peptidoform
     for peptide_dir in peptide_dirs:
         _render_peptide_dir(peptide_dir, browse_format, root_dir)

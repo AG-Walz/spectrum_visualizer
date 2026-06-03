@@ -28,22 +28,22 @@ from core.peptide_lookup import load_idxmls, lookup_peptides
 logger = logging.getLogger(__name__)
 
 
-def _show_lookup_results_summary(variant_groups, error_messages, tracker, params: dict) -> None:
-    """Finalize the lookup status block with PSM/variant counts and any warnings.
+def _show_lookup_results_summary(grouped_psms, error_messages, tracker, params: dict) -> None:
+    """Finalize the lookup status block with PSM/peptidoform counts and any warnings.
     """
     # Empty path: mark the status block as an error and bail
-    if not variant_groups:
+    if not grouped_psms:
         tracker.finalize("No matches found", state="error")
         return
 
-    # Success path: report PSM/variant counts and persist params
-    total_matches = sum(len(psm_list) for psm_list in variant_groups.values())
-    tracker.finalize(f"Found {total_matches} PSMs across {len(variant_groups)} variants")
+    # Success path: report PSM/peptidoform counts and persist params
+    total_matches = sum(len(psm_list) for psm_list in grouped_psms.values())
+    tracker.finalize(f"Found {total_matches} PSMs across {len(grouped_psms)} peptidoforms")
     save_params(params)
 
     # Warnings: count PSMs whose mzML couldn't be resolved + collapse per-file parse errors
     unresolved = sum(
-        1 for psm_list in variant_groups.values()
+        1 for psm_list in grouped_psms.values()
         for psm in psm_list
         if not psm.metadata.get("mzml_resolved_path")
     )
@@ -57,7 +57,7 @@ def _show_lookup_results_summary(variant_groups, error_messages, tracker, params
 
 def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
     """Load idxmls once (reusing the Setup picker's cached PSMList when the selection
-    matches), scan it in memory for peptides, stash variant_groups in session state,
+    matches), scan it in memory for peptides, stash grouped_psms in session state,
     and surface progress + warnings.
     """
     mzmls = get_param(params, "selected_mzmls", [])
@@ -77,9 +77,9 @@ def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
             )
             cache_idxml_psmlist(idxmls, psm_list)
         # Filter/group target peptides from the in-memory PSMList (no idXML re-read)
-        variant_groups = lookup_peptides(psm_list, peptides, mzml_paths=mzmls)
-        st.session_state[get_state_key("variant_groups")] = variant_groups
-        _show_lookup_results_summary(variant_groups, error_messages, tracker, params)
+        grouped_psms = lookup_peptides(psm_list, peptides, mzml_paths=mzmls)
+        st.session_state[get_state_key("grouped_psms")] = grouped_psms
+        _show_lookup_results_summary(grouped_psms, error_messages, tracker, params)
 
 
 def _params_getter(params: dict):
@@ -121,7 +121,7 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
 
 
 def _stream_and_annotate(
-    params: dict, variant_groups_copy, mzmls,
+    params: dict, grouped_psms_copy, mzmls,
     psm_lookup, annotation_kwargs, koina_kwargs,
     total_psms: int, tracker,
 ) -> tuple[list, dict, list]:
@@ -137,7 +137,7 @@ def _stream_and_annotate(
         tracker.info(f"Processing {kind}: {Path(path).name}")
 
     return run_streaming_annotation(
-        variant_groups=variant_groups_copy,
+        grouped_psms=grouped_psms_copy,
         mzml_paths=mzmls,
         reference_substring=get_param(params, "reference_substring", ""),
         psm_lookup=psm_lookup,
@@ -154,16 +154,16 @@ def _stream_and_annotate(
 
 
 def _validate_load_inputs(params: dict) -> tuple | None:
-    """Pre-flight check; return (variant_groups, mzmls) or None after surfacing an inline error."""
-    variant_groups = st.session_state.get(get_state_key("variant_groups"))
-    if not variant_groups:
+    """Pre-flight check; return (grouped_psms, mzmls) or None after surfacing an inline error."""
+    grouped_psms = st.session_state.get(get_state_key("grouped_psms"))
+    if not grouped_psms:
         st.error("No lookup results. Run peptide lookup first.")
         return None
     mzmls = get_param(params, "selected_mzmls", [])
     if not mzmls:
         st.error("No mzML files selected.")
         return None
-    return variant_groups, mzmls
+    return grouped_psms, mzmls
 
 
 def _finalize_load(
@@ -187,21 +187,21 @@ def run_load_and_annotate(params: dict) -> None:
     inputs = _validate_load_inputs(params)
     if inputs is None:
         return
-    variant_groups, mzmls = inputs
+    grouped_psms, mzmls = inputs
 
-    # Prepare inputs: deep-copy variants (workers mutate metadata), build PSM table, gather annotation/Koina kwargs
-    variant_groups_copy = copy.deepcopy(variant_groups)
-    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
+    # Prepare inputs: deep-copy peptidoforms (workers mutate metadata), build PSM table, gather annotation/Koina kwargs
+    grouped_psms_copy = copy.deepcopy(grouped_psms)
+    psm_frame, psm_lookup = build_psm_table(grouped_psms_copy)
     getter = _params_getter(params)
     annotation_kwargs = build_annotation_kwargs(getter)
     koina_kwargs = build_koina_kwargs(getter)
 
-    total_psms = sum(len(plist) for plist in variant_groups_copy.values())
+    total_psms = sum(len(plist) for plist in grouped_psms_copy.values())
 
     # Stream + annotate inside a progress status block; persist results when non-empty
     with progress_status(f"Loading {total_psms} spectra...") as tracker:
         annotated_queries, reference_store, comparison_rows = _stream_and_annotate(
-            params, variant_groups_copy, mzmls,
+            params, grouped_psms_copy, mzmls,
             psm_lookup, annotation_kwargs, koina_kwargs,
             total_psms, tracker,
         )

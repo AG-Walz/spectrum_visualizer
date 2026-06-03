@@ -1,4 +1,4 @@
-"""Rendered as the Load & Annotate tab — the big "Run" button plus the per-variant results table.
+"""Rendered as the Load & Annotate tab — the big "Run" button plus the per-peptidoform results table.
 
 Heavy lifting lives in load_annotate_actions.py; this module handles layout, validation, and session state."""
 import streamlit as st
@@ -19,9 +19,9 @@ from streamlit_app.views.load_annotate.load_annotate_actions import (
 params = page_setup()
 
 
-def display_lookup_results(variant_groups: dict) -> None:
-    """Render the per-variant lookup-results table (peptide, modification, PSM count, file resolution)."""
-    summary_frame = summarize_lookup_results(variant_groups).collect().to_pandas()
+def display_lookup_results(grouped_psms: dict) -> None:
+    """Render the per-peptidoform lookup-results table (peptide, modification, PSM count, file resolution)."""
+    summary_frame = summarize_lookup_results(grouped_psms).collect().to_pandas()
     if not summary_frame.empty:
         display_frame = summary_frame.rename(columns={
             "base_sequence": "Peptide", "modification": "Modification",
@@ -35,16 +35,16 @@ def display_lookup_results(variant_groups: dict) -> None:
 @st.fragment
 def lookup_results_fragment():
     """Render the lookup-results table, the Load & Annotate Spectra trigger, and the post-load summary."""
-    # Empty state: nothing rendered until peptide lookup has produced variants
-    variant_groups = st.session_state.get(get_state_key("variant_groups"))
-    if variant_groups:
-        # Section 1: per-variant results table + headline match count
+    # Empty state: nothing rendered until peptide lookup has produced peptidoforms
+    grouped_psms = st.session_state.get(get_state_key("grouped_psms"))
+    if grouped_psms:
+        # Section 1: per-peptidoform results table + headline match count
         st.subheader("Lookup Results")
-        display_lookup_results(variant_groups)
+        display_lookup_results(grouped_psms)
 
-        total_matches = sum(len(psm_list) for psm_list in variant_groups.values())
+        total_matches = sum(len(psm_list) for psm_list in grouped_psms.values())
         st.success(
-            f"Found {total_matches} PSMs across {len(variant_groups)} peptide variants. "
+            f"Found {total_matches} PSMs across {len(grouped_psms)} peptidoforms. "
             f"Click **Load & Annotate Spectra** below to load and annotate them."
         )
         # Section 2: load-spectra controls — only when mzMLs were picked on the Setup page

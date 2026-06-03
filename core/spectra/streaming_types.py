@@ -1,7 +1,7 @@
 """Streaming carrier types + PSM helpers for the mzML loader (split out so
 callers can import the types without pulling in pyopenms). The carrier the
 pipeline streams is the psm_utils PSM itself, with its peaks attached to
-psm.spectrum; these dataclasses just bundle it with its variant key.
+psm.spectrum; these dataclasses just bundle it with its peptidoform.
 """
 from dataclasses import dataclass
 from typing import List, Tuple, TYPE_CHECKING
@@ -19,24 +19,24 @@ def source_label(psm) -> str:
 
 @dataclass
 class StreamingResult:
-    """Single query spectrum (a carrier PSM) plus its peptide variant key and the
+    """Single query spectrum (a carrier PSM) plus its peptidoform key and the
     matching reference PSMs (yielded by load_spectra_streaming and consumed by
     core.pipeline.query_processing.process_query_result).
     """
     query_psm: "PSM"
     reference_psms: List["PSM"]
-    variant_key: str
+    peptidoform: str
 
 
 @dataclass
 class LoadResult:
     """Per-file output from _load_spectra_from_mzml;
-    variant_key_psm_pairs is [(variant_key, PSM), ...] so the orchestrator can
-    extract each spectrum (carrier PSM) by peptide variant without rescanning.
+    peptidoform_psm_pairs is [(peptidoform, PSM), ...] so the orchestrator can
+    extract each spectrum (carrier PSM) by peptidoform without rescanning.
     """
     display_name: str
     is_reference: bool
-    variant_key_psm_pairs: List[Tuple[str, "PSM"]]
+    peptidoform_psm_pairs: List[Tuple[str, "PSM"]]
     loaded_count: int
     not_found_count: int
     errors: List[str]

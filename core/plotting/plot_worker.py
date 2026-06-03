@@ -6,7 +6,7 @@ This module bundles the picklable work-unit dataclasses (`ComparisonTask` input,
 
 For a single task, the worker computes the 7 comparison metrics (mirror tasks
 only) and writes the requested output files: a Matplotlib static figure as
-PNG/SVG/PDF under per-variant subdirectories, and optionally a standalone
+PNG/SVG/PDF under per-peptidoform subdirectories, and optionally a standalone
 Plotly HTML plot. Each invocation returns a ComparisonResult carrying the
 written paths plus one summary-CSV row, never raising — failures are reported
 via the result's error field so one bad task cannot abort the whole pool.
@@ -197,7 +197,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 
 def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
     """Write the rendered matplotlib figure to each requested file format.
-    Each format lands in its own per-variant subdirectory
+    Each format lands in its own per-peptidoform subdirectory
     (<format_dir>/<folder_name>/<safe_filename>.<ext>), created on demand.
     Returns the triple (png_path, svg_path, pdf_path) — a format is skipped
     (leaving an empty string) when it is absent from task.export_formats or
@@ -211,10 +211,10 @@ def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
         # Skip formats the task did not request or that have no target directory.
         if output_format not in task.export_formats or not format_dir:
             continue
-        # Variants get their own subfolder so plots stay grouped per peptide/reference.
-        variant_dir = Path(format_dir) / task.folder_name
-        variant_dir.mkdir(parents=True, exist_ok=True)
-        output_path = variant_dir / f"{task.safe_filename}.{output_format}"
+        # Peptidoforms get their own subfolder so plots stay grouped per peptide/reference.
+        peptidoform_dir = Path(format_dir) / task.folder_name
+        peptidoform_dir.mkdir(parents=True, exist_ok=True)
+        output_path = peptidoform_dir / f"{task.safe_filename}.{output_format}"
         save_kwargs: dict = {"bbox_inches": "tight", "facecolor": "white", "format": output_format}
         # DPI only meaningfully applies to the raster PNG; SVG/PDF are vector.
         if output_format == "png":

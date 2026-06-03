@@ -73,7 +73,7 @@ Polars LazyFrames consumed by the openms_insight components.
 
 | Module | What it holds |
 |---|---|
-| `psm_tables.py` | `PSM_TABLE_SCHEMA`, `build_psm_table()` — flattens variant groups into one row per PSM and returns `(frame, psm_lookup)` |
+| `psm_tables.py` | `PSM_TABLE_SCHEMA`, `build_psm_table()` — flattens grouped PSMs into one row per PSM and returns `(frame, psm_lookup)` |
 | `insight_frames.py` | `PEAKS_SCHEMA`, `SEQUENCE_SCHEMA`, `HEATMAP_SCHEMA` plus the builders `build_peaks_dataframe`, `build_sequence_dataframe`, `build_heatmap_dataframe`, and the convenience `build_visualization_frames` that returns all three together |
 
 See [../export/formats.md](../export/formats.md) for the on-disk Parquet
@@ -113,7 +113,7 @@ identically from both front ends belongs here.
 |---|---|
 | `kwargs_builders.py` | `build_annotation_kwargs()` and `build_koina_kwargs()` — take a generic `getter(key, default)` callable so the CLI (`SimpleNamespace`) and Streamlit (`params` dict) can both supply parameters without the core knowing the storage format |
 | `annotation_steps.py` | The per-result helpers: `_annotate_query_spectrum`, `_cache_reference_spectra`, `_try_koina_fallback`, `get_koina_prediction`, `build_comparison_row` |
-| `query_processing.py` | `process_query_result()` (one call per streamed spectrum, returns annotated query + metrics + plot-task seed), `build_plot_tasks()` (post-pass: turns annotated queries into `ComparisonTask` list), `build_psm_to_variant_mapping()`, `format_spectrum_labels()` |
+| `query_processing.py` | `process_query_result()` (one call per streamed spectrum, returns annotated query + metrics + plot-task seed), `build_plot_tasks()` (post-pass: turns annotated queries into `ComparisonTask` list), `build_psm_to_peptidoform_mapping()`, `format_spectrum_labels()` |
 | `streaming_orchestration.py` | `run_streaming_annotation()` — the top-level loop that drives `load_spectra_streaming` and applies `process_query_result` to each yielded result. `make_query_ready_callback()` builds the per-query callback the streamer calls in the main process |
 
 ---

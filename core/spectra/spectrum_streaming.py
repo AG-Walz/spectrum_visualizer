@@ -12,7 +12,7 @@ Combines three layers in one file:
   process-global state — runs in a ProcessPoolExecutor worker.
 - Orchestration (`load_spectra_streaming`): drives spectrum extraction in
   reference-first order so each query can be compared against its references
-  the moment it arrives. References are loaded and bucketed by peptide variant
+  the moment it arrives. References are loaded and bucketed by peptidoform
   first; only then are queries streamed, each one handed to `on_query_ready`
   packaged as a `StreamingResult` carrying its matching reference spectra.
 
@@ -301,19 +301,19 @@ def _load_spectra_from_mzml(
     is_reference: bool,
 ) -> LoadResult:
     """Worker entry point — open one mzML and load every spectrum named in matches_for_file.
-    matches_for_file is a list of (PSM, variant_key) pairs; each PSM's
+    matches_for_file is a list of (PSM, peptidoform) pairs; each PSM's
     spectrum_id is resolved to an array position via a targeted index, the
     spectrum is fetched, and it is prepared as a PSM carrier tagged with
-    its variant key. Errors are collected per spectrum (and once for the whole
+    its peptidoform. Errors are collected per spectrum (and once for the whole
     file if it fails to open) rather than raised — a failure on one spectrum or
     file never aborts the batch.
-    Returns a LoadResult carrying variant_key_psm_pairs as a list of
-    (variant_key, PSM) pairs, plus the loaded / not-found counts
+    Returns a LoadResult carrying peptidoform_psm_pairs as a list of
+    (peptidoform, PSM) pairs, plus the loaded / not-found counts
     and the error list. Runs inside a ProcessPoolExecutor worker, so the
     return value must remain picklable.
     """
     # Per-file accumulators — successfully loaded PSM carriers and error strings
-    variant_key_psm_pairs: List[Tuple[str, PSM]] = []
+    peptidoform_psm_pairs: List[Tuple[str, PSM]] = []
     errors: List[str] = []
 
     try:
@@ -324,7 +324,7 @@ def _load_spectra_from_mzml(
         n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
 
         # Resolve each PSM's spectrum ID to a position, fetch it, and wrap it
-        for psm, variant_key in matches_for_file:
+        for psm, peptidoform in matches_for_file:
             try:
                 spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
                 # Missing ID: record and skip — one absent spectrum is not fatal
@@ -332,7 +332,7 @@ def _load_spectra_from_mzml(
                     errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
                     continue
                 spectrum = indexed_exp.getSpectrum(spectrum_index)
-                variant_key_psm_pairs.append((variant_key, _prepare_loaded_psm(spectrum, psm)))
+                peptidoform_psm_pairs.append((peptidoform, _prepare_loaded_psm(spectrum, psm)))
             # Per-spectrum failure: keep going so the rest of the batch loads
             except Exception as error:
                 errors.append(f"Error loading {psm.spectrum_id}: {error}")
@@ -345,9 +345,9 @@ def _load_spectra_from_mzml(
     return LoadResult(
         display_name=display_name,
         is_reference=is_reference,
-        variant_key_psm_pairs=variant_key_psm_pairs,
-        loaded_count=len(variant_key_psm_pairs),
-        not_found_count=len(matches_for_file) - len(variant_key_psm_pairs),
+        peptidoform_psm_pairs=peptidoform_psm_pairs,
+        loaded_count=len(peptidoform_psm_pairs),
+        not_found_count=len(matches_for_file) - len(peptidoform_psm_pairs),
         errors=errors,
     )
 
@@ -357,17 +357,17 @@ def _load_spectra_from_mzml(
 # ============================================================================
 
 def build_mzml_to_matches_map(
-    variant_groups: Dict[str, PSMList],
+    grouped_psms: Dict[str, PSMList],
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Group PSMs by the mzML file they live in; return {path_key: [(psm, variant_key), ...]}.
+    """Group PSMs by the mzML file they live in; return {path_key: [(psm, peptidoform), ...]}.
     path_key is the resolved, lower-cased absolute path of an mzML file. PSMs are
     bucketed by run via PSMList.get_psm_dict(), and each run is resolved to one
     available mzML path — preferring the pre-computed
     psm.metadata["mzml_resolved_path"], falling back to matching psm.run against
     the mzML filename stem. (Both derive from psm.run, so a whole run resolves
-    together.) variant_key is the PSM's modified peptidoform — the same key its
-    variant group is keyed on. PSMs whose run resolves to no available file (or
+    together.) peptidoform is the PSM's modified peptidoform — the same key its
+    grouped-PSMs entry is keyed on. PSMs whose run resolves to no available file (or
     carry an empty run) are silently dropped.
     """
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
@@ -384,7 +384,7 @@ def build_mzml_to_matches_map(
 
     # Flatten to one PSMList and let get_psm_dict() bucket by collection -> run ->
     # spectrum_id; resolve each run to its mzML once (all its PSMs share a run).
-    all_psms = PSMList(psm_list=[psm for psm_list in variant_groups.values() for psm in psm_list])
+    all_psms = PSMList(psm_list=[psm for psm_list in grouped_psms.values() for psm in psm_list])
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
     dropped_examples: list[str] = []
     dropped_count = 0
@@ -493,7 +493,7 @@ def _filter_already_loaded(
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]],
     skip_ids: set,
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Drop matches whose (variant_key, spectrum_id) pair is in skip_ids,
+    """Drop matches whose (peptidoform, spectrum_id) pair is in skip_ids,
     returning the trimmed mzml_to_matches map.
     Powers resuming a partial run: spectra already persisted in an earlier pass
     are skipped so only the remainder is reloaded. Files left with no surviving
@@ -503,7 +503,7 @@ def _filter_already_loaded(
     before = sum(len(matches) for matches in mzml_to_matches.values())
     filtered = {
         path_key: kept for path_key, matches in mzml_to_matches.items()
-        if (kept := [(psm, variant_key) for psm, variant_key in matches if (variant_key, psm.spectrum_id) not in skip_ids])
+        if (kept := [(psm, peptidoform) for psm, peptidoform in matches if (peptidoform, psm.spectrum_id) not in skip_ids])
     }
     after = sum(len(matches) for matches in filtered.values())
     if before > after:
@@ -512,27 +512,27 @@ def _filter_already_loaded(
 
 
 def _collect_reference_spectra(
-    ref_results: List[LoadResult], variant_groups: Dict[str, PSMList],
+    ref_results: List[LoadResult], grouped_psms: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[PSM]]:
-    """Bucket every loaded reference spectrum by variant_key and fire the
-    per-variant callback once references are in; return {variant_key: [PSM]}.
-    The returned map has one slot for every known variant — including variants
+    """Bucket every loaded reference spectrum by peptidoform and fire the
+    per-peptidoform callback once references are in; return {peptidoform: [PSM]}.
+    The returned map has one slot for every known peptidoform — including peptidoforms
     that got zero reference spectra — so a later query lookup never raises a
-    KeyError. on_reference_loaded is invoked only for variants that
+    KeyError. on_reference_loaded is invoked only for peptidoforms that
     actually received references.
     """
-    # Bucket: one slot per known variant, fan out the loaded spectra
-    reference_spectra: Dict[str, List[PSM]] = {variant_key: [] for variant_key in variant_groups}
+    # Bucket: one slot per known peptidoform, fan out the loaded spectra
+    reference_spectra: Dict[str, List[PSM]] = {peptidoform: [] for peptidoform in grouped_psms}
     for load_result in ref_results:
-        for variant_key, reference_psm in load_result.variant_key_psm_pairs:
-            reference_spectra[variant_key].append(reference_psm)
+        for peptidoform, reference_psm in load_result.peptidoform_psm_pairs:
+            reference_spectra[peptidoform].append(reference_psm)
 
-    # Notify: per-variant callback only fires for variants that actually got refs
+    # Notify: per-peptidoform callback only fires for peptidoforms that actually got refs
     notify = on_reference_loaded or (lambda *_: None)
-    for variant_key, references in reference_spectra.items():
+    for peptidoform, references in reference_spectra.items():
         if references:
-            notify(variant_key, len(references))
+            notify(peptidoform, len(references))
 
     logger.info(f"References loaded: {sum(len(r) for r in reference_spectra.values())} spectra")
     return reference_spectra
@@ -544,7 +544,7 @@ def _stream_query_results(
     on_query_ready: Optional[Callable[[StreamingResult], None]],
 ) -> None:
     """Fire on_query_ready once per loaded query spectrum, each call carrying a
-    StreamingResult that pairs the query with its variant's reference spectra.
+    StreamingResult that pairs the query with its peptidoform's reference spectra.
     Returns nothing — the loaded spectra reach the caller purely through the
     callback. When no callback is supplied the query results are simply
     discarded, since this function exists only to replay them downstream.
@@ -553,16 +553,16 @@ def _stream_query_results(
     if not on_query_ready:
         return
     for load_result in query_results:
-        for variant_key, query_psm in load_result.variant_key_psm_pairs:
+        for peptidoform, query_psm in load_result.peptidoform_psm_pairs:
             on_query_ready(StreamingResult(
                 query_psm=query_psm,
-                reference_psms=reference_spectra[variant_key],
-                variant_key=variant_key,
+                reference_psms=reference_spectra[peptidoform],
+                peptidoform=peptidoform,
             ))
 
 
 def load_spectra_streaming(
-    variant_groups: Dict[str, PSMList],
+    grouped_psms: Dict[str, PSMList],
     mzml_paths: List[Path],
     reference_substring: str = "",
     on_reference_loaded: Optional[Callable[[str, int], None]] = None,
@@ -574,10 +574,10 @@ def load_spectra_streaming(
     skip_ids: Optional[set] = None,
 ) -> Dict[str, List[PSM]]:
     """Load references first, then stream each query through on_query_ready;
-    return {variant_key: [reference_spectra]}.
+    return {peptidoform: [reference_spectra]}.
     The public entry point of the streaming loader. reference_substring
     (case-insensitive) partitions mzml_paths into reference and query files;
-    references are loaded and bucketed by peptide variant up front so that each
+    references are loaded and bucketed by peptidoform up front so that each
     query, on arrival, can already be compared against its references. Spectra
     are surfaced through the optional callbacks rather than collected in bulk:
     on_query_ready receives a StreamingResult per query, the on_file_*
@@ -592,7 +592,7 @@ def load_spectra_streaming(
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     reference_keys, query_keys = _split_reference_and_query_keys(mzml_path_map, reference_substring)
 
-    mzml_to_matches = build_mzml_to_matches_map(variant_groups, mzml_path_map)
+    mzml_to_matches = build_mzml_to_matches_map(grouped_psms, mzml_path_map)
     # Resume support: trim matches already persisted by an earlier pass
     if skip_ids:
         mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
@@ -602,7 +602,7 @@ def load_spectra_streaming(
     ref_results = _execute_load_tasks(
         ref_tasks, True, workers, on_file_start, on_file_complete, error_callback,
     )
-    reference_spectra = _collect_reference_spectra(ref_results, variant_groups, on_reference_loaded)
+    reference_spectra = _collect_reference_spectra(ref_results, grouped_psms, on_reference_loaded)
 
     # Queries next: stream each loaded query through on_query_ready
     query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map)

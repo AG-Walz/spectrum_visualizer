@@ -38,7 +38,7 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
           │
           ▼
   [ lookup ]                  core.peptide_lookup.lookup_peptides_in_idxmls
-          │   → variant_groups: dict[variant_key → PSMList]
+          │   → grouped_psms: dict[peptidoform → PSMList]
           │
           ▼
   [ load + annotate ]         core.pipeline.run_streaming_annotation

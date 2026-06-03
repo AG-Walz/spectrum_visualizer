@@ -105,7 +105,7 @@ def _load_config(path: str) -> SimpleNamespace:
 def _run_lookup(config) -> tuple:
     """Load idXML files once into a PSMList (core.peptide_lookup.load_idxmls), then
     scan that in-memory list for the target peptides (core.peptide_lookup.lookup_peptides),
-    producing variant_groups (PSMList per variant). Returns (variant_groups, total_psms).
+    producing grouped_psms (PSMList per peptidoform). Returns (grouped_psms, total_psms).
     """
     logger.info("Step 1: Looking up peptides in idXML files")
     # Progress bar
@@ -119,19 +119,19 @@ def _run_lookup(config) -> tuple:
         workers=min(config.workers, len(config.idxml_files)),
     )
     bar.close()
-    variant_groups = lookup_peptides(
+    grouped_psms = lookup_peptides(
         psm_list, target_peptides=config.peptides, mzml_paths=config.mzml_files,
     )
     # Log any lookup errors but keep going
     for error in errors:
         logger.warning(error)
-    # Count total PSMs across all variant groups for progress tracking in the next step
-    total_psms = sum(len(psm_list) for psm_list in variant_groups.values())
-    logger.info(f"Found {total_psms} PSMs across {len(variant_groups)} variants")
-    return variant_groups, total_psms
+    # Count total PSMs across all grouped PSMs for progress tracking in the next step
+    total_psms = sum(len(psm_list) for psm_list in grouped_psms.values())
+    logger.info(f"Found {total_psms} PSMs across {len(grouped_psms)} peptidoforms")
+    return grouped_psms, total_psms
 
 
-def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
+def _run_load(config, grouped_psms, psm_lookup, total_psms) -> tuple:
     """Calls core.pipeline.run_streaming_annotation() to stream spectra from mzMLs and 
     annotate fragment ions (optionally fetching Koina AI prediction when no reference spectra are available);
     return (annotated_queries, reference_store, comparison_rows).
@@ -142,7 +142,7 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
     # Progress bar
     bar = tqdm(total=total_psms, desc="Loading", unit="spec")
     annotated_queries, reference_store, comparison_rows = run_streaming_annotation(
-        variant_groups=variant_groups,
+        grouped_psms=grouped_psms,
         mzml_paths=config.mzml_files,
         reference_substring=config.reference_substring,
         psm_lookup=psm_lookup,
@@ -160,7 +160,7 @@ def _run_load(config, variant_groups, psm_lookup, total_psms) -> tuple:
     return annotated_queries, reference_store, comparison_rows
 
 
-def _run_export(config, annotated_queries, reference_store, variant_groups,
+def _run_export(config, annotated_queries, reference_store, grouped_psms,
                 comparison_rows, psm_frame):
     """Calls core.export.run_export to write parquet/CSV tables and 
     (unless --no-plots is selected) mirror & summary plots.
@@ -185,7 +185,7 @@ def _run_export(config, annotated_queries, reference_store, variant_groups,
         frames=build_visualization_frames(annotated_queries, psm_frame),
         annotated_queries=annotated_queries,
         reference_store=reference_store,
-        variant_groups=variant_groups,
+        grouped_psms=grouped_psms,
         comparison_frame=pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame(),
         # Export selection: which tables and plots to write based on config
         selection=ExportSelection(
@@ -226,23 +226,23 @@ def main(config_path: Path) -> None:
     start = time.time()
     config = _load_config(str(config_path))
 
-    # Step 1: look up peptide variants in idXMLs, bail if nothing matched
-    variant_groups, total_psms = _run_lookup(config)
+    # Step 1: look up peptidoforms in idXMLs, bail if nothing matched
+    grouped_psms, total_psms = _run_lookup(config)
     if total_psms == 0:
         sys.exit("Error: No PSMs found.")
 
     # Step 2: stream + annotate spectra against the lookup results
-    variant_groups_copy = copy.deepcopy(variant_groups) 
-    psm_frame, psm_lookup = build_psm_table(variant_groups_copy)
+    grouped_psms_copy = copy.deepcopy(grouped_psms) 
+    psm_frame, psm_lookup = build_psm_table(grouped_psms_copy)
     annotated_queries, reference_store, comparison_rows = _run_load(
-        config, variant_groups_copy, psm_lookup, total_psms,
+        config, grouped_psms_copy, psm_lookup, total_psms,
     )
     if not annotated_queries:
         sys.exit("Error: No spectra could be loaded or annotated.")
 
     # Step 3: export plots, tables, settings; report total wall time
     result = _run_export(
-        config, annotated_queries, reference_store, variant_groups_copy,
+        config, annotated_queries, reference_store, grouped_psms_copy,
         comparison_rows, psm_frame,
     )
     logger.info(f"Done in {time.time() - start:.1f}s. Exported to {result.export_root}")

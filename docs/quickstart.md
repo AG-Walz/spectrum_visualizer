@@ -88,7 +88,7 @@ RTEFNLNQY
 ```
 
 Enter **base sequences** (unmodified). MSpecViz automatically finds all
-modified variants during the lookup step. Sequences are case-insensitive.
+modified peptidoforms during the lookup step. Sequences are case-insensitive.
 
 Use "Preview peptides in idXML" to see which peptides are present in your
 selected idXML files before committing to a lookup.
@@ -140,7 +140,7 @@ This tab runs the analysis pipeline in two stages.
 ### Stage 1: Look Up Peptides
 
 Click **Look Up Peptides** to scan selected idXML files for target peptide
-sequences. MSpecViz finds all PSMs, groups them by peptide variant (base
+sequences. MSpecViz finds all PSMs, groups them by peptidoform (base
 sequence plus modification state), and resolves which mzML file contains each
 spectrum.
 
@@ -201,7 +201,7 @@ Displays Plotly interactive mirror plots for each query-reference pair:
 - Hover over any peak to see its m/z, intensity, and annotation label.
 - Comparison metrics are displayed alongside the plot.
 
-Use the PSM selector to browse different peptide variants and source files.
+Use the PSM selector to browse different peptidoforms and source files.
 When no reference is available, a single-spectrum plot is shown instead.
 
 ### Comparison Metrics
@@ -235,7 +235,7 @@ The Export tab generates publication-quality outputs and manages export history.
 - Parquet DataFrames (psm.parquet, peaks.parquet, seq.parquet, heatmap.parquet)
 - CSV and XLSX comparison summary with the 7 metrics plus per-pair context
   columns (peak counts, annotation counts, shared peaks)
-- Mirror plots organized by peptide variant in format-specific subdirectories
+- Mirror plots organized by peptidoform in format-specific subdirectories
 - Interactive HTML plots (Plotly, using CDN for small file sizes)
 - Summary analysis plots (dual-axis bar/box, ridgeline KDE)
 - `run_settings.json` capturing all parameters for reproducibility

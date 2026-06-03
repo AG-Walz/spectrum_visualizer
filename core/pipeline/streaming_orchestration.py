@@ -63,7 +63,7 @@ def make_query_ready_callback(
 
 def run_streaming_annotation(
     *,
-    variant_groups: dict,
+    grouped_psms: dict,
     mzml_paths,
     reference_substring: str,
     psm_lookup: dict,
@@ -81,7 +81,7 @@ def run_streaming_annotation(
     file lifecycle, and errors; any left None fall back to a no-op. Returns
     (annotated_queries, reference_store, comparison_rows) — respectively the
     (psm_id, query_psm, query_frame) tuples, the experimental reference
-    cache keyed by variant, and the flat list of comparison-metric dicts.
+    cache keyed by peptidoform, and the flat list of comparison-metric dicts.
     """
     # Init buffers: shared accumulators the on_query_ready callback writes into;
     # passing them by reference lets the callback mutate them as spectra arrive.
@@ -104,7 +104,7 @@ def run_streaming_annotation(
 
     # Dispatch: stream every mzML, fanning lifecycle callbacks to the frontend
     load_spectra_streaming(
-        variant_groups=variant_groups,
+        grouped_psms=grouped_psms,
         mzml_paths=[Path(path) for path in mzml_paths],
         reference_substring=reference_substring,
         on_reference_loaded=noop,

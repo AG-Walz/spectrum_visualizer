@@ -25,8 +25,8 @@ from core.spectra import load_spectra_streaming, psm_lookup_key
 from tests.conftest import make_peptide_match
 
 
-def _make_variant_groups():
-    """Build a Dict[variant_key, PSMList] with two synthetic PEPTIDEK PSMs."""
+def _make_grouped_psms():
+    """Build a Dict[peptidoform, PSMList] with two synthetic PEPTIDEK PSMs."""
     return {"PEPTIDEK": PSMList(psm_list=[
         make_peptide_match(spectrum_id="index=1"),
         make_peptide_match(spectrum_id="index=2"),
@@ -59,9 +59,9 @@ def _make_psm(spectrum_id="index=1", peptidoform="PEPTIDEK",
 
 class TestBuildPsmTable:
     def test_basic_build(self):
-        """PSM table from two-PSM variant: LazyFrame, schema, row count, lookup keys all match."""
-        variant_groups = _make_variant_groups()
-        frame, lookup = build_psm_table(variant_groups)
+        """PSM table from two-PSM peptidoform: LazyFrame, schema, row count, lookup keys all match."""
+        grouped_psms = _make_grouped_psms()
+        frame, lookup = build_psm_table(grouped_psms)
         assert isinstance(frame, pl.LazyFrame)
         assert isinstance(lookup, dict)
         assert dict(frame.collect_schema()) == PSM_TABLE_SCHEMA
@@ -69,12 +69,12 @@ class TestBuildPsmTable:
         assert len(df) == 2
         assert set(lookup.keys()) == {"index=1|PEPTIDEK", "index=2|PEPTIDEK"}
 
-    def test_empty_variant_groups(self):
+    def test_empty_grouped_psms(self):
         frame, lookup = build_psm_table({})
         assert len(frame.collect()) == 0
         assert len(lookup) == 0
 
-    def test_multiple_variants(self):
+    def test_multiple_peptidoforms(self):
         groups = {
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match(spectrum_id="index=1")]),
             "AAAVAAAK": PSMList(psm_list=[
@@ -158,19 +158,19 @@ class TestBuildFromRealData:
     """End-to-end: lookup → stream → annotate → build the four insight DataFrames."""
 
     @pytest.fixture
-    def variant_groups(self, idxml_path, target_peptides):
+    def grouped_psms(self, idxml_path, target_peptides):
         return lookup_peptides(load_idxmls([idxml_path]), target_peptides)
 
-    def test_build_psm_table_real(self, variant_groups):
-        psm_frame, lookup = build_psm_table(variant_groups)
+    def test_build_psm_table_real(self, grouped_psms):
+        psm_frame, lookup = build_psm_table(grouped_psms)
         assert dict(psm_frame.collect_schema()) == PSM_TABLE_SCHEMA
         df = psm_frame.collect()
         assert len(df) == 2
         assert len(lookup) == 2
 
-    def test_build_all_dataframes_real(self, variant_groups, mzml_paths):
+    def test_build_all_dataframes_real(self, grouped_psms, mzml_paths):
         """Full pipeline against real fixtures: 2 PSMs, ~373 annotated peaks across all frames."""
-        psm_frame, psm_lookup = build_psm_table(variant_groups)
+        psm_frame, psm_lookup = build_psm_table(grouped_psms)
         annotated = []
 
         def on_query(result):
@@ -187,7 +187,7 @@ class TestBuildFromRealData:
 
         mzml_path_list = [Path(p) for p in mzml_paths]
         load_spectra_streaming(
-            variant_groups=variant_groups,
+            grouped_psms=grouped_psms,
             mzml_paths=mzml_path_list,
             reference_substring="",
             on_query_ready=on_query,
