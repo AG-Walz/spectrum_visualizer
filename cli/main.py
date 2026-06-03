@@ -29,7 +29,7 @@ from core.export import (  # noqa: E402
 from core.pipeline import (  # noqa: E402
     build_annotation_kwargs, build_koina_kwargs, run_streaming_annotation,
 )
-from core.peptide_lookup import lookup_peptides_in_idxmls  # noqa: E402
+from core.peptide_lookup import load_idxmls, lookup_peptides  # noqa: E402
 
 logger = logging.getLogger("core.cli")
 
@@ -103,24 +103,25 @@ def _load_config(path: str) -> SimpleNamespace:
 
 
 def _run_lookup(config) -> tuple:
-    """Calls core.peptide_lookup.lookup_peptides_in_idxmls() to scan idXML files
-    for target peptides producing variang_groups (list of PSMs)
-     and return (variant_groups, total_psms).
+    """Load idXML files once into a PSMList (core.peptide_lookup.load_idxmls), then
+    scan that in-memory list for the target peptides (core.peptide_lookup.lookup_peptides),
+    producing variant_groups (PSMList per variant). Returns (variant_groups, total_psms).
     """
     logger.info("Step 1: Looking up peptides in idXML files")
     # Progress bar
-    bar = tqdm(total=len(config.idxml_files), desc="Looking up", unit="file")
+    bar = tqdm(total=len(config.idxml_files), desc="Loading", unit="file")
     errors: list = []
-    # Look up peptides across idXML files, streaming results and errors via callbacks
-    variant_groups = lookup_peptides_in_idxmls(
+    # Parse every idXML once, then filter/group target peptides from memory (no re-read)
+    psm_list = load_idxmls(
         idxml_paths=config.idxml_files,
-        target_peptides=config.peptides,
-        mzml_paths=config.mzml_files,
         progress_callback=lambda current, total, message: bar.update(current - bar.n),
         error_callback=errors.append,
         workers=min(config.workers, len(config.idxml_files)),
     )
     bar.close()
+    variant_groups = lookup_peptides(
+        psm_list, target_peptides=config.peptides, mzml_paths=config.mzml_files,
+    )
     # Log any lookup errors but keep going
     for error in errors:
         logger.warning(error)

@@ -1,28 +1,36 @@
-"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts via core.peptide_lookup.count_psms_in_idxmls)."""
+"""Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts
+via core.peptide_lookup.load_idxmls + count_psms_per_peptide; the loaded PSMList is cached for Load & Annotate)."""
 from collections import Counter
 
 import streamlit as st
 
 from core.defaults import DEFAULTS
 from core.helpers import parse_peptide_list
-from core.peptide_lookup import count_psms_in_idxmls
+from core.peptide_lookup import count_psms_per_peptide, load_idxmls
 from streamlit_app.utils.progress_tracker import progress_status
-from streamlit_app.utils.state import STATE_PREFIX, get_state_key
+from streamlit_app.utils.state import (
+    STATE_PREFIX, cache_idxml_psmlist, get_state_key,
+)
 
 
 def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Run count_psms_in_idxmls with a live Streamlit progress bar; return (counts, errors)."""
+    """Load idxmls once into a PSMList (cached for reuse by Load & Annotate) with a live
+    progress bar, then count PSMs per peptide from memory. Returns (counts, errors).
+    """
     # Setup: error accumulator + progress-status context
     errors: list[str] = []
     n = len(idxmls)
     with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
-        # Dispatch: parallel scan with progress + error callbacks
-        psm_counts = count_psms_in_idxmls(
+        # Parse every idXML once; cache the PSMList so target lookup can reuse it
+        psm_list = load_idxmls(
             idxmls,
             workers=min(workers, n),
             progress_callback=lambda done, total, _msg: tracker.update(done, total, units="files"),
             error_callback=errors.append,
         )
+        cache_idxml_psmlist(idxmls, psm_list)
+        # Derive peptide counts from the loaded PSMList (no file re-read)
+        psm_counts = count_psms_per_peptide(psm_list)
         # Finalise: surface error summary or success count
         if errors:
             tracker.finalize(f"Completed with {len(errors)} errors", state="error")

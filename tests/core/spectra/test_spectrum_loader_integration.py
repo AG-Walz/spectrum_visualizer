@@ -2,7 +2,7 @@
 import pytest
 from pathlib import Path
 
-from core.peptide_lookup import lookup_peptides_in_idxmls
+from core.peptide_lookup import load_idxmls, lookup_peptides
 from core.spectra import load_spectra_streaming, psm_lookup_key
 
 
@@ -11,7 +11,7 @@ class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
         """Run lookup + streaming once per class — every test below shares the result."""
-        variant_groups = lookup_peptides_in_idxmls([idxml_path], target_peptides)
+        variant_groups = lookup_peptides(load_idxmls([idxml_path]), target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]
 
         spectra = []

@@ -4,7 +4,8 @@ import polars as pl
 from psm_utils import PSMList
 
 from core.peptide_lookup import (
-    lookup_peptides_in_idxmls,
+    load_idxmls,
+    lookup_peptides,
     summarize_lookup_results,
 )
 from tests.conftest import make_peptide_match
@@ -63,8 +64,8 @@ class TestLookupWithRealData:
 
     @pytest.fixture(scope="class")
     def lookup_results(self, idxml_path, target_peptides):
-        """Run the idXML scan once per class — every test below shares the result."""
-        return lookup_peptides_in_idxmls([idxml_path], target_peptides)
+        """Load the idXML once, then scan the PSMList — every test below shares the result."""
+        return lookup_peptides(load_idxmls([idxml_path]), target_peptides)
 
     def test_lookup_finds_expected_peptides(self, lookup_results):
         assert len(lookup_results) == 2

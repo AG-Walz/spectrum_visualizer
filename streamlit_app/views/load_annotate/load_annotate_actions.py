@@ -11,7 +11,9 @@ import pandas as pd
 import streamlit as st
 
 from streamlit_app.utils.progress_tracker import progress_status
-from streamlit_app.utils.state import get_param, get_state_key, save_params
+from streamlit_app.utils.state import (
+    cache_idxml_psmlist, cached_idxml_psmlist, get_param, get_state_key, save_params,
+)
 from streamlit_app.utils.page_state import clear_analysis_cache, save_analysis_cache
 from core.defaults import DEFAULTS
 from core.helpers import format_time
@@ -21,7 +23,7 @@ from core.pipeline import (
     build_koina_kwargs,
     run_streaming_annotation,
 )
-from core.peptide_lookup import lookup_peptides_in_idxmls
+from core.peptide_lookup import load_idxmls, lookup_peptides
 
 logger = logging.getLogger(__name__)
 
@@ -54,21 +56,28 @@ def _show_lookup_results_summary(variant_groups, error_messages, tracker, params
 
 
 def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
-    """Scan idxmls for peptides, stash variant_groups in session state, surface progress + warnings.
+    """Load idxmls once (reusing the Setup picker's cached PSMList when the selection
+    matches), scan it in memory for peptides, stash variant_groups in session state,
+    and surface progress + warnings.
     """
     mzmls = get_param(params, "selected_mzmls", [])
     error_messages: list[str] = []
 
-    # Dispatch parallel idXML scan inside a progress status block; stash and summarize results
+    # Reuse the PSMList the Setup picker already loaded, or parse the idXMLs now (once)
     with progress_status("Looking up peptides...") as tracker:
-        variant_groups = lookup_peptides_in_idxmls(
-            idxmls, peptides, mzml_paths=mzmls,
-            progress_callback=lambda current, total, message: tracker.update(
-                current, total, units="files", message=message,
-            ),
-            error_callback=error_messages.append,
-            workers=get_param(params, "workers", DEFAULTS.workers),
-        )
+        psm_list = cached_idxml_psmlist(idxmls)
+        if psm_list is None:
+            psm_list = load_idxmls(
+                idxmls,
+                progress_callback=lambda current, total, message: tracker.update(
+                    current, total, units="files", message=message,
+                ),
+                error_callback=error_messages.append,
+                workers=get_param(params, "workers", DEFAULTS.workers),
+            )
+            cache_idxml_psmlist(idxmls, psm_list)
+        # Filter/group target peptides from the in-memory PSMList (no idXML re-read)
+        variant_groups = lookup_peptides(psm_list, peptides, mzml_paths=mzmls)
         st.session_state[get_state_key("variant_groups")] = variant_groups
         _show_lookup_results_summary(variant_groups, error_messages, tracker, params)
 

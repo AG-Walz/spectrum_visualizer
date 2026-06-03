@@ -19,7 +19,7 @@ from core.dataframes import (
 )
 from psm_utils import PSMList
 
-from core.peptide_lookup import lookup_peptides_in_idxmls
+from core.peptide_lookup import load_idxmls, lookup_peptides
 from core.spectra import load_spectra_streaming, psm_lookup_key
 
 from tests.conftest import make_peptide_match
@@ -159,7 +159,7 @@ class TestBuildFromRealData:
 
     @pytest.fixture
     def variant_groups(self, idxml_path, target_peptides):
-        return lookup_peptides_in_idxmls([idxml_path], target_peptides)
+        return lookup_peptides(load_idxmls([idxml_path]), target_peptides)
 
     def test_build_psm_table_real(self, variant_groups):
         psm_frame, lookup = build_psm_table(variant_groups)

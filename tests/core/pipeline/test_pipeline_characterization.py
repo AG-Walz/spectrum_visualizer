@@ -21,7 +21,7 @@ from core.dataframes import (
     build_psm_table,
     build_visualization_frames,
 )
-from core.peptide_lookup import lookup_peptides_in_idxmls
+from core.peptide_lookup import load_idxmls, lookup_peptides
 from core.pipeline import (
     build_annotation_kwargs,
     build_koina_kwargs,
@@ -34,8 +34,8 @@ class TestSingleSpectrumPipelineCharacterization:
     @pytest.fixture(scope="class")
     def pipeline_output(self, idxml_path, mzml_paths, target_peptides):
         """Run the whole CLI default pipeline once; share results across tests."""
-        variant_groups = lookup_peptides_in_idxmls(
-            [idxml_path], target_peptides, mzml_paths=mzml_paths,
+        variant_groups = lookup_peptides(
+            load_idxmls([idxml_path]), target_peptides, mzml_paths=mzml_paths,
         )
         # The CLI deep-copies before annotating because streaming stamps PSMs.
         variant_groups = copy.deepcopy(variant_groups)

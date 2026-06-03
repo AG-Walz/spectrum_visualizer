@@ -56,6 +56,33 @@ def get_param(params: dict, key: str, default: Any = None) -> Any:
 
 
 # ============================================================================
+# Loaded-idXML PSMList cache
+# ============================================================================
+# The Setup picker (peptide counts) and Load & Annotate (target lookup) both
+# consume a PSMList loaded from the selected idXML files. Caching that PSMList
+# keyed on the file selection lets the second stage reuse the first stage's load
+# instead of re-parsing the same files (see core.peptide_lookup.load_idxmls).
+
+_LOADED_IDXML_PSMLIST_KEY = "_loaded_idxml_psmlist"
+_LOADED_IDXML_FILES_KEY = "_loaded_idxml_files"
+
+
+def cached_idxml_psmlist(idxml_files: list[str]):
+    """Return the PSMList previously loaded from exactly idxml_files, or None when
+    the cache is empty or was loaded from a different idXML selection.
+    """
+    if st.session_state.get(_LOADED_IDXML_FILES_KEY) == idxml_files:
+        return st.session_state.get(_LOADED_IDXML_PSMLIST_KEY)
+    return None
+
+
+def cache_idxml_psmlist(idxml_files: list[str], psm_list) -> None:
+    """Stash a freshly loaded PSMList keyed on the idXML file selection it came from."""
+    st.session_state[_LOADED_IDXML_PSMLIST_KEY] = psm_list
+    st.session_state[_LOADED_IDXML_FILES_KEY] = list(idxml_files)
+
+
+# ============================================================================
 # Workspace directory helpers
 # ============================================================================
 

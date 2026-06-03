@@ -95,9 +95,7 @@ def _annotate_query_spectrum(streaming_result, annotation_kwargs):
 
 
 def _cache_reference_spectra(streaming_result, reference_store, annotation_kwargs):
-    """Annotate every reference spectrum for this peptide variant and stash them in
-    reference_store (once per variant).
-    """
+    """Annotate this peptide variant's reference spectra and cache them in reference_store."""
     variant_key = streaming_result.variant_key
     # Guard: skip if this variant is already cached or has no references to annotate
     if variant_key in reference_store or not streaming_result.reference_psms:
