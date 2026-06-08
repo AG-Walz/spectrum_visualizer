@@ -5,15 +5,19 @@ rows or as ComparisonTask plot jobs.
 `process_query_result` is the per-query step of the streaming pipeline; it runs
 through the annotation phases (annotate query, cache experimental references,
 optional Koina AI fallback) and the scoring via core.annotation.comparison_metrics.
+`run_streaming_annotation` is the top-level load-stage driver: it streams every
+mzML and feeds each arriving query to `process_query_result`, buffering the
+outcomes for downstream consumption.
 `build_plot_tasks` converts already-annotated queries into one plot task per pair,
 pre-computing the metrics overlay so the parallel plot workers never recompute it.
 
-process_query_result called by core.pipeline.streaming_orchestration;
+run_streaming_annotation called by cli.main and streamlit_app.views.load_annotate;
 build_plot_tasks called by core.export.run_export;
 build_psm_to_peptidoform_mapping and format_spectrum_labels also used by
 streamlit_app.views.explore.mirror_plots.
 """
 from pathlib import Path
+from typing import Callable, Optional
 
 import numpy as np
 from psm_utils import Peptidoform, PSM
@@ -29,6 +33,7 @@ from core.annotation.peak_matching import (
 )
 from core.defaults import DEFAULTS
 from core.plotting.plot_worker import ComparisonTask
+from core.spectra import load_spectra_streaming
 from core.spectra.koina_prediction import predict_koina_spectrum
 from core.spectra.streaming_types import psm_lookup_key, source_label
 
@@ -158,21 +163,21 @@ def format_spectrum_labels(query_psm, reference_psm=None) -> tuple[str, str]:
     return query_label, reference_label
 
 
-def build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries) -> dict[str, str]:
+def build_psm_to_peptidoform_mapping(
+    grouped_psms: dict, annotated_queries: list[tuple],
+) -> dict[str, str]:
     """Map each PSM id to its peptidoform key.
-    Returns {psm_id: peptidoform}. annotated_queries may arrive in two
-    shapes: the Streamlit dict {psm_id: (spectrum, frame)} or the CLI
-    list-of-tuples [(psm_id, spectrum, frame), ...]; both are normalised
-    before matching. A PSM whose spectrum key has no annotated query is simply
-    omitted from the result.
+    Returns {psm_id: peptidoform}. annotated_queries is the canonical
+    list-of-tuples shape [(psm_id, query_psm, query_frame), ...] produced by
+    run_streaming_annotation; callers holding another representation (e.g. the
+    Streamlit session-state dict) reshape to this shape first. A PSM whose
+    spectrum key has no annotated query is simply omitted from the result.
     """
-    # Normalise input: handle Streamlit's dict shape and the CLI list-of-tuples shape uniformly
-    if isinstance(annotated_queries, dict):
-        items = [(psm_id, spec) for psm_id, (spec, _) in annotated_queries.items()]
-    else:
-        items = [(psm_id, spec) for psm_id, spec, _ in annotated_queries]
     # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id
-    spec_to_psm_id = {psm_lookup_key(spec): psm_id for psm_id, spec in items}
+    spec_to_psm_id = {
+        psm_lookup_key(query_psm): psm_id
+        for psm_id, query_psm, _query_frame in annotated_queries
+    }
 
     # Walk peptidoforms: rebuild each PSM's spectrum key and resolve it to a PSM id
     psm_id_to_peptidoform: dict[str, str] = {}
@@ -185,7 +190,7 @@ def build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries) -> dict[st
 
 
 # ============================================================================
-# Per-query orchestration + plot-task builder
+# Per-query orchestration
 # ============================================================================
 
 def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
@@ -252,6 +257,117 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
         comparison_rows.append(row)
     return (psm_id, query_psm, query_frame, comparison_rows)
 
+
+# ============================================================================
+# Streaming-annotation orchestrator (load stage)
+# ============================================================================
+
+def make_query_ready_callback(
+    *,
+    psm_lookup: dict,
+    annotation_kwargs: dict,
+    reference_store: dict,
+    koina_kwargs: dict,
+    annotated_queries: list,
+    comparison_rows: list,
+    on_progress: Callable[[int], None],
+):
+    """Build the per-PSM callback fed to load_spectra_streaming as on_query_ready.
+    The returned closure annotates each arriving query, appends results to the
+    caller-owned annotated_queries and comparison_rows buffers, and ticks
+    on_progress with the running count of successfully loaded PSMs. Returns the
+    nested on_query_ready callable.
+    """
+    # Mutable-cell closure idiom: a one-element list whose single slot the nested
+    # closure can mutate (a plain int would be read-only from inside on_query_ready).
+    loaded_count = [0]
+
+    def on_query_ready(streaming_result):
+        """Annotate one streamed query spectrum and record it into the shared buffers.
+        Invoked once per query spectrum by load_spectra_streaming. Delegates to
+        process_query_result; a None result means the spectrum has no matching
+        PSM in the lookup results, so it is silently skipped. On success, the per-PSM
+        annotated spectrum is appended to annotated_queries, its metric rows are
+        extended into comparison_rows, and the progress counter advances. Returns None.
+        """
+        # Annotate the query, resolve its references, and score every pair.
+        annotation_outcome = process_query_result(
+            streaming_result, psm_lookup, annotation_kwargs, reference_store, **koina_kwargs,
+        )
+        # Skip spectra with no matching PSM in the lookup results.
+        if annotation_outcome is None:
+            return
+        # Buffer the annotated query and its per-pair metric rows for the caller.
+        psm_id, query_psm, query_frame, rows = annotation_outcome
+        annotated_queries.append((psm_id, query_psm, query_frame))
+        comparison_rows.extend(rows)
+        # Advance the running count and report progress to the frontend.
+        loaded_count[0] += 1
+        on_progress(loaded_count[0])
+
+    return on_query_ready
+
+
+def run_streaming_annotation(
+    *,
+    grouped_psms: dict,
+    mzml_paths,
+    reference_substring: str,
+    psm_lookup: dict,
+    annotation_kwargs: dict,
+    koina_kwargs: dict,
+    workers: int,
+    on_progress: Optional[Callable[[int], None]] = None,
+    on_file_start: Optional[Callable] = None,
+    on_file_complete: Optional[Callable] = None,
+    on_error: Optional[Callable[[str], None]] = None,
+) -> tuple[list, dict, list]:
+    """Stream-load and annotate every PSM, returning the three load-stage buffers.
+    Wires a per-PSM callback into load_spectra_streaming and runs the full
+    streaming load. The optional on_* callbacks let the frontend track progress,
+    file lifecycle, and errors; any left None fall back to a no-op. Returns
+    (annotated_queries, reference_store, comparison_rows) — respectively the
+    (psm_id, query_psm, query_frame) tuples, the experimental reference
+    cache keyed by peptidoform, and the flat list of comparison-metric dicts.
+    """
+    # Init buffers: shared accumulators the on_query_ready callback writes into;
+    # passing them by reference lets the callback mutate them as spectra arrive.
+    annotated_queries: list = []
+    reference_store: dict = {}
+    comparison_rows: list = []
+    # No-op stand-in for any optional callback the caller did not supply.
+    noop = lambda *_: None
+
+    # Build callback: per-PSM closure that annotates and appends to buffers
+    on_query_ready = make_query_ready_callback(
+        psm_lookup=psm_lookup,
+        annotation_kwargs=annotation_kwargs,
+        reference_store=reference_store,
+        koina_kwargs=koina_kwargs,
+        annotated_queries=annotated_queries,
+        comparison_rows=comparison_rows,
+        on_progress=on_progress or noop,
+    )
+
+    # Dispatch: stream every mzML, fanning lifecycle callbacks to the frontend
+    load_spectra_streaming(
+        grouped_psms=grouped_psms,
+        mzml_paths=[Path(path) for path in mzml_paths],
+        reference_substring=reference_substring,
+        on_reference_loaded=noop,
+        on_query_ready=on_query_ready,
+        on_file_start=on_file_start or noop,
+        on_file_complete=on_file_complete or noop,
+        error_callback=on_error or noop,
+        workers=workers,
+    )
+
+    return annotated_queries, reference_store, comparison_rows
+
+
+# ============================================================================
+# Plot-task builder (export stage)
+# ============================================================================
 
 def build_plot_tasks(annotated_queries, reference_store, grouped_psms,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),

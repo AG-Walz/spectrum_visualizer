@@ -223,8 +223,14 @@ def mirror_plots_fragment(params: dict):
         st.info("No annotated spectra available.")
         return
 
-    # Eligibility: peptidoforms needing both a query PSM and a reference to mirror
-    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries)
+    # Eligibility: peptidoforms needing both a query PSM and a reference to mirror.
+    # Reshape the session-state dict into the canonical [(psm_id, query_psm, query_frame)]
+    # list the core mapping helper expects.
+    annotated_query_list = [
+        (psm_id, query_psm, query_frame)
+        for psm_id, (query_psm, query_frame) in annotated_queries.items()
+    ]
+    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_query_list)
     eligible = _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform)
 
     # Hidden caption: surface how many peptidoforms were dropped for missing a reference pair
