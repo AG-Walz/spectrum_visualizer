@@ -80,8 +80,8 @@ def get_koina_prediction(
     reference_psm.precursor_mz = reference_psm.peptidoform.theoretical_mz
 
     # Annotate: reuse Koina's native AI-predicted ion labels directly
-    reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
-    return (reference_psm, reference_frame)
+    predicted_reference_frame = prepare_koina_spectrum_for_plot(predicted_frame, **annotation_kwargs)
+    return (reference_psm, predicted_reference_frame)
 
 
 def _annotate_query_spectrum(streaming_result, annotation_kwargs):
@@ -173,7 +173,7 @@ def build_psm_to_peptidoform_mapping(
     Streamlit session-state dict) reshape to this shape first. A PSM whose
     spectrum key has no annotated query is simply omitted from the result.
     """
-    # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id
+    # Invert to a per-PSM-key lookup so each grouped PSM can find its PSM id
     spec_to_psm_id = {
         psm_lookup_key(query_psm): psm_id
         for psm_id, query_psm, _query_frame in annotated_queries
