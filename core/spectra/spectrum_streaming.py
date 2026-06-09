@@ -153,38 +153,56 @@ def build_mzml_to_matches_map(
     matching psm.run against the filename stem. PSMs whose run resolves to no available file (or
     carry an empty run) are dropped, with a warning logged for the dropped count.
     """
-    # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
-    stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
+    # Build stem index: reverse-lookup keyed on the mzML filename stem. A stem can map
+    # to several files when same-basename mzMLs are selected from different folders
+    # (e.g. illumina/ vs pac/), so keep every key and disambiguate by source dir below.
+    stem_to_keys: Dict[str, List[str]] = {}
+    for key, path in available_mzml_paths.items():
+        stem_to_keys.setdefault(path.stem.lower(), []).append(key)
 
-    # Resolver: prefer the PSM's pre-resolved path, fall back to stem match
+    # Resolver: prefer the PSM's pre-resolved path; fall back to a stem match scoped to
+    # the PSM's own source directory. Refuse to guess on an ambiguous stem (drop+warn).
     def resolve(psm: PSM) -> Optional[str]:
         resolved = psm.metadata.get("mzml_resolved_path", "")
         if resolved:
             key = str(Path(resolved).resolve()).lower()
             if key in available_mzml_paths:
                 return key
-        return stem_to_key.get((psm.run or "").lower())
+        candidates = stem_to_keys.get((psm.run or "").lower(), [])
+        if len(candidates) == 1:
+            return candidates[0]
+        if len(candidates) > 1:
+            source_dir = str(Path(psm.metadata.get("idxml_resolved_path", "")).resolve().parent).lower()
+            same_dir = [k for k in candidates
+                        if str(available_mzml_paths[k].resolve().parent).lower() == source_dir]
+            if len(same_dir) == 1:
+                return same_dir[0]
+            logger.warning(
+                "mzML run %r is ambiguous across %d files and none is co-located with "
+                "idXML %r; dropping its PSMs.",
+                psm.run, len(candidates), psm.metadata.get("idxml_file", ""),
+            )
+        return None
 
-    # Bucket PSMs by run (all of a run's PSMs share .run, so resolve once per run).
-    by_run: Dict[str, List[PSM]] = {}
+    # Resolve each PSM to its mzML individually. We can't resolve once per run name:
+    # same-basename files from different folders (illumina/ vs pac/) share a run name
+    # but live in different mzMLs, so a per-run shortcut would funnel both into one
+    # file. Per-PSM resolution honours each PSM's own pre-resolved path.
+    mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
     total_psms = 0
+    dropped_count = 0
     for psm_list in peptidoform_psms.values():
         for psm in psm_list:
             total_psms += 1
-            by_run.setdefault(psm.run or "", []).append(psm)
-
-    mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
-    dropped_count = 0
-    for run, run_psms in by_run.items():
-        path_key = resolve(run_psms[0]) if run else None
-        if path_key:
-            # Pair each PSM with its modified-sequence peptidoform — the same key its
-            # peptidoform_psms entry is keyed on.
-            mzml_to_matches.setdefault(path_key, []).extend(
-                (psm, psm.peptidoform.modified_sequence) for psm in run_psms
-            )
-        else:
-            dropped_count += len(run_psms)
+            path_key = resolve(psm) if psm.run else None
+            if path_key:
+                # Pair each PSM with its modified-sequence peptidoform — the same key
+                # its peptidoform_psms entry is keyed on.
+                mzml_to_matches.setdefault(path_key, []).append(
+                    (psm, psm.peptidoform.modified_sequence)
+                )
+            else:
+                dropped_count += 1
     if dropped_count:
         logger.warning(
             "build_mzml_to_matches_map dropped %d/%d PSMs that resolved to no available mzML file.",

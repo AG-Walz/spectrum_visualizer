@@ -2,8 +2,56 @@
 import pytest
 from pathlib import Path
 
+from psm_utils import PSM, Peptidoform, PSMList
+
 from core.peptide_lookup import load_idxmls, lookup_peptides
 from core.spectra import load_spectra_streaming, psm_lookup_key
+from core.spectra.spectrum_streaming import build_mzml_to_matches_map
+
+
+def _resolved_key(path):
+    return str(Path(path).resolve()).lower()
+
+
+def _psm(run, mzml_resolved="", idxml_path="", spectrum_id="index=1"):
+    psm = PSM(peptidoform=Peptidoform("PEPTIDEK/2"), spectrum_id=spectrum_id, run=run)
+    if mzml_resolved:
+        psm.metadata["mzml_resolved_path"] = mzml_resolved
+    if idxml_path:
+        psm.metadata["idxml_resolved_path"] = idxml_path
+        psm.metadata["idxml_file"] = Path(idxml_path).name
+    return psm
+
+
+class TestBuildMzmlToMatchesMap:
+    """Run-to-mzML bucketing must not cross-contaminate same-stem mzMLs from different folders."""
+
+    def test_pre_resolved_paths_bucket_to_distinct_files(self):
+        # Both runs are "sample" but each PSM carries its own resolved path.
+        available = {
+            _resolved_key("/illumina/sample.mzML"): Path("/illumina/sample.mzML"),
+            _resolved_key("/pac/sample.mzML"): Path("/pac/sample.mzML"),
+        }
+        grouped = {"PEPTIDEK": PSMList(psm_list=[
+            _psm("sample", mzml_resolved="/illumina/sample.mzML", spectrum_id="index=1"),
+            _psm("sample", mzml_resolved="/pac/sample.mzML", spectrum_id="index=2"),
+        ])}
+        result = build_mzml_to_matches_map(grouped, available)
+        assert set(result) == set(available)
+        assert all(len(matches) == 1 for matches in result.values())
+
+    def test_ambiguous_stem_fallback_dropped_without_colocation(self):
+        # No pre-resolved path, stem "sample" maps to two files, idXML co-located with
+        # neither → the run is dropped rather than silently mis-resolved.
+        available = {
+            _resolved_key("/illumina/sample.mzML"): Path("/illumina/sample.mzML"),
+            _resolved_key("/pac/sample.mzML"): Path("/pac/sample.mzML"),
+        }
+        grouped = {"PEPTIDEK": PSMList(psm_list=[
+            _psm("sample", idxml_path="/idx/sample.idXML"),
+        ])}
+        result = build_mzml_to_matches_map(grouped, available)
+        assert result == {}
 
 
 @pytest.mark.integration
