@@ -74,6 +74,15 @@ class TestBuildPsmTable:
         assert len(frame.collect()) == 0
         assert len(lookup) == 0
 
+    def test_source_column_populated_from_provenance(self):
+        illumina = make_peptide_match(spectrum_id="index=1")
+        illumina.metadata["idxml_source"] = "illumina"
+        pac = make_peptide_match(spectrum_id="index=2")
+        pac.metadata["idxml_source"] = "pac"
+        frame, _ = build_psm_table({"PEPTIDEK": PSMList(psm_list=[illumina, pac])})
+        df = frame.collect()
+        assert df.sort("spectrum_id")["source"].to_list() == ["illumina", "pac"]
+
     def test_multiple_peptidoforms(self):
         groups = {
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match(spectrum_id="index=1")]),

@@ -2,27 +2,45 @@
 """
 from collections import Counter
 from pathlib import Path
-from typing import Any, Callable, Iterable, Iterator, List, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Sequence, Tuple
 from joblib import Parallel, delayed
 
 
 class DuplicateBasenameError(ValueError):
-    """Two or more selected files share the same basename — refuse to start.
+    """The exact same file (same folder and basename) is selected twice — refuse to start.
     """
 
 
 def ensure_unique_basenames(paths: Iterable[str], kind: str) -> None:
-    """Raise DuplicateBasenameError if any two paths share a basename.
+    """Raise DuplicateBasenameError if the same file is selected more than once.
+
+    Identity is (parent directory, basename): same-basename files in *different*
+    folders are allowed — they're disambiguated downstream by their source directory
+    (see peptide_lookup's idxml_source provenance), which lets e.g. illumina/ and pac/
+    copies of a sample be compared in one run.
     """
+    keys = [(str(Path(path).parent), Path(path).name) for path in paths]
     duplicates = sorted(
-        name for name, count in Counter(Path(path).name for path in paths).items()
+        str(Path(parent) / name) for (parent, name), count in Counter(keys).items()
         if count > 1
     )
     if duplicates:
         raise DuplicateBasenameError(
-            f"Two or more selected {kind} files share the same basename: "
-            f"{duplicates}. Rename or symlink so every {kind} basename is unique."
+            f"The same {kind} file is selected more than once: {duplicates}."
         )
+
+
+def basenames_shared_across_dirs(paths: Iterable[str]) -> Dict[str, List[str]]:
+    """Group selected paths by basename, keeping only basenames that appear in more
+    than one directory.
+
+    Used to inform the user that same-named files from different source folders will
+    be disambiguated by their folder rather than rejected.
+    """
+    by_name: Dict[str, List[str]] = {}
+    for path in paths:
+        by_name.setdefault(Path(path).name, []).append(str(path))
+    return {name: shared for name, shared in by_name.items() if len(shared) > 1}
 
 def parse_peptide_list(text: str) -> List[str]:
     """Parse newline-separated peptide list, uppercased and stripped.

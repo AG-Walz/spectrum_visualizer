@@ -14,6 +14,7 @@ from streamlit_app.views.widgets.peptide_input import render_peptide_input
 from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 from core.helpers import (
     DuplicateBasenameError,
+    basenames_shared_across_dirs,
     ensure_unique_basenames,
 )
 from core.spectra import get_koina_settings
@@ -67,12 +68,23 @@ def render_file_selection():
         params[dir_param] = selected_directory
         st.session_state[dir_param] = selected_directory
 
-    # Validate: refuse duplicate basenames since downstream loaders key on filename
+    # Validate: refuse only the exact same file selected twice. Same-basename files
+    # from different source folders are allowed — downstream resolution and provenance
+    # disambiguate them by source directory — but surface an info note so the user
+    # knows the folder is what distinguishes them.
     for kind, state_key in [("idXML", 'selected_idxmls'), ("mzML", 'selected_mzmls')]:
+        selected = st.session_state.get(state_key, [])
         try:
-            ensure_unique_basenames(st.session_state.get(state_key, []), kind)
+            ensure_unique_basenames(selected, kind)
         except DuplicateBasenameError as error:
             st.error(str(error))
+        shared = basenames_shared_across_dirs(selected)
+        if shared:
+            st.info(
+                f"{len(shared)} {kind} basename(s) appear in more than one folder "
+                f"(e.g. **{next(iter(shared))}**). These will be kept distinct by their "
+                f"source folder, so identifications from each can be compared."
+            )
 
     save_params(params)
 
@@ -102,10 +114,15 @@ def render_reference_selection():
     # params.json predates the snake_case key migration.
     params['reference_substring'] = ref_substring
 
-    # Preview: show the reference/query split (or an info note when blank)
+    # Preview: show the reference/query split (or an info note when blank).
+    # Match against the full path — mirroring the loader's _split_reference_and_query_keys
+    # — so a substring like "illumina" that lives in the folder (not the basename) still
+    # splits correctly; labels show <folder>/<file> since basenames may repeat across folders.
     if ref_substring:
-        reference_files = [Path(m).name for m in mzmls if ref_substring.lower() in Path(m).name.lower()]
-        query_files = [Path(m).name for m in mzmls if ref_substring.lower() not in Path(m).name.lower()]
+        needle = ref_substring.lower()
+        labelled = [(f"{Path(m).parent.name}/{Path(m).name}", needle in str(m).lower()) for m in mzmls]
+        reference_files = [label for label, is_ref in labelled if is_ref]
+        query_files = [label for label, is_ref in labelled if not is_ref]
 
         with st.expander(f"Reference ({len(reference_files)}) / Query ({len(query_files)}) files", expanded=False):
             col1, col2 = st.columns(2)

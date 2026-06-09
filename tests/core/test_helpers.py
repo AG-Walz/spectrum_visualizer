@@ -3,6 +3,7 @@ import pytest
 
 from core.helpers import (
     DuplicateBasenameError,
+    basenames_shared_across_dirs,
     ensure_unique_basenames,
     format_time,
     parse_peptide_list,
@@ -59,18 +60,31 @@ class TestEnsureUniqueBasenames:
     def test_empty_does_not_raise(self):
         ensure_unique_basenames([], "idXML")
 
-    def test_duplicate_basename_in_different_dirs_raises(self):
-        with pytest.raises(DuplicateBasenameError, match="dup.idXML"):
-            ensure_unique_basenames(["/a/dup.idXML", "/b/dup.idXML"], "idXML")
+    def test_duplicate_basename_in_different_dirs_allowed(self):
+        # Same basename in different folders is now allowed — source folders
+        # disambiguate them downstream (illumina/ vs pac/ comparison use case).
+        ensure_unique_basenames(["/illumina/dup.idXML", "/pac/dup.idXML"], "idXML")
 
-    def test_message_lists_all_duplicates_sorted(self):
-        with pytest.raises(DuplicateBasenameError) as exc:
-            ensure_unique_basenames(
-                ["/a/banana.mzML", "/x/apple.mzML", "/b/banana.mzML", "/y/apple.mzML"],
-                "mzML",
-            )
-        assert "['apple.mzML', 'banana.mzML']" in str(exc.value)
+    def test_exact_same_file_twice_raises(self):
+        with pytest.raises(DuplicateBasenameError, match="dup.idXML"):
+            ensure_unique_basenames(["/a/dup.idXML", "/a/dup.idXML"], "idXML")
 
     def test_kind_interpolated_in_message(self):
-        with pytest.raises(DuplicateBasenameError, match="selected mzML files"):
-            ensure_unique_basenames(["/a/dup.mzML", "/b/dup.mzML"], "mzML")
+        with pytest.raises(DuplicateBasenameError, match="same mzML file"):
+            ensure_unique_basenames(["/a/dup.mzML", "/a/dup.mzML"], "mzML")
+
+
+# ---------------------------------------------------------------------------
+# TestBasenamesSharedAcrossDirs
+# ---------------------------------------------------------------------------
+
+class TestBasenamesSharedAcrossDirs:
+    def test_returns_cross_dir_duplicates(self):
+        shared = basenames_shared_across_dirs(
+            ["/illumina/s.idXML", "/pac/s.idXML", "/illumina/only.idXML"]
+        )
+        assert set(shared) == {"s.idXML"}
+        assert sorted(shared["s.idXML"]) == ["/illumina/s.idXML", "/pac/s.idXML"]
+
+    def test_empty_when_all_unique(self):
+        assert basenames_shared_across_dirs(["/a/x.idXML", "/b/y.idXML"]) == {}

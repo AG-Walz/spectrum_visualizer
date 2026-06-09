@@ -47,9 +47,14 @@ def _load_single_idxml(idxml_path: str, idxml_name: str) -> Tuple[str, list, lis
     # Stamp idXML provenance on every PSM. mzML resolution is deliberately NOT done
     # here — it depends on the user's current mzML selection and is applied later by
     # lookup_peptides, so this loaded PSMList stays reusable across mzML selections.
+    # idxml_source is the parent directory name — it disambiguates same-basename
+    # idXMLs loaded from different source folders (e.g. illumina/ vs pac/) so their
+    # PSMs stay distinguishable downstream and resolve to their own co-located mzML.
+    idxml_source = Path(idxml_path).parent.name
     for psm in psms:
         psm.metadata["idxml_file"] = idxml_name
         psm.metadata["idxml_resolved_path"] = idxml_path
+        psm.metadata["idxml_source"] = idxml_source
         # PSMList-native migration (Step 1): mirror the same provenance into the
         # native PSM.provenance_data dict. Additive dual-write — no consumer reads
         # it yet; psm.metadata stays the source of truth for now.
@@ -57,6 +62,7 @@ def _load_single_idxml(idxml_path: str, idxml_name: str) -> Tuple[str, list, lis
             **(psm.provenance_data or {}),
             "idxml_file": idxml_name,
             "idxml_resolved_path": idxml_path,
+            "idxml_source": idxml_source,
         }
 
     # Surface partial-read errors so the loader can warn the user
@@ -127,6 +133,56 @@ def count_psms_per_peptide(psm_list: PSMList) -> Counter:
     )
 
 
+def _index_mzml_paths(
+    mzml_paths: List[str],
+) -> Tuple[Dict[str, Dict[str, str]], Dict[str, List[str]]]:
+    """Index selected mzML paths for source-aware run resolution.
+
+    Returns (by_dir, by_stem): by_dir maps a parent directory to its
+    {stem_lower: path}; by_stem maps a stem to every path sharing it (so the
+    fallback can tell a unique stem from one that's ambiguous across folders).
+    """
+    by_dir: Dict[str, Dict[str, str]] = {}
+    by_stem: Dict[str, List[str]] = {}
+    for path in mzml_paths:
+        parsed = Path(path)
+        stem = parsed.stem.lower()
+        by_dir.setdefault(str(parsed.parent), {})[stem] = path
+        by_stem.setdefault(stem, []).append(path)
+    return by_dir, by_stem
+
+
+def _resolve_mzml_path(
+    psm,
+    mzml_by_dir: Dict[str, Dict[str, str]],
+    mzml_by_stem: Dict[str, List[str]],
+) -> str:
+    """Resolve a PSM's run to a selected mzML path, preferring the mzML co-located
+    with the PSM's source idXML.
+
+    Falls back to a global stem match only when the idXML's own directory has no
+    match. If the stem is ambiguous across multiple directories and none is
+    co-located, it refuses to guess (returns "" and warns) rather than risk
+    loading another source's spectra.
+    """
+    run = psm.run.lower()
+    source_dir = str(Path(psm.metadata.get("idxml_resolved_path", "")).parent)
+    same_dir = mzml_by_dir.get(source_dir, {})
+    if run in same_dir:
+        return same_dir[run]
+    candidates = mzml_by_stem.get(run, [])
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        logger.warning(
+            "mzML run %r is ambiguous across %d directories and no mzML is co-located "
+            "with idXML %r; leaving it unresolved. Co-locate the mzML in the same "
+            "folder as its idXML to disambiguate.",
+            psm.run, len(candidates), psm.metadata.get("idxml_file", ""),
+        )
+    return ""
+
+
 def lookup_peptides(
     psm_list: PSMList,
     target_peptides: List[str],
@@ -153,13 +209,17 @@ def lookup_peptides(
     )
     hits = psm_list[is_target]
 
-    # Resolve each hit's mzML path (depends on the current selection) and group by peptidoform
-    mzml_by_stem = {Path(path).stem.lower(): path for path in (mzml_paths or [])}
+    # Resolve each hit's mzML path (depends on the current selection) and group by
+    # peptidoform. Resolution is source-aware: an idXML and its mzML are paired within
+    # the same source directory, so a PSM resolves to the mzML co-located with its own
+    # idXML. This keeps same-basename files from different folders (illumina/ vs pac/)
+    # pointing at their own spectra instead of one silently shadowing the other.
+    mzml_by_dir, mzml_by_stem = _index_mzml_paths(mzml_paths or [])
     grouped_psms: Dict[str, PSMList] = {}
     for psm in hits:
         # Annotate with mzML path if possible (match by run name, case-insensitive)
         if psm.run:
-            resolved = mzml_by_stem.get(psm.run.lower(), "")
+            resolved = _resolve_mzml_path(psm, mzml_by_dir, mzml_by_stem)
             if resolved:
                 psm.metadata["mzml_resolved_path"] = resolved
                 psm.provenance_data = {**(psm.provenance_data or {}), "mzml_resolved_path": resolved}
@@ -175,7 +235,8 @@ def lookup_peptides(
 _SUMMARY_SCHEMA = {
     "id": pl.UInt32, "base_sequence": pl.String, "modification": pl.String,
     "display_label": pl.String, "psm_count": pl.Int32,
-    "idxml_files": pl.Int32, "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
+    "idxml_files": pl.Int32, "sources": pl.Int32,
+    "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
 }
 
 def summarize_lookup_results(grouped_psms: Dict[str, PSMList]) -> pl.LazyFrame:
@@ -193,6 +254,7 @@ def summarize_lookup_results(grouped_psms: Dict[str, PSMList]) -> pl.LazyFrame:
             "modification": modification,
             "display_label": peptidoform,
             "idxml_file": psm.metadata.get("idxml_file", ""),
+            "source": psm.metadata.get("idxml_source", ""),
             "mzml_resolved": bool(psm.metadata.get("mzml_resolved_path")),
         } for psm in psm_list)
 
@@ -207,7 +269,10 @@ def summarize_lookup_results(grouped_psms: Dict[str, PSMList]) -> pl.LazyFrame:
         .group_by(["base_sequence", "modification", "display_label"], maintain_order=True)
         .agg([
             pl.len().alias("psm_count"),
-            pl.col("idxml_file").n_unique().alias("idxml_files"),
+            # Count distinct (source, file) pairs so same-basename idXMLs from
+            # different source folders (illumina/ vs pac/) aren't collapsed into one.
+            pl.struct("source", "idxml_file").n_unique().alias("idxml_files"),
+            pl.col("source").n_unique().alias("sources"),
             pl.col("mzml_resolved").sum().alias("mzml_resolved"),
             pl.col("mzml_resolved").not_().sum().alias("unresolved"),
         ])
