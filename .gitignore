@@ -26,7 +26,9 @@ cache/
 
 # Test/example data (keep locally, not in repo)
 test_output/
-examples/
+examples/*
+# keep the small showcase peptide list referenced by config_example.yaml
+!examples/peptides.txt
 example-data/
 
 # Removed standalone scripts/tools

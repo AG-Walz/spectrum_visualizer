@@ -15,7 +15,7 @@ mzml_files:
 
 # "/path/to/peptides.txt" | [PEPTIDE1, PEPTIDE2, ...]
 # A .txt file must hold one peptide per line (commas are not separators).
-peptide_source: /mnt/volume/nacho/data/peptide_lists/peptides.txt
+peptide_source: examples/peptides.txt
 
 # Substring that marks reference mzMLs; leave empty for single-spectrum mode
 # or prediction only.
