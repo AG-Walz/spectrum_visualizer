@@ -1,2 +1,3 @@
 """MSpecViz CLI package — see cli.main for the YAML-driven entry point."""
-__version__ = "1.0.0"
+# Version lives in core (single source of truth); re-export it here.
+from core import __version__

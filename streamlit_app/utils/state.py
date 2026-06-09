@@ -20,6 +20,7 @@ from typing import Any
 
 import streamlit as st
 
+from core import __version__
 from core.defaults import DEFAULTS
 
 
@@ -368,8 +369,9 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             params["image_format"] = selected_format
             save_params(params)
 
-        # Version footer: branded app name + version chip
-        version_info = st.session_state.settings.get("version", "0.1.0")
+        # Version footer: branded app name + version chip (version from core, the
+        # single source of truth — see core.__version__)
+        version_info = __version__
         app_name = st.session_state.settings.get("app_name", "MSpecViz")
         st.markdown(
             '<style>.version-box{border:1px solid #a4a5ad;padding:10px;'

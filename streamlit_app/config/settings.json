@@ -1,6 +1,5 @@
 {
   "app_name": "MSpecViz",
-  "version": "0.1.0",
   "enable_workspaces": true,
   "workspaces_dir": "workspaces",
   "data_directories": {
