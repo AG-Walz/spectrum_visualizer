@@ -1,7 +1,6 @@
 """MSpecViz CLI entry: run the 3-step pipeline (lookup → load+annotate → export) delegating functionality to core/ packages;
 configured from a YAML config invoked via python -m cli <config.yaml>.
 """
-import copy
 import glob as globmod
 import logging
 import os
@@ -232,17 +231,16 @@ def main(config_path: Path) -> None:
         sys.exit("Error: No PSMs found.")
 
     # Step 2: stream + annotate spectra against the lookup results
-    grouped_psms_copy = copy.deepcopy(grouped_psms) 
-    psm_frame, psm_lookup = build_psm_table(grouped_psms_copy)
+    psm_frame, psm_lookup = build_psm_table(grouped_psms)
     annotated_queries, reference_store, comparison_rows = _run_load(
-        config, grouped_psms_copy, psm_lookup, total_psms,
+        config, grouped_psms, psm_lookup, total_psms,
     )
     if not annotated_queries:
         sys.exit("Error: No spectra could be loaded or annotated.")
 
     # Step 3: export plots, tables, settings; report total wall time
     result = _run_export(
-        config, annotated_queries, reference_store, grouped_psms_copy,
+        config, annotated_queries, reference_store, grouped_psms,
         comparison_rows, psm_frame,
     )
     logger.info(f"Done in {time.time() - start:.1f}s. Exported to {result.export_root}")
