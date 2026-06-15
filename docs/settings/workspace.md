@@ -14,7 +14,7 @@ value via `get_param(params, key, DEFAULTS.<key>)`.
 
 ## `workspaces/<name>/params.json`
 
-Written by `utils/state/state_params.py::save_params()` whenever a
+Written by `utils/state.py::save_params()` whenever a
 widget value changes. Keys are `snake_case` and match the widget keys
 used in session state (stored as `peptide_mirror.<key>` — the prefix is
 stripped for on-disk persistence). The schema is sparse: only keys the
@@ -62,7 +62,7 @@ workspaces/
 ```
 
 Workspace names are validated by `is_safe_workspace_name()` in
-`streamlit_app/utils/state/state_workspace.py` — no `..`, no absolute
+`streamlit_app/utils/state.py` — no `..`, no absolute
 paths, no shell metacharacters.
 
 ---
@@ -71,7 +71,7 @@ paths, no shell metacharacters.
 
 Every Streamlit widget writes into `st.session_state` under the
 `peptide_mirror.` namespace (`STATE_PREFIX` in
-`streamlit_app/utils/state/state_core.py` — the prefix is a UI-layer
+`streamlit_app/utils/state.py` — the prefix is a UI-layer
 concern, not part of the core package). The keys below are the public
 contract between views — written by one view, read by another.
 
@@ -80,7 +80,7 @@ contract between views — written by one view, read by another.
 | `selected_idxmls`, `selected_mzmls`, `target_peptides`, `reference_substring` | Setup | Load & Annotate | Input definitions. |
 | `ion_types`, `mz_tolerance`, `add_neutral_losses`, `intensity_mode` | Setup | Load & Annotate, Export | Annotation parameters. |
 | `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Load & Annotate, Export | Runtime / AI-prediction parameters. |
-| `grouped_psms` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[peptidoform, PSMList]` returned by `lookup_peptides_in_idxmls`. |
+| `peptidoform_psms` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[peptidoform, PSMList]` returned by `lookup_peptides`. |
 | `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Load & Annotate (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
 | `annotated_queries`, `reference_store`, `comparison_frame` | Load & Annotate (stage 2) | Explore, Export | Annotated spectra + metrics. |
 | `data_ready` | Load & Annotate (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |

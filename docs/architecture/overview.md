@@ -34,11 +34,11 @@ A single run (CLI or Streamlit) flows through the subpackages in this order:
           │
           ▼
   [ config layer ]            cli/main.py:_load_config,
-          │                   streamlit_app/utils/state/state_params.py
+          │                   streamlit_app/utils/state.py
           │
           ▼
-  [ lookup ]                  core.peptide_lookup.lookup_peptides_in_idxmls
-          │   → grouped_psms: dict[peptidoform → PSMList]
+  [ lookup ]                  core.peptide_lookup.load_idxmls → lookup_peptides
+          │   → peptidoform_psms: dict[peptidoform → PSMList]
           │
           ▼
   [ load + annotate ]         core.pipeline.run_streaming_annotation

@@ -3,7 +3,7 @@
 Eight subpackages, each exposing a public API via a re-exporting
 `__init__.py`. Cross-package imports should always go through those
 subpackage-level re-exports (`from core.peptide_lookup import ...`), never
-reach into internal modules (`from core.peptide_lookup.idxml_workers import ...`).
+reach in for private members (`from core.peptide_lookup import _load_single_idxml`).
 
 ---
 
@@ -17,7 +17,7 @@ Pure helpers with no domain logic. Imported by everything.
 | `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename across directories), and `run_tasks()` — the single dispatcher every parallel worker uses. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers can update progress bars and surface per-file errors in the parent process. Falls back to a sequential loop when `workers=1` |
 
 `STATE_PREFIX` (the Streamlit session-state namespace) lives in
-`streamlit_app/utils/state/state_core.py`, not here — it's a UI-layer concern.
+`streamlit_app/utils/state.py`, not here — it's a UI-layer concern.
 
 ---
 
@@ -27,11 +27,10 @@ idXML parsing and peptide lookup across one or more identification files.
 
 | Module | What it holds |
 |---|---|
-| `idxml_workers.py` | Module-level, picklable workers: `lookup_peptides_in_single_idxml` (returns matches + per-file errors), `count_psms_per_peptide`. Both are dispatched by `core.helpers.run_tasks` |
-| `peptide_lookup.py` | Public entry points: `lookup_peptides_in_idxmls()`, `count_psms_in_idxmls()`, `summarize_lookup_results()`. Wires the optional `progress_callback` / `error_callback` into the dispatcher so the CLI's tqdm bar and Streamlit's progress widget can attach |
+| `peptide_lookup.py` | Loads idXML once into an in-memory `PSMList`, then scans it. `load_idxmls()` is the only place idXML files are parsed: it dispatches the module-level, picklable worker `_load_single_idxml` across files via `core.helpers.run_tasks`, and wires the optional `progress_callback` / `error_callback` so the CLI's tqdm bar and Streamlit's progress widget can attach. `count_psms_per_peptide()`, `lookup_peptides()`, and `summarize_lookup_results()` then operate on the loaded `PSMList`, so the same file is never read twice |
 
-Public API: `from core.peptide_lookup import lookup_peptides_in_idxmls,
-count_psms_in_idxmls, summarize_lookup_results`.
+Public API: `from core.peptide_lookup import load_idxmls, count_psms_per_peptide,
+lookup_peptides, summarize_lookup_results`.
 
 ---
 

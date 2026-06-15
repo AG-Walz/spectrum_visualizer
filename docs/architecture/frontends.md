@@ -15,11 +15,8 @@ streamlit_app/
 ├── utils/
 │   ├── page_state.py           # session-state namespace helpers
 │   ├── progress_tracker.py     # Streamlit progress-bar adapter for run_tasks callbacks
-│   └── state/                  # page_setup, workspace mgmt, sidebar
-│       ├── state_core.py       # STATE_PREFIX, get_state_key, _persisted_key, get_param
-│       ├── state_workspace.py  # is_safe_workspace_name, workspace dir resolver
-│       ├── state_params.py     # load_params, save_params
-│       └── state_sidebar.py    # page_setup, render_sidebar, workspace switcher
+│   └── state.py                # STATE_PREFIX, get_state_key, get_param, load_params,
+│                               # save_params, workspace mgmt, page_setup, sidebar
 └── views/
     ├── setup_page.py           # Tab 1 — file selection + parameters
     ├── load_annotate/
@@ -40,7 +37,7 @@ streamlit_app/
 
 **Session-state convention.** Every key the app writes is prefixed with
 `peptide_mirror.` (see `STATE_PREFIX` in
-`streamlit_app/utils/state/state_core.py` — it's a UI-layer concern, not in
+`streamlit_app/utils/state.py` — it's a UI-layer concern, not in
 the core package). Always go through `get_state_key(key)` — never hard-code
 the prefix. Full list of public keys:
 [../settings/workspace.md#session-state-keys](../settings/workspace.md#session-state-keys).
@@ -50,8 +47,8 @@ a `render()` function called from `app.py`'s `st.navigation([st.Page(...)])`
 list. Everything else in the folder is a support module (`*_actions.py` for
 mutation/orchestration, `*_plots.py` / `gallery.py` for view-only pieces).
 
-**Workspaces.** Managed by `utils/state/state_workspace.py` and the sidebar
-helpers in `state_sidebar.py`. Each workspace is a directory under
+**Workspaces.** Managed by the workspace and sidebar helpers in
+`utils/state.py`. Each workspace is a directory under
 `workspaces/` with its own `params.json` — a sparse record of user-edited
 widget values. Missing keys fall back to `core.defaults.DEFAULTS`.
 The active workspace lives in `st.session_state["workspace"]`.
