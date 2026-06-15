@@ -141,7 +141,7 @@ def _run_load(config, grouped_psms, psm_lookup, total_psms) -> tuple:
     # Progress bar
     bar = tqdm(total=total_psms, desc="Loading", unit="spec")
     annotated_queries, reference_store, comparison_rows = run_streaming_annotation(
-        grouped_psms=grouped_psms,
+        peptidoform_psms=grouped_psms,
         mzml_paths=config.mzml_files,
         reference_substring=config.reference_substring,
         psm_lookup=psm_lookup,
@@ -184,7 +184,7 @@ def _run_export(config, annotated_queries, reference_store, grouped_psms,
         frames=build_visualization_frames(annotated_queries, psm_frame),
         annotated_queries=annotated_queries,
         reference_store=reference_store,
-        grouped_psms=grouped_psms,
+        peptidoform_psms=grouped_psms,
         comparison_frame=pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame(),
         # Export selection: which tables and plots to write based on config
         selection=ExportSelection(
