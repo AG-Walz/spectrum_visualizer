@@ -362,13 +362,13 @@ def build_mzml_to_matches_map(
 ) -> Dict[str, List[Tuple[PSM, str]]]:
     """Group PSMs by the mzML file they live in; return {path_key: [(psm, peptidoform), ...]}.
     path_key is the resolved, lower-cased absolute path of an mzML file. PSMs are
-    bucketed by run via PSMList.get_psm_dict(), and each run is resolved to one
-    available mzML path — preferring the pre-computed
-    psm.metadata["mzml_resolved_path"], falling back to matching psm.run against
-    the mzML filename stem. (Both derive from psm.run, so a whole run resolves
-    together.) peptidoform is the PSM's modified peptidoform — the same key its
-    grouped-PSMs entry is keyed on. PSMs whose run resolves to no available file (or
-    carry an empty run) are silently dropped.
+    bucketed by run, and each run is resolved to one available mzML path —
+    preferring the pre-computed psm.metadata["mzml_resolved_path"], falling back
+    to matching psm.run against the mzML filename stem. (Both derive from psm.run,
+    so a whole run resolves together.) peptidoform is the PSM's modified
+    peptidoform — the same key its grouped-PSMs entry is keyed on. PSMs whose run
+    resolves to no available file (or carry an empty run) are dropped, with a
+    warning logged for the total dropped count.
     """
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
@@ -382,38 +382,29 @@ def build_mzml_to_matches_map(
                 return key
         return stem_to_key.get((psm.run or "").lower())
 
-    # Flatten to one PSMList and let get_psm_dict() bucket by collection -> run ->
-    # spectrum_id; resolve each run to its mzML once (all its PSMs share a run).
-    all_psms = PSMList(psm_list=[psm for psm_list in grouped_psms.values() for psm in psm_list])
+    # Bucket PSMs by run (all of a run's PSMs share .run, so resolve once per run).
+    by_run: Dict[str, List[PSM]] = {}
+    total_psms = 0
+    for psm_list in grouped_psms.values():
+        for psm in psm_list:
+            total_psms += 1
+            by_run.setdefault(psm.run or "", []).append(psm)
+
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]] = {}
-    dropped_examples: list[str] = []
     dropped_count = 0
-    for runs in all_psms.get_psm_dict().values():
-        for run, spectra in runs.items():
-            run_psms = [psm for psm_group in spectra.values() for psm in psm_group]
-            path_key = resolve(run_psms[0]) if run else None
-            if path_key:
-                mzml_to_matches.setdefault(path_key, []).extend(
-                    (psm, psm.peptidoform.modified_sequence) for psm in run_psms
-                )
-            else:
-                dropped_count += len(run_psms)
-                if len(dropped_examples) < 5:
-                    resolved = run_psms[0].metadata.get("mzml_resolved_path", "")
-                    key = str(Path(resolved).resolve()).lower() if resolved else ""
-                    dropped_examples.append(
-                        f"psm.run={run!r} resolved_path={resolved!r} "
-                        f"key={key!r} in_map={key in available_mzml_paths} "
-                        f"stem_hit={stem_to_key.get((run or '').lower())!r}"
-                    )
+    for run, run_psms in by_run.items():
+        path_key = resolve(run_psms[0]) if run else None
+        if path_key:
+            mzml_to_matches.setdefault(path_key, []).extend(
+                (psm, psm.peptidoform.modified_sequence) for psm in run_psms
+            )
+        else:
+            dropped_count += len(run_psms)
     if dropped_count:
         logger.warning(
-            "build_mzml_to_matches_map dropped %d/%d PSMs. "
-            "Available stems sample: %s. First dropped: %s",
+            "build_mzml_to_matches_map dropped %d/%d PSMs that resolved to no available mzML file.",
             dropped_count,
-            len(all_psms),
-            list(stem_to_key.keys())[:3],
-            dropped_examples,
+            total_psms,
         )
     return mzml_to_matches
 
