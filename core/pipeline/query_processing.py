@@ -164,7 +164,7 @@ def format_spectrum_labels(query_psm, reference_psm=None) -> tuple[str, str]:
 
 
 def build_psm_to_peptidoform_mapping(
-    grouped_psms: dict, annotated_queries: list[tuple],
+    peptidoform_psms: dict, annotated_queries: list[tuple],
 ) -> dict[str, str]:
     """Map each PSM id to its peptidoform key.
     Returns {psm_id: peptidoform}. annotated_queries is the canonical
@@ -173,7 +173,7 @@ def build_psm_to_peptidoform_mapping(
     Streamlit session-state dict) reshape to this shape first. A PSM whose
     spectrum key has no annotated query is simply omitted from the result.
     """
-    # Invert to a per-PSM-key lookup so each grouped PSM can find its PSM id
+    # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id
     spec_to_psm_id = {
         psm_lookup_key(query_psm): psm_id
         for psm_id, query_psm, _query_frame in annotated_queries
@@ -181,7 +181,7 @@ def build_psm_to_peptidoform_mapping(
 
     # Walk peptidoforms: rebuild each PSM's spectrum key and resolve it to a PSM id
     psm_id_to_peptidoform: dict[str, str] = {}
-    for peptidoform, psm_list in grouped_psms.items():
+    for peptidoform, psm_list in peptidoform_psms.items():
         for psm in psm_list:
             psm_id = spec_to_psm_id.get(psm_lookup_key(psm))
             if psm_id is not None:
@@ -310,7 +310,7 @@ def make_query_ready_callback(
 
 def run_streaming_annotation(
     *,
-    grouped_psms: dict,
+    peptidoform_psms: dict,
     mzml_paths,
     reference_substring: str,
     psm_lookup: dict,
@@ -351,7 +351,7 @@ def run_streaming_annotation(
 
     # Dispatch: stream every mzML, fanning lifecycle callbacks to the frontend
     load_spectra_streaming(
-        grouped_psms=grouped_psms,
+        peptidoform_psms=peptidoform_psms,
         mzml_paths=[Path(path) for path in mzml_paths],
         reference_substring=reference_substring,
         on_reference_loaded=noop,
@@ -369,7 +369,7 @@ def run_streaming_annotation(
 # Plot-task builder (export stage)
 # ============================================================================
 
-def build_plot_tasks(annotated_queries, reference_store, grouped_psms,
+def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False):
     """Build the list of ComparisonTask plot jobs for a set of annotated queries.
@@ -382,7 +382,7 @@ def build_plot_tasks(annotated_queries, reference_store, grouped_psms,
     if format_dirs is None:
         format_dirs = {}
     export_formats = [*format_dirs] + (["html"] if html_dir else [])
-    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_queries)
+    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(peptidoform_psms, annotated_queries)
     png_dir = format_dirs.get("png", "")
     svg_dir = format_dirs.get("svg", "")
     pdf_dir = format_dirs.get("pdf", "")

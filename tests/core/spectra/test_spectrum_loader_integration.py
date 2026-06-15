@@ -11,7 +11,7 @@ class TestLoadRealSpectra:
     @pytest.fixture(scope="class")
     def loaded_spectra(self, idxml_path, mzml_paths, target_peptides):
         """Run lookup + streaming once per class — every test below shares the result."""
-        grouped_psms = lookup_peptides(load_idxmls([idxml_path]), target_peptides)
+        peptidoform_psms = lookup_peptides(load_idxmls([idxml_path]), target_peptides)
         mzml_path_list = [Path(p) for p in mzml_paths]
 
         spectra = []
@@ -25,7 +25,7 @@ class TestLoadRealSpectra:
             total_peaks += len(result.query_psm.spectrum["mz"])
 
         load_spectra_streaming(
-            grouped_psms=grouped_psms, mzml_paths=mzml_path_list,
+            peptidoform_psms=peptidoform_psms, mzml_paths=mzml_path_list,
             reference_substring="", on_query_ready=on_query,
         )
         return {"spectra": spectra, "keys": keys, "total_peaks": total_peaks}

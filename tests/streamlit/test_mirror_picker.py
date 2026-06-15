@@ -36,29 +36,29 @@ def _empty_plist() -> PSMList:
 
 class TestEligiblePeptidoforms:
     def test_keeps_peptidoforms_with_both_query_and_reference(self):
-        grouped_psms = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
+        peptidoform_psms = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
         psm_id_to_peptidoform = {0: "PEPTIDEK"}
-        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == ["PEPTIDEK"]
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == ["PEPTIDEK"]
 
     def test_drops_peptidoform_with_no_reference(self):
-        grouped_psms = {"PEPTIDEK": _empty_plist()}
+        peptidoform_psms = {"PEPTIDEK": _empty_plist()}
         reference_store: dict = {}
         psm_id_to_peptidoform = {0: "PEPTIDEK"}
-        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == []
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == []
 
     def test_drops_peptidoform_with_no_query(self):
-        grouped_psms = {"PEPTIDEK": _empty_plist()}
+        peptidoform_psms = {"PEPTIDEK": _empty_plist()}
         reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
         psm_id_to_peptidoform: dict = {}
-        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == []
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == []
 
-    def test_preserves_grouped_psms_order(self):
-        grouped_psms = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
+    def test_preserves_peptidoform_psms_order(self):
+        peptidoform_psms = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
         reference_store = {vk: [(_spec("ref.mzML", "scan=1", is_ref=True), None)]
-                           for vk in grouped_psms}
+                           for vk in peptidoform_psms}
         psm_id_to_peptidoform = {0: "AAA", 1: "BBB", 2: "CCC"}
-        assert _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform) == [
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == [
             "AAA", "BBB", "CCC",
         ]
 

@@ -63,7 +63,7 @@ def _make_comparison_frame():
     return pd.DataFrame(rows)
 
 
-def _make_grouped_psms():
+def _make_peptidoform_psms():
     psm = make_peptide_match(
         peptidoform="PEPTIDEK/2", spectrum_id="index=1", charge=2, score=0.95,
         idxml_file="test.idXML", mzml_filename="query.mzML",
@@ -96,7 +96,7 @@ def _build_session_state(tmp_path):
     return {
         "peptide_mirror.annotated_queries": {0: (query_spectrum, query_frame)},
         "peptide_mirror.reference_store": {"PEPTIDEK": [(reference_spectrum, reference_frame)]},
-        "peptide_mirror.grouped_psms": _make_grouped_psms(),
+        "peptide_mirror.peptidoform_psms": _make_peptidoform_psms(),
         "peptide_mirror.comparison_frame": _make_comparison_frame(),
         "peptide_mirror.psm_frame": _make_psm_lazyframe(),
         "peptide_mirror.peaks_frame": pl.DataFrame({"x": [1.0], "y": [1.0]}).lazy(),

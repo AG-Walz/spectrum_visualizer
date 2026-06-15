@@ -19,9 +19,9 @@ from streamlit_app.views.load_annotate.load_annotate_actions import (
 params = page_setup()
 
 
-def display_lookup_results(grouped_psms: dict) -> None:
+def display_lookup_results(peptidoform_psms: dict) -> None:
     """Render the per-peptidoform lookup-results table (peptide, modification, PSM count, file resolution)."""
-    summary_frame = summarize_lookup_results(grouped_psms).collect().to_pandas()
+    summary_frame = summarize_lookup_results(peptidoform_psms).collect().to_pandas()
     if not summary_frame.empty:
         display_frame = summary_frame.rename(columns={
             "base_sequence": "Peptide", "modification": "Modification",
@@ -36,15 +36,15 @@ def display_lookup_results(grouped_psms: dict) -> None:
 def lookup_results_fragment():
     """Render the lookup-results table, the Load & Annotate Spectra trigger, and the post-load summary."""
     # Empty state: nothing rendered until peptide lookup has produced peptidoforms
-    grouped_psms = st.session_state.get(get_state_key("grouped_psms"))
-    if grouped_psms:
+    peptidoform_psms = st.session_state.get(get_state_key("peptidoform_psms"))
+    if peptidoform_psms:
         # Section 1: per-peptidoform results table + headline match count
         st.subheader("Lookup Results")
-        display_lookup_results(grouped_psms)
+        display_lookup_results(peptidoform_psms)
 
-        total_matches = sum(len(psm_list) for psm_list in grouped_psms.values())
+        total_matches = sum(len(psm_list) for psm_list in peptidoform_psms.values())
         st.success(
-            f"Found {total_matches} PSMs across {len(grouped_psms)} peptidoforms. "
+            f"Found {total_matches} PSMs across {len(peptidoform_psms)} peptidoforms. "
             f"Click **Load & Annotate Spectra** below to load and annotate them."
         )
         # Section 2: load-spectra controls — only when mzMLs were picked on the Setup page

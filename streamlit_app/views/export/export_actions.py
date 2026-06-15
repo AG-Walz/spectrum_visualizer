@@ -98,7 +98,7 @@ def _run_export(params: dict, export_dir: str, export_parquet: bool, export_csv:
             frames=_collect_session_frames(),
             annotated_queries=annotated_queries,
             reference_store=st.session_state.get(get_state_key("reference_store"), {}),
-            grouped_psms=st.session_state.get(get_state_key("grouped_psms"), {}),
+            peptidoform_psms=st.session_state.get(get_state_key("peptidoform_psms"), {}),
             comparison_frame=st.session_state.get(get_state_key("comparison_frame")),
             selection=selection,
             plot_settings=plot_settings,

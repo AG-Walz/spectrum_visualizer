@@ -1,5 +1,5 @@
 """Polars LazyFrames feeding openms_insight Table/LinePlot/SequenceView/Heatmap.
-- `build_psm_table` flattens grouped_psms into the per-PSM table
+- `build_psm_table` flattens peptidoform_psms into the per-PSM table
   that drives the openms_insight Table selector. It returns a "spectrum_id|peptidoform" 
   psm_id lookup to attach peaks, sequence and heatmap rows back to the integer PSM id.
 - `build_peaks_dataframe`, `build_sequence_dataframe`, `build_heatmap_dataframe`
@@ -73,10 +73,10 @@ HEATMAP_SCHEMA: dict[str, pl.DataType] = {
 # ============================================================================
 
 def build_psm_table(
-    grouped_psms: dict[str, PSMList],
+    peptidoform_psms: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
-    """Flatten grouped_psms into the per-PSM table and its id lookup. Each key in
-    grouped_psms maps a peptidoform to its PSMList; every PSM becomes one row
+    """Flatten peptidoform_psms into the per-PSM table and its id lookup. Each key in
+    peptidoform_psms maps a peptidoform to its PSMList; every PSM becomes one row
     carrying both PSM-level fields and the peptidoform-level grouping
     fields shared by its siblings. Returns (lazyframe, psm_lookup) where the
     LazyFrame matches PSM_TABLE_SCHEMA and psm_lookup maps
@@ -90,7 +90,7 @@ def build_psm_table(
     # sequential. A peptidoform equal to the bare sequence means unmodified.
     # Optional fields are coerced to schema-safe defaults so the Polars schema
     # never has to widen a column to Null.
-    for peptidoform, psm_list in grouped_psms.items():
+    for peptidoform, psm_list in peptidoform_psms.items():
         for psm in psm_list:
             psm_id = len(rows)
             peptidoform_str = psm.peptidoform.modified_sequence
@@ -110,7 +110,7 @@ def build_psm_table(
             })
 
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
-    logger.info(f"PSM table: {len(rows)} rows across {len(grouped_psms)} peptidoforms")
+    logger.info(f"PSM table: {len(rows)} rows across {len(peptidoform_psms)} peptidoforms")
     return df, psm_lookup
 
 

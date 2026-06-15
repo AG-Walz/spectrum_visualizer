@@ -66,8 +66,8 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
         "is_annotated": [True, True],
     })
     peptidoform = "PEPTIDEK"
-    grouped_psms = {peptidoform: PSMList(psm_list=[query_psm])}
-    at.session_state[f"{STATE_PREFIX}.grouped_psms"] = grouped_psms
+    peptidoform_psms = {peptidoform: PSMList(psm_list=[query_psm])}
+    at.session_state[f"{STATE_PREFIX}.peptidoform_psms"] = peptidoform_psms
     at.session_state[f"{STATE_PREFIX}.annotated_queries"] = {0: (query_psm, annotated_frame)}
     at.session_state[f"{STATE_PREFIX}.reference_store"] = {peptidoform: [(ref_psm, annotated_frame)]}
     at.session_state[f"{STATE_PREFIX}.data_ready"] = True

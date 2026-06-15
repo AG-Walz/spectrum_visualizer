@@ -311,7 +311,7 @@ def _resolve_format_dirs(
 def _run_plot_tasks(
     annotated_queries: list[tuple],
     reference_store: dict,
-    grouped_psms: dict,
+    peptidoform_psms: dict,
     root_dir: Path,
     plot_settings: PlotSettings,
     do_html: bool,
@@ -333,7 +333,7 @@ def _run_plot_tasks(
 
     # Build tasks: one per (query, reference) pair with all per-format output paths
     tasks = build_plot_tasks(
-        annotated_queries, reference_store, grouped_psms,
+        annotated_queries, reference_store, peptidoform_psms,
         sanitize_fn=sanitize_filename,
         format_dirs=format_dirs,
         figure_size=plot_settings.figure_size,
@@ -395,7 +395,7 @@ def run_export(
     frames: dict[str, Any],
     annotated_queries: AnnotatedQueries,
     reference_store: dict,
-    grouped_psms: dict,
+    peptidoform_psms: dict,
     comparison_frame: pd.DataFrame | None = None,
     selection: ExportSelection | None = None,
     plot_settings: PlotSettings | None = None,
@@ -465,7 +465,7 @@ def run_export(
         else:
             queries_list = list(annotated_queries)
         mirror_plot_count = _run_plot_tasks(
-            queries_list, reference_store, grouped_psms, root_dir,
+            queries_list, reference_store, peptidoform_psms, root_dir,
             plot_settings, selection.html, saved_files, on_progress, on_warning,
         )
 

@@ -1,6 +1,6 @@
 """Peptide-lookup layer: load idXML files once into a PSMList (parallel file I/O via
 core.helpers.run_tasks), then scan that in-memory PSMList — count PSMs per peptide for
-the Setup picker, and group target-peptide hits into grouped_psms for the pipeline.
+the Setup picker, and group target-peptide hits into peptidoform_psms for the pipeline.
 Loading is separated from scanning so the same files are never parsed twice.
 (called by cli.main and streamlit_app.views.load_annotate / widgets.peptide_input).
 """
@@ -155,7 +155,7 @@ def lookup_peptides(
 
     # Resolve each hit's mzML path (depends on the current selection) and group by peptidoform
     mzml_by_stem = {Path(path).stem.lower(): path for path in (mzml_paths or [])}
-    grouped_psms: Dict[str, PSMList] = {}
+    peptidoform_psms: Dict[str, PSMList] = {}
     for psm in hits:
         # Annotate with mzML path if possible (match by run name, case-insensitive)
         if psm.run:
@@ -164,11 +164,11 @@ def lookup_peptides(
                 psm.metadata["mzml_resolved_path"] = resolved
                 psm.provenance_data = {**(psm.provenance_data or {}), "mzml_resolved_path": resolved}
         # Group under the modified sequence (the peptidoform)
-        grouped_psms.setdefault(psm.peptidoform.modified_sequence, PSMList(psm_list=[])).append(psm)
+        peptidoform_psms.setdefault(psm.peptidoform.modified_sequence, PSMList(psm_list=[])).append(psm)
 
-    total_psms = sum(len(group) for group in grouped_psms.values())
-    logger.info(f"Found {total_psms} PSMs across {len(grouped_psms)} peptidoforms")
-    return grouped_psms
+    total_psms = sum(len(group) for group in peptidoform_psms.values())
+    logger.info(f"Found {total_psms} PSMs across {len(peptidoform_psms)} peptidoforms")
+    return peptidoform_psms
 
 
 # LazyFrame schema for the per-peptidoform summary consumed by the openms_insight Table
@@ -178,12 +178,12 @@ _SUMMARY_SCHEMA = {
     "idxml_files": pl.Int32, "mzml_resolved": pl.Int32, "unresolved": pl.Int32,
 }
 
-def summarize_lookup_results(grouped_psms: Dict[str, PSMList]) -> pl.LazyFrame:
-    """Turn the grouped PSMs returned by lookup_peptides into a summary LazyFrame with one row per peptidoform for display
+def summarize_lookup_results(peptidoform_psms: Dict[str, PSMList]) -> pl.LazyFrame:
+    """Turn the peptidoform PSMs returned by lookup_peptides into a summary LazyFrame with one row per peptidoform for display
     """
-    # Flatten grouped PSMs into one row per PSM, carrying peptidoform & resolution metadata
+    # Flatten peptidoform PSMs into one row per PSM, carrying peptidoform & resolution metadata
     rows = []
-    for peptidoform, psm_list in grouped_psms.items():
+    for peptidoform, psm_list in peptidoform_psms.items():
         if not psm_list:
             continue
         base = psm_list[0].peptidoform.sequence.upper()

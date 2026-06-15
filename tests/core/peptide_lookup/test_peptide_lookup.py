@@ -39,7 +39,7 @@ class TestSummarizeLookupResults:
         df = result.collect()
         assert df["psm_count"][0] == 2
 
-    def test_empty_grouped_psms(self):
+    def test_empty_peptidoform_psms(self):
         result = summarize_lookup_results({})
         assert isinstance(result, pl.LazyFrame)
         df = result.collect()

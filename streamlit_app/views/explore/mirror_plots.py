@@ -28,11 +28,11 @@ from core.spectra.streaming_types import source_label
 from core.spectra.mzml_native_ids import extract_id_number
 
 
-def _eligible_peptidoforms(grouped_psms: dict, reference_store: dict, psm_id_to_peptidoform: dict) -> list:
+def _eligible_peptidoforms(peptidoform_psms: dict, reference_store: dict, psm_id_to_peptidoform: dict) -> list:
     """Return peptidoforms that have at least one query PSM AND at least one reference loaded.
     """
     peptidoforms_with_query = set(psm_id_to_peptidoform.values())
-    return [peptidoform for peptidoform in grouped_psms
+    return [peptidoform for peptidoform in peptidoform_psms
             if peptidoform in peptidoforms_with_query and reference_store.get(peptidoform)]
 
 
@@ -214,10 +214,10 @@ def _render_picker_tables(
 def mirror_plots_fragment(params: dict):
     """Render the Mirror Plots sub-view — peptide selectbox -> two pickers -> mirror plot.
     """
-    # Pull session state: annotated queries, references, and grouped PSMs from Load & Annotate
+    # Pull session state: annotated queries, references, and peptidoform PSMs from Load & Annotate
     annotated_queries = st.session_state.get(get_state_key("annotated_queries"), {})
     reference_store = st.session_state.get(get_state_key("reference_store"), {})
-    grouped_psms = st.session_state.get(get_state_key("grouped_psms"), {})
+    peptidoform_psms = st.session_state.get(get_state_key("peptidoform_psms"), {})
 
     if not annotated_queries:
         st.info("No annotated spectra available.")
@@ -230,12 +230,12 @@ def mirror_plots_fragment(params: dict):
         (psm_id, query_psm, query_frame)
         for psm_id, (query_psm, query_frame) in annotated_queries.items()
     ]
-    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(grouped_psms, annotated_query_list)
-    eligible = _eligible_peptidoforms(grouped_psms, reference_store, psm_id_to_peptidoform)
+    psm_id_to_peptidoform = build_psm_to_peptidoform_mapping(peptidoform_psms, annotated_query_list)
+    eligible = _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform)
 
     # Hidden caption: surface how many peptidoforms were dropped for missing a reference pair
     peptidoforms_with_query = set(psm_id_to_peptidoform.values())
-    peptidoforms_with_query_count = sum(1 for peptidoform in grouped_psms if peptidoform in peptidoforms_with_query)
+    peptidoforms_with_query_count = sum(1 for peptidoform in peptidoform_psms if peptidoform in peptidoforms_with_query)
     hidden_peptidoform_count = peptidoforms_with_query_count - len(eligible)
     if hidden_peptidoform_count:
         st.caption(

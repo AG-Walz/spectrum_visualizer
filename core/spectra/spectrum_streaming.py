@@ -357,7 +357,7 @@ def _load_spectra_from_mzml(
 # ============================================================================
 
 def build_mzml_to_matches_map(
-    grouped_psms: Dict[str, PSMList],
+    peptidoform_psms: Dict[str, PSMList],
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
     """Group PSMs by the mzML file they live in; return {path_key: [(psm, peptidoform), ...]}.
@@ -366,7 +366,7 @@ def build_mzml_to_matches_map(
     preferring the pre-computed psm.metadata["mzml_resolved_path"], falling back
     to matching psm.run against the mzML filename stem. (Both derive from psm.run,
     so a whole run resolves together.) peptidoform is the PSM's modified
-    peptidoform — the same key its grouped-PSMs entry is keyed on. PSMs whose run
+    peptidoform — the same key its peptidoform-PSMs entry is keyed on. PSMs whose run
     resolves to no available file (or carry an empty run) are dropped, with a
     warning logged for the total dropped count.
     """
@@ -385,7 +385,7 @@ def build_mzml_to_matches_map(
     # Bucket PSMs by run (all of a run's PSMs share .run, so resolve once per run).
     by_run: Dict[str, List[PSM]] = {}
     total_psms = 0
-    for psm_list in grouped_psms.values():
+    for psm_list in peptidoform_psms.values():
         for psm in psm_list:
             total_psms += 1
             by_run.setdefault(psm.run or "", []).append(psm)
@@ -503,7 +503,7 @@ def _filter_already_loaded(
 
 
 def _collect_reference_spectra(
-    ref_results: List[LoadResult], grouped_psms: Dict[str, PSMList],
+    ref_results: List[LoadResult], peptidoform_psms: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[PSM]]:
     """Bucket every loaded reference spectrum by peptidoform and fire the
@@ -514,7 +514,7 @@ def _collect_reference_spectra(
     actually received references.
     """
     # Bucket: one slot per known peptidoform, fan out the loaded spectra
-    reference_spectra: Dict[str, List[PSM]] = {peptidoform: [] for peptidoform in grouped_psms}
+    reference_spectra: Dict[str, List[PSM]] = {peptidoform: [] for peptidoform in peptidoform_psms}
     for load_result in ref_results:
         for peptidoform, reference_psm in load_result.peptidoform_psm_pairs:
             reference_spectra[peptidoform].append(reference_psm)
@@ -553,7 +553,7 @@ def _stream_query_results(
 
 
 def load_spectra_streaming(
-    grouped_psms: Dict[str, PSMList],
+    peptidoform_psms: Dict[str, PSMList],
     mzml_paths: List[Path],
     reference_substring: str = "",
     on_reference_loaded: Optional[Callable[[str, int], None]] = None,
@@ -583,7 +583,7 @@ def load_spectra_streaming(
     mzml_path_map = {str(p.resolve()).lower(): p for p in mzml_paths}
     reference_keys, query_keys = _split_reference_and_query_keys(mzml_path_map, reference_substring)
 
-    mzml_to_matches = build_mzml_to_matches_map(grouped_psms, mzml_path_map)
+    mzml_to_matches = build_mzml_to_matches_map(peptidoform_psms, mzml_path_map)
     # Resume support: trim matches already persisted by an earlier pass
     if skip_ids:
         mzml_to_matches = _filter_already_loaded(mzml_to_matches, skip_ids)
@@ -593,7 +593,7 @@ def load_spectra_streaming(
     ref_results = _execute_load_tasks(
         ref_tasks, True, workers, on_file_start, on_file_complete, error_callback,
     )
-    reference_spectra = _collect_reference_spectra(ref_results, grouped_psms, on_reference_loaded)
+    reference_spectra = _collect_reference_spectra(ref_results, peptidoform_psms, on_reference_loaded)
 
     # Queries next: stream each loaded query through on_query_ready
     query_tasks = _build_file_tasks(query_keys, mzml_to_matches, mzml_path_map)
