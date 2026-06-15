@@ -16,7 +16,7 @@ Combines three layers in one file:
   first; only then are queries streamed, each one handed to `on_query_ready`
   packaged as a `StreamingResult` carrying its matching reference spectra.
 
-Called by core.pipeline.query_processing.run_streaming_annotation, which wires the
+Called by core.pipeline.load_annotate.run_streaming_annotation, which wires the
 metric-computing callback into `on_query_ready`; also exercised directly by
 the integration tests.
 """

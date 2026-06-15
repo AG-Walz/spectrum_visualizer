@@ -10,7 +10,7 @@ peptide), produces:
   (Dice, Jaccard, SharedRatio) into the seven-metric row used by the
   comparison table, export spreadsheet, and mirror-plot corner overlay.
 
-Called by core.pipeline.query_processing and core.plotting.plot_worker.
+Called by core.pipeline.load_annotate and core.plotting.plot_worker.
 """
 import logging
 import math

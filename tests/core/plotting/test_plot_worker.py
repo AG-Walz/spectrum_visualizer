@@ -6,7 +6,7 @@ import pandas as pd
 import pytest
 
 from core.plotting import ComparisonTask, process_single_task
-from core.annotation import prepare_spectrum_for_plot
+from core.peak_annotation import prepare_spectrum_for_plot
 
 # Pinned singly-charged b2 / y2 m/z for PEPTIDEK — computed via
 # spectrum_utils so the test isn't coupled to whichever theoretical

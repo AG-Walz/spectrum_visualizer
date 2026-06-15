@@ -3,8 +3,8 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from core.annotation import (
-    compute_all_metrics,
+from core.comparison_metrics import compute_all_metrics
+from core.peak_annotation import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )

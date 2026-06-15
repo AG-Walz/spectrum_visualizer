@@ -13,7 +13,7 @@ via the result's error field so one bad task cannot abort the whole pool.
 
 `process_single_task` is dispatched by core.export.run_export through
 core.helpers.run_tasks across the worker pool (re-exported via
-core.plotting.process_single_task). It calls core.annotation.comparison_metrics
+core.plotting.process_single_task). It calls core.comparison_metrics
 for metric computation and formatting, and core.plotting.mirror.create_spectrum_plot
 for both the Matplotlib and Plotly figures.
 """
@@ -29,7 +29,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from core.annotation.comparison_metrics import compute_all_metrics, format_metrics_text
+from core.comparison_metrics import compute_all_metrics, format_metrics_text
 from core.plotting.mirror import create_spectrum_plot
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ class ComparisonTask:
     One instance describes a single mirror or single-spectrum plot job:
     the annotated spectra, the labels, the on-disk output locations, and the
     export parameters. Created in batches by
-    core.pipeline.query_processing.build_plot_tasks and consumed by
+    core.pipeline.load_annotate.build_plot_tasks and consumed by
     core.plotting.plot_worker.process_single_task inside a worker process.
     All fields hold picklable values only (DataFrames, strings, numbers) so the
     whole object survives being shipped to a ProcessPoolExecutor worker.

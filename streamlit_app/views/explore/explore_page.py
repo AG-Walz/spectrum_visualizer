@@ -10,7 +10,7 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
-from core.annotation import METRIC_SHORT_TO_DISPLAY
+from core.comparison_metrics import METRIC_SHORT_TO_DISPLAY
 from core.defaults import DEFAULTS
 from core.plotting import (
     METRIC_COLUMNS,

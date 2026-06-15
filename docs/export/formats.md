@@ -102,7 +102,7 @@ emitted.
 ### 7 comparison metrics
 
 Column names are the display strings from `METRIC_SHORT_TO_DISPLAY`
-(`core/annotation/comparison_metrics.py`), not the short codes. See
+(`core/comparison_metrics.py`), not the short codes. See
 [../metrics/comparison.md](../metrics/comparison.md) for definitions.
 
 | Column | Short code | Description |

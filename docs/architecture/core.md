@@ -50,16 +50,16 @@ dataclass so the annotation layer doesn't need to know the spectrum's origin.
 
 ---
 
-## `core/annotation/`
+## `core/peak_annotation.py` + `core/comparison_metrics.py`
 
-Theoretical fragment generation, peak annotation, and the 7 comparison
-metrics. Theoretical fragments are produced by `spectrum_utils.proforma`
-inside `annotate_spectrum()` — there is no separate `peak_theory` module.
+Peak annotation and the 7 comparison metrics live in two sibling modules.
+Theoretical fragments are produced by `spectrum_utils.proforma` inside
+`annotate_spectrum()` — there is no separate `peak_theory` module.
 
 | Module | What it holds |
 |---|---|
-| `peak_matching.py` | `annotate_spectrum()` (proforma → annotated `MsmsSpectrum`), `prepare_spectrum_for_plot()` (main entry point used by the pipeline), `prepare_koina_spectrum_for_plot()` (Koina-output variant), `get_ion_type()` for bucket resolution |
-| `comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_r2_binned()` (R²b on a shared m/z grid — the one intensity scorer still called on its own), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY`. R²m and Cos are computed inline by `compute_all_metrics` via the private `_r2_from_arrays`/`_cosine_from_arrays` helpers. All return NaN on zero-norm or <2 shared points |
+| `core/peak_annotation.py` | `annotate_spectrum()` (proforma → annotated `MsmsSpectrum`), `prepare_spectrum_for_plot()` (main entry point used by the pipeline), `prepare_koina_spectrum_for_plot()` (Koina-output variant), `get_ion_type()` for bucket resolution |
+| `core/comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_r2_binned()` (R²b on a shared m/z grid — the one intensity scorer still called on its own), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY`. R²m and Cos are computed inline by `compute_all_metrics` via the private `_r2_from_arrays`/`_cosine_from_arrays` helpers. All return NaN on zero-norm or <2 shared points |
 
 See [../metrics/comparison.md](../metrics/comparison.md) for formulas,
 ranges, and interpretation.
@@ -111,9 +111,7 @@ identically from both front ends belongs here.
 | Module | What it holds |
 |---|---|
 | `kwargs_builders.py` | `build_annotation_kwargs()` and `build_koina_kwargs()` — take a generic `getter(key, default)` callable so the CLI (`SimpleNamespace`) and Streamlit (`params` dict) can both supply parameters without the core knowing the storage format |
-| `annotation_steps.py` | The per-result helpers: `_annotate_query_spectrum`, `_cache_reference_spectra`, `_try_koina_fallback`, `get_koina_prediction`, `build_comparison_row` |
-| `query_processing.py` | `process_query_result()` (one call per streamed spectrum, returns annotated query + metrics + plot-task seed), `build_plot_tasks()` (post-pass: turns annotated queries into `ComparisonTask` list), `build_psm_to_peptidoform_mapping()`, `format_spectrum_labels()` |
-| `streaming_orchestration.py` | `run_streaming_annotation()` — the top-level loop that drives `load_spectra_streaming` and applies `process_query_result` to each yielded result. `make_query_ready_callback()` builds the per-query callback the streamer calls in the main process |
+| `load_annotate.py` | The Load & Annotate stage driver. `run_streaming_annotation()` — the top-level loop that drives `load_spectra_streaming` and applies `process_query_result` to each yielded result; `process_query_result()` (one call per streamed spectrum, returns annotated query + metrics + plot-task seed); the per-result helpers `_annotate_query_spectrum`, `_cache_reference_spectra`, `_try_koina_fallback`, `get_koina_prediction`; `make_query_ready_callback()`; `build_plot_tasks()` (post-pass: turns annotated queries into `ComparisonTask` list); `build_psm_to_peptidoform_mapping()`; `format_spectrum_labels()` |
 
 ---
 

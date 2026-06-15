@@ -21,7 +21,7 @@ def source_label(psm) -> str:
 class StreamingResult:
     """Single query spectrum (a carrier PSM) plus its peptidoform key and the
     matching reference PSMs (yielded by load_spectra_streaming and consumed by
-    core.pipeline.query_processing.process_query_result).
+    core.pipeline.load_annotate.process_query_result).
     """
     query_psm: "PSM"
     reference_psms: List["PSM"]

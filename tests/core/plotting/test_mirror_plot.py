@@ -9,7 +9,7 @@ import plotly.graph_objects as go
 import pytest
 from matplotlib.figure import Figure
 
-from core.annotation import prepare_spectrum_for_plot
+from core.peak_annotation import prepare_spectrum_for_plot
 from core.plotting import create_spectrum_plot
 
 

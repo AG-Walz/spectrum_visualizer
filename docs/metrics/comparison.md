@@ -4,12 +4,9 @@ Quantitative similarity measures computed for every query-reference pair.
 Four intensity-aware (R2m, R2b, Cos, Ent), three set-based (Dice, Jacc,
 ShR). Implementation:
 
-- Intensity helpers (matched-array R², binned R², matched-array cosine)
-  live in `core/annotation/intensity_metrics.py`.
-- Set-overlap metrics, the entropy wrapper, and the public aggregator
-  `compute_all_metrics()` live in `core/annotation/comparison_metrics.py`.
-
-Both modules are re-exported from `core.annotation`.
+- Intensity helpers (matched-array R², binned R², matched-array cosine),
+  set-overlap metrics, the entropy wrapper, and the public aggregator
+  `compute_all_metrics()` all live in `core/comparison_metrics.py`.
 
 For a decision table ("which metric should I use?"), see
 [interpretation.md](interpretation.md).

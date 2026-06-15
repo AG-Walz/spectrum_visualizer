@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from core.annotation import METRIC_SHORT_TO_DISPLAY
+from core.comparison_metrics import METRIC_SHORT_TO_DISPLAY
 from psm_utils import PSMList
 
 from tests.conftest import make_peptide_match

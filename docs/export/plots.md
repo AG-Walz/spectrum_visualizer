@@ -26,7 +26,7 @@ Both the CLI and the Streamlit Export tab call
   hooks the front-end uses for progress UI.
 
 Mirror plot tasks are built by
-`core.pipeline.query_processing.build_plot_tasks` (one
+`core.pipeline.load_annotate.build_plot_tasks` (one
 `ComparisonTask` per query/reference pair) and dispatched through
 `core.helpers.run_tasks` to the
 `core.plotting.plot_worker.process_single_task` worker. Summary

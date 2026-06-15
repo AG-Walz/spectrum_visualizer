@@ -273,7 +273,7 @@ Marker-driven selection:
 
 ```bash
 pytest tests/ -v -m "not integration"    # skip the slower end-to-end tests
-pytest tests/core/annotation/ -v     # just the annotation subpackage
+pytest tests/core/ -k "annotation or metrics" -v   # annotation + metrics units
 ```
 
 ---

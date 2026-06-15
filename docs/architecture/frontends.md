@@ -107,11 +107,8 @@ tests/
     ├── spectra/
     │   ├── test_koina_prediction.py
     │   └── test_spectrum_loader_integration.py
-    ├── annotation/
-    │   ├── test_peak_matching_core.py
-    │   ├── test_peak_matching_integration.py
-    │   ├── test_comparison_metrics_unit.py
-    │   └── test_comparison_metrics_integration.py
+    ├── test_peak_annotation.py
+    ├── test_comparison_metrics_unit.py
     ├── dataframes/
     │   ├── test_insight_frames_builders.py
     │   └── test_insight_frames_schemas.py
@@ -134,7 +131,7 @@ Selective runs:
 
 ```bash
 pytest tests/ -m "not integration"   # skip slow end-to-end tests
-pytest tests/core/annotation/    # just one core subpackage
+pytest tests/core/ -k "annotation or metrics"   # annotation + metrics units
 pytest tests/cli/ -v                 # CLI integration
 pytest tests/streamlit/ -v           # GUI smoke + export unit tests
 ```

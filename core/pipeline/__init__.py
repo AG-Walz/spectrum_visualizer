@@ -4,7 +4,7 @@ from core.pipeline.kwargs_builders import (
     build_annotation_kwargs,
     build_koina_kwargs,
 )
-from core.pipeline.query_processing import (
+from core.pipeline.load_annotate import (
     build_plot_tasks,
     build_psm_to_peptidoform_mapping,
     format_spectrum_labels,

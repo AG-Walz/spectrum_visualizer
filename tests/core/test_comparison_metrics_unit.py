@@ -1,10 +1,10 @@
-"""Unit tests for the seven comparison metrics in core.annotation (hand-built frames, no real spectra)."""
+"""Unit tests for the seven comparison metrics in core.comparison_metrics (hand-built frames, no real spectra)."""
 import math
 
 import pandas as pd
 import pytest
 
-from core.annotation import (
+from core.comparison_metrics import (
     compute_all_metrics,
     compute_r2_binned,
     compute_spectral_entropy_similarity,

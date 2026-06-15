@@ -1,14 +1,14 @@
-"""Unit tests for core.annotation.peak_matching (PyOpenMS + Koina annotators)."""
+"""Unit tests for core.peak_annotation (PyOpenMS + Koina annotators)."""
 import numpy as np
 import pandas as pd
 import pytest
 
-from core.annotation import (
+from core.peak_annotation import (
     annotate_spectrum,
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
+    _parse_koina_charge,
 )
-from core.annotation.peak_matching import _parse_koina_charge
 
 # Singly-charged b2 / y2 m/z for ASDDFDQASY — pinned (computed via
 # spectrum_utils during the parity spike) so the test isn't coupled to whichever

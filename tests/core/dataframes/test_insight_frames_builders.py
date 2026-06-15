@@ -6,7 +6,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from core.annotation import prepare_spectrum_for_plot
+from core.peak_annotation import prepare_spectrum_for_plot
 from core.dataframes import (
     HEATMAP_SCHEMA,
     PEAKS_SCHEMA,

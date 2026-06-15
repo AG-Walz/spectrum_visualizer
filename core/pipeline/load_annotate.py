@@ -4,7 +4,7 @@ rows or as ComparisonTask plot jobs.
 
 `process_query_result` is the per-query step of the streaming pipeline; it runs
 through the annotation phases (annotate query, cache experimental references,
-optional Koina AI fallback) and the scoring via core.annotation.comparison_metrics.
+optional Koina AI fallback) and the scoring via core.comparison_metrics.
 `run_streaming_annotation` is the top-level load-stage driver: it streams every
 mzML and feeds each arriving query to `process_query_result`, buffering the
 outcomes for downstream consumption.
@@ -22,12 +22,12 @@ from typing import Callable, Optional
 import numpy as np
 from psm_utils import Peptidoform, PSM
 
-from core.annotation.comparison_metrics import (
+from core.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     format_metrics_text,
 )
-from core.annotation.peak_matching import (
+from core.peak_annotation import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )

@@ -13,7 +13,7 @@ import streamlit as st
 from openms_insight import StateManager, Table
 
 from streamlit_app.utils.state import STATE_PREFIX, get_param, get_state_key
-from core.annotation import (
+from core.comparison_metrics import (
     METRIC_SHORT_TO_DISPLAY,
     compute_all_metrics,
     format_metrics_text,
