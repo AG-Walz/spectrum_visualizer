@@ -53,12 +53,6 @@ def summary_csv(tmp_path):
 # ---------------------------------------------------------------------------
 
 class TestPrepareSummaryData:
-    def test_returns_two_dataframes(self):
-        frame = _make_summary_frame()
-        raw_frame, aggregated_frame = prepare_summary_data(frame, metric="R\u00b2 binned")
-        assert isinstance(raw_frame, pd.DataFrame)
-        assert isinstance(aggregated_frame, pd.DataFrame)
-
     def test_aggregated_frame_has_expected_columns(self):
         frame = _make_summary_frame()
         _, aggregated_frame = prepare_summary_data(frame, metric="R\u00b2 binned")

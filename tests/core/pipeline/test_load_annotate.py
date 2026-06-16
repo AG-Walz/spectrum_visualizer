@@ -11,7 +11,7 @@ def test_get_koina_prediction_attaches_synthetic_psm(monkeypatch):
     """Step 3: the Koina reference is backed by a PSM carrying the predicted peaks."""
     predicted = pd.DataFrame({"mz": [100.0, 200.0, 300.0], "intensity": [0.5, 1.0, 0.25]})
     # Stub the network call and the annotation so the test stays offline and focused.
-    monkeypatch.setattr(load_annotate, "predict_koina_spectrum", lambda **_: predicted)
+    monkeypatch.setattr(load_annotate, "predict_koina_spectrum", lambda *_, **__: predicted)
     monkeypatch.setattr(load_annotate, "prepare_koina_spectrum_for_plot", lambda frame, **_: frame)
 
     psm, frame = load_annotate.get_koina_prediction("PEPTIDEK", 2, {})
@@ -27,5 +27,5 @@ def test_get_koina_prediction_attaches_synthetic_psm(monkeypatch):
 
 
 def test_get_koina_prediction_returns_none_on_empty(monkeypatch):
-    monkeypatch.setattr(load_annotate, "predict_koina_spectrum", lambda **_: None)
+    monkeypatch.setattr(load_annotate, "predict_koina_spectrum", lambda *_, **__: None)
     assert load_annotate.get_koina_prediction("PEPTIDEK", 2, {}) is None

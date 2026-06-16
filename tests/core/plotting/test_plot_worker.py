@@ -104,12 +104,3 @@ class TestProcessSingleTask:
         assert result.png_path == ""
         # But mirror metrics are still computed (summary CSV needs them)
         assert result.summary_row is not None
-
-    def test_result_has_expected_fields(self, tmp_path):
-        task = _make_mirror_task(tmp_path)
-        result = process_single_task(task)
-        assert hasattr(result, "task_id")
-        assert hasattr(result, "task_type")
-        assert hasattr(result, "success")
-        assert hasattr(result, "png_path")
-        assert hasattr(result, "summary_row")

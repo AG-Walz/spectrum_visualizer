@@ -51,10 +51,20 @@ def get_koina_prediction(
     """Predict a spectrum with Koina and wrap it as an annotated reference;
     return (spectrum, frame) or None.
     """
+    # Back the Koina reference with a synthetic PSM carrier built up front, so predicted
+    # references are PSMs like experimental ones (no idXML provenance, run="Koina:<model>").
+    # Charge is embedded in the peptidoform so get_precursor_charge() resolves it;
+    # predict_koina_spectrum reads the peptidoform + charge straight off this PSM.
+    reference_psm = PSM(
+        peptidoform=Peptidoform(f"{peptidoform}/{charge}"),
+        spectrum_id="koina_prediction",
+        run=f"Koina:{koina_model}",
+        retention_time=0.0,
+    )
+
     # Predict: call Koina with model + CE + instrument, bail on empty frame
     predicted_frame = predict_koina_spectrum(
-        peptidoform_str=peptidoform,
-        charge=charge,
+        reference_psm,
         model_id=koina_model,
         collision_energy=koina_collision_energy,
         instrument_type=koina_instrument_type,
@@ -62,21 +72,12 @@ def get_koina_prediction(
     if predicted_frame is None or predicted_frame.empty:
         return None
 
-    koina_mz = predicted_frame["mz"].to_numpy(dtype=np.float64)
-    koina_intensity = predicted_frame["intensity"].to_numpy(dtype=np.float64)
-
-    # Back the Koina reference with a synthetic PSM carrier holding the predicted
-    # peaks, so predicted references are PSMs like experimental ones (no idXML
-    # provenance, run="Koina:<model>"). Charge is embedded in the peptidoform so
-    # get_precursor_charge() resolves it; precursor_mz is the theoretical m/z
-    # (no measured precursor for a predicted spectrum).
-    reference_psm = PSM(
-        peptidoform=Peptidoform(f"{peptidoform}/{charge}"),
-        spectrum_id="koina_prediction",
-        run=f"Koina:{koina_model}",
-        spectrum={"mz": koina_mz, "intensity": koina_intensity},
-        retention_time=0.0,
-    )
+    # Attach the predicted peaks and the theoretical precursor m/z to the carrier
+    # (no measured precursor exists for a predicted spectrum).
+    reference_psm.spectrum = {
+        "mz": predicted_frame["mz"].to_numpy(dtype=np.float64),
+        "intensity": predicted_frame["intensity"].to_numpy(dtype=np.float64),
+    }
     reference_psm.precursor_mz = reference_psm.peptidoform.theoretical_mz
 
     # Annotate: reuse Koina's native AI-predicted ion labels directly

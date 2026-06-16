@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import pytest
+from psm_utils import Peptidoform, PSM
 
 from core.comparison_metrics import compute_all_metrics
 from core.peak_annotation import (
@@ -16,21 +17,26 @@ from core.spectra import (
 )
 
 
+def _psm(sequence: str, charge: int) -> PSM:
+    """Build a minimal PSM carrying the peptidoform (sequence + charge) to predict for."""
+    return PSM(peptidoform=Peptidoform(f"{sequence}/{charge}"), spectrum_id="test")
+
+
 # ---------------------------------------------------------------------------
 # TestConvertPeptideToUnimod
 # ---------------------------------------------------------------------------
 
 class TestConvertPeptideToUnimod:
     def test_simple_peptide(self):
-        result = convert_peptide_to_unimod("PEPTIDE")
+        result = convert_peptide_to_unimod(Peptidoform("PEPTIDE"))
         assert isinstance(result, str)
         assert "PEPTIDE" in result
 
-    def test_charge_suffix_stripped(self):
-        assert convert_peptide_to_unimod("PEPTIDE/2") == convert_peptide_to_unimod("PEPTIDE")
+    def test_charge_does_not_affect_output(self):
+        assert convert_peptide_to_unimod(Peptidoform("PEPTIDE/2")) == convert_peptide_to_unimod(Peptidoform("PEPTIDE"))
 
     def test_oxidation_modification(self):
-        result = convert_peptide_to_unimod("PEPTM[Oxidation]DE")
+        result = convert_peptide_to_unimod(Peptidoform("PEPTM[Oxidation]DE"))
         assert "UNIMOD" in result.upper() or "UniMod" in result
 
 
@@ -70,7 +76,7 @@ class TestPredictKoinaSpectrum:
     @pytest.fixture(scope="class")
     def predicted_asddfdqasy(self):
         """Run one Koina prediction per class to keep network calls down."""
-        return predict_koina_spectrum("ASDDFDQASY", charge=1)
+        return predict_koina_spectrum(_psm("ASDDFDQASY", 1))
 
     def test_prediction_returns_valid_dataframe(self, predicted_asddfdqasy):
         """Prediction is a non-empty DataFrame with mz/intensity/annotation columns and positive values."""
@@ -88,22 +94,22 @@ class TestPredictKoinaSpectrum:
         ("RTEFNLNQY", 2),
     ])
     def test_predict_known_peptides(self, peptide, charge):
-        result = predict_koina_spectrum(peptide, charge=charge)
+        result = predict_koina_spectrum(_psm(peptide, charge))
         assert result is not None
         assert len(result) > 0
 
     def test_invalid_peptide_returns_none(self):
-        result = predict_koina_spectrum("ZZZZZZZ", charge=1)
+        result = predict_koina_spectrum(_psm("ZZZZZZZ", 1))
         assert result is None
 
     @pytest.mark.parametrize("model_id", ["Prosit_2019_intensity", "ms2pip_HCD2021"])
     def test_alternative_models(self, model_id):
-        result = predict_koina_spectrum("ASDDFDQASY", charge=2, model_id=model_id)
+        result = predict_koina_spectrum(_psm("ASDDFDQASY", 2), model_id=model_id)
         assert result is not None
         assert len(result) > 0
 
     def test_different_collision_energy(self):
-        result = predict_koina_spectrum("RTEFNLNQY", charge=2, collision_energy=25)
+        result = predict_koina_spectrum(_psm("RTEFNLNQY", 2), collision_energy=25)
         assert result is not None
         assert len(result) > 0
 
@@ -116,7 +122,7 @@ class TestPredictKoinaSpectrum:
 class TestKoinaPipelineIntegration:
     def test_predict_and_annotate_native(self):
         """Predict via Koina then preserve native y3+1-style annotations through prepare_koina_spectrum_for_plot."""
-        predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
+        predicted = predict_koina_spectrum(_psm("ASDDFDQASY", 1))
         assert predicted is not None
 
         annotated = prepare_koina_spectrum_for_plot(predicted, normalize=True)
@@ -144,7 +150,7 @@ class TestKoinaPipelineIntegration:
         )
 
         # Act: predict reference via Koina (keeps native annotations)
-        predicted = predict_koina_spectrum("ASDDFDQASY", charge=1)
+        predicted = predict_koina_spectrum(_psm("ASDDFDQASY", 1))
         assert predicted is not None
 
         reference_frame = prepare_koina_spectrum_for_plot(predicted, normalize=True)

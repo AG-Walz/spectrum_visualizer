@@ -5,7 +5,7 @@ from peptide sequences; used as fallback reference when no experimental referenc
 import logging
 from typing import Optional
 import pandas as pd
-from psm_utils import Peptidoform
+from psm_utils import Peptidoform, PSM
 from koinapy import Koina
 
 from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
@@ -13,35 +13,41 @@ from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 logger = logging.getLogger(__name__)
 
 
-def convert_peptide_to_unimod(peptidoform_str: str) -> str:
-    """Rewrite a ProForma peptidoform in Koina's UniMod-bracket notation 
-    (e.g. "PEPM[Oxidation]IDEK" -> "PEPM[UNIMOD:35]IDEK").
+def convert_peptide_to_unimod(peptidoform: Peptidoform) -> str:
+    """Rewrite a peptidoform in Koina's UniMod-bracket notation
+    (e.g. Peptidoform("PEPM[Oxidation]IDEK") -> "PEPM[UNIMOD:35]IDEK").
+    Only the sequence and its modifications are emitted — any precursor charge is ignored.
     """
-    p = Peptidoform(peptidoform_str.split("/")[0])
     fmt = lambda mod: f"[UNIMOD:{mod.definition['id']}]"
-    parts = [f"{fmt(m)}-" for m in p.properties.get("n_term") or []]
-    for aa, mods in p.parsed_sequence:
+    parts = [f"{fmt(m)}-" for m in peptidoform.properties.get("n_term") or []]
+    for aa, mods in peptidoform.parsed_sequence:
         parts.append(aa)
         parts += [fmt(m) for m in (mods or [])]
-    parts += [f"-{fmt(m)}" for m in p.properties.get("c_term") or []]
+    parts += [f"-{fmt(m)}" for m in peptidoform.properties.get("c_term") or []]
     return "".join(parts)
 
 
 def predict_koina_spectrum(
-    peptidoform_str: str,
-    charge: int,
+    psm: PSM,
     model_id: str = DEFAULTS.koina_model,
     collision_energy: int = DEFAULTS.koina_collision_energy,
     instrument_type: str = DEFAULTS.koina_instrument_type,
 ) -> Optional[pd.DataFrame]:
-    """Call Koina for a predicted MS/MS spectrum; 
+    """Call Koina for a predicted MS/MS spectrum of psm's peptidoform;
     return DataFrame[mz, intensity, annotation] or None on failure.
+    The peptidoform (modified sequence + charge) is read from psm; model_id,
+    collision_energy, and instrument_type are Koina settings, not PSM properties.
     """
-    # Convert peptide sequence to UniMod notation
+    # The peptidoform carries both the sequence and the charge state.
+    peptidoform = psm.peptidoform
+    charge = psm.get_precursor_charge() or 0
+    sequence = peptidoform.modified_sequence
+
+    # Convert the peptidoform sequence to UniMod notation
     try:
-        unimod_seq = convert_peptide_to_unimod(peptidoform_str)
+        unimod_seq = convert_peptide_to_unimod(peptidoform)
     except Exception as error:
-        logger.warning(f"Koina: failed to convert '{peptidoform_str}' to UniMod: {error}")
+        logger.warning(f"Koina: failed to convert '{sequence}' to UniMod: {error}")
         return None
 
     # Build one-row input Dataframe
@@ -64,15 +70,15 @@ def predict_koina_spectrum(
         result = result[result["intensity"] > 0].reset_index(drop=True)
     # Returns None on any failure
     except Exception as error:
-        logger.warning(f"Koina prediction failed for '{peptidoform_str}': {error}")
+        logger.warning(f"Koina prediction failed for '{sequence}': {error}")
         return None
 
     # Final summary
     if result.empty:
-        logger.warning(f"Koina: no non-zero predictions for '{peptidoform_str}' (model={model_id})")
+        logger.warning(f"Koina: no non-zero predictions for '{sequence}' (model={model_id})")
         return None
 
-    logger.info(f"Koina: predicted {len(result)} fragments for '{peptidoform_str}' (model={model_id}, CE={collision_energy}, inst={instrument_type})")
+    logger.info(f"Koina: predicted {len(result)} fragments for '{sequence}' (model={model_id}, CE={collision_energy}, inst={instrument_type})")
     return result
 
 

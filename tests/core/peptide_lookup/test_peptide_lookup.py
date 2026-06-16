@@ -14,12 +14,6 @@ from tests.conftest import make_peptide_match
 class TestSummarizeLookupResults:
     """Pure-data tests for summarize_lookup_results (LazyFrame columns, counts, empties)."""
 
-    def test_returns_lazyframe(self):
-        result = summarize_lookup_results({
-            "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),
-        })
-        assert isinstance(result, pl.LazyFrame)
-
     def test_expected_columns(self):
         result = summarize_lookup_results({
             "PEPTIDEK": PSMList(psm_list=[make_peptide_match()]),

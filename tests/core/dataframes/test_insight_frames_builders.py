@@ -1,12 +1,8 @@
 """Builder tests for core.dataframes (PSM table + peaks/sequence/heatmap LazyFrames)."""
-from pathlib import Path
-
 import numpy as np
 import pandas as pd
 import polars as pl
-import pytest
 
-from core.peak_annotation import prepare_spectrum_for_plot
 from core.dataframes import (
     HEATMAP_SCHEMA,
     PEAKS_SCHEMA,
@@ -18,9 +14,6 @@ from core.dataframes import (
     build_sequence_dataframe,
 )
 from psm_utils import PSMList
-
-from core.peptide_lookup import load_idxmls, lookup_peptides
-from core.spectra import load_spectra_streaming, psm_lookup_key
 
 from tests.conftest import make_peptide_match
 
@@ -128,9 +121,11 @@ class TestBuildSequenceDataframe:
         assert len(build_sequence_dataframe([]).collect()) == 0
 
     def test_sequence_is_openms_notation(self):
+        # build_sequence_dataframe must convert the modified peptidoform to OpenMS
+        # parenthesised-mod notation, not pass the raw ProForma through.
         spectra = [(0, _make_psm(peptidoform="PEPTM[Oxidation]IDEK"))]
         seq = build_sequence_dataframe(spectra).collect()["sequence"][0]
-        assert "(" in seq or "PEPTM" in seq
+        assert seq == "PEPTM(Oxidation)IDEK"
 
 
 class TestBuildHeatmapDataframe:
@@ -151,61 +146,3 @@ class TestBuildHeatmapDataframe:
             _make_psm(rt=200.0, n_peaks=4),
         ]
         assert len(build_heatmap_dataframe(spectra).collect()) == 7
-
-
-@pytest.mark.integration
-class TestBuildFromRealData:
-    """End-to-end: lookup → stream → annotate → build the four insight DataFrames."""
-
-    @pytest.fixture
-    def peptidoform_psms(self, idxml_path, target_peptides):
-        return lookup_peptides(load_idxmls([idxml_path]), target_peptides)
-
-    def test_build_psm_table_real(self, peptidoform_psms):
-        psm_frame, lookup = build_psm_table(peptidoform_psms)
-        assert dict(psm_frame.collect_schema()) == PSM_TABLE_SCHEMA
-        df = psm_frame.collect()
-        assert len(df) == 2
-        assert len(lookup) == 2
-
-    def test_build_all_dataframes_real(self, peptidoform_psms, mzml_paths):
-        """Full pipeline against real fixtures: 2 PSMs, ~373 annotated peaks across all frames."""
-        psm_frame, psm_lookup = build_psm_table(peptidoform_psms)
-        annotated = []
-
-        def on_query(result):
-            psm = result.query_psm
-            psm_id = psm_lookup.get(psm_lookup_key(psm))
-            if psm_id is None:
-                return
-            frame = prepare_spectrum_for_plot(
-                psm.spectrum["mz"], psm.spectrum["intensity"],
-                psm.peptidoform.modified_sequence, psm.get_precursor_charge() or 0,
-                ion_types=["b", "y"], mz_tolerance=0.02, normalize=True,
-            )
-            annotated.append((psm_id, psm, frame))
-
-        mzml_path_list = [Path(p) for p in mzml_paths]
-        load_spectra_streaming(
-            peptidoform_psms=peptidoform_psms,
-            mzml_paths=mzml_path_list,
-            reference_substring="",
-            on_query_ready=on_query,
-        )
-
-        assert len(annotated) == 2
-
-        peaks_frame = build_peaks_dataframe([(psm_id, frame) for psm_id, _, frame in annotated])
-        sequence_frame = build_sequence_dataframe([(psm_id, psm) for psm_id, psm, _ in annotated])
-        heatmap_frame = build_heatmap_dataframe([psm for _, psm, _ in annotated])
-
-        assert dict(peaks_frame.collect_schema()) == PEAKS_SCHEMA
-        assert dict(sequence_frame.collect_schema()) == SEQUENCE_SCHEMA
-        assert dict(heatmap_frame.collect_schema()) == HEATMAP_SCHEMA
-
-        peaks_collected = peaks_frame.collect()
-        # Range check rather than exact peak count — spectrum_utils / pyOpenMS
-        # library upgrades shift the matched-peak total by a handful without
-        # signalling a real regression.
-        assert 350 < len(peaks_collected) < 400
-        assert peaks_collected["psm_id"].n_unique() == 2

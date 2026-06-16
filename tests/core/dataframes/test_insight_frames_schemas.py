@@ -23,7 +23,7 @@ class TestProformaToOpenmsStr:
         assert "(Acetyl)" in result
 
     def test_fallback_on_invalid(self):
-        # Must not raise on unparseable input — returns a best-effort string
-        result = _proforma_to_openms_str("PEPTIDEK")
-        assert isinstance(result, str)
-        assert len(result) > 0
+        # Unparseable ProForma must not raise — falls back to the bare sequence
+        # (charge suffix dropped) instead of the parsed per-residue path.
+        result = _proforma_to_openms_str("X1Z9/3")
+        assert result == "X1Z9"
