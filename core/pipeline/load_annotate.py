@@ -173,17 +173,18 @@ def build_psm_to_peptidoform_mapping(
     Streamlit session-state dict) reshape to this shape first. A PSM whose
     spectrum key has no annotated query is simply omitted from the result.
     """
-    # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id
-    spec_to_psm_id = {
+    # Invert to a per-PSM-key lookup so each peptidoform PSM can find its PSM id.
+    # The key is the full psm_lookup_key ("spectrum_id|peptidoform"), not a bare spectrum id.
+    lookup_key_to_psm_id = {
         psm_lookup_key(query_psm): psm_id
         for psm_id, query_psm, _query_frame in annotated_queries
     }
 
-    # Walk peptidoforms: rebuild each PSM's spectrum key and resolve it to a PSM id
+    # Walk peptidoforms: rebuild each PSM's lookup key and resolve it to a PSM id
     psm_id_to_peptidoform: dict[str, str] = {}
     for peptidoform, psm_list in peptidoform_psms.items():
         for psm in psm_list:
-            psm_id = spec_to_psm_id.get(psm_lookup_key(psm))
+            psm_id = lookup_key_to_psm_id.get(psm_lookup_key(psm))
             if psm_id is not None:
                 psm_id_to_peptidoform[psm_id] = peptidoform
     return psm_id_to_peptidoform
