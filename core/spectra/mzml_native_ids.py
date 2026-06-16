@@ -1,32 +1,22 @@
-"""mzML native-ID parsing helpers for mass-spectrometry spectrum identifiers.
-Provides regexes plus two functions that turn raw mzML nativeID strings into a
-canonical form and a plain integer 
-(imported by core.spectra.spectrum_streaming for its scan-vs-index detection, ID matching
-and binary search, and streamlit_app/views/explore/mirror_plots.py to derive a scan value for display.)
+"""mzML native-ID parsing helper for mass-spectrometry spectrum identifiers.
+Provides regexes plus extract_id_number, which turns a raw mzML nativeID string into a plain
+integer (imported by core.spectra.spectrum_streaming for its scan-number fallback lookup, and
+streamlit_app/views/explore/mirror_plots.py to derive a scan value for display).
 """
 import re
 from typing import Optional
-
-# Native-ID tag prefixes — the three conventions an mzML nativeID may use to key a
-# spectrum number. Consumed by spectrum_streaming to decide which numbering scheme a run uses.
-SCAN_TAG = "scan="
-INDEX_TAG = "index="
-SPECTRUM_TAG = "spectrum="
-NATIVE_ID_TAGS = (SCAN_TAG, INDEX_TAG, SPECTRUM_TAG)
 
 # Captures the integer that immediately follows a scan= / index= / spectrum= key.
 NATIVE_ID_NUMBER_PATTERN = re.compile(r'(?:scan|index|spectrum)=(\d+)')
 # Fallback — the first run of digits anywhere in the string, used when no keyed tag is present.
 BARE_DIGITS_PATTERN = re.compile(r'(\d+)')
-# Matches a whole keyed token (key plus its non-whitespace value) for canonicalisation.
-_TAGGED_TOKEN_PATTERN = re.compile(r'(?:scan|index|spectrum)=\S+')
 
 
 def extract_id_number(native_id: str) -> Optional[int]:
     """Pull the spectrum number out of an mzML native ID.
     Returns the integer keyed by scan= / index= / spectrum=, falling back to the first
     run of digits, or None when the ID has no digits. The value carries no base
-    assumption — an index=N number may be 0- or 1-based per vendor (see module docstring).
+    assumption — an index=N number may be 0- or 1-based per vendor.
     """
     # Prefer a keyed match — the digits attached to a recognised tag are unambiguous.
     keyed_match = NATIVE_ID_NUMBER_PATTERN.search(native_id)
@@ -37,20 +27,3 @@ def extract_id_number(native_id: str) -> Optional[int]:
     if digit_match:
         return int(digit_match.group(1))
     return None
-
-
-def clean_spectrum_id(spectrum_id: str) -> str:
-    """Canonicalise a spectrum ID down to a single comparable token.
-    Returns the first whole (scan|index|spectrum)=N token, so IDs with extra fields
-    still compare equal; falsy input returns "", an untagged ID is returned stripped.
-    Thermo controllerType=… IDs pass through whole (isolating their scan=N would collapse distinct spectra).
-    """
-    if not spectrum_id:
-        return ""
-    clean_id = spectrum_id.strip()
-    # Thermo compound IDs — keep intact; the scan=N part alone does not identify the spectrum.
-    if "controllerType" in clean_id:
-        return clean_id
-    # Reduce to the first keyed token; if none exists, hand back the stripped ID as-is.
-    token = _TAGGED_TOKEN_PATTERN.search(clean_id)
-    return token.group(0) if token else clean_id

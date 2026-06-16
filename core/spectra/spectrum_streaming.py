@@ -1,13 +1,13 @@
-"""Streaming mzML loader: per-spectrum lookup + per-file worker + orchestration.
+"""Streaming mzML loader: per-file worker + reference-first orchestration.
 
-Combines three layers in one file:
+Combines two layers in one file:
 
-- mzML spectrum-ID resolution (`open_indexed_mzml_fast`, `find_spectrum_index`):
-  builds an ID -> array-position index for a single mzML so callers can fetch a
-  spectrum by its native ID (scan=N / index=N / spectrum=N).
 - Per-file worker (`_load_spectra_from_mzml`): the unit of work farmed out by
   the streaming stage. Opens one mzML and extracts the spectra named by a batch
-  of PSMs, returning a `LoadResult` that bundles the prepared PSM carriers
+  of PSMs — resolving each PSM's native ID with pyopenms'
+  OnDiscMSExperiment.getSpectrumByNativeId (an indexed exact-string lookup) and
+  falling back to SpectrumLookup.findByScanNumber for references that carry only
+  the scan number. Returns a `LoadResult` that bundles the prepared PSM carrier
   objects, per-spectrum counts and any errors. Must stay picklable and free of
   process-global state — runs in a ProcessPoolExecutor worker.
 - Orchestration (`load_spectra_streaming`): drives spectrum extraction in
@@ -32,238 +32,19 @@ from core.spectra.streaming_types import (
     LoadResult,
     StreamingResult,
 )
-from core.spectra.mzml_native_ids import (
-    INDEX_TAG,
-    SCAN_TAG,
-    SPECTRUM_TAG,
-    clean_spectrum_id,
-    extract_id_number,
-)
+from core.spectra.mzml_native_ids import extract_id_number
 
 logger = logging.getLogger(__name__)
 
 
 # ============================================================================
-# mzML spectrum-ID resolution: native ID -> array position
-# ============================================================================
-
-def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tuple[str, int]:
-    """Probe the first spectrum's native ID and classify the file's ID scheme.
-    Returns (format, offset) with format one of "index"/"scan"/"spectrum"/"unknown".
-    offset matters only for "index": the index=N at array position 0 — 0 for normal
-    files, 1 for the Bruker timsTOF 1-based gotcha. Otherwise 0 and unused.
-    """
-    # Empty file — nothing to probe.
-    if n_spectra == 0:
-        return "unknown", 0
-    # Inspect spectrum 0's native ID; the first matching tag wins.
-    first_id = indexed_exp.getSpectrum(0).getNativeID()
-    # index=N — the value at array position 0 gives the base offset (0 or 1).
-    if INDEX_TAG in first_id:
-        first_number = extract_id_number(first_id)
-        return "index", (first_number if first_number is not None else 0)
-    if SCAN_TAG in first_id:
-        return "scan", 0
-    if SPECTRUM_TAG in first_id:
-        return "spectrum", 0
-    # No recognised tag — caller must fall back to a full scan.
-    return "unknown", 0
-
-
-def _try_candidate_indices(
-    indexed_exp: oms.OnDiscMSExperiment, clean_id: str, candidates: List[int],
-    id_to_index: Dict[str, int],
-) -> bool:
-    """Probe a few likely array positions for a spectrum whose native ID matches.
-    On the first match, records both the cleaned ID and a _num_<n> numeric
-    alias in id_to_index and returns True; returns False if no
-    candidate matches. Mutates id_to_index in place.
-    """
-    for candidate_index in candidates:
-        # Compare canonicalised IDs so tag/format differences do not block a match.
-        check_id = indexed_exp.getSpectrum(candidate_index).getNativeID()
-        if clean_id != clean_spectrum_id(check_id):
-            continue
-        # Hit — record the ID and a numeric alias so later lookups skip the probe.
-        id_to_index[clean_id] = candidate_index
-        check_number = extract_id_number(check_id)
-        if check_number is not None:
-            id_to_index[f"_num_{check_number}"] = candidate_index
-        return True
-    return False
-
-
-def _binary_search_for_number(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, target_number: int,
-    clean_id: str, id_to_index: Dict[str, int],
-) -> bool:
-    """Binary-search the spectra for one matching scan number, assuming native-ID numbers
-    increase monotonically with array position (the usual mzML layout). On a match,
-    records the cleaned ID and a _num_<n> alias and returns True; returns False if the
-    number is absent or a read fails. Mutates id_to_index.
-    """
-    low, high = 0, n_spectra - 1
-    while low <= high:
-        mid = (low + high) // 2
-        # A failed read collapses the assumption of an ordered file — bail out.
-        try:
-            mid_id = indexed_exp.getSpectrum(mid).getNativeID()
-        except Exception:
-            return False
-        # An unparseable number means the monotonic assumption no longer holds.
-        mid_number = extract_id_number(mid_id)
-        if mid_number is None:
-            return False
-        # Match — record the position and its numeric alias.
-        if mid_number == target_number:
-            id_to_index[clean_id] = mid
-            id_to_index[f"_num_{mid_number}"] = mid
-            return True
-        # Narrow the search window towards the target number.
-        if mid_number < target_number:
-            low = mid + 1
-        else:
-            high = mid - 1
-    return False
-
-
-def _resolve_targeted_id(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, spectrum_id: str,
-    id_to_index: Dict[str, int],
-) -> bool:
-    """Locate one needed spectrum ID and record its array position in id_to_index.
-    Tries the cheap path first — the scan number and its off-by-one neighbour as
-    direct positions — then a binary search by scan number. Returns True on success,
-    False if the number cannot be parsed or no spectrum matches.
-    """
-    clean_id = clean_spectrum_id(spectrum_id)
-    extracted_number = extract_id_number(clean_id)
-    # No parseable number — nothing to search on.
-    if extracted_number is None:
-        return False
-    # Off-by-one guess: the number may be the array position directly, or 1-based.
-    candidates = [c for c in (extracted_number, extracted_number - 1) if 0 <= c < n_spectra]
-    if _try_candidate_indices(indexed_exp, clean_id, candidates, id_to_index):
-        return True
-    # Guess missed — search the whole file assuming numbers are monotonic.
-    return _binary_search_for_number(
-        indexed_exp, n_spectra, extracted_number, clean_id, id_to_index,
-    )
-
-
-def _build_full_scan_index(
-    indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, id_to_index: Dict[str, int],
-) -> None:
-    """Walk every spectrum and index it by native ID — the last-resort full scan, used
-    when the ID format is unrecognised or targeted lookups failed. Records each raw
-    native ID plus a _num_<n> alias in id_to_index (unreadable spectra skipped).
-    Mutates id_to_index in place.
-    """
-    for index in range(n_spectra):
-        # Skip unreadable spectra rather than aborting the whole scan.
-        try:
-            native_id = indexed_exp.getSpectrum(index).getNativeID()
-        except Exception:
-            continue
-        # Index by the raw native ID and by its extracted number.
-        id_to_index[native_id] = index
-        number = extract_id_number(native_id)
-        if number is not None:
-            id_to_index[f"_num_{number}"] = index
-
-
-def open_indexed_mzml_fast(
-    mzml_path: str,
-    needed_ids: Optional[List[str]] = None,
-) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
-    """Open one mzML and build its native-ID -> array-position map; return (experiment,
-    id_to_index). Three strategies, cheapest first: (1) the index format needs no
-    per-spectrum entries (find_spectrum_index derives positions from the offset);
-    (2) with needed_ids on a scan/spectrum file, resolve only those; (3) else walk all.
-    """
-    # Open the file on disc and probe its native-ID format and index offset.
-    indexed_exp = oms.OnDiscMSExperiment()
-    indexed_exp.openFile(mzml_path)
-    n_spectra = indexed_exp.getNrSpectra()
-
-    # Seed the map with the file-describing sentinels read by find_spectrum_index.
-    id_format, index_offset = _detect_id_format(indexed_exp, n_spectra)
-    id_to_index: Dict[str, int] = {
-        "__format__": id_format,
-        "__n_spectra__": n_spectra,
-        "__index_offset__": index_offset,
-    }
-
-    # Fast path: index=N maps straight to an array position via the offset, so
-    # no per-spectrum entries are needed at all.
-    if id_format == "index":
-        logger.debug(f"Fast path: index format detected (offset={index_offset}), "
-                     f"skipping full scan ({n_spectra} spectra)")
-        return indexed_exp, id_to_index
-
-    # Targeted lookup: resolve only the scan/spectrum IDs the caller actually needs.
-    if needed_ids and id_format in ("scan", "spectrum"):
-        found = sum(
-            _resolve_targeted_id(indexed_exp, n_spectra, sid, id_to_index)
-            for sid in needed_ids
-        )
-        logger.debug(
-            f"Targeted lookup: found {found}/{len(needed_ids)} spectra in "
-            f"{Path(mzml_path).name}"
-        )
-        # Accept the targeted result only if it found something; otherwise the
-        # monotonic assumption likely failed and the full scan still runs.
-        if found > 0:
-            return indexed_exp, id_to_index
-
-    # Fallback: format unknown or targeted lookup found nothing — index everything.
-    logger.debug(f"Full scan fallback for {Path(mzml_path).name} ({n_spectra} spectra)")
-    _build_full_scan_index(indexed_exp, n_spectra, id_to_index)
-    return indexed_exp, id_to_index
-
-
-def find_spectrum_index(
-    spectrum_id: str,
-    id_to_index: Dict[str, int],
-    n_spectra: int,
-) -> Optional[int]:
-    """Resolve one spectrum ID to its array position using the map from
-    open_indexed_mzml_fast. Returns the integer position, or None when the ID is
-    empty, unparseable, or absent. Resolution order: exact cleaned-ID hit, then
-    _num_<n> alias, then — for the index format — native number minus the index offset.
-    """
-    clean_id = clean_spectrum_id(spectrum_id)
-    # Empty ID — nothing to resolve.
-    if not clean_id:
-        return None
-    # Exact match on the cleaned native ID.
-    if clean_id in id_to_index:
-        return id_to_index[clean_id]
-
-    # No exact entry — fall back to matching on the extracted number.
-    extracted = extract_id_number(clean_id)
-    if extracted is None:
-        return None
-
-    # Numeric alias recorded by the targeted / full-scan index builders.
-    sentinel = id_to_index.get(f"_num_{extracted}")
-    if sentinel is not None:
-        return sentinel
-
-    # index format: derive the position arithmetically, correcting for the
-    # 0- vs 1-based offset (Bruker timsTOF emits 1-based index IDs).
-    if id_to_index.get("__format__") == "index":
-        offset = id_to_index.get("__index_offset__", 0)
-        position = extracted - offset
-        if 0 <= position < n_spectra:
-            return position
-
-    return None
-
-
-# ============================================================================
 # Per-file mzML worker (picklable; runs in ProcessPoolExecutor)
 # ============================================================================
+
+# SpectrumLookup.readSpectra needs a "?<SCAN>" named group; mirror the keyed
+# pattern extract_id_number uses so the fallback resolves on the same number.
+SCAN_NUMBER_REGEX = r"(?:scan|index|spectrum)=(?<SCAN>\d+)"
+
 
 def _prepare_loaded_psm(spectrum, psm: PSM) -> PSM:
     """Stamp the loaded spectrum's peaks and acquisition metadata onto the matched PSM
@@ -293,31 +74,44 @@ def _load_spectra_from_mzml(
     is_reference: bool,
 ) -> LoadResult:
     """Worker entry point — open one mzML and load every spectrum named in matches_for_file.
-    Each (PSM, peptidoform) pair has its spectrum_id resolved to an array position, the spectrum
-    fetched, and prepared as a PSM carrier tagged with its peptidoform. Errors are collected per
-    spectrum (and once per file if it fails to open) rather than raised, so one failure never aborts
-    the batch. Returns a picklable LoadResult with the (peptidoform, PSM) pairs, counts, and errors.
+    Each (PSM, peptidoform) pair has its native ID resolved to a spectrum, fetched, and prepared as a
+    PSM carrier tagged with its peptidoform. Errors are collected per spectrum (and once per file if it
+    fails to open) rather than raised, so one failure never aborts the batch. Returns a picklable
+    LoadResult with the (peptidoform, PSM) pairs, counts, and errors.
     """
     # Per-file accumulators — successfully loaded PSM carriers and error strings
     peptidoform_psm_pairs: List[Tuple[str, PSM]] = []
     errors: List[str] = []
 
     try:
-        # Open the file once and build an ID -> array-position map limited to
-        # the spectra this batch actually needs — avoids a full-file scan.
-        needed_ids = [psm.spectrum_id for psm, _ in matches_for_file]
-        indexed_exp, id_to_index = open_indexed_mzml_fast(mzml_path_str, needed_ids=needed_ids)
-        n_spectra = id_to_index.get("__n_spectra__", indexed_exp.getNrSpectra())
+        # Open the file once on disc; spectra are fetched lazily by native ID below.
+        indexed_exp = oms.OnDiscMSExperiment()
+        indexed_exp.openFile(mzml_path_str)
+        # Number-keyed fallback index, built lazily only when an exact match misses.
+        scan_lookup: Optional[oms.SpectrumLookup] = None
 
-        # Resolve each PSM's spectrum ID to a position, fetch it, and wrap it
+        # Resolve each PSM's spectrum, fetch it, and wrap it as a carrier
         for psm, peptidoform in matches_for_file:
             try:
-                spectrum_index = find_spectrum_index(psm.spectrum_id, id_to_index, n_spectra)
-                # Missing ID: record and skip — one absent spectrum is not fatal
-                if spectrum_index is None:
-                    errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
-                    continue
-                spectrum = indexed_exp.getSpectrum(spectrum_index)
+                # Exact path: pyopenms resolves the full native-ID string (scan= / index= /
+                # spectrum= / raw) straight off the indexed mzML, raising RuntimeError on a miss.
+                try:
+                    spectrum = indexed_exp.getSpectrumByNativeId(psm.spectrum_id)
+                # Fallback: the reference carries only the scan number, not the exact native-ID
+                # string. Build a SpectrumLookup once (from metadata — no peaks) and match by number.
+                except RuntimeError:
+                    scan_number = extract_id_number(psm.spectrum_id)
+                    if scan_number is None:
+                        errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
+                        continue
+                    if scan_lookup is None:
+                        scan_lookup = oms.SpectrumLookup()
+                        scan_lookup.readSpectra(indexed_exp.getMetaData(), SCAN_NUMBER_REGEX)
+                    try:
+                        spectrum = indexed_exp.getSpectrum(scan_lookup.findByScanNumber(scan_number))
+                    except RuntimeError:
+                        errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
+                        continue
                 peptidoform_psm_pairs.append((peptidoform, _prepare_loaded_psm(spectrum, psm)))
             # Per-spectrum failure: keep going so the rest of the batch loads
             except Exception as error:
