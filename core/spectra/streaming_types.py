@@ -4,10 +4,9 @@ pipeline streams is the psm_utils PSM itself, with its peaks attached to
 psm.spectrum; these dataclasses just bundle it with its peptidoform.
 """
 from dataclasses import dataclass
-from typing import List, Tuple, TYPE_CHECKING
+from typing import List, Tuple
 
-if TYPE_CHECKING:
-    from psm_utils import PSM
+from psm_utils import PSM
 
 
 def source_label(psm) -> str:
@@ -23,8 +22,8 @@ class StreamingResult:
     matching reference PSMs (yielded by load_spectra_streaming and consumed by
     core.pipeline.load_annotate.process_query_result).
     """
-    query_psm: "PSM"
-    reference_psms: List["PSM"]
+    query_psm: PSM
+    reference_psms: List[PSM]
     peptidoform: str
 
 
@@ -36,13 +35,13 @@ class LoadResult:
     """
     display_name: str
     is_reference: bool
-    peptidoform_psm_pairs: List[Tuple[str, "PSM"]]
+    peptidoform_psm_pairs: List[Tuple[str, PSM]]
     loaded_count: int
     not_found_count: int
     errors: List[str]
 
 
-def psm_lookup_key(psm: "PSM") -> str:
+def psm_lookup_key(psm: PSM) -> str:
     """Return "spectrum_id|peptidoform" — the stable per-PSM key for joining the
     peaks/sequence/PSM DataFrames. Pairs both fields because spectrum IDs alone
     collide across mzML files and across peptidoforms.
