@@ -76,11 +76,9 @@ def load_idxmls(
     workers: int = 1,
 ) -> PSMList:
     """Read every idXML once into a single PSMList, stamping idXML provenance per PSM.
-
-    This is the ONLY place idXML files are parsed. Both peptide counting
-    (count_psms_per_peptide) and target lookup (lookup_peptides) operate on the
-    returned in-memory PSMList, so the same file is never read twice — callers
-    cache the PSMList and reuse it across the Setup and Load & Annotate stages.
+    This is the ONLY place idXML files are parsed. Both peptide counting (count_psms_per_peptide)
+    and target lookup (lookup_peptides) operate on the returned in-memory PSMList, so the same file
+    is never read twice — callers cache it and reuse it across the Setup and Load & Annotate stages.
     """
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
@@ -133,10 +131,9 @@ def lookup_peptides(
     mzml_paths: Optional[List[str]] = None,
 ) -> Dict[str, PSMList]:
     """Group the target-peptide PSMs from an already-loaded PSMList into
-    {peptidoform: PSMList}, resolving each hit's mzML path and stamping it.
-
-    Pure in-memory work: no idXML is re-read (see load_idxmls). Target hits are
-    selected with a PSMList boolean mask, then grouped by modified sequence.
+    {peptidoform: PSMList}, resolving and stamping each hit's mzML path.
+    Pure in-memory work: no idXML is re-read (see load_idxmls). Hits are selected
+    with a PSMList boolean mask, then grouped by modified sequence.
     """
     # Normalise inputs: target peptides are stripped, uppercased, and deduped into a set
     target_set: Set[str] = {p.strip().upper() for p in target_peptides if p.strip()}

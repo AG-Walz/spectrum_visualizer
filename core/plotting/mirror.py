@@ -1,8 +1,8 @@
-"""Mirror and single-spectrum plot rendering botrh with ms_matplotlib and ms_plotly
-depending on whether static or interactive mirror plots are being plotted, 
-overriding the pyopenms_viz functions to customize the plots
+"""Mirror and single-spectrum plot rendering with both ms_matplotlib and ms_plotly,
+depending on whether static or interactive mirror plots are being plotted,
+overriding the pyopenms_viz functions to customize the plots.
 create_spectrum_plot is called by plotting.plot_worker (export) and
-streamlit_app.views.explore.mirror_plots (Explore view)
+streamlit_app.views.explore.mirror_plots (Explore view).
 """
 from typing import Literal, Optional
 
@@ -30,19 +30,19 @@ _PLOTLY_INTENSITY_SCALE = 100
 
 
 def _prep(df: pd.DataFrame) -> pd.DataFrame:
-    """Return a copy of df ready for drawing — adds a _color and _label column per peak and rescales intensity to [0, 1].
-    Missing annotation/ion_type columns are backfilled with
-    "unannotated" so unannotated peaks still draw. _color maps each
-    ion type through ION_COLORS; _label blanks out the placeholder so
-    only real annotations get a text label. Intensity is divided by the
-    panel's own max, leaving an all-zero or empty frame untouched.
+    """Return a copy of df ready for drawing — add a _color and _label column per peak and
+    rescale intensity to [0, 1]. Missing annotation/ion_type columns are backfilled with
+    "unannotated" so unannotated peaks still draw; _color maps each ion type through ION_COLORS,
+    and _label blanks out the placeholder so only real annotations get a text label.
     """
     df = df.copy()
+    # Backfill missing annotation/ion_type so unannotated peaks still draw.
     for col in ("annotation", "ion_type"):
         if col not in df.columns:
             df[col] = "unannotated"
     df["_color"] = df["ion_type"].map(ION_COLORS).fillna(ION_COLORS["unannotated"])
     df["_label"] = df["annotation"].where(df["annotation"] != "unannotated", "")
+    # Rescale intensity by the panel's own max, leaving an all-zero or empty frame untouched.
     if not df.empty:
         max_intensity = df["intensity"].max()
         if max_intensity and max_intensity > 0:
@@ -224,15 +224,10 @@ def create_spectrum_plot(
     figure_size: tuple[int, int] = (12, 8),
 ):
     """Render an annotated peptide-spectrum match and return the figure.
-    Draws a mirror plot when reference_frame is supplied (query up,
-    reference down), otherwise a single spectrum. query_frame/
-    reference_frame are per-peak DataFrames with mz/intensity
-    columns and optional annotation/ion_type columns. Both panels are
-    independently max-normalised. Returns a matplotlib Figure for
-    backend="ms_matplotlib" or a Plotly go.Figure for
-    backend="ms_plotly". query_label/reference_label become corner
-    labels and metrics_text becomes a top-right overlay box; empty strings
-    are skipped. reference_label is suppressed in single-spectrum mode.
+    Draws a mirror plot when reference_frame is supplied (query up, reference down), else a single
+    spectrum; query_frame/reference_frame are per-peak DataFrames with mz/intensity and optional
+    annotation/ion_type columns, each panel independently max-normalised. Returns a matplotlib Figure
+    for "ms_matplotlib" or a Plotly go.Figure for "ms_plotly"; labels and metrics_text become overlays.
     """
     # Prep: normalise both panels, suppress reference label for single-spectrum
     is_mirror = reference_frame is not None

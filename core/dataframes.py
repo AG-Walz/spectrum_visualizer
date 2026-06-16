@@ -75,21 +75,20 @@ HEATMAP_SCHEMA: dict[str, pl.DataType] = {
 def build_psm_table(
     peptidoform_psms: dict[str, PSMList],
 ) -> tuple[pl.LazyFrame, dict[str, int]]:
-    """Flatten peptidoform_psms into the per-PSM table and its id lookup. Each key in
-    peptidoform_psms maps a peptidoform to its PSMList; every PSM becomes one row
-    carrying both PSM-level fields and the peptidoform-level grouping
-    fields shared by its siblings. Returns (lazyframe, psm_lookup) where the
-    LazyFrame matches PSM_TABLE_SCHEMA and psm_lookup maps
-    "spectrum_id|peptidoform" to the integer id — the same key shape that
-    psm_lookup_key() produces, so loaded spectra resolve to their PSM row.
+    """Flatten peptidoform_psms into the per-PSM table and its id lookup.
+    Every PSM becomes one row that carries both its own PSM-level fields and the
+    peptidoform-level fields shared by its siblings, matching PSM_TABLE_SCHEMA. Returns
+    (lazyframe, psm_lookup), where psm_lookup maps each psm_lookup_key()
+    ("spectrum_id|peptidoform") to its integer id, so loaded spectra resolve back to their row.
     """
     rows: list[dict] = []
     psm_lookup: dict[str, int] = {}
 
     # Walk every PSM under every peptidoform: id is the row index — globally
-    # sequential. A peptidoform equal to the bare sequence means unmodified.
-    # Optional fields are coerced to schema-safe defaults so the Polars schema
-    # never has to widen a column to Null.
+    # sequential. Each row carries the PSM's own fields plus the peptidoform-level
+    # fields shared by its siblings. A peptidoform equal to the bare sequence means
+    # unmodified. Optional fields are coerced to schema-safe defaults so the Polars
+    # schema never has to widen a column to Null.
     for peptidoform, psm_list in peptidoform_psms.items():
         for psm in psm_list:
             psm_id = len(rows)
@@ -149,10 +148,9 @@ def build_peaks_dataframe(
     annotated_spectra: list[tuple[int, pd.DataFrame]],
 ) -> pl.LazyFrame:
     """Stack annotated peaks across PSMs into one LazyFrame matching PEAKS_SCHEMA.
-    Takes (psm_id, annotated_frame) pairs and returns a LazyFrame with one
-    row per peak; an empty (but typed) frame is returned when no PSM contributes
-    any peaks. The pandas mz/intensity/is_annotated columns are recast
-    to the float32/int32 dtypes the openms_insight LinePlot expects.
+    Takes (psm_id, annotated_frame) pairs and returns one row per peak — empty
+    (but typed) when no PSM contributes peaks. The pandas mz/intensity/is_annotated
+    columns are recast to the float32/int32 dtypes the LinePlot expects.
     """
     # Per-PSM chunks: each annotated frame becomes a typed Polars block.
     chunks: list[pl.DataFrame] = []
@@ -185,11 +183,9 @@ def build_sequence_dataframe(
     psm_entries: list[tuple[int, PSM]],
 ) -> pl.LazyFrame:
     """Build the per-PSM sequence LazyFrame feeding the openms_insight SequenceView.
-    Takes (psm_id, PSM) pairs and returns a LazyFrame with one row per PSM
-    matching SEQUENCE_SCHEMA; the peptidoform is converted to OpenMS
-    parenthesised-mod notation. An empty (but typed) frame is returned when no
-    PSMs are given. The charge is the identification charge carried by the
-    peptidoform (equals the spectrum precursor charge for confident PSMs).
+    Takes (psm_id, PSM) pairs and returns one row per PSM matching SEQUENCE_SCHEMA, with the
+    peptidoform converted to OpenMS parenthesised-mod notation and the charge taken from the
+    peptidoform's identification charge. An empty (but typed) frame is returned when no PSMs are given.
     """
     # No PSMs — return a typed-empty LazyFrame.
     if not psm_entries:
@@ -199,6 +195,7 @@ def build_sequence_dataframe(
     rows = [
         {
             "sequence": _proforma_to_openms_str(psm.peptidoform.modified_sequence),
+            # identification charge carried by the peptidoform (= precursor charge for confident PSMs)
             "precursor_charge": int(psm.get_precursor_charge() or 0),
             "psm_id": psm_id,
         }
@@ -242,12 +239,9 @@ def build_heatmap_dataframe(psms: list[PSM]) -> pl.LazyFrame:
 
 def build_visualization_frames(annotated_queries, psm_frame=None) -> dict:
     """Bundle the peaks / sequence / heatmap LazyFrames into the dict openms_insight expects.
-    annotated_queries is the list of (psm_id, query_psm, annotated_frame)
-    tuples returned by run_streaming_annotation; each builder receives the
-    projection it needs — the sequence and heatmap builders read the carrier
-    PSM, which holds the peaks and metadata. Returns {"peaks", "sequence",
-    "heatmap"} LazyFrames, plus a "psm" entry when an already-built psm_frame is
-    supplied.
+    annotated_queries is the (psm_id, query_psm, annotated_frame) list from run_streaming_annotation;
+    each builder receives just the projection it needs. Returns {"peaks", "sequence", "heatmap"}
+    LazyFrames, plus a "psm" entry when a precomputed psm_frame is supplied.
     """
     # Project the tuples down to what each builder consumes.
     frames = {

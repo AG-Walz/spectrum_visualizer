@@ -24,10 +24,9 @@ _TAGGED_TOKEN_PATTERN = re.compile(r'(?:scan|index|spectrum)=\S+')
 
 def extract_id_number(native_id: str) -> Optional[int]:
     """Pull the spectrum number out of an mzML native ID.
-    Returns the integer keyed by scan= / index= / spectrum. When no keyed tag is present, 
-    falls back to the first run of digits anywhere in the string; returns None when the ID contains no digits at all.
-    The returned value carries no base assumption — an index=N number may be
-    0-based or 1-based depending on the instrument vendor (see module docstring).
+    Returns the integer keyed by scan= / index= / spectrum=, falling back to the first
+    run of digits, or None when the ID has no digits. The value carries no base
+    assumption — an index=N number may be 0- or 1-based per vendor (see module docstring).
     """
     # Prefer a keyed match — the digits attached to a recognised tag are unambiguous.
     keyed_match = NATIVE_ID_NUMBER_PATTERN.search(native_id)
@@ -42,13 +41,9 @@ def extract_id_number(native_id: str) -> Optional[int]:
 
 def clean_spectrum_id(spectrum_id: str) -> str:
     """Canonicalise a spectrum ID down to a single comparable token.
-    Returns the first whole (scan|index|spectrum)=N token found in the ID, so that
-    IDs carrying extra surrounding fields still compare equal on the part that matters.
-    An empty or falsy input returns ""; an ID with no recognised tag is returned
-    stripped but otherwise unchanged.
-    Thermo controllerType=… IDs are passed through whole — there the scan=N is a
-    sub-fragment of a larger compound key and must not be isolated, or distinct spectra
-    would collapse onto the same canonical ID.
+    Returns the first whole (scan|index|spectrum)=N token, so IDs with extra fields
+    still compare equal; falsy input returns "", an untagged ID is returned stripped.
+    Thermo controllerType=… IDs pass through whole (isolating their scan=N would collapse distinct spectra).
     """
     if not spectrum_id:
         return ""

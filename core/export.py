@@ -178,12 +178,10 @@ def find_or_create_export_directory(
     project_name: str,
     run_settings: dict,
 ) -> Path:
-    """Decide the export folder for a run.
-    Returns a Path named {project}_{NNN}_{YYYYMMDD}. When a prior folder
-    carries the same settings fingerprint, that folder is reused (re-dated to today
-    via _rename_or_reuse_match); otherwise the next free version number
-    max_number + 1 is allocated. This function only plans the path — it does not
-    create the folder on disk; call commit_export_directory for that.
+    """Plan the export folder for a run; returns a Path {project}_{NNN}_{YYYYMMDD}.
+    A prior folder with the same settings fingerprint is reused (re-dated to today);
+    otherwise the next free version number is allocated. Only plans the path — call
+    commit_export_directory to create it on disk.
     """
     # Setup: sanitize project name, compute fingerprint, build name regex
     base = Path(base_dir)
@@ -205,11 +203,9 @@ def find_or_create_export_directory(
 
 def commit_export_directory(root_dir: Path, run_settings: dict) -> None:
     """Materialise the export folder on disk and persist its run_settings.json.
-    Creates root_dir (and parents) if needed. For a freshly allocated folder it
-    writes a new run_settings.json stamped with the settings fingerprint and a
-    creation timestamp; for a reused folder it leaves the existing settings intact
-    and only refreshes the _last_run timestamp. Returns nothing — I/O failures
-    are logged as warnings rather than raised, so a failed write never aborts the export.
+    A fresh folder gets a new run_settings.json stamped with the fingerprint and
+    creation time; a reused folder keeps its settings and only refreshes _last_run.
+    I/O failures are logged rather than raised, so a failed write never aborts the export.
     """
     # Ensure the export folder exists
     root_dir.mkdir(parents=True, exist_ok=True)
@@ -298,10 +294,9 @@ def _resolve_format_dirs(
     root_dir: Path, export_formats: list[str],
 ) -> tuple[dict[str, str], str]:
     """Map each requested format to its subfolder path under root_dir.
-    Returns (format_dirs, html_dir) where format_dirs is {fmt: path} for
-    every picture format present in export_formats and html_dir is the html
-    subfolder path (empty string when html is not requested). Paths are strings only —
-    the directories themselves are created later by the plot workers.
+    Returns (format_dirs, html_dir): format_dirs is {fmt: path} for each picture
+    format in export_formats, html_dir the html subfolder ("" when not requested).
+    Paths are strings only — the workers create the directories later.
     """
     format_dirs = {fmt: str(root_dir / fmt) for fmt in _PICTURE_FORMATS if fmt in export_formats}
     html_dir = str(root_dir / "html") if "html" in export_formats else ""
@@ -320,10 +315,10 @@ def _run_plot_tasks(
     on_warning: Callable[[str], None],
 ) -> int:
     """Build one mirror plot per (query, reference) pair and render via a worker pool.
-    Each successfully rendered task contributes its non-empty per-format output paths
-    to saved_files (mutated in place). Returns the count of files written; 0 when
-    no tasks were produced. Worker failures are reported through on_warning rather
-    than raised, so a single bad PSM does not abort the whole export.
+    Each successfully rendered task contributes its non-empty per-format output paths to
+    saved_files (mutated in place). Returns the count of files written (0 when no tasks were
+    produced). Worker failures are reported through on_warning rather than raised, so one bad PSM
+    does not abort the whole export.
     """
     # Resolve format set: append html when requested, map each to a subdir
     base_formats = list(plot_settings.export_formats)
@@ -402,14 +397,10 @@ def run_export(
     callbacks: ExportCallbacks | None = None,
 ) -> ExportResult:
     """Run a full export end-to-end: versioned dir, parquets, CSV/XLSX, plots, summaries.
-    Keyword-only entry point shared by both frontends. Allocates (or reuses) a versioned
-    folder for project_name under export_directory, writes run_settings.json,
-    then runs each artefact stage gated by selection. run_settings.json is always
-    counted as saved even when every stage is disabled.
-    Returns an ExportResult whose saved_files lists every written path and whose
-    mirror_plot_count / summary_plot_count report per-group totals. Stage failures
-    that are recoverable (a bad plot worker, a missing XLSX engine) are surfaced through
-    callbacks.on_warning rather than raised.
+    Keyword-only entry point shared by both frontends. Allocates (or reuses) a versioned folder
+    under export_directory, writes run_settings.json, then runs each artefact stage gated by
+    selection. Returns an ExportResult whose saved_files lists every written path and whose
+    mirror_plot_count / summary_plot_count report per-group totals; recoverable stage failures go to on_warning.
     """
     # Normalise inputs: defaults for missing dataclasses, no-op for missing callbacks
     selection = selection or ExportSelection()
@@ -423,6 +414,7 @@ def run_export(
     root_dir = find_or_create_export_directory(export_directory, project_name, run_settings)
     commit_export_directory(root_dir, run_settings)
 
+    # run_settings.json is always counted as saved, even if every stage below is disabled
     saved_files: list[str] = [str(root_dir / "run_settings.json")]
 
     # Stage 2 — Parquet frames: write each of the four LazyFrames as {name}.parquet

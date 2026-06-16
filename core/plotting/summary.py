@@ -93,15 +93,10 @@ def plot_classic_dual_axis(
     title: str | None = None,
 ) -> Figure:
     """Render the dual-axis summary figure: count bars twinned with metric boxplots.
-    Draws one horizontal row per peptidoform — a peptide-count bar on the bottom
-    x axis overlaid with a boxplot of the chosen similarity metric on a
-    twinned top x axis. raw_frame supplies the per-psm metric values the
-    boxplots summarise; aggregated_frame supplies the per-peptidoform counts.
-    Rows are ordered most-prevalent first (descending count).
-    Returns the assembled Matplotlib Figure; the caller is responsible for
-    saving and closing it. figure_size defaults to a fixed 14-inch width with
-    a height that scales with the peptidoform count when not supplied; an explicit
-    title suppresses the metric axis label and adds a figure suptitle instead.
+    Draws one horizontal row per peptidoform — a count bar on the bottom x axis overlaid
+    with a boxplot of the chosen metric on a twinned top axis, ordered most-prevalent first.
+    raw_frame supplies the per-psm metric values the boxplots summarise; aggregated_frame
+    the per-peptidoform counts. Returns the Matplotlib Figure for the caller to save and close.
     """
     # Order rows so the most-counted peptidoform sits at the top of the chart.
     aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
@@ -133,6 +128,8 @@ def plot_classic_dual_axis(
         flierprops=dict(marker=".", markerfacecolor=_DUAL_BOX_COLOR,
                         markeredgecolor="none", alpha=0.4),
     )
+    # Without an explicit title, label the metric axis here; an explicit title suppresses
+    # this label and is added as a figure suptitle below instead.
     if not title:
         ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
     ax2.set_xlim(-0.05, 1.05)
@@ -182,16 +179,11 @@ def plot_ridgeline(
     export_resolution: int = 300,
     title: str | None = None,
 ) -> Figure:
-    """Render a ridgeline plot: one KDE ridge per peptidoform, coloured by median, with a count sidebar and median colorbar.
-    raw_frame holds the per-psm rows (one row per measurement, with a
-    peptidoform column and one column per metric) and supplies the values
-    that each KDE ridge is estimated from; aggregated_frame holds one row
-    per peptidoform — ordered by descending count — with peptidoform,
-    median, and count columns and controls ridge order, colour, and the
-    sidebar. metric selects which column of raw_frame to plot;
-    figure_size defaults to 14 inches wide with a height that scales with
-    the peptidoform count. Returns the assembled Matplotlib Figure (DPI set
-    to export_resolution); the caller is responsible for saving or closing it.
+    """Render a ridgeline plot: one KDE ridge per peptidoform, coloured by its median, with
+    a count sidebar and a median colorbar. raw_frame supplies the per-psm values each KDE
+    ridge is estimated from; aggregated_frame holds one row per peptidoform — ordered by
+    descending count — and controls ridge order, colour, and the sidebar. Returns the
+    Matplotlib Figure (DPI export_resolution) for the caller to save or close.
     """
     peptidoform_count = len(aggregated_frame)
     # Auto-size the figure height so every ridge gets vertical room; width is
@@ -221,8 +213,9 @@ def plot_ridgeline(
     # baseline y = peptidoform_count - 1 - i, and a lower ridge overdraws the one above.
     for i in range(peptidoform_count):
         baseline = peptidoform_count - 1 - i
-        # Gather this peptidoform's metric values from the raw rows, dropping
-        # NaN/inf so the KDE only sees usable numbers.
+        # Gather this peptidoform's metric values from the raw rows (one row per
+        # measurement, one column per metric), dropping NaN/inf so the KDE only
+        # sees usable numbers.
         values = raw_frame.loc[raw_frame["peptidoform"] == peptidoforms[i], metric].to_numpy(dtype=float)
         values = values[np.isfinite(values)]
         # No finite values — skip drawing this ridge entirely.
@@ -292,17 +285,10 @@ def prepare_summary_data(
     metric: str = DEFAULTS.summary_metric,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the comparison table and aggregate per-peptidoform stats for metric.
-    source is either a CSV path or an already-built comparison DataFrame;
-    the latter is copied so callers' frames are never mutated. A peptidoform
-    label is synthesised per row from the modification string (falling back to
-    the bare Peptide when unmodified) joined with the precursor Charge.
-    Rows with a missing value in metric are dropped before aggregation.
-    Returns (raw_frame, aggregated_frame): raw_frame is the per-row table
-    augmented with the peptidoform column, and aggregated_frame carries
-    one row per peptidoform with count, median, mean, std, q25,
-    q75, the 95% confidence interval (ci_lo/ci_hi), and the dominant
-    charge — sorted ascending by count.
-    Raises ValueError when metric is not a column of the input table.
+    source is either a CSV path or an already-built comparison DataFrame (the latter is
+    copied, so callers' frames are never mutated). Returns (raw_frame, aggregated_frame):
+    the per-row table augmented with a peptidoform column, plus one row per peptidoform
+    (count, median, mean, std, quartiles, 95% CI, dominant charge). Raises ValueError when metric is absent.
     """
     # Load: accept either an on-disk CSV path or an already-built DataFrame
     if isinstance(source, (str, Path)):
@@ -324,6 +310,7 @@ def prepare_summary_data(
     )
     raw_frame["peptidoform"] = inline + "/" + raw_frame["Charge"].astype(str)
 
+    # Drop rows with a missing value in metric before aggregating
     raw_frame = raw_frame.dropna(subset=[metric]).copy()
 
     # Aggregate: per-peptidoform count/quartile stats + 95% CI + dominant charge
@@ -352,16 +339,10 @@ def generate_all_summary_plots(
     export_resolution: int = 300,
 ) -> dict[str, dict[str, str]]:
     """Render every requested summary plot type into <output_dir>/summary/.
-    source is passed straight through to prepare_summary_data, which runs
-    once so the aggregation is shared across all plot types. plot_types defaults
-    to DEFAULTS.summary_plot_types and formats defaults to ["png"];
-    each recognised type (dual_axis, ridgeline) is rendered once and saved
-    under every requested format. The ridgeline figure for the default metric is
-    given the special basename ridgeline_r2_binned.
-    Unknown plot types, renderer ValueErrors, and per-file OSErrors are
-    logged and skipped rather than raised, so one bad type/format does not abort
-    the rest. Returns {plot_type: {format: path}} covering only the files
-    that were written successfully.
+    Aggregates once via prepare_summary_data, then renders each recognised type
+    (dual_axis, ridgeline) once and saves it under every requested format. Unknown types,
+    renderer ValueErrors, and per-file OSErrors are logged and skipped, never raised.
+    Returns {plot_type: {format: path}} covering only the files written successfully.
     """
     # Resolve defaults: fall back to configured plot types + PNG-only output
     if plot_types is None:
@@ -394,6 +375,8 @@ def generate_all_summary_plots(
             logger.error("Failed to create %s plot: %s", plot_type, error)
             continue
 
+        # The ridgeline for the default metric gets a special basename; everything
+        # else is named after its plot type.
         basename = ("ridgeline_r2_binned"
                     if plot_type == "ridgeline" and metric == DEFAULTS.summary_metric
                     else plot_type)

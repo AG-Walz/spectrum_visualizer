@@ -49,10 +49,9 @@ logger = logging.getLogger(__name__)
 
 def _detect_id_format(indexed_exp: oms.OnDiscMSExperiment, n_spectra: int) -> Tuple[str, int]:
     """Probe the first spectrum's native ID and classify the file's ID scheme.
-    Returns (format, offset) where format is one of "index", "scan", "spectrum" or "unknown".
-    offset is meaningful only for the index format: it is the index=N value of array position 0,
-    so 0 for normal files and 1 for the Bruker timsTOF 1-based gotcha. For all
-    other formats offset is 0 and unused.
+    Returns (format, offset) with format one of "index"/"scan"/"spectrum"/"unknown".
+    offset matters only for "index": the index=N at array position 0 — 0 for normal
+    files, 1 for the Bruker timsTOF 1-based gotcha. Otherwise 0 and unused.
     """
     # Empty file — nothing to probe.
     if n_spectra == 0:
@@ -98,11 +97,10 @@ def _binary_search_for_number(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, target_number: int,
     clean_id: str, id_to_index: Dict[str, int],
 ) -> bool:
-    """Binary-search the spectra for one matching scan number.
-    Assumes native-ID numbers increase monotonically with array position (the
-    usual mzML layout). On a match, records the cleaned ID and a _num_<n>
-    alias in id_to_index and returns True; returns False if the
-    number is absent or any spectrum read fails. Mutates id_to_index.
+    """Binary-search the spectra for one matching scan number, assuming native-ID numbers
+    increase monotonically with array position (the usual mzML layout). On a match,
+    records the cleaned ID and a _num_<n> alias and returns True; returns False if the
+    number is absent or a read fails. Mutates id_to_index.
     """
     low, high = 0, n_spectra - 1
     while low <= high:
@@ -134,10 +132,9 @@ def _resolve_targeted_id(
     id_to_index: Dict[str, int],
 ) -> bool:
     """Locate one needed spectrum ID and record its array position in id_to_index.
-    Tries the cheap path first — the scan number itself and its off-by-one
-    neighbour as direct array positions — then falls back to a binary search by
-    scan number. Returns True if the ID was resolved and recorded, False
-    if its number cannot be parsed or no spectrum matches.
+    Tries the cheap path first — the scan number and its off-by-one neighbour as
+    direct positions — then a binary search by scan number. Returns True on success,
+    False if the number cannot be parsed or no spectrum matches.
     """
     clean_id = clean_spectrum_id(spectrum_id)
     extracted_number = extract_id_number(clean_id)
@@ -157,11 +154,10 @@ def _resolve_targeted_id(
 def _build_full_scan_index(
     indexed_exp: oms.OnDiscMSExperiment, n_spectra: int, id_to_index: Dict[str, int],
 ) -> None:
-    """Walk every spectrum and index it by native ID — the last-resort full scan.
-    Used when the ID format is unrecognised or targeted lookups all failed.
-    Records each spectrum's raw native ID plus a _num_<n> numeric alias in
-    id_to_index; spectra that fail to read are skipped. Mutates
-    id_to_index in place and returns nothing.
+    """Walk every spectrum and index it by native ID — the last-resort full scan, used
+    when the ID format is unrecognised or targeted lookups failed. Records each raw
+    native ID plus a _num_<n> alias in id_to_index (unreadable spectra skipped).
+    Mutates id_to_index in place.
     """
     for index in range(n_spectra):
         # Skip unreadable spectra rather than aborting the whole scan.
@@ -180,11 +176,10 @@ def open_indexed_mzml_fast(
     mzml_path: str,
     needed_ids: Optional[List[str]] = None,
 ) -> Tuple[oms.OnDiscMSExperiment, Dict[str, int]]:
-    """Open one mzML and build its native-ID -> array-position map. Returns (experiment, id_to_index).
-    Three strategies, cheapest first: (1) for the index format the map needs no per-spectrum entries
-    since find_spectrum_index derives positions from the offset directly;
-    (2) when needed_ids is supplied for a scan / spectrum file, only those IDs are resolved;
-    (3) otherwise every spectrum is walked.
+    """Open one mzML and build its native-ID -> array-position map; return (experiment,
+    id_to_index). Three strategies, cheapest first: (1) the index format needs no
+    per-spectrum entries (find_spectrum_index derives positions from the offset);
+    (2) with needed_ids on a scan/spectrum file, resolve only those; (3) else walk all.
     """
     # Open the file on disc and probe its native-ID format and index offset.
     indexed_exp = oms.OnDiscMSExperiment()
@@ -232,13 +227,10 @@ def find_spectrum_index(
     id_to_index: Dict[str, int],
     n_spectra: int,
 ) -> Optional[int]:
-    """Resolve one spectrum ID to its array position using a prebuilt map.
-    id_to_index is the map returned by open_indexed_mzml_fast and
-    n_spectra its spectrum count. Returns the integer array position, or
-    None if the ID is empty, has no parseable number, or cannot be located.
-    Resolution order: exact cleaned-ID hit, then _num_<n> numeric alias,
-    then — for the index format — the position computed from the native
-    number minus the auto-detected index offset.
+    """Resolve one spectrum ID to its array position using the map from
+    open_indexed_mzml_fast. Returns the integer position, or None when the ID is
+    empty, unparseable, or absent. Resolution order: exact cleaned-ID hit, then
+    _num_<n> alias, then — for the index format — native number minus the index offset.
     """
     clean_id = clean_spectrum_id(spectrum_id)
     # Empty ID — nothing to resolve.
@@ -274,13 +266,11 @@ def find_spectrum_index(
 # ============================================================================
 
 def _prepare_loaded_psm(spectrum, psm: PSM) -> PSM:
-    """Stamp the loaded mzML spectrum's peaks and acquisition metadata onto the
-    matched PSM and return it — the PSM is the carrier the pipeline streams.
-    Attaches the peak arrays to psm.spectrum and pulls precursor m/z (None when
-    the spectrum carries no precursor block), retention time, and ion mobility
-    (None when unset; getDriftTime() is -1.0 for non-IM data). The precursor
-    charge is the PSM's identification charge (peptidoform). Runs inside a worker
-    process, so the result must stay picklable.
+    """Stamp the loaded spectrum's peaks and acquisition metadata onto the matched PSM
+    and return it — the PSM is the carrier the pipeline streams. Attaches the peak arrays
+    to psm.spectrum and pulls precursor m/z, retention time, and ion mobility (each None
+    when absent). The precursor charge stays the PSM's identification charge (peptidoform).
+    Runs inside a worker process, so the result must stay picklable.
     """
     mz_array, intensity_array = spectrum.get_peaks()
     precursors = spectrum.getPrecursors()
@@ -288,8 +278,10 @@ def _prepare_loaded_psm(spectrum, psm: PSM) -> PSM:
     drift_time = spectrum.getDriftTime()
 
     psm.spectrum = {"mz": mz_array, "intensity": intensity_array}
+    # precursor m/z is None when the spectrum carries no precursor block
     psm.precursor_mz = precursor_mz if precursor_mz > 0 else None
     psm.retention_time = spectrum.getRT()
+    # ion mobility is None when unset — getDriftTime() returns -1.0 for non-IM data
     psm.ion_mobility = drift_time if drift_time and drift_time > 0 else None
     return psm
 
@@ -301,16 +293,10 @@ def _load_spectra_from_mzml(
     is_reference: bool,
 ) -> LoadResult:
     """Worker entry point — open one mzML and load every spectrum named in matches_for_file.
-    matches_for_file is a list of (PSM, peptidoform) pairs; each PSM's
-    spectrum_id is resolved to an array position via a targeted index, the
-    spectrum is fetched, and it is prepared as a PSM carrier tagged with
-    its peptidoform. Errors are collected per spectrum (and once for the whole
-    file if it fails to open) rather than raised — a failure on one spectrum or
-    file never aborts the batch.
-    Returns a LoadResult carrying peptidoform_psm_pairs as a list of
-    (peptidoform, PSM) pairs, plus the loaded / not-found counts
-    and the error list. Runs inside a ProcessPoolExecutor worker, so the
-    return value must remain picklable.
+    Each (PSM, peptidoform) pair has its spectrum_id resolved to an array position, the spectrum
+    fetched, and prepared as a PSM carrier tagged with its peptidoform. Errors are collected per
+    spectrum (and once per file if it fails to open) rather than raised, so one failure never aborts
+    the batch. Returns a picklable LoadResult with the (peptidoform, PSM) pairs, counts, and errors.
     """
     # Per-file accumulators — successfully loaded PSM carriers and error strings
     peptidoform_psm_pairs: List[Tuple[str, PSM]] = []
@@ -361,14 +347,10 @@ def build_mzml_to_matches_map(
     available_mzml_paths: Dict[str, Path],
 ) -> Dict[str, List[Tuple[PSM, str]]]:
     """Group PSMs by the mzML file they live in; return {path_key: [(psm, peptidoform), ...]}.
-    path_key is the resolved, lower-cased absolute path of an mzML file. PSMs are
-    bucketed by run, and each run is resolved to one available mzML path —
-    preferring the pre-computed psm.metadata["mzml_resolved_path"], falling back
-    to matching psm.run against the mzML filename stem. (Both derive from psm.run,
-    so a whole run resolves together.) peptidoform is the PSM's modified
-    peptidoform — the same key its peptidoform-PSMs entry is keyed on. PSMs whose run
-    resolves to no available file (or carry an empty run) are dropped, with a
-    warning logged for the total dropped count.
+    path_key is an mzML's resolved, lower-cased absolute path. PSMs are bucketed by run, and each
+    run is resolved to one available path — preferring psm.metadata["mzml_resolved_path"], else
+    matching psm.run against the filename stem. PSMs whose run resolves to no available file (or
+    carry an empty run) are dropped, with a warning logged for the dropped count.
     """
     # Build stem index: cheap reverse-lookup keyed on the mzML filename stem
     stem_to_key = {path.stem.lower(): key for key, path in available_mzml_paths.items()}
@@ -395,6 +377,8 @@ def build_mzml_to_matches_map(
     for run, run_psms in by_run.items():
         path_key = resolve(run_psms[0]) if run else None
         if path_key:
+            # Pair each PSM with its modified-sequence peptidoform — the same key its
+            # peptidoform_psms entry is keyed on.
             mzml_to_matches.setdefault(path_key, []).extend(
                 (psm, psm.peptidoform.modified_sequence) for psm in run_psms
             )
@@ -410,11 +394,10 @@ def build_mzml_to_matches_map(
 
 
 def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
-    """Pack (path_str, display_name, matches) task tuples for every file in
-    file_keys that has at least one PSM match.
-    file_keys is the references or queries subset; files with no matches are
-    skipped so the worker is never dispatched on a file it has nothing to do in.
-    The resulting tuples are the per-file work units handed to the mzML worker.
+    """Pack (path_str, display_name, matches) task tuples for every file in file_keys
+    that has at least one PSM match. file_keys is the references or queries subset;
+    files with no matches are skipped so the worker is never dispatched on an empty
+    file. The tuples are the per-file work units handed to the mzML worker.
     """
     return [
         (str(mzml_path_map[key]), mzml_path_map[key].name, mzml_to_matches[key])
@@ -424,13 +407,10 @@ def _build_file_tasks(file_keys, mzml_to_matches, mzml_path_map):
 
 def _execute_load_tasks(file_tasks, is_reference, workers,
                         on_file_start, on_file_complete, error_callback) -> List[LoadResult]:
-    """Run the mzML worker over file_tasks (sequential or parallel) and return
-    a list of per-file LoadResult objects, firing the progress callbacks along the way.
-    workers selects sequential (1) versus ProcessPoolExecutor dispatch
-    via run_tasks. A crashed worker is reported through error_callback and
-    its file is skipped rather than aborting the whole run; per-spectrum errors
-    inside a successful result are forwarded the same way. is_reference is
-    stamped onto every task so the worker knows which kind of file it is loading.
+    """Run the mzML worker over file_tasks (sequential or parallel) and return the per-file
+    LoadResult list, firing the progress callbacks along the way. workers selects sequential (1)
+    versus ProcessPoolExecutor dispatch. A crashed worker is reported through error_callback and
+    its file skipped rather than aborting the whole run; per-spectrum errors are forwarded the same way.
     """
     # Setup: short-circuit on empty, wire optional callbacks
     if not file_tasks:
@@ -453,6 +433,7 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
         if not ok:
             on_error(f"Worker crashed loading {kind} {task[1]}: {result}")
             continue
+        # Forward this file's per-spectrum errors through the same callback
         for error in result.errors:
             on_error(error)
         all_results.append(result)
@@ -463,13 +444,10 @@ def _execute_load_tasks(file_tasks, is_reference, workers,
 def _split_reference_and_query_keys(
     mzml_path_map: Dict[str, Path], reference_substring: str,
 ) -> Tuple[Dict[str, Path], Dict[str, Path]]:
-    """Split the mzML path map into (references, queries) by case-insensitive
-    substring match against the full path string.
-    A file lands in references when reference_substring appears anywhere
-    in its path; everything else is a query. An empty or missing
-    reference_substring short-circuits the test so every file is a query —
-    the no-experimental-reference case, where the pipeline later falls back to
-    Koina-predicted references.
+    """Split the mzML path map into (references, queries) by a case-insensitive substring
+    match against the full path. A file lands in references when reference_substring appears
+    anywhere in its path; everything else is a query. An empty reference_substring makes every
+    file a query — the no-experimental-reference case, where the pipeline later falls back to Koina references.
     """
     needle = reference_substring.lower() if reference_substring else None
     references: Dict[str, Path] = {}
@@ -484,14 +462,13 @@ def _filter_already_loaded(
     mzml_to_matches: Dict[str, List[Tuple[PSM, str]]],
     skip_ids: set,
 ) -> Dict[str, List[Tuple[PSM, str]]]:
-    """Drop matches whose (peptidoform, spectrum_id) pair is in skip_ids,
-    returning the trimmed mzml_to_matches map.
-    Powers resuming a partial run: spectra already persisted in an earlier pass
-    are skipped so only the remainder is reloaded. Files left with no surviving
-    matches are dropped entirely (the walrus guard keeps only non-empty lists).
-    Logs how many spectra were skipped versus how many remain.
+    """Drop matches whose (peptidoform, spectrum_id) pair is in skip_ids, returning the trimmed
+    mzml_to_matches map. Powers resuming a partial run: spectra already persisted in an earlier
+    pass are skipped so only the remainder is reloaded. Files left with no surviving matches are
+    dropped entirely, and the skipped-versus-remaining counts are logged.
     """
     before = sum(len(matches) for matches in mzml_to_matches.values())
+    # The walrus guard keeps only files whose `kept` list is non-empty (still has matches).
     filtered = {
         path_key: kept for path_key, matches in mzml_to_matches.items()
         if (kept := [(psm, peptidoform) for psm, peptidoform in matches if (peptidoform, psm.spectrum_id) not in skip_ids])
@@ -506,12 +483,10 @@ def _collect_reference_spectra(
     ref_results: List[LoadResult], peptidoform_psms: Dict[str, PSMList],
     on_reference_loaded: Optional[Callable[[str, int], None]],
 ) -> Dict[str, List[PSM]]:
-    """Bucket every loaded reference spectrum by peptidoform and fire the
-    per-peptidoform callback once references are in; return {peptidoform: [PSM]}.
-    The returned map has one slot for every known peptidoform — including peptidoforms
-    that got zero reference spectra — so a later query lookup never raises a
-    KeyError. on_reference_loaded is invoked only for peptidoforms that
-    actually received references.
+    """Bucket every loaded reference spectrum by peptidoform and fire the per-peptidoform callback;
+    return {peptidoform: [PSM]}. The map has one slot for every known peptidoform — including those
+    that got zero reference spectra — so a later query lookup never raises a KeyError.
+    on_reference_loaded is invoked only for peptidoforms that actually received references.
     """
     # Bucket: one slot per known peptidoform, fan out the loaded spectra
     reference_spectra: Dict[str, List[PSM]] = {peptidoform: [] for peptidoform in peptidoform_psms}
@@ -536,9 +511,8 @@ def _stream_query_results(
 ) -> None:
     """Fire on_query_ready once per loaded query spectrum, each call carrying a
     StreamingResult that pairs the query with its peptidoform's reference spectra.
-    Returns nothing — the loaded spectra reach the caller purely through the
-    callback. When no callback is supplied the query results are simply
-    discarded, since this function exists only to replay them downstream.
+    The loaded spectra reach the caller purely through the callback; with no callback
+    the results are discarded.
     """
     # Nothing to replay to: bail before touching any results
     if not on_query_ready:
@@ -564,19 +538,11 @@ def load_spectra_streaming(
     workers: int = 1,
     skip_ids: Optional[set] = None,
 ) -> Dict[str, List[PSM]]:
-    """Load references first, then stream each query through on_query_ready;
-    return {peptidoform: [reference_spectra]}.
-    The public entry point of the streaming loader. reference_substring
-    (case-insensitive) partitions mzml_paths into reference and query files;
-    references are loaded and bucketed by peptidoform up front so that each
-    query, on arrival, can already be compared against its references. Spectra
-    are surfaced through the optional callbacks rather than collected in bulk:
-    on_query_ready receives a StreamingResult per query, the on_file_*
-    and error_callback hooks drive progress reporting. workers controls
-    sequential versus parallel per-file dispatch; skip_ids resumes a partial
-    run by dropping already-loaded spectra. The returned reference map is the
-    only bulk result — every query spectrum has already flowed through the
-    callback by the time this returns.
+    """Load references first, then stream each query through on_query_ready; return
+    {peptidoform: [reference_spectra]}. reference_substring (case-insensitive) partitions
+    mzml_paths into reference and query files; references are bucketed by peptidoform up front so
+    each query is compared against its references on arrival. Query spectra reach the caller only
+    through the callbacks — the returned reference map is the one bulk result; workers sets dispatch, skip_ids resumes.
     """
     # Partition inputs: resolve paths to a canonical key map, split into
     # references/queries, then group every PSM under the mzML it belongs to

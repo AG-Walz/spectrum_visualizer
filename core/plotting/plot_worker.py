@@ -42,13 +42,10 @@ logger = logging.getLogger(__name__)
 @dataclass
 class ComparisonTask:
     """Picklable bundle of everything a worker needs to render one plot.
-    One instance describes a single mirror or single-spectrum plot job:
-    the annotated spectra, the labels, the on-disk output locations, and the
-    export parameters. Created in batches by
-    core.pipeline.load_annotate.build_plot_tasks and consumed by
-    core.plotting.plot_worker.process_single_task inside a worker process.
-    All fields hold picklable values only (DataFrames, strings, numbers) so the
-    whole object survives being shipped to a ProcessPoolExecutor worker.
+    Describes a single mirror or single-spectrum plot job: the annotated spectra, the labels,
+    the on-disk output locations, and the export parameters. Built in batches by build_plot_tasks
+    and consumed by process_single_task inside a worker process; all fields hold picklable values
+    only (DataFrames, strings, numbers) so the whole object survives the ProcessPoolExecutor boundary.
     """
     task_id: int          # Stable index — paired back to a ComparisonResult
     task_type: str        # "mirror" (query vs reference) or "single" (query only)
@@ -98,10 +95,9 @@ class ComparisonTask:
 @dataclass
 class ComparisonResult:
     """Worker output for one ComparisonTask.
-    Returned by core.plotting.plot_worker.process_single_task and collected
-    back in the main process to report progress and assemble the summary CSV.
-    Carries the success flag, the on-disk path written for each rendered format,
-    and — for mirror tasks — the metrics row destined for the summary CSV.
+    Returned by process_single_task and collected in the main process to report
+    progress and assemble the summary CSV. Carries the success flag, the path
+    written per format, and — for mirror tasks — the summary-CSV metrics row.
     """
     task_id: int        # Matches the originating ComparisonTask.task_id
     task_type: str       # Copied from the task ("mirror" or "single")
@@ -141,15 +137,10 @@ def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
 
 def process_single_task(task: ComparisonTask) -> ComparisonResult:
     """Worker entry point — render one ComparisonTask to disk.
-    Runs inside a ProcessPoolExecutor worker: the argument and the returned
-    ComparisonResult must stay picklable, so only plain data crosses the
-    process boundary. Computes the comparison metrics (mirror tasks only),
-    renders the static matplotlib figure into each requested format, and
-    optionally writes a Plotly HTML plot.
-    Returns a ComparisonResult with success=True and the written file
-    paths on completion. Any exception is caught and converted into a result
-    with success=False and the message in error — the worker never
-    raises, so one bad task cannot abort the whole pool.
+    Runs inside a ProcessPoolExecutor worker, so the argument and the returned ComparisonResult
+    must stay picklable. Computes the comparison metrics (mirror tasks only), renders the static
+    matplotlib figure into each requested format, and optionally writes a Plotly HTML plot. Returns
+    a ComparisonResult with success=True on completion; any exception becomes success=False, never raised.
     """
     try:
         # Classify: mirror tasks need a reference; remember slots for output paths
@@ -198,10 +189,8 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
 def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
     """Write the rendered matplotlib figure to each requested file format.
     Each format lands in its own per-peptidoform subdirectory
-    (<format_dir>/<folder_name>/<safe_filename>.<ext>), created on demand.
-    Returns the triple (png_path, svg_path, pdf_path) — a format is skipped
-    (leaving an empty string) when it is absent from task.export_formats or
-    its destination directory is unset.
+    (<format_dir>/<folder_name>/<safe_filename>.<ext>), created on demand. Returns
+    (png_path, svg_path, pdf_path); a skipped format leaves an empty string.
     """
     # Pair each format with its configured destination directory.
     format_dirs = {"png": task.png_dir, "svg": task.svg_dir, "pdf": task.pdf_dir}
@@ -227,10 +216,8 @@ def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
 
 def _save_task_html(task: ComparisonTask) -> str:
     """Render the Plotly mirror/single plot and write it as standalone HTML.
-    Returns the written path on success, or "" if an OSError occurred
-    while creating the directory or writing the file — the failure is logged
-    as a warning rather than propagated, so a single unwritable HTML target
-    does not fail the whole task.
+    Returns the written path, or "" on OSError (logged as a warning rather than
+    propagated, so a single unwritable HTML target does not fail the whole task).
     """
     try:
         out = Path(task.html_plot_path)
