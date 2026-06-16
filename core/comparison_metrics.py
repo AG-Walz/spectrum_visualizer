@@ -15,17 +15,13 @@ Called by core.pipeline.load_annotate and core.plotting.plot_worker.
 import logging
 import math
 
+import ms_entropy
 import numpy as np
 import pandas as pd
 from scipy.spatial.distance import cosine as _cosine_distance
 from scipy.stats import linregress
 
 from core.defaults import DEFAULTS
-
-try:
-    import ms_entropy
-except ImportError:
-    ms_entropy = None
 
 logger = logging.getLogger(__name__)
 
@@ -119,10 +115,6 @@ def compute_spectral_entropy_similarity(
     """
     # Return NaN for empty spectra
     if query_frame.empty or reference_frame.empty:
-        return float("nan")
-    # Return NaN if ms_entropy is not installed
-    if ms_entropy is None:
-        logger.warning("ms_entropy not installed -- entropy similarity unavailable")
         return float("nan")
 
     # Pack spectrum in 2 columns (mz, intensity) array
