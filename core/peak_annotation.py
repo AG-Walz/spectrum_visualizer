@@ -126,11 +126,8 @@ def annotate_spectrum(
     return _spec_to_dataframe(spec)
 
 
-def _filter_and_normalize(
-    annotated_peaks: pd.DataFrame, ion_types: list[str], normalize: bool,
-) -> pd.DataFrame:
-    """Drop annotations whose ion type the user didn't ask for and optionally normalise to max=1.
-    """
+def _filter_ion_types(annotated_peaks: pd.DataFrame, ion_types: list[str]) -> pd.DataFrame:
+    """Drop annotations whose ion type the user didn't ask for; the peaks themselves stay in the dataframe."""
     if annotated_peaks.empty:
         return annotated_peaks
 
@@ -143,11 +140,17 @@ def _filter_and_normalize(
         annotated_peaks.loc[unwanted, "is_annotated"] = False
         annotated_peaks.loc[unwanted, "charge"] = 0
 
-    # Normalise: rescale so the tallest peak sits at intensity 1.0 (mirror-plot convention)
-    if normalize:
-        max_intensity = annotated_peaks["intensity"].max()
-        if max_intensity and max_intensity > 0:
-            annotated_peaks["intensity"] = annotated_peaks["intensity"] / max_intensity
+    return annotated_peaks
+
+
+def _normalize_intensity(annotated_peaks: pd.DataFrame) -> pd.DataFrame:
+    """Rescale so the tallest peak sits at intensity 1.0 (mirror-plot convention)."""
+    if annotated_peaks.empty:
+        return annotated_peaks
+
+    max_intensity = annotated_peaks["intensity"].max()
+    if max_intensity and max_intensity > 0:
+        annotated_peaks["intensity"] = annotated_peaks["intensity"] / max_intensity
 
     return annotated_peaks
 
@@ -173,7 +176,10 @@ def prepare_spectrum_for_plot(
         add_neutral_losses=add_neutral_losses,
         precursor_mz=precursor_mz,
     )
-    return _filter_and_normalize(annotated_peaks, ion_types, normalize)
+    annotated_peaks = _filter_ion_types(annotated_peaks, ion_types)
+    if normalize:
+        annotated_peaks = _normalize_intensity(annotated_peaks)
+    return annotated_peaks
 
 
 def _parse_koina_charge(annotation: str) -> int:
@@ -208,4 +214,7 @@ def prepare_koina_spectrum_for_plot(
         "is_annotated": True,
     })
     annotated_peaks["ion_type"] = annotated_peaks["annotation"].apply(get_ion_type)
-    return _filter_and_normalize(annotated_peaks, ion_types, normalize)
+    annotated_peaks = _filter_ion_types(annotated_peaks, ion_types)
+    if normalize:
+        annotated_peaks = _normalize_intensity(annotated_peaks)
+    return annotated_peaks
