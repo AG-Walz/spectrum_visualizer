@@ -14,28 +14,26 @@ Use **Dice** or **Jaccard**. These are purely set-based and report
 overlap regardless of intensity.
 
 **"Are the shared fragments at similar relative intensities?"**
-Use **R2m** or **Cosine**. These measure intensity agreement among
-shared ions. R2m is robust to a global rescale (the regression fits any
-linear relationship); Cosine is scale-invariant (multiplying one side by
-a constant doesn't change it).
+Use **R2m** or **Cosine**. Both measure intensity agreement among shared
+ions. R2m is robust to a global rescale (the regression fits any linear
+relationship); Cosine is scale-invariant.
 
 **"Do the spectra have the same overall shape?"**
-Use **R2b** or **Entropy**. These consider all peaks and are useful when
+Use **R2b** or **Entropy**. Both consider all peaks, useful when
 annotation is incomplete. R2b is annotation-free and robust to small m/z
 shifts (peaks fall into adjacent bins); Entropy is the
 information-theoretic counterpart and the published recommendation for
 small-molecule library searching.
 
 **"Is the smaller spectrum fully contained in the larger one?"**
-Use **Shared Peak Ratio (ShR)**. This answers whether the information in
-the less-rich spectrum is fully captured. Pair it with the `shared`
-context column — ShR = 1.0 with only 1 shared ion is technically
-perfect, practically meaningless.
+Use **Shared Peak Ratio (ShR)**. Pair it with the `shared` context
+column — ShR = 1.0 with only 1 shared ion is technically perfect,
+practically meaningless.
 
 **"Is fragmentation extensive enough to trust the match?"**
-Look at the `query_annotation_count` and `shared` context columns
-(serialised next to the metrics). A high Cos with `shared = 2` is much
-weaker evidence than the same Cos with `shared = 20`.
+Look at `query_annotation_count` and `shared`. A high Cos with
+`shared = 2` is much weaker evidence than the same Cos with
+`shared = 20`.
 
 ---
 
@@ -55,20 +53,18 @@ weaker evidence than the same Cos with `shared = 20`.
 ## Cross-checks
 
 Always sanity-check with the context columns
-(`query_peak_count`, `reference_peak_count`, `query_annotation_count`,
-`reference_annotation_count`, `shared`):
+(see [comparison.md#context-columns](comparison.md#context-columns)):
 
 - **ShR = 1.0 but only 1 shared ion.** Technically perfect, practically
-  meaningless. Require a minimum of (say) 5 shared ions before trusting
-  ShR.
-- **R2m near 0 but Cos near 1.** Cos is scale-invariant; R² is computed
-  on the raw shared intensities. Check whether the reference has been
-  globally rescaled (`intensity_mode` mismatch — `Relative` vs `Raw`).
-- **Entropy low but Dice high.** A handful of high-intensity shared ions
-  dominates entropy while the sets agree. Peak count may be small.
-- **All metrics NaN.** Usually means one of the spectra is empty
-  post-filtering (every peak fell below the annotation tolerance, or the
-  spectrum loader returned no peaks). Inspect the mirror plot directly.
+  meaningless. Require (say) 5 shared ions before trusting ShR.
+- **R2m near 0 but Cos near 1.** Cos is scale-invariant; R² uses the raw
+  shared intensities. Check whether the reference was globally rescaled
+  (`intensity_mode` mismatch — `Relative` vs `Raw`).
+- **Entropy low but Dice high.** A few high-intensity shared ions
+  dominate entropy while the sets agree. Peak count may be small.
+- **All metrics NaN.** Usually one spectrum is empty post-filtering
+  (every peak fell below the annotation tolerance, or the loader returned
+  no peaks). Inspect the mirror plot directly.
 
 ---
 

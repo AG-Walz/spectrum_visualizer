@@ -7,7 +7,7 @@ import pandas as pd
 import polars as pl
 import pytest
 
-from core.comparison_metrics import METRIC_SHORT_TO_DISPLAY
+from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
 from psm_utils import PSMList
 
 from tests.conftest import make_peptide_match
@@ -52,8 +52,8 @@ def _make_comparison_frame():
             "query_rt": 120.0 + i * 10,
             "ref_rt": 121.0 + i * 10,
         }
-        for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
-            row[display_name] = 0.85 + i * 0.05
+        for metric_key, column_name in METRIC_KEY_TO_COLUMN_NAME.items():
+            row[column_name] = 0.85 + i * 0.05
         for count_key in (
             "query_peak_count", "reference_peak_count",
             "query_annotation_count", "reference_annotation_count", "shared",

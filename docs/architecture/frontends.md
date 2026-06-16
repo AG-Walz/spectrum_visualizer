@@ -36,27 +36,23 @@ streamlit_app/
 ```
 
 **Session-state convention.** Every key the app writes is prefixed with
-`peptide_mirror.` (see `STATE_PREFIX` in
-`streamlit_app/utils/state.py` — it's a UI-layer concern, not in
-the core package). Always go through `get_state_key(key)` — never hard-code
-the prefix. Full list of public keys:
+`peptide_mirror.` (`STATE_PREFIX` in `utils/state.py` — a UI-layer concern,
+not in core). Always resolve it through `get_state_key(key)`. Full key list:
 [../settings/workspace.md#session-state-keys](../settings/workspace.md#session-state-keys).
 
-**Page entry points.** Each `views/*/*_page.py` (or `setup_page.py`) exports
-a `render()` function called from `app.py`'s `st.navigation([st.Page(...)])`
-list. Everything else in the folder is a support module (`*_actions.py` for
-mutation/orchestration, `*_plots.py` / `gallery.py` for view-only pieces).
+**Page entry points.** Each `views/*/*_page.py` (and `setup_page.py`) exports a
+`render()` called from `app.py`'s `st.navigation([st.Page(...)])` list.
+Everything else in the folder is a support module (`*_actions.py` for
+orchestration, `mirror_plots.py` / `gallery.py` for view-only pieces).
 
-**Workspaces.** Managed by the workspace and sidebar helpers in
-`utils/state.py`. Each workspace is a directory under
-`workspaces/` with its own `params.json` — a sparse record of user-edited
-widget values. Missing keys fall back to `core.defaults.DEFAULTS`.
-The active workspace lives in `st.session_state["workspace"]`.
+**Workspaces.** `utils/state.py` holds the workspace + sidebar helpers
+(`save_params`, `is_safe_workspace_name`). Each workspace is a directory under
+`workspaces/` with a sparse `params.json` of user-edited widget values; missing
+keys fall back to `DEFAULTS`. Active workspace: `st.session_state["workspace"]`.
 
-**Progress wiring.** `utils/progress_tracker.py` adapts the
-`(current, total, message)` triples emitted by `core.helpers`
-into Streamlit `st.progress` calls — kept in the UI layer so the core stays
-framework-agnostic.
+**Progress wiring.** `utils/progress_tracker.py` adapts the `(current, total,
+message)` triples from `core.helpers` into `st.progress` calls — kept in the UI
+layer so core stays framework-agnostic.
 
 ---
 
@@ -74,16 +70,13 @@ single positional argument is the config path; there are no flag overrides
 — copy the YAML and edit per-run. Set `MSPECVIZ_LOG_LEVEL=ERROR` for quiet
 runs.
 
-**Two-layer config merge** (see `cli/main.py:_load_config`):
-
-1. `core.defaults.DEFAULTS` + the `_CLI_EXTRAS` dict at the top
-   of `main.py` (CLI-only fields: `idxml_files`, `mzml_files`,
-   `peptide_source`, `peptides`, `reference_substring`, `no_plots`).
-2. YAML file — per-run overrides merged last via dict-literal unpacking
-   into a `SimpleNamespace`.
-
-Adding a new parameter is a one-field edit on `DEFAULTS` (or `_CLI_EXTRAS`
-for CLI-only inputs) — the YAML key inherits the name automatically.
+`_load_config` merges `DEFAULTS` with the CLI-only `_CLI_EXTRAS`
+(`idxml_files`, `mzml_files`, `peptide_source`, `peptides`,
+`reference_substring`, `no_plots`) and then the YAML overrides into a
+`SimpleNamespace`; `_expand_globs` and `_resolve_peptide_source` resolve the
+file inputs. The merge order and the "add a parameter = one-field edit on
+`DEFAULTS`" rule are documented in
+[../settings/overview.md](../settings/overview.md).
 
 Full reference: [../cli/usage.md](../cli/usage.md).
 
@@ -99,20 +92,22 @@ tests/
 ├── streamlit/
 │   ├── test_gui.py                   # every view launches without exception (AppTest)
 │   ├── test_export_pipeline.py
-│   ├── test_export_bugfixes.py
 │   └── test_mirror_picker.py
-└── core/                             # tests mirror the core subpackage layout
-    ├── common/test_helpers.py
+└── core/                             # tests mirror the core layout
+    ├── test_helpers.py
+    ├── test_peak_annotation.py
+    ├── test_comparison_metrics_unit.py
     ├── peptide_lookup/test_peptide_lookup.py
     ├── spectra/
     │   ├── test_koina_prediction.py
     │   └── test_spectrum_loader_integration.py
-    ├── test_peak_annotation.py
-    ├── test_comparison_metrics_unit.py
     ├── dataframes/
     │   ├── test_insight_frames_builders.py
     │   └── test_insight_frames_schemas.py
     ├── export/test_export_directories.py
+    ├── pipeline/
+    │   ├── test_load_annotate.py
+    │   └── test_pipeline_characterization.py
     └── plotting/
         ├── test_mirror_plot.py
         ├── test_plot_worker.py

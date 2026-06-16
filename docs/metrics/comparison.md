@@ -2,11 +2,8 @@
 
 Quantitative similarity measures computed for every query-reference pair.
 Four intensity-aware (R2m, R2b, Cos, Ent), three set-based (Dice, Jacc,
-ShR). Implementation:
-
-- Intensity helpers (matched-array R², binned R², matched-array cosine),
-  set-overlap metrics, the entropy wrapper, and the public aggregator
-  `compute_all_metrics()` all live in `core/comparison_metrics.py`.
+ShR). All helpers, the entropy wrapper, and the public aggregator
+`compute_all_metrics()` live in `core/comparison_metrics.py`.
 
 For a decision table ("which metric should I use?"), see
 [interpretation.md](interpretation.md).
@@ -20,16 +17,14 @@ fragment ions (b, y, etc.) within a configured m/z tolerance, MSpecViz
 computes two categories of similarity metrics:
 
 **Annotated-peak metrics** consider only peaks matched to a theoretical
-ion. These measure how well the identified fragments agree between two
-spectra.
+ion — how well identified fragments agree between two spectra.
 
-**All-peak metrics** consider every peak in the spectrum, whether
-annotated or not. These capture overall spectral shape including noise
-and unannotated fragments.
+**All-peak metrics** consider every peak, annotated or not — overall
+spectral shape including noise and unannotated fragments.
 
-Using both categories together distinguishes spectra that share the same
-fragment identities (high annotated metrics) from spectra that are
-globally similar in shape (high all-peak metrics).
+Using both together distinguishes spectra that share fragment identities
+(high annotated metrics) from spectra that are globally similar in shape
+(high all-peak metrics).
 
 ### Terminology
 
@@ -65,9 +60,9 @@ R² = corr(q, r)²
    = (Σ(q_i − q̄)(r_i − r̄))² / (Σ(q_i − q̄)² · Σ(r_i − r̄)²)
 ```
 
-**Range:** [0, 1]. 1.0 = perfectly collinear shared intensities. Because
-we use the squared correlation (not the regression coefficient of
-determination), the value never goes negative even when slope < 0.
+**Range:** [0, 1]. 1.0 = perfectly collinear shared intensities. The
+squared correlation (not the regression coefficient of determination)
+never goes negative even when slope < 0.
 
 **Minimum data:** ≥ 2 shared ions. Returns NaN otherwise.
 
@@ -90,10 +85,9 @@ spectra correlate when discretized into fixed-width m/z bins.
    min to ceil of joint max).
 2. Divide this range into 1 000 equal-width bins.
 3. For each spectrum, sum peak intensities into each bin via
-   `numpy.bincount` over `numpy.digitize`.
+   `numpy.histogram(weights=...)`.
 4. Keep only bins where both spectra have signal (intersection).
-5. Return the squared Pearson correlation coefficient on the surviving
-   bin-intensity pairs.
+5. Return the squared Pearson correlation on the surviving bin pairs.
 
 **Range:** [0, 1] (squared correlation, never negative).
 
@@ -122,19 +116,18 @@ Cos = (q · r) / (‖q‖ · ‖r‖)
 ```
 
 **Range:** [0, 1] for non-negative intensities (which MS spectra always
-have). 1.0 means the intensity vectors point in exactly the same
-direction. Implemented as `1 − scipy.spatial.distance.cosine(q, r)`.
+have). 1.0 means the intensity vectors point in the same direction.
+Implemented as `1 − scipy.spatial.distance.cosine(q, r)`.
 
 **Minimum data:** ≥ 1 shared ion **and** non-zero norm on both vectors.
 Returns NaN when no labels are shared or when one vector is all-zero
-(which can happen if the brightest peak per shared label is 0 after
-normalization — rare in practice).
+(rare — only if the brightest peak per shared label is 0 after
+normalization).
 
 **When to use:** The de facto standard for spectral library searching
-(used by NIST, MassBank). Scale-invariant: multiplying all intensities by
-a constant does not change the result. Note that it only considers shared
-ions — use Dice or Jaccard alongside it to assess how many ions actually
-overlap.
+(NIST, MassBank). Scale-invariant: rescaling all intensities by a
+constant does not change the result. Considers only shared ions — pair
+with Dice or Jaccard to assess how many ions overlap.
 
 ---
 
@@ -168,14 +161,14 @@ share no peaks.
 
 **Minimum data:** Both spectra non-empty. Returns NaN if either is empty,
 if `ms_entropy` isn't installed (optional dependency), or if the library
-raises (`ValueError`, `FloatingPointError`) — those errors are downgraded
-to NaN so callers can tabulate.
+raises (`ValueError`, `FloatingPointError`) — downgraded to NaN so
+callers can tabulate.
 
-**When to use:** Shown to outperform cosine similarity for small-molecule
+**When to use:** Outperforms cosine similarity for small-molecule
 compound identification in benchmarks (Li et al., Nature Methods, 2021).
-Considers all peaks and handles spectra of different sizes naturally.
-The tolerance is the same `mz_tolerance` used for fragment annotation —
-tweak both together for consistent matching.
+Considers all peaks and handles different spectrum sizes naturally. Its
+tolerance is the same `mz_tolerance` used for annotation — tweak both
+together for consistent matching.
 
 ---
 
@@ -200,10 +193,9 @@ spectra has any annotated ions). Returns NaN only when both spectra are
 fully unannotated.
 
 **When to use:** A simple, intuitive measure of annotation overlap.
-Symmetric: Dice(Q, R) = Dice(R, Q). Equivalent to the harmonic mean of
-precision and recall. Does not use intensity information — a
-barely-visible shared peak counts the same as the base peak. Use
-alongside Cosine or R2m for a complete picture.
+Symmetric: Dice(Q, R) = Dice(R, Q). Equals the harmonic mean of precision
+and recall. Ignores intensity — a barely-visible shared peak counts the
+same as the base peak. Pair with Cosine or R2m for a complete picture.
 
 ---
 
@@ -256,12 +248,12 @@ has a match in the larger one.
 **Minimum data:** `min(|A_Q|, |A_R|) > 0` — at least one annotated ion
 in each spectrum. Returns NaN when either spectrum has zero annotations.
 
-**When to use:** Useful when spectra have very different numbers of
-annotated peaks (for example, a low-energy query with few fragments
-versus a high-energy reference with many). Answers the question: "does
-the smaller spectrum's information fully appear in the larger one?"
-Note that a query with only 1 annotated ion matching can yield ShR = 1.0,
-so always check the context columns for absolute counts.
+**When to use:** Useful when spectra have very different annotated-peak
+counts (e.g. a low-energy query with few fragments versus a high-energy
+reference with many). Answers: "does the smaller spectrum's information
+fully appear in the larger one?" A query with only 1 matching annotated
+ion yields ShR = 1.0, so always check the context columns for absolute
+counts.
 
 ---
 
@@ -281,21 +273,22 @@ so always check the context columns for absolute counts.
 
 ## Context columns
 
-The comparison output includes context columns alongside the 7 metrics:
+`compute_all_metrics` emits these context columns alongside the 7
+metrics (unique labels — duplicates within a spectrum collapse to one):
 
 | Column key | Description |
 |---|---|
-| `query_peak_count` | Total number of peaks in the query spectrum |
-| `reference_peak_count` | Total number of peaks in the reference spectrum |
-| `query_annotation_count` | **Unique** annotation labels in Q (duplicates within Q collapse to one label) |
-| `reference_annotation_count` | **Unique** annotation labels in R |
-| `shared` | Number of annotation labels present in both Q and R (\|S\|) |
+| `query_peak_count` | Total peaks in the query spectrum |
+| `reference_peak_count` | Total peaks in the reference spectrum |
+| `query_annotation_count` | Unique annotation labels in Q |
+| `reference_annotation_count` | Unique annotation labels in R |
+| `shared` | Annotation labels present in both Q and R (\|S\|) |
 
 These counts explain why a metric might be NaN or unexpectedly low:
 
-- R2m = NaN means Shared Ions < 2 (not enough points for regression).
-- Cos = NaN means Shared Ions = 0.
-- Low Dice with high Cos means few shared ions, but those that match have
-  very similar intensities.
-- High Dice with low R2m means many shared ion labels, but intensity
-  ratios are poorly preserved.
+- R2m = NaN: shared ions < 2 (not enough points for regression).
+- Cos = NaN: shared ions = 0.
+- Low Dice, high Cos: few shared ions, but those that match have very
+  similar intensities.
+- High Dice, low R2m: many shared labels, but intensity ratios are
+  poorly preserved.

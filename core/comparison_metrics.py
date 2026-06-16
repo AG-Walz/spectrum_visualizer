@@ -198,8 +198,9 @@ def format_metrics_text(metrics: dict[str, float | int]) -> str:
     )
 
 
-# Short metric keys -> human-readable column names used in the export spreadsheet
-METRIC_SHORT_TO_DISPLAY = {
+# Internal metric keys (as produced by compute_metrics) -> the human-readable
+# column names they appear under in the export spreadsheet.
+METRIC_KEY_TO_COLUMN_NAME = {
     "R2m": "R² match",
     "R2b": "R² binned",
     "Cos": "Cosine",

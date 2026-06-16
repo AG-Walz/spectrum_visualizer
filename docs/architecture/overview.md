@@ -27,42 +27,31 @@ MSpecViz/
 
 ## Pipeline flow
 
-A single run (CLI or Streamlit) flows through the subpackages in this order:
+A single run (CLI or Streamlit) flows through the modules in this order:
 
 ```
-  YAML / settings.json / widgets
-          │
-          ▼
-  [ config layer ]            cli/main.py:_load_config,
-          │                   streamlit_app/utils/state.py
-          │
-          ▼
-  [ lookup ]                  core.peptide_lookup.load_idxmls → lookup_peptides
-          │   → peptidoform_psms: dict[peptidoform → PSMList]
-          │
-          ▼
-  [ load + annotate ]         core.pipeline.run_streaming_annotation
-          │                   (wraps core.spectra.load_spectra_streaming
-          │                    + core.pipeline.process_query_result —
-          │                    annotation, metrics, optional Koina fallback)
-          │   → annotated_queries, reference_store, comparison_rows
-          │
-          ▼
-  [ dataframes ]              core.dataframes.build_psm_table
-          │                   core.dataframes.build_visualization_frames
-          │                   (peaks / sequence / heatmap)
-          │   → psm_frame, peaks_frame, sequence_frame, heatmap_frame (Polars LazyFrames)
-          │
-          ▼
-  [ display / export ]        Streamlit: views/explore + views/export
-                              Both export paths delegate to
-                              core.export.run_export
-                              (versioned dir + parquets + plots + summaries).
+  config        cli/main.py:_load_config | streamlit_app/utils/state.py
+    │           (YAML / settings.json / widgets)
+    ▼
+  lookup        core.peptide_lookup.load_idxmls → lookup_peptides
+    │           → peptidoform_psms: dict[peptidoform → PSMList]
+    ▼
+  load+annotate core.pipeline.run_streaming_annotation
+    │           (load_spectra_streaming + process_query_result:
+    │            annotate, metrics, optional Koina fallback)
+    │           → annotated_queries, reference_store, comparison_rows
+    ▼
+  dataframes    core.dataframes.build_psm_table + build_visualization_frames
+    │           → psm / peaks / sequence / heatmap (Polars LazyFrames)
+    ▼
+  display/export Streamlit views/explore + views/export; both export
+                paths delegate to core.export.run_export
+                (versioned dir + parquets + plots + summaries).
 ```
 
-The same `core.pipeline` helpers run in both entry points — the only
-difference is where parameters come from (YAML vs. session state) and
-where outputs go (stdout/disk vs. session state + disk).
+The same `core.pipeline` helpers run in both entry points — only the parameter
+source (YAML vs. session state) and output sink (disk vs. session state + disk)
+differ.
 
 ---
 
@@ -71,24 +60,22 @@ where outputs go (stdout/disk vs. session state + disk).
 Checked by reviewers and by the repository's line/folder caps:
 
 1. **≤250 lines per `.py`** — split into a subpackage when you cross it.
-2. **≤10 scripts per folder** — subgroup by topic (`spectra/models.py`,
-   `spectra/workers.py`, …). Shared helpers stay at the parent level.
-3. **`core/` imports no UI code** — if you need to cross that line,
-   move the shared logic into `core/pipeline/` and have both callers
-   pass data in.
-4. **Re-export at the subpackage boundary** — external callers import from
-   `core.<subpackage>`, never from a specific module inside.
-5. **Module-level worker functions** — any function handed to
-   `ProcessPoolExecutor` must be picklable, which means no closures and no
-   nested functions. Put them at module top level.
-6. **Session-state prefix** — always `get_state_key(key)`. Never write a
-   bare string into `st.session_state`.
+2. **≤10 scripts per folder** — subgroup by topic; shared helpers stay at the
+   parent level.
+3. **`core/` imports no UI code** — to cross that line, move the shared logic
+   into `core/pipeline/` and have both callers pass data in.
+4. **Re-export at the subpackage boundary** — callers import from
+   `core.<subpackage>`, never a specific module inside.
+5. **Module-level worker functions** — anything handed to a process pool must
+   be picklable (no closures, no nested functions).
+6. **Session-state prefix** — always `get_state_key(key)`; never write a bare
+   string into `st.session_state`.
 
 ---
 
 ## See also
 
-- [core.md](core.md) — per-subpackage tour of `core/`.
-- [frontends.md](frontends.md) — `streamlit_app/`, `cli/`, and test layout.
-- [../settings/overview.md](../settings/overview.md) — how configuration
-  flows into this layered architecture.
+- [core.md](core.md) — module tour of `core/`.
+- [frontends.md](frontends.md) — `streamlit_app/`, `cli/`, test layout.
+- [../settings/overview.md](../settings/overview.md) — how configuration flows
+  into this architecture.

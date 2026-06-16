@@ -50,39 +50,19 @@ summary_plot_types: [dual_axis, ridgeline]  # any subset of {dual_axis, ridgelin
 
 # Koina AI prediction
 koina_enabled: false                  # master switch for AI prediction
-koina_model: ms2pip_timsTOF2024       # any model in settings.json > models.available
+koina_model: ms2pip_timsTOF2024       # any id in core/defaults.py:KOINA_MODELS
 koina_collision_energy: 35            # NCE
 koina_instrument_type: TIMSTOF        # QE | LUMOS | TIMSTOF | SCIEXTOF
 ```
 
+A few notes that don't fit in inline comments:
+
+- `idxml_files` / `mzml_files` globs are expanded with `recursive=True`.
+- `summary_metric` must be a key in `core/plotting/summary.py:METRIC_COLUMNS`.
+- `summary_plot_types` accepts a subset of `{dual_axis, ridgeline}`; no
+  other type is implemented.
+
 ---
-
-## Key reference
-
-| Key | Default | Description |
-|---|---|---|
-| `idxml_files` | `[]` | idXML paths or glob patterns. Globs are expanded with `recursive=True`. |
-| `mzml_files` | `[]` | mzML paths or glob patterns. |
-| `peptide_source` | *(required)* | `/abs/path/peptides.txt` or inline list `[PEP1, PEP2]`. |
-| `reference_substring` | `""` | Filename substring identifying reference mzMLs. Empty ⇒ single-spectrum mode. |
-| `ion_types` | `[b, y]` | Fragment ion series. |
-| `mz_tolerance` | `0.02` | Da. |
-| `add_neutral_losses` | `false` | Neutral losses (H₂O, NH₃). |
-| `intensity_mode` | `"Relative"` | `"Relative"` or `"Raw"`. |
-| `export_directory` | `"./exports"` | Base export dir. |
-| `project_name` | `"MSpecViz_analysis"` | Directory prefix. |
-| `export_formats` | `[png]` | Any of `png`, `svg`, `pdf`, `html`. Multiple formats can be combined. |
-| `export_resolution` | `300` | Raster DPI for PNG/PDF. |
-| `figure_size` | `[12, 8]` | Inches [width, height]. |
-| `plot_unpaired_queries` | `false` | When `true`, single-spectrum plots are generated for queries with no reference. |
-| `no_plots` | `false` | When `true`, skip plot generation; export only DataFrames + CSV. |
-| `workers` | `4` | Parallel workers. `1` forces the sequential fallback (useful for debugging). |
-| `summary_metric` | `"R² binned"` | Metric used to colour/sort summary plots. Must be one of the keys in `METRIC_COLUMNS`. |
-| `summary_plot_types` | `[dual_axis, ridgeline]` | Subset of `{dual_axis, ridgeline}` to render. A "heatmap" type is not implemented. |
-| `koina_enabled` | `false` | Master switch for the Koina fallback. |
-| `koina_model` | `"ms2pip_timsTOF2024"` | Model ID. |
-| `koina_collision_energy` | `35` | NCE. |
-| `koina_instrument_type` | `"TIMSTOF"` | Instrument hint. |
 
 ### `peptide_source` interpretation
 

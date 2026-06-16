@@ -1,132 +1,67 @@
 # Core Package: `core/`
 
-Eight subpackages, each exposing a public API via a re-exporting
-`__init__.py`. Cross-package imports should always go through those
-subpackage-level re-exports (`from core.peptide_lookup import ...`), never
-reach in for private members (`from core.peptide_lookup import _load_single_idxml`).
+Pure Python, no UI imports. Flat top-level modules plus three subpackages
+(`pipeline/`, `plotting/`, `spectra/`). Each subpackage re-exports its public
+API via `__init__.py`; import through those re-exports
+(`from core.spectra import ...`), never reach in for private members.
 
 ---
 
 ## Top-level modules
 
-Pure helpers with no domain logic. Imported by everything.
-
 | Module | What it holds |
 |---|---|
-| `defaults.py` | The frozen `Defaults` dataclass + `DEFAULTS` instance (single source of truth for every tunable parameter), the `KOINA_MODELS` catalogue, `INSTRUMENT_TYPES`, and `ION_COLORS` (Material-Design palette) |
-| `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename across directories), and `run_tasks()` — the single dispatcher every parallel worker uses. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers can update progress bars and surface per-file errors in the parent process. Falls back to a sequential loop when `workers=1` |
+| `defaults.py` | Frozen `Defaults` dataclass + `DEFAULTS` instance (single source of truth for every tunable), the `KOINA_MODELS` catalogue, `INSTRUMENT_TYPES`, and `ION_COLORS` (Material-Design palette) |
+| `helpers.py` | `parse_peptide_list`, `format_time`, `ensure_unique_basenames` (raises `DuplicateBasenameError` when two selected files share a basename), and `run_tasks()` — the single parallel dispatcher. Wraps `joblib.Parallel` and yields `(task, ok, result)` triples so callers update progress bars and surface per-file errors in the parent process; sequential loop when `workers=1` |
+| `peptide_lookup.py` | The only place idXML is parsed. `load_idxmls()` reads each file once into an in-memory `PSMList` (via the picklable worker dispatched through `run_tasks`), then `lookup_peptides()` and `count_psms_per_peptide()` scan that loaded list — the same file is never read twice |
+| `peak_annotation.py` | Theoretical fragments via `spectrum_utils.proforma` (no separate peak-theory module). See module docstring for the per-symbol entry points (`prepare_spectrum_for_plot`, the Koina variant, `get_ion_type`) |
+| `comparison_metrics.py` | `compute_all_metrics()` — the 7 metrics (R²m, R²b, Cos, Ent, Dice, Jacc, ShR) plus 5 context counts; all return NaN on zero-norm or <2 shared points. `METRIC_SHORT_TO_DISPLAY` maps short codes to labels. See [../metrics/comparison.md](../metrics/comparison.md) for formulas |
+| `dataframes.py` | Polars-LazyFrame builders consumed by openms_insight: `build_psm_table` (one row per PSM, returns `(frame, psm_lookup)`) and `build_visualization_frames` (peaks + sequence + heatmap together), with the four schemas `PSM_TABLE_SCHEMA`, `PEAKS_SCHEMA`, `SEQUENCE_SCHEMA`, `HEATMAP_SCHEMA`. See [../export/formats.md](../export/formats.md) for the on-disk Parquet schemas |
+| `export.py` | Versioned export dirs + shared orchestration; both frontends call `run_export()` so they produce byte-identical outputs. `ExportSelection` carries the request; `find_or_create_export_directory`/`commit_export_directory` do the SHA-256 settings-fingerprint versioning (reuse on match, else `_v2`, `_v3`, …); `RUN_SETTINGS_FIELDS` + `build_run_settings` serialise the run; `sanitize_filename` cleans names. See [../export/layout.md](../export/layout.md) |
 
 `STATE_PREFIX` (the Streamlit session-state namespace) lives in
-`streamlit_app/utils/state.py`, not here — it's a UI-layer concern.
-
----
-
-## `core/peptide_lookup/`
-
-idXML parsing and peptide lookup across one or more identification files.
-
-| Module | What it holds |
-|---|---|
-| `peptide_lookup.py` | Loads idXML once into an in-memory `PSMList`, then scans it. `load_idxmls()` is the only place idXML files are parsed: it dispatches the module-level, picklable worker `_load_single_idxml` across files via `core.helpers.run_tasks`, and wires the optional `progress_callback` / `error_callback` so the CLI's tqdm bar and Streamlit's progress widget can attach. `count_psms_per_peptide()`, `lookup_peptides()`, and `summarize_lookup_results()` then operate on the loaded `PSMList`, so the same file is never read twice |
-
-Public API: `from core.peptide_lookup import load_idxmls, count_psms_per_peptide,
-lookup_peptides, summarize_lookup_results`.
+`streamlit_app/utils/state.py` — it's a UI-layer concern, not here.
 
 ---
 
 ## `core/spectra/`
 
 mzML streaming + Koina AI prediction. Both produce the same `LoadedSpectrum`
-dataclass so the annotation layer doesn't need to know the spectrum's origin.
+so the annotation layer needn't know the spectrum's origin.
 
 | Module | What it holds |
 |---|---|
-| `loaded_spectrum.py` | `LoadedSpectrum` dataclass + `StreamingResult` / `LoadResult` containers, `spectrum_lookup_key()`, `source_label()` |
-| `mzml_native_ids.py` | `extract_id_number()` and `clean_spectrum_id()` for normalising idXML/mzML native IDs (`scan=`, `index=`, `spectrum=`). **timsTOF/Bruker `index=` IDs are 1-based** — the loader auto-detects and shifts |
-| `mzml_lookup.py` | `open_indexed_mzml_fast()` + `find_spectrum_index()` — index-backed O(1) spectrum lookup, with `_detect_id_format` working out the file's ID scheme on first access |
-| `mzml_workers.py` | Picklable `_load_spectra_from_mzml` worker plus precursor-resolution helpers |
-| `spectrum_streaming.py` | `load_spectra_streaming()` — the public API. Builds an mzML → matches map, runs reference loads first (so queries can be paired during streaming), then yields query results lazily |
-| `koina_prediction.py` | `predict_koina_spectrum()`, the 14-entry `KOINA_MODELS` catalogue, `get_koina_settings()`, `INSTRUMENT_TYPES`, and `convert_peptide_to_unimod()` |
-
----
-
-## `core/peak_annotation.py` + `core/comparison_metrics.py`
-
-Peak annotation and the 7 comparison metrics live in two sibling modules.
-Theoretical fragments are produced by `spectrum_utils.proforma` inside
-`annotate_spectrum()` — there is no separate `peak_theory` module.
-
-| Module | What it holds |
-|---|---|
-| `core/peak_annotation.py` | `annotate_spectrum()` (proforma → annotated `MsmsSpectrum`), `prepare_spectrum_for_plot()` (main entry point used by the pipeline), `prepare_koina_spectrum_for_plot()` (Koina-output variant), `get_ion_type()` for bucket resolution |
-| `core/comparison_metrics.py` | `compute_all_metrics()` (the public batch entry point — returns R²m, R²b, Cos, Ent, Dice, Jacc, ShR + 5 context counts), `compute_r2_binned()` (R²b on a shared m/z grid — the one intensity scorer still called on its own), `compute_spectral_entropy_similarity()` (wraps `ms_entropy` with a 0.02-Da tolerance), `format_metrics_text()`, `METRIC_SHORT_TO_DISPLAY`. R²m and Cos are computed inline by `compute_all_metrics` via the private `_r2_from_arrays`/`_cosine_from_arrays` helpers. All return NaN on zero-norm or <2 shared points |
-
-See [../metrics/comparison.md](../metrics/comparison.md) for formulas,
-ranges, and interpretation.
-
----
-
-## `core/dataframes/`
-
-Polars LazyFrames consumed by the openms_insight components.
-
-| Module | What it holds |
-|---|---|
-| `psm_tables.py` | `PSM_TABLE_SCHEMA`, `build_psm_table()` — flattens grouped PSMs into one row per PSM and returns `(frame, psm_lookup)` |
-| `insight_frames.py` | `PEAKS_SCHEMA`, `SEQUENCE_SCHEMA`, `HEATMAP_SCHEMA` plus the builders `build_peaks_dataframe`, `build_sequence_dataframe`, `build_heatmap_dataframe`, and the convenience `build_visualization_frames` that returns all three together |
-
-See [../export/formats.md](../export/formats.md) for the on-disk Parquet
-schemas.
+| `streaming_types.py` | `LoadedSpectrum` dataclass + the `StreamingResult` / `LoadResult` containers passed between stages |
+| `spectrum_streaming.py` | `load_spectra_streaming()` — the public entry: builds an mzML → matches map, loads references first (so queries can be paired during streaming), then yields query results lazily |
+| `mzml_native_ids.py` | Native-ID normalisation (`scan=`, `index=`, `spectrum=`). **timsTOF/Bruker `index=` IDs are 1-based** — the loader auto-detects the offset and shifts |
+| `koina_prediction.py` | `predict_koina_spectrum()`, the `KOINA_MODELS` catalogue, `get_koina_settings()`, `convert_peptide_to_unimod()` |
 
 ---
 
 ## `core/plotting/`
 
-A single mirror renderer (Plotly + Matplotlib via a shared backend), two
-summary plot types (dual-axis + ridgeline), and the parallel plot-generation
-worker.
+One mirror renderer (Plotly + Matplotlib), two summary plot types, and the
+parallel plot worker.
 
 | Module | What it holds |
 |---|---|
-| `mirror.py` | `create_spectrum_plot()` — hand-rolled renderer that branches on `backend="ms_matplotlib"` vs `"ms_plotly"`. Pyopenms-viz' `plot_spectrum` was abandoned because it scrambles ion-type colouring when ion types are interleaved. Internal helpers `_draw_matplotlib` / `_draw_plotly` keep the rendering paths separate but share data prep |
-| `plot_task_dataclasses.py` | `ComparisonTask`, `ComparisonResult` dataclasses — picklable work units kept separate from the worker module so they stay lightweight to import in main-process code |
-| `plot_worker.py` | `process_single_task()` — runs in a worker process: annotates the query/reference pair, renders the plot, writes raster/vector/HTML outputs. Format-specific save kwargs live in `_FORMAT_SAVE_KWARGS` |
-| `summary_dual_axis.py` | `plot_classic_dual_axis()` — PSM-counts bar chart + metric box-plot |
-| `summary_ridgeline.py` | `plot_ridgeline()` — KDE per peptidoform, stacked |
-| `summary_pipeline.py` | `generate_all_summary_plots()`, `prepare_summary_data()`, and the `_PLOT_REGISTRY` mapping plot-type names to the rendering functions above |
-| `_summary_shared.py` | `METRIC_COLUMNS`, `SUMMARY_COLORS`, `_METRIC_LABELS`, plus shared helpers (`_auto_height`, `_style_ax`, `_subsample_group`) used by both summary renderers |
+| `mirror.py` | Hand-rolled mirror renderer branching on `ms_matplotlib` vs `ms_plotly`. Pyopenms-viz' `plot_spectrum` was abandoned because it scrambles ion-type colouring when ion types are interleaved |
+| `plot_worker.py` | `process_single_task()` — runs in a worker process: annotates the query/reference pair, renders, writes raster/vector/HTML. Carries the picklable `ComparisonTask` / `ComparisonResult` work units; format-specific save kwargs in `_FORMAT_SAVE_KWARGS` |
+| `summary.py` | `generate_all_summary_plots()` over the `_PLOT_REGISTRY`, plus `plot_classic_dual_axis()` (PSM-counts bar + metric box-plot) and `plot_ridgeline()` (stacked per-peptidoform KDE). `METRIC_COLUMNS` selects which metrics summarise |
 
-A "heatmap" summary plot type is **not** generated — only `dual_axis` and
-`ridgeline`. The openms_insight Heatmap component on the Explore tab is a
-separate, interactive widget driven by `HEATMAP_SCHEMA`.
+A "heatmap" summary plot is **not** generated — only `dual_axis` and
+`ridgeline`. The openms_insight Heatmap on the Explore tab is a separate
+interactive widget driven by `HEATMAP_SCHEMA`.
 
 ---
 
 ## `core/pipeline/`
 
 The glue between lookup, load, annotate, compare, and plot. **This is the
-layer both the CLI and Streamlit share** — any new feature that should run
-identically from both front ends belongs here.
+layer the CLI and Streamlit share** — any feature that should run identically
+from both front ends belongs here.
 
 | Module | What it holds |
 |---|---|
-| `kwargs_builders.py` | `build_annotation_kwargs()` and `build_koina_kwargs()` — take a generic `getter(key, default)` callable so the CLI (`SimpleNamespace`) and Streamlit (`params` dict) can both supply parameters without the core knowing the storage format |
-| `load_annotate.py` | The Load & Annotate stage driver. `run_streaming_annotation()` — the top-level loop that drives `load_spectra_streaming` and applies `process_query_result` to each yielded result; `process_query_result()` (one call per streamed spectrum, returns annotated query + metrics + plot-task seed); the per-result helpers `_annotate_query_spectrum`, `_cache_reference_spectra`, `_try_koina_fallback`, `get_koina_prediction`; `make_query_ready_callback()`; `build_plot_tasks()` (post-pass: turns annotated queries into `ComparisonTask` list); `build_psm_to_peptidoform_mapping()`; `format_spectrum_labels()` |
-
----
-
-## `core/export/`
-
-Versioned export directories + shared export orchestration. Both the CLI and
-the Streamlit Export tab call `run_export()` with their own progress
-callbacks; every file-layout decision lives here so the two frontends produce
-byte-identical outputs from the same inputs.
-
-| Module | What it holds |
-|---|---|
-| `export_directories.py` | `find_or_create_export_directory()` + `commit_export_directory()` — the versioning + SHA-256 settings-fingerprint logic. Reuses an existing directory when the fingerprint matches; appends `_v2`, `_v3`, … otherwise. `sanitize_filename()` lives here too |
-| `export_pipeline.py` | `run_export()` (entry point), the dataclasses passed in (`ExportSelection`, `PlotSettings`, `ExportCallbacks`, `ExportResult`), plus the orchestrated steps: parquet writes, comparison CSV/XLSX, parallel plot dispatch, summary plot generation |
-| `run_settings.py` | `RUN_SETTINGS_FIELDS` (the single source of truth for which parameters are serialised) and `build_run_settings()` — same `getter` pattern as `kwargs_builders`, so the CLI and Streamlit hand in their own storage adapter |
-
-See [../export/layout.md](../export/layout.md) for the directory layout and
-[../export/formats.md](../export/formats.md) for the file schemas.
+| `load_annotate.py` | The Load & Annotate driver. `run_streaming_annotation()` loops over `load_spectra_streaming` and applies `process_query_result()` (per streamed spectrum: annotate query, compute metrics, optional Koina fallback). `build_plot_tasks()` is the post-pass turning annotated queries into a `ComparisonTask` list |
+| `kwargs_builders.py` | `build_annotation_kwargs()` / `build_koina_kwargs()` — take a generic `getter(key, default)` callable so the CLI (`SimpleNamespace`) and Streamlit (`params` dict) supply parameters without core knowing the storage format |

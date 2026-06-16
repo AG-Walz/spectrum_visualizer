@@ -23,7 +23,7 @@ import numpy as np
 from psm_utils import Peptidoform, PSM
 
 from core.comparison_metrics import (
-    METRIC_SHORT_TO_DISPLAY,
+    METRIC_KEY_TO_COLUMN_NAME,
     compute_all_metrics,
     format_metrics_text,
 )
@@ -245,9 +245,9 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
             "query_rt": query_psm.retention_time,
             "ref_rt": reference_psm.retention_time,
         }
-        # Metric columns: short keys -> display names, NaN for missing values
-        for short_key, display_name in METRIC_SHORT_TO_DISPLAY.items():
-            row[display_name] = metrics.get(short_key, float("nan"))
+        # Metric columns: metric key -> spreadsheet column name, NaN for missing values
+        for metric_key, column_name in METRIC_KEY_TO_COLUMN_NAME.items():
+            row[column_name] = metrics.get(metric_key, float("nan"))
         # Count columns: peak/annotation tallies on both sides plus shared
         for count_key in (
             "query_peak_count", "reference_peak_count",

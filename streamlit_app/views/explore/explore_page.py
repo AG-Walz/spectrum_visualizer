@@ -10,7 +10,7 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
-from core.comparison_metrics import METRIC_SHORT_TO_DISPLAY
+from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
 from core.defaults import DEFAULTS
 from core.plotting import (
     METRIC_COLUMNS,
@@ -50,7 +50,7 @@ def comparison_metrics_fragment():
     # Summary stats: collapse PSMs into count/median/mean/std per peptidoform+charge
     st.markdown("---")
     st.subheader("Summary Statistics")
-    metric_cols = [v for v in METRIC_SHORT_TO_DISPLAY.values() if v in comparison_frame.columns]
+    metric_cols = [v for v in METRIC_KEY_TO_COLUMN_NAME.values() if v in comparison_frame.columns]
     if metric_cols:
         summary = comparison_frame.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
             ["count", "median", "mean", "std"]

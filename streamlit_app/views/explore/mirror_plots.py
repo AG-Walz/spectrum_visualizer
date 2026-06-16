@@ -14,7 +14,7 @@ from openms_insight import StateManager, Table
 
 from streamlit_app.utils.state import STATE_PREFIX, get_param, get_state_key
 from core.comparison_metrics import (
-    METRIC_SHORT_TO_DISPLAY,
+    METRIC_KEY_TO_COLUMN_NAME,
     compute_all_metrics,
     format_metrics_text,
 )
@@ -150,10 +150,10 @@ def _render_metrics_expander(metrics: dict) -> None:
     """
     with st.expander("Comparison Metrics", expanded=False):
         metric_data = {
-            METRIC_SHORT_TO_DISPLAY[key]: (
+            METRIC_KEY_TO_COLUMN_NAME[key]: (
                 f"{value:.4f}" if not (isinstance(value, float) and value != value) else "N/A"
             )
-            for key, value in metrics.items() if key in METRIC_SHORT_TO_DISPLAY
+            for key, value in metrics.items() if key in METRIC_KEY_TO_COLUMN_NAME
         }
         metric_data["Shared Ions"] = str(metrics.get("shared", 0))
         metric_data["Annotated (Query)"] = str(metrics.get("query_annotation_count", 0))

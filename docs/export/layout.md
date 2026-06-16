@@ -4,16 +4,14 @@ What an export directory looks like on disk, how it's versioned, and what
 `run_settings.json` contains. For file-level schemas (Parquet, CSV), see
 [formats.md](formats.md). For plots, see [plots.md](plots.md).
 
-Implementation references:
+Implementation references (all in `core/export.py`):
 
-- Public orchestrator (CLI + Streamlit both call it):
-  `core/export/export_pipeline.py::run_export()`
+- Public orchestrator (CLI + Streamlit both call it): `run_export()`
 - Versioned directory + fingerprint logic:
-  `core/export/export_directories.py` (`find_or_create_export_directory`,
-  `commit_export_directory`, `sanitize_filename`)
-- `run_settings.json` field list:
-  `core/export/run_settings.py` (`RUN_SETTINGS_FIELDS`,
-  `build_run_settings`)
+  `find_or_create_export_directory`, `commit_export_directory`,
+  `sanitize_filename`
+- `run_settings.json` field list: `RUN_SETTINGS_FIELDS`,
+  `build_run_settings`
 
 The CLI wires it up in `cli/main.py::_run_export`; the Streamlit Export
 tab does the same in `streamlit_app/views/export/export_actions.py`.
@@ -118,34 +116,19 @@ Each export directory contains a `run_settings.json` capturing the
 parameters used for the run. It enables reproducibility and powers the
 "reload settings" feature on the Streamlit Export-history panel.
 
-The serialised fields are the single source of truth in
-`core/export/run_settings.py::RUN_SETTINGS_FIELDS`. Both the CLI and
-the Streamlit Export tab hand `build_run_settings()` a `getter(key,
-default)` callable that knows how to read the value from their local
-config representation; the field list itself is identical.
+Three `_`-prefixed metadata keys are added by `commit_export_directory`
+(their only home): `_fingerprint` (the first 16 hex chars of the settings
+SHA-256), `_created_at` (ISO timestamp of the initial run), and
+`_last_run` (ISO timestamp of the most recent re-run, bumped on reuse).
 
-| Field | Description |
-|---|---|
-| `_fingerprint` | SHA-256 hash (first 16 hex chars) of the canonical settings dict |
-| `_created_at` | ISO timestamp of the initial export run |
-| `_last_run` | ISO timestamp of the most recent re-run (bumped on reuse) |
-| `idxml_files` | List of input idXML file paths (post-glob expansion) |
-| `mzml_files` | List of input mzML file paths (post-glob expansion) |
-| `peptides` | Target peptide sequences (resolved list, not the YAML `peptide_source`) |
-| `reference_substring` | Reference file substring filter |
-| `ion_types` | Fragment ion types used for annotation |
-| `mz_tolerance` | m/z matching tolerance in Da |
-| `add_neutral_losses` | Whether H₂O / NH₃ neutral losses were included |
-| `intensity_mode` | `"Relative"` or `"Raw"` |
-| `koina_enabled` | Whether Koina AI prediction was active |
-| `koina_model` | Koina model ID |
-| `koina_collision_energy` | Collision energy (eV) |
-| `koina_instrument_type` | Instrument type (`QE` / `LUMOS` / `TIMSTOF` / `SCIEXTOF`) |
-| `export_formats` | List of output formats (`["png", "svg", "pdf", "html"]` subset) |
-| `export_resolution` | Raster resolution in DPI |
-| `figure_size` | Figure dimensions `[width, height]` in inches |
-| `summary_metric` | Metric the summary plots are coloured/sorted by |
-| `summary_plot_types` | Subset of `{dual_axis, ridgeline}` rendered |
+The remaining fields are exactly `RUN_SETTINGS_FIELDS` in `core/export.py`
+(the source of truth) — input files, annotation and Koina parameters, and
+the export/summary-plot knobs. `peptides` is added separately by
+`build_run_settings` (frontends parse it differently — YAML list vs
+newline string) and is **not** a `RUN_SETTINGS_FIELDS` entry. Both the CLI
+and the Streamlit Export tab hand `build_run_settings()` a `getter(key,
+default)` callable that reads each value from their local config; the
+field list itself is identical.
 
 The file is human-readable JSON — safe to inspect by hand. Editing it
 will break the `_fingerprint` match, so a subsequent re-run will allocate

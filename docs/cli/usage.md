@@ -58,16 +58,10 @@ template — copy it and edit the paths.
 
 ## Precedence: `DEFAULTS` < YAML
 
-Two layers, merged inside `cli/main.py:_load_config`:
-
-1. **`core/defaults.py`** seeds the runtime config with every
-   default plus CLI-only fields (`idxml_files`, `mzml_files`,
-   `peptide_source`, `reference_substring`, `no_plots`).
-2. **YAML file** overrides any seeded value.
-
-YAML keys match the field names on the merged config one-for-one — no
-translation table. To change a default for all CLI runs, edit
-`defaults.py`. To change it per run, edit the YAML.
+Two layers merged inside `cli/main.py:_load_config`: `core/defaults.py`
+seeds every default (plus CLI-only fields), then the YAML overrides any
+seeded value one-for-one by field name. See [../settings/cli.md](../settings/cli.md)
+and [../settings/overview.md](../settings/overview.md) for the schema.
 
 ---
 
@@ -125,21 +119,6 @@ Plots:     100%|██████████| 2/2 [00:02<00:00,  0.9plot/s]
 
 The CLI writes to the **same versioned directory structure** as the
 Streamlit Export tab — see [../export/layout.md](../export/layout.md).
-Briefly:
-
-```text
-{export_dir}/{project_name}_{NNN}_{YYYYMMDD}/
-    run_settings.json            # canonical snapshot of this run
-    comparison_summary.csv       # 1 row per query-reference comparison
-    comparison_summary.xlsx
-    psm.parquet                  # PSM table
-    peaks.parquet                # peaks
-    seq.parquet                  # sequences
-    heatmap.parquet              # RT-by-mz
-    summary/                     # dual-axis + ridgeline plots
-    png/ / svg/ / pdf/           # static mirror plots, one subdir per peptide
-    html/                        # interactive Plotly mirror plots
-```
 
 If a previous run with identical settings exists, the CLI **reuses the
 directory** and skips already-generated plots (same behaviour as the

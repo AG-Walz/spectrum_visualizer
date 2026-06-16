@@ -15,7 +15,7 @@ comparison-summary CSV/XLSX columns see [formats.md](formats.md).
 ## How the orchestrator runs
 
 Both the CLI and the Streamlit Export tab call
-`core.export.export_pipeline.run_export()` with three dataclasses:
+`core/export.py::run_export` with three dataclasses:
 
 - `ExportSelection` — what to export (parquets, comparison summary,
   mirror plots, summary plots).
@@ -31,7 +31,7 @@ Mirror plot tasks are built by
 `core.helpers.run_tasks` to the
 `core.plotting.plot_worker.process_single_task` worker. Summary
 plots are rendered on the main process by
-`core.plotting.summary_pipeline.generate_all_summary_plots`.
+`core/plotting/summary.py::generate_all_summary_plots`.
 
 ---
 
@@ -55,10 +55,9 @@ share any state with the main process.
 
 PNG/SVG/PDF are saved by `_save_task_figure` (per-format kwargs in
 `_FORMAT_SAVE_KWARGS`); HTML is saved separately by `_save_task_html`
-because Plotly renders directly without a Matplotlib figure. All four
-share the same logical layout: query on top (positive intensity),
-reference mirrored below (negative intensity), annotated peaks coloured
-by ion series, metrics anchored in the lower-left corner.
+since Plotly renders directly without a Matplotlib figure. All four share
+the same layout: query on top (positive intensity), reference mirrored
+below (negative), peaks coloured by ion series, metrics in the lower-left.
 
 ### File naming
 
@@ -75,9 +74,8 @@ For example:
 png/ASDDFDQASY_unmodified/ASDDFDQASY_vs_ref_ProT001_z2.png
 ```
 
-Filenames are passed through `core.export.export_directories.
-sanitize_filename` which strips filesystem-unsafe characters and
-truncates to 100 chars.
+Filenames are passed through `core/export.py::sanitize_filename` which
+strips filesystem-unsafe characters and truncates to 100 chars.
 
 Single-spectrum plots (no reference available, Koina disabled, or
 `plot_unpaired_queries: true`) use the simpler form:
@@ -105,7 +103,7 @@ png/ASDDFDQASY_unmodified/ASDDFDQASY_z2.png
 
 Run-wide aggregations across every comparison in
 `comparison_summary.csv`. Produced by
-`core.plotting.summary_pipeline.generate_all_summary_plots` and
+`core/plotting/summary.py::generate_all_summary_plots` and
 written to `{run}/summary/`.
 
 The default metric is **R² binned** (`DEFAULTS.summary_metric`),
@@ -116,28 +114,27 @@ on the Streamlit Export tab.
 
 | File | Function | What it shows |
 |---|---|---|
-| `dual_axis.{png,svg,pdf}` | `summary_dual_axis.plot_classic_dual_axis` | Horizontal count bars (left axis, # comparisons per peptidoform) paired with metric boxplots (right axis, metric distribution) — one row per peptidoform |
-| `ridgeline_r2_binned.{png,svg,pdf}` *or* `ridgeline.{png,svg,pdf}` | `summary_ridgeline.plot_ridgeline` | Per-peptidoform KDE ridgeline of the chosen metric. The `_r2_binned` suffix is used **only** when `metric == DEFAULTS.summary_metric`; any other metric drops the suffix |
+| `dual_axis.{png,svg,pdf}` | `summary.plot_classic_dual_axis` | Horizontal count bars (left axis, # comparisons per peptidoform) paired with metric boxplots (right axis, metric distribution) — one row per peptidoform |
+| `ridgeline_r2_binned.{png,svg,pdf}` *or* `ridgeline.{png,svg,pdf}` | `summary.plot_ridgeline` | Per-peptidoform KDE ridgeline of the chosen metric. The `_r2_binned` suffix is used **only** when `metric == DEFAULTS.summary_metric`; any other metric drops the suffix |
 
-Both plots share the same data-prep step (`prepare_summary_data`), which
-loads the comparison CSV (or accepts an in-memory frame), constructs the
-`peptidoform` label (`Modification + "/" + Charge`), and aggregates per
-peptidoform: count, mean, median, std, q25/q75, 95% CI, dominant charge.
+Both plots share one data-prep step (`prepare_summary_data`): it loads the
+comparison CSV (or an in-memory frame), builds the `peptidoform` label
+(`Modification + "/" + Charge`), and aggregates per peptidoform (count,
+mean, median, std, q25/q75, 95% CI, dominant charge).
 
-There is **no** "heatmap" summary plot — `_PLOT_REGISTRY` contains only
-`dual_axis` and `ridgeline`. The openms_insight Heatmap component on the
-Explore tab is interactive-only and is not saved to disk.
+There is **no** "heatmap" summary plot — `_PLOT_REGISTRY` (in
+`core/plotting/summary.py`) contains only `dual_axis` and `ridgeline`. The
+openms_insight Heatmap component on the Explore tab is interactive-only
+and is not saved to disk.
 
 ### Registry
 
-Plot types are registered in `summary_pipeline._PLOT_REGISTRY` as a
-straight `{name: callable}` mapping. To add a new plot type:
+Plot types are registered in `core/plotting/summary.py:_PLOT_REGISTRY` as
+a straight `{name: callable}` mapping. To add a new plot type:
 
-1. Add a new module `core/plotting/summary_<name>.py` exporting a
-   `plot_<name>(raw_frame, aggregated_frame, metric, …) -> Figure` that
-   matches the existing renderer signature.
-2. Import it in `summary_pipeline.py` and add an entry to
-   `_PLOT_REGISTRY`.
+1. Write a `plot_<name>(raw_frame, aggregated_frame, metric, …) ->
+   Figure` in `summary.py` matching the existing renderer signature.
+2. Add an entry to `_PLOT_REGISTRY`.
 3. (Optional) Add the type's name to `DEFAULTS.summary_plot_types` so
    it's rendered by default.
 
@@ -148,8 +145,7 @@ title)` keyword set.
 ### Customizing
 
 - `metric` — any column listed in `METRIC_COLUMNS`
-  (`core/plotting/_summary_shared.py`): `R² match`, `R² binned`,
-  `Cosine`, `Entropy`, `Dice`, `Jaccard`, `SharedRatio`.
+  (`core/plotting/summary.py`).
 - `plot_types` — subset of `{dual_axis, ridgeline}` to render. Empty
   list → no summary plots.
 - `formats` — list like `["png", "svg"]` (defaults to PNG only).
@@ -206,4 +202,4 @@ fingerprint-matching rules.
 - [../metrics/comparison.md](../metrics/comparison.md) — what each
   metric in the summary CSV actually measures.
 - [../architecture/core.md](../architecture/core.md) — the
-  `core/plotting/` and `core/export/` subpackage tours.
+  `core/plotting/` subpackage and `core/export.py` module tours.

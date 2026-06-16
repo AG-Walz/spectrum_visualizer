@@ -59,22 +59,10 @@ overrides — per-run tweaks are made by editing the YAML.
 
 ## Naming convention
 
-All keys are `snake_case` everywhere — Python attributes, JSON keys,
-YAML keys, Streamlit session-state keys. Do not introduce kebab-case or
-camelCase variants.
+Every setting has one `snake_case` name identical across all layers —
+the `DEFAULTS` field, the YAML key, the workspace `params.json` key, and
+the Streamlit session-state key. No translation, aliases, kebab-case, or
+camelCase. Missing keys always fall back to `DEFAULTS.<field>`.
 
----
-
-## Key naming
-
-Every setting has one name that is identical across all layers — the
-`DEFAULTS` field, the YAML key, the workspace `params.json` key, and the
-Streamlit session-state key. No translation, no aliases.
-
-Examples: `ion_types`, `mz_tolerance`, `add_neutral_losses`,
-`export_directory`, `koina_enabled`, `koina_collision_energy`,
-`figure_size`, `plot_unpaired_queries`, `summary_plot_types`.
-
-See [cli.md](cli.md) for the full YAML schema, and
+See [cli.md](cli.md) for the full YAML schema and
 `core/defaults.py` for the field list with default values.
-Missing keys always fall back to `DEFAULTS.<field>`.

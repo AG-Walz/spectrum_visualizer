@@ -18,8 +18,16 @@ Written by `utils/state.py::save_params()` whenever a
 widget value changes. Keys are `snake_case` and match the widget keys
 used in session state (stored as `peptide_mirror.<key>` — the prefix is
 stripped for on-disk persistence). The schema is sparse: only keys the
-user has touched get persisted. Missing keys fall back to
-`DEFAULTS.<key>` at each call site.
+user has touched get persisted, and any key missing from the file falls
+back to `DEFAULTS.<key>` at each call site.
+
+Most persisted keys are tunable parameters whose names, types, and
+default values live in `core/defaults.py` (`ion_types`, `mz_tolerance`,
+`add_neutral_losses`, `intensity_mode`, the `koina_*` group, the
+`summary_*` group, `export_directory`, `project_name`, `workers`,
+`image_format`, …). That dataclass is the single source of truth — this
+doc does not re-list them. The only `params.json` keys **not** backed by
+`DEFAULTS` are the Setup-tab inputs, which have no other home:
 
 | Key | Type | Fallback | Description |
 |---|---|---|---|
@@ -29,20 +37,6 @@ user has touched get persisted. Missing keys fall back to
 | `mzml_browser_dir` | string | `""` | Same, for the mzML browser. |
 | `target_peptides` | string | `""` | Raw contents of the peptide-input textarea (newline-separated). Parsed by `parse_peptide_list` at lookup time. |
 | `reference_substring` | string | `""` | Filename substring identifying reference mzMLs. Empty ⇒ single-spectrum mode, no mirror plots. |
-| `ion_types` | list[string] | `DEFAULTS.ion_types` | Active fragment ion series. Must be a subset of `settings.json > ion_types.available`. |
-| `mz_tolerance` | float | `DEFAULTS.mz_tolerance` | m/z matching tolerance in Da. |
-| `add_neutral_losses` | bool | `DEFAULTS.add_neutral_losses` | Include neutral-loss ions in annotation. |
-| `export_directory` | string | `DEFAULTS.export_directory` (`"./exports"`) | Base export directory. |
-| `project_name` | string | `DEFAULTS.project_name` | Prefix for the versioned export directory. |
-| `workers` | int | `DEFAULTS.workers` | Parallelism override for this workspace. |
-| `intensity_mode` | string | `DEFAULTS.intensity_mode` | `"Relative"` or `"Raw"`. Affects both plots and metrics. |
-| `koina_enabled` | bool | `DEFAULTS.koina_enabled` | Per-workspace Koina flag. |
-| `koina_model` | string | `DEFAULTS.koina_model` | Koina model for this workspace. |
-| `koina_collision_energy` | int | `DEFAULTS.koina_collision_energy` | Collision energy. |
-| `koina_instrument_type` | string | `DEFAULTS.koina_instrument_type` | Instrument type for Koina. |
-| `image_format` | string | `DEFAULTS.image_format` | Streamlit single-image picker default (PNG/SVG/PDF/HTML). CLI uses `export_formats` (plural) instead. |
-| `summary_metric` | string | `DEFAULTS.summary_metric` | Metric the summary plots are coloured/sorted by. |
-| `summary_plot_types` | list[string] | `DEFAULTS.summary_plot_types` | Which summary plots to generate (`dual_axis`, `ridgeline`). |
 
 **Editing defaults.** Change `core/defaults.py`. This affects
 every workspace that has not explicitly overridden the key (and every
@@ -72,22 +66,21 @@ paths, no shell metacharacters.
 Every Streamlit widget writes into `st.session_state` under the
 `peptide_mirror.` namespace (`STATE_PREFIX` in
 `streamlit_app/utils/state.py` — the prefix is a UI-layer
-concern, not part of the core package). The keys below are the public
-contract between views — written by one view, read by another.
+concern, not part of the core package). Use `get_state_key(key)` to
+resolve the prefixed version.
+
+The parameter keys above (the `params.json` set) also live in session
+state while the app runs — Setup writes them, Load & Annotate and Export
+read them. The keys that matter as a cross-view contract are the
+**derived artifacts** that one stage produces and a later view consumes:
 
 | Key | Written by | Read by | Description |
 |---|---|---|---|
-| `selected_idxmls`, `selected_mzmls`, `target_peptides`, `reference_substring` | Setup | Load & Annotate | Input definitions. |
-| `ion_types`, `mz_tolerance`, `add_neutral_losses`, `intensity_mode` | Setup | Load & Annotate, Export | Annotation parameters. |
-| `workers`, `koina_enabled`, `koina_model`, `koina_collision_energy`, `koina_instrument_type` | Setup | Load & Annotate, Export | Runtime / AI-prediction parameters. |
 | `peptidoform_psms` | Load & Annotate (stage 1) | Load & Annotate (stage 2), Export | Lookup results — the `Dict[peptidoform, PSMList]` returned by `lookup_peptides`. |
 | `psm_frame`, `psm_lookup`, `peaks_frame`, `sequence_frame`, `heatmap_frame` | Load & Annotate (stage 2) | Explore, Export | Polars LazyFrames for openms_insight. |
 | `annotated_queries`, `reference_store`, `comparison_frame` | Load & Annotate (stage 2) | Explore, Export | Annotated spectra + metrics. |
 | `data_ready` | Load & Annotate (stage 2) | Explore, Export | `True` when all four LazyFrames are populated — gates the downstream views. |
 | `cache_version` | Load & Annotate (stage 2) | Cache validator | Bumped whenever a fresh load completes; used to detect re-runs and invalidate cached frames. |
-
-All keys are prefixed with `peptide_mirror.` when actually stored. Use
-`get_state_key(key)` to resolve the prefixed version.
 
 ---
 

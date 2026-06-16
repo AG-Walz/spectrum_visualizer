@@ -107,29 +107,22 @@ substring are categorized as references; all others are queries.
 ### Koina AI Prediction
 
 When no experimental reference is available, enable Koina AI prediction as a
-fallback. Configure:
-
-- **Model** -- Choose from 14 models across MS2PIP, Prosit, AlphaPept, UniSpec,
-  and PredFull families.
-- **Collision energy** -- Normalized collision energy (default: 35).
-- **Instrument type** -- QE, LUMOS, TIMSTOF, or SCIEXTOF.
-
-Koina predicts both m/z positions and relative intensities, producing a
-synthetic reference spectrum for mirror plot comparison.
+fallback: pick a model, collision energy, and instrument type, and Koina
+predicts m/z positions and relative intensities for a synthetic reference
+spectrum. For the model and instrument enumerations and default values see
+[settings/app.md](settings/app.md) and [settings/overview.md](settings/overview.md).
 
 ### Annotation Settings
 
-- **Ion types** -- Fragment ion series to annotate (default: b and y). Options
-  include a, b, c, x, y, z, precursor, and immonium ions.
-- **m/z tolerance** -- Maximum distance in Da between an experimental peak and
-  a theoretical fragment for a match (default: 0.02 Da).
-- **Neutral losses** -- Include H2O and NH3 loss peaks in annotation.
-- **Intensity mode** -- Relative (normalized to base peak = 100%) or Raw.
+Controls which theoretical fragments are generated and how tightly experimental
+peaks must match them: ion series, m/z tolerance, neutral losses, and
+relative-vs-raw intensity mode. Defaults and the full option lists live in
+[settings/app.md](settings/app.md) and [settings/overview.md](settings/overview.md).
 
 ### Performance Settings
 
-- **Workers** -- Number of parallel processes for export (default: 4). Set to
-  1 for sequential processing (useful for debugging).
+Number of parallel worker processes used for export (set to 1 for sequential
+processing when debugging). Default in [settings/app.md](settings/app.md).
 
 ---
 
@@ -226,9 +219,11 @@ The Export tab generates publication-quality outputs and manages export history.
 
 - **Project name** -- Names the versioned export directory.
 - **Export directory** -- Where to save outputs.
-- **Formats** -- PNG (default), SVG, PDF for static plots; HTML for interactive
-  Plotly plots.
-- **DPI** -- Resolution for raster images (default: 300).
+- **Formats** -- Static (PNG/SVG/PDF) and interactive (HTML) plot formats.
+- **DPI** -- Resolution for raster images.
+
+Format options and default values are documented in
+[export/formats.md](export/formats.md).
 
 ### What Gets Exported
 
