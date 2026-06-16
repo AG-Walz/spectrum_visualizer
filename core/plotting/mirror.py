@@ -5,14 +5,18 @@ create_spectrum_plot is called by plotting.plot_worker (export) and
 streamlit_app.views.explore.mirror_plots (Explore view)
 """
 from typing import Literal, Optional
-import matplotlib
-matplotlib.use("Agg")
-from matplotlib.figure import Figure as MplFigure  # noqa: E402
-import pandas as pd  # noqa: E402
-import plotly.graph_objects as go  # noqa: E402
-import pyopenms_viz  # noqa: F401, E402  # pyright: ignore[reportUnusedImport]  # registers the .plot accessor
 
-from core.defaults import ION_COLORS  # noqa: E402
+import matplotlib
+import pandas as pd
+import plotly.graph_objects as go
+import pyopenms_viz  # noqa: F401  # pyright: ignore[reportUnusedImport]  # registers the .plot accessor
+from matplotlib.figure import Figure as MplFigure
+
+from core.defaults import ION_COLORS
+
+# Force the headless Agg backend before any figure is rendered. matplotlib 3.3+
+# allows use() after the imports, so the imports can stay at the top of the file.
+matplotlib.use("Agg")
 
 Backend = Literal["ms_matplotlib", "ms_plotly"]
 
