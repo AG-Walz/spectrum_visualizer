@@ -7,7 +7,6 @@ import copy
 import logging
 from pathlib import Path
 
-import pandas as pd
 import streamlit as st
 
 from streamlit_app.utils.progress_tracker import progress_status
@@ -20,6 +19,7 @@ from core.helpers import format_time
 from core.dataframes import build_psm_table, build_visualization_frames
 from core.pipeline import (
     build_annotation_kwargs,
+    build_comparison_frame,
     build_koina_kwargs,
     run_streaming_annotation,
 )
@@ -108,9 +108,7 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
         for psm_id, query_psm, annotated_peaks_frame in annotated_queries
     }
     st.session_state[get_state_key("reference_store")] = reference_store
-    st.session_state[get_state_key("comparison_frame")] = (
-        pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame()
-    )
+    st.session_state[get_state_key("comparison_frame")] = build_comparison_frame(comparison_rows)
 
     # Mark data ready, bump cache version (invalidates downstream caches), and persist to disk
     st.session_state[get_state_key("data_ready")] = True

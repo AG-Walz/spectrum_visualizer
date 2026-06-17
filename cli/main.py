@@ -10,7 +10,6 @@ from dataclasses import asdict
 from pathlib import Path
 from types import SimpleNamespace
 import click
-import pandas as pd
 import yaml
 from tqdm import tqdm
 
@@ -26,7 +25,8 @@ from core.export import (  # noqa: E402
     build_run_settings, run_export,
 )
 from core.pipeline import (  # noqa: E402
-    build_annotation_kwargs, build_koina_kwargs, run_streaming_annotation,
+    build_annotation_kwargs, build_comparison_frame, build_koina_kwargs,
+    run_streaming_annotation,
 )
 from core.peptide_lookup import load_idxmls, lookup_peptides  # noqa: E402
 
@@ -185,7 +185,7 @@ def _run_export(config, annotated_queries, reference_store, grouped_psms,
         annotated_queries=annotated_queries,
         reference_store=reference_store,
         peptidoform_psms=grouped_psms,
-        comparison_frame=pd.DataFrame(comparison_rows) if comparison_rows else pd.DataFrame(),
+        comparison_frame=build_comparison_frame(comparison_rows),
         # Export selection: which tables and plots to write based on config
         selection=ExportSelection(
             parquet=True, csv=True,

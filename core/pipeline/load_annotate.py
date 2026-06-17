@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
+import pandas as pd
 from psm_utils import Peptidoform, PSM
 
 from core.comparison_metrics import (
@@ -36,6 +37,40 @@ from core.plotting.plot_worker import ComparisonTask
 from core.spectra import load_spectra_streaming
 from core.spectra.koina_prediction import predict_koina_spectrum
 from core.spectra.streaming_types import psm_lookup_key, source_label
+
+
+# ============================================================================
+# Comparison-summary columns — single source of truth for the CSV/XLSX export
+# ============================================================================
+# The comparison summary (one row per query/reference pair) is assembled as plain
+# dicts in `process_query_result`. These constants name and order its columns in one
+# place instead of leaving the layout implied by dict-insertion order; the ordering
+# is identity -> metrics (from METRIC_KEY_TO_COLUMN_NAME) -> counts. `build_comparison_frame`
+# reindexes to this order, so adding a column here is what makes it appear in the export.
+
+COMPARISON_IDENTITY_COLUMNS = (
+    "psm_id", "Peptide", "Modification", "Charge", "Query", "Reference",
+    "query_spectrum_id", "ref_spectrum_id", "query_rt", "ref_rt",
+)
+COMPARISON_COUNT_COLUMNS = (
+    "query_peak_count", "reference_peak_count",
+    "query_annotation_count", "reference_annotation_count", "shared",
+)
+COMPARISON_SUMMARY_COLUMNS = (
+    *COMPARISON_IDENTITY_COLUMNS,
+    *METRIC_KEY_TO_COLUMN_NAME.values(),
+    *COMPARISON_COUNT_COLUMNS,
+)
+
+
+def build_comparison_frame(comparison_rows: list[dict]) -> pd.DataFrame:
+    """Package comparison rows into a DataFrame with the canonical column order.
+    Empty input yields an empty, column-less frame — the "no metrics" placeholder
+    both front ends and the analysis cache already expect.
+    """
+    if not comparison_rows:
+        return pd.DataFrame()
+    return pd.DataFrame(comparison_rows, columns=list(COMPARISON_SUMMARY_COLUMNS))
 
 
 # ============================================================================
@@ -246,10 +281,7 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
         for metric_key, column_name in METRIC_KEY_TO_COLUMN_NAME.items():
             row[column_name] = metrics.get(metric_key, float("nan"))
         # Count columns: peak/annotation tallies on both sides plus shared
-        for count_key in (
-            "query_peak_count", "reference_peak_count",
-            "query_annotation_count", "reference_annotation_count", "shared",
-        ):
+        for count_key in COMPARISON_COUNT_COLUMNS:
             row[count_key] = metrics.get(count_key, 0)
         comparison_rows.append(row)
     return (psm_id, query_psm, query_frame, comparison_rows)
