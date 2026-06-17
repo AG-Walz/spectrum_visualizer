@@ -39,7 +39,7 @@ interactive Streamlit UI and a YAML-driven command line interface (CLI).
 
 #### Koina AI prediction
 
-- Koina spectrum prediction (16 models) as fallback reference for unpaired
+- Koina spectrum prediction (14 models) as fallback reference for unpaired
   spectra, with configurable model, collision energy, and instrument.
 
 #### Visualization
@@ -96,7 +96,7 @@ interactive Streamlit UI and a YAML-driven command line interface (CLI).
 | Dependency       | Note                                          |
 | ---------------- | --------------------------------------------- |
 | Python           | 3.11                                          |
-| openms_insight   | 0.1.11 — linked Table/SequenceView/LinePlot   |
+| openms_insight   | 0.1.13 — linked Table/SequenceView/LinePlot   |
 | streamlit        | >=1.48.0 — front-end UI                        |
 | polars           | LazyFrame data model                          |
 | psm_utils        | native PSM/PSMList model                       |

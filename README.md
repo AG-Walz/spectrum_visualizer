@@ -93,7 +93,7 @@ Topic references — structure and rationale, pointing at the code
 | No files in the browser | Check the path exists and `data_directories.default` in `settings.json`. |
 | "No matches" after lookup | Verify the sequences exist via the Preview button; match the base (unmodified) sequence. |
 | PSMs not resolved to mzML | The mzML files referenced in the idXML must be among your selection (filenames must match). |
-| openms_insight components blank | Confirm `openms_insight 0.1.11` is installed; restart the server. |
+| openms_insight components blank | Confirm `openms_insight 0.1.13` is installed; restart the server. |
 | Koina returns nothing | Check connectivity; some models only support specific lengths/charges. |
 | Workers crash silently | Re-run with `workers: 1` (YAML) or the slider at 1 to surface the traceback. |
 | Stale results after a bug fix | Delete `<workspace>/.mspecviz_cache/` — the app never invalidates its own Parquet cache. |
