@@ -6,8 +6,8 @@ Combines two layers in one file:
   the streaming stage. Opens one mzML and extracts the spectra named by a batch
   of PSMs — resolving each PSM's native ID with pyopenms'
   OnDiscMSExperiment.getSpectrumByNativeId (an indexed exact-string lookup) and
-  falling back to SpectrumLookup.findByScanNumber for references that carry only
-  the scan number. Returns a `LoadResult` that bundles the prepared PSM carrier
+  falling back to SpectrumLookup.findByReference for references that carry only
+  the scan number (or a native-ID string the file stores differently). Returns a `LoadResult` that bundles the prepared PSM carrier
   objects, per-spectrum counts and any errors. Must stay picklable and free of
   process-global state — runs in a ProcessPoolExecutor worker.
 - Orchestration (`load_spectra_streaming`): drives spectrum extraction in
@@ -32,7 +32,7 @@ from core.spectra.streaming_types import (
     LoadResult,
     StreamingResult,
 )
-from core.spectra.mzml_native_ids import extract_id_number
+from core.spectra.mzml_native_ids import NATIVE_ID_KEYS
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +41,15 @@ logger = logging.getLogger(__name__)
 # Per-file mzML worker (picklable; runs in ProcessPoolExecutor)
 # ============================================================================
 
-# SpectrumLookup.readSpectra needs a "?<SCAN>" named group; mirror the keyed
-# pattern extract_id_number uses so the fallback resolves on the same number.
-SCAN_NUMBER_REGEX = r"(?:scan|index|spectrum)=(?<SCAN>\d+)"
+# SpectrumLookup uses C++ "(?<SCAN>...)" named groups, not Python's "(?P<...>)"; both
+# regexes derive their key alternation from NATIVE_ID_KEYS so the fallback resolves on the
+# same scan/index/spectrum number extract_id_number parses elsewhere.
+# readSpectra indexes each file spectrum by the SCAN number in its own native ID...
+SCAN_NUMBER_REGEX = rf"(?:{NATIVE_ID_KEYS})=(?<SCAN>\d+)"
+# ...and findByReference parses the PSM's spectrum_id against these formats in order: a keyed
+# "scan=N"/"index=N" first, then a bare digit run — mirroring extract_id_number's keyed-before-bare
+# precedence so a full native-ID string never resolves off a stray leading number.
+SCAN_REFERENCE_REGEXES = (rf"(?:{NATIVE_ID_KEYS})=(?<SCAN>\d+)", r"(?<SCAN>\d+)")
 
 
 def _prepare_loaded_psm(spectrum, psm: PSM) -> PSM:
@@ -97,18 +103,19 @@ def _load_spectra_from_mzml(
                 # spectrum= / raw) straight off the indexed mzML, raising RuntimeError on a miss.
                 try:
                     spectrum = indexed_exp.getSpectrumByNativeId(psm.spectrum_id)
-                # Fallback: the reference carries only the scan number, not the exact native-ID
-                # string. Build a SpectrumLookup once (from metadata — no peaks) and match by number.
+                # Fallback: the spectrum_id carries only the scan number (or a native-ID string the
+                # file stores differently). Build a SpectrumLookup once — from metadata, no peaks —
+                # then let findByReference resolve the keyed or bare scan number against the index.
+                # It raises RuntimeError both when the id has no parseable number and when no spectrum
+                # carries that number, so a single except covers both not-found cases.
                 except RuntimeError:
-                    scan_number = extract_id_number(psm.spectrum_id)
-                    if scan_number is None:
-                        errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
-                        continue
                     if scan_lookup is None:
                         scan_lookup = oms.SpectrumLookup()
                         scan_lookup.readSpectra(indexed_exp.getMetaData(), SCAN_NUMBER_REGEX)
+                        for reference_regex in SCAN_REFERENCE_REGEXES:
+                            scan_lookup.addReferenceFormat(reference_regex)
                     try:
-                        spectrum = indexed_exp.getSpectrum(scan_lookup.findByScanNumber(scan_number))
+                        spectrum = indexed_exp.getSpectrum(scan_lookup.findByReference(psm.spectrum_id))
                     except RuntimeError:
                         errors.append(f"Spectrum not found: {psm.spectrum_id} in {display_name}")
                         continue

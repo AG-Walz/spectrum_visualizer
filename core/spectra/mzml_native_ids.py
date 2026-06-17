@@ -6,8 +6,11 @@ streamlit_app/views/explore/mirror_plots.py to derive a scan value for display).
 import re
 from typing import Optional
 
+# The native-ID keys that prefix a spectrum number, shared with the SpectrumLookup
+# regexes in core.spectra.spectrum_streaming so the two parsers never drift apart.
+NATIVE_ID_KEYS = "scan|index|spectrum"
 # Captures the integer that immediately follows a scan= / index= / spectrum= key.
-NATIVE_ID_NUMBER_PATTERN = re.compile(r'(?:scan|index|spectrum)=(\d+)')
+NATIVE_ID_NUMBER_PATTERN = re.compile(rf'(?:{NATIVE_ID_KEYS})=(\d+)')
 # Fallback — the first run of digits anywhere in the string, used when no keyed tag is present.
 BARE_DIGITS_PATTERN = re.compile(r'(\d+)')
 
