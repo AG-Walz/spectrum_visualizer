@@ -1,0 +1,161 @@
+"""Pure-function tests for streamlit_app.views.explore.mirror_plots (picker frames + eligibility)."""
+from __future__ import annotations
+
+import numpy as np
+
+from psm_utils import PSMList
+
+from streamlit_app.views.explore.mirror_plots import (
+    _build_picker_frames,
+    _eligible_peptidoforms,
+    _ref_row_id,
+)
+from tests.conftest import make_peptide_match
+
+
+def _spec(source_file: str, spectrum_id: str, charge: int = 2,
+          rt: float = 12.5, peptidoform: str = "PEPTIDEK",
+          match=None, is_ref: bool = False, score: float = 0.95):
+    """Build a carrier PSM (two-peak spectrum on psm.spectrum) for picker tests.
+
+    run is derived from source_file so source_label(psm) matches; is_ref is kept
+    for call-site compatibility but the carrier no longer flags it."""
+    if match is not None:
+        return match
+    psm = make_peptide_match(spectrum_id=spectrum_id, peptidoform=peptidoform,
+                             charge=charge, score=score, mzml_filename=source_file)
+    psm.retention_time = rt
+    psm.spectrum = {"mz": np.array([100.0, 200.0]), "intensity": np.array([1000.0, 2000.0])}
+    return psm
+
+
+def _empty_plist() -> PSMList:
+    """Return an empty PSMList — picker tests only care about the dict-key shape."""
+    return PSMList(psm_list=[])
+
+
+class TestEligiblePeptidoforms:
+    def test_keeps_peptidoforms_with_both_query_and_reference(self):
+        peptidoform_psms = {"PEPTIDEK": _empty_plist(), "OTHER": _empty_plist()}
+        reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == ["PEPTIDEK"]
+
+    def test_drops_peptidoform_with_no_reference(self):
+        peptidoform_psms = {"PEPTIDEK": _empty_plist()}
+        reference_store: dict = {}
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == []
+
+    def test_drops_peptidoform_with_no_query(self):
+        peptidoform_psms = {"PEPTIDEK": _empty_plist()}
+        reference_store = {"PEPTIDEK": [(_spec("ref.mzML", "scan=1", is_ref=True), None)]}
+        psm_id_to_peptidoform: dict = {}
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == []
+
+    def test_preserves_peptidoform_psms_order(self):
+        peptidoform_psms = {"AAA": _empty_plist(), "BBB": _empty_plist(), "CCC": _empty_plist()}
+        reference_store = {vk: [(_spec("ref.mzML", "scan=1", is_ref=True), None)]
+                           for vk in peptidoform_psms}
+        psm_id_to_peptidoform = {0: "AAA", 1: "BBB", 2: "CCC"}
+        assert _eligible_peptidoforms(peptidoform_psms, reference_store, psm_id_to_peptidoform) == [
+            "AAA", "BBB", "CCC",
+        ]
+
+
+class TestBuildPickerFrames:
+    def test_columns_and_keys(self):
+        annotated_queries = {7: (_spec("q1.mzML", "scan=42", score=0.875), None)}
+        reference_store = {
+            # score 0.5 is exact in Float32 (the picker's score dtype)
+            "PEPTIDEK": [(_spec("r1.mzML", "scan=10", is_ref=True, score=0.5), None)]
+        }
+        psm_id_to_peptidoform = {7: "PEPTIDEK"}
+
+        ref_lazy, query_lazy = _build_picker_frames(
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
+        )
+        ref = ref_lazy.collect()
+        query = query_lazy.collect()
+
+        assert ref.columns == ["id", "mzml", "scan", "rt", "charge", "score"]
+        assert query.columns == ["psm_id", "mzml", "scan", "rt", "charge", "score"]
+        assert ref.row(0, named=True) == {
+            "id": _ref_row_id("PEPTIDEK", 0),
+            # Experimental references are PSM-backed, so they now carry a score.
+            "mzml": "r1", "scan": 10, "rt": 12.5, "charge": 2, "score": 0.5,
+        }
+        assert query.row(0, named=True) == {
+            "psm_id": 7, "mzml": "q1", "scan": 42, "rt": 12.5, "charge": 2, "score": 0.875,
+        }
+
+    def test_ref_row_ids_differ_across_peptides(self):
+        # The whole point of _ref_row_id: same positional index across
+        # different peptidoforms must produce DIFFERENT ids — otherwise the
+        # openms_insight render-cache key collides on the auto-filled
+        # selection and the reference table never refreshes when the
+        # peptide changes.
+        ids_for_a = [_ref_row_id("PEPTIDOFORM_A|", i) for i in range(3)]
+        ids_for_b = [_ref_row_id("PEPTIDOFORM_B|", i) for i in range(3)]
+        assert set(ids_for_a).isdisjoint(ids_for_b)
+        # And the function must be deterministic across calls.
+        assert _ref_row_id("PEPTIDOFORM_A|", 0) == ids_for_a[0]
+
+    def test_koina_reference_renders_as_blank_scan(self):
+        # Koina spectra use spectrum_id="koina_prediction" (no digits) and have
+        # no search score ⇒ scan + score must be None so the cell renders blank.
+        annotated_queries = {0: (_spec("q.mzML", "scan=1"), None)}
+        reference_store = {
+            "PEPTIDEK": [(_spec("Koina:ms2pip", "koina_prediction", rt=0.0, is_ref=True, score=None), None)]
+        }
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+
+        ref_lazy, _ = _build_picker_frames(
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
+        )
+        row = ref_lazy.collect().row(0, named=True)
+        # source_label returns the PSM run ("Koina:ms2pip") for Koina references.
+        assert row["mzml"] == "Koina:ms2pip"
+        assert row["scan"] is None
+        assert row["score"] is None
+
+    def test_filters_queries_by_peptidoform(self):
+        # Two queries, only one matches the chosen peptidoform — the other is dropped.
+        annotated_queries = {
+            5: (_spec("q.mzML", "scan=5", peptidoform="A"), None),
+            6: (_spec("q.mzML", "scan=6", peptidoform="B"), None),
+        }
+        reference_store = {
+            "A": [(_spec("r.mzML", "scan=1", is_ref=True), None)],
+            "B": [(_spec("r.mzML", "scan=2", is_ref=True), None)],
+        }
+        psm_id_to_peptidoform = {5: "A", 6: "B"}
+
+        _, query_lazy = _build_picker_frames(
+            "A", annotated_queries, reference_store, psm_id_to_peptidoform,
+        )
+        df = query_lazy.collect()
+        assert df.height == 1
+        assert df.row(0, named=True)["psm_id"] == 5
+
+    def test_empty_inputs_return_empty_frames_with_correct_schema(self):
+        ref_lazy, query_lazy = _build_picker_frames("MISSING", {}, {}, {})
+        ref = ref_lazy.collect()
+        query = query_lazy.collect()
+        assert ref.height == 0
+        assert query.height == 0
+        assert ref.columns == ["id", "mzml", "scan", "rt", "charge", "score"]
+        assert query.columns == ["psm_id", "mzml", "scan", "rt", "charge", "score"]
+
+    def test_nan_score_becomes_none(self):
+        annotated_queries = {0: (_spec("q.mzML", "scan=1", score=float("nan")), None)}
+        reference_store = {
+            "PEPTIDEK": [(_spec("r.mzML", "scan=1", is_ref=True), None)]
+        }
+        psm_id_to_peptidoform = {0: "PEPTIDEK"}
+        _, query_lazy = _build_picker_frames(
+            "PEPTIDEK", annotated_queries, reference_store, psm_id_to_peptidoform,
+        )
+        # pl.Float32 cannot represent NaN-as-null distinctly without the
+        # explicit conversion in _safe_score — verify it lands as null.
+        assert query_lazy.collect().row(0, named=True)["score"] is None

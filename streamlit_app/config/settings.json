@@ -1,0 +1,12 @@
+{
+  "app_name": "MSpecViz",
+  "enable_workspaces": true,
+  "workspaces_dir": "workspaces",
+  "data_directories": {
+    "default": "/mnt/volume",
+    "_comment": "Starting directory for the file browser. Set this to the root of your local data storage on the server where the app is running."
+  },
+  "ion_types": {
+    "available": ["a", "b", "c", "x", "y", "z", "internal", "precursor", "immonium"]
+  }
+}

@@ -1,81 +1,106 @@
-# SpecViz App
+# MSpecViz
 
-SpecViz App is designed to help you analyze and visualize your mass spectrometry data. It provides a user-friendly interface for data upload, filtering, and visualization.
+MSpecViz is a peptide-spectrum match (PSM) analysis and visualization toolkit.
+The core pipeline is pure Python and ships with two interchangeable front ends:
 
-This app is built based on the [OpenMS WebApps template](https://abi-services.cs.uni-tuebingen.de/streamlit-template/) [1].
+- **Streamlit UI** — interactive 4-tab workflow built on the
+  [openms_insight](https://pypi.org/project/openms-insight/) library with
+  Plotly mirror plots and quantitative comparison metrics.
+- **CLI** — headless pipeline driven by a YAML config, suitable for batch jobs
+  and servers without a browser.
 
-## Installation
+Both front ends share the same `core/` package (peptide lookup, annotation,
+metrics, export). Pick the interface that fits your workflow; neither is required.
 
-### Requirements
-Ensure python \leq 3.11+ is installed. Sufficient RAM to load the largest file. Required packages are listed under [environment.yml](environment.yml)
+## Setup
 
-### Setup
+Requires Python 3.11 and Conda. Create and activate the environment (the create
+step is first-run only):
+
 ```bash
-# Create conda environment
 conda env create -f environment.yml
-conda activate specviz
-
-# Install dependencies
-pip install pyopenms streamlit psm_utils pandas numpy matplotlib openpyxl
+conda activate mspecviz
 ```
 
-## Quick Start
+## Run it
 
-### Spectrum Visualization
+**Streamlit** (run from `streamlit_app/` so `.streamlit/config.toml` is picked up;
+workspaces and exports still resolve to the project root, so the `cd` is safe):
+
 ```bash
-cd specviz
-streamlit run app.py
+cd streamlit_app && streamlit run app.py     # → http://localhost:8501
 ```
-Access at http://localhost:8501
+
+**CLI** (headless, from the project root) — copy the bundled example, edit its paths,
+and run. It is YAML-only with no flag overrides; `MSPECVIZ_LOG_LEVEL=ERROR` gives a
+quiet run. Full reference: [CLI → YAML config](docs/cli.md#yaml-config).
+
+```bash
+cp cli/config/config_example.yaml cli/config/my_run.yaml
+python -m cli cli/config/my_run.yaml
+```
+
+You need two file types from the **same experiment**: `.idXML` (peptide-spectrum
+matches from a search engine) and `.mzML` (raw MS/MS spectra); the idXML references
+spectra inside the mzML by spectrum ID. Bundled test data for a verification run
+(expected: 2 PSMs — ASDDFDQASY, RTEFNLNQY — 373 peaks):
+
+| Input | Path |
+|---|---|
+| idXML | `/mnt/volume/nacho/data/ProCa_runs/small_dataset/ProT001_1_pout_filtered.idXML` |
+| mzML dir | `/mnt/volume/nacho/data/ProCa_runs/small_dataset/` |
+| Peptide list | `/mnt/volume/nacho/data/peptide_lists/peptides.txt` |
+
+## The four tabs (Streamlit)
+
+1. **Setup** — select idXML + mzML files (directory browsers), enter target base
+   sequences (case-insensitive; modified forms are found automatically), set the
+   reference substring, and the annotation / Koina / performance options. Defaults
+   live in `core/defaults.py`; see [Settings → sources and precedence](docs/settings.md#sources-and-precedence).
+2. **Load & Annotate** — *Look Up Peptides* groups PSMs by peptidoform and resolves
+   their mzML; *Load & Annotate Spectra* streams the spectra, annotates fragments,
+   pairs queries with references (or a Koina prediction), computes the 7 metrics, and
+   builds the openms_insight DataFrames.
+3. **Explore** — three sub-views: the linked openms_insight Interactive Explorer
+   (Table + SequenceView + LinePlot + Heatmap), Plotly Mirror Plots (query up,
+   reference down), and the Comparison Metrics tables. See
+   [Metrics → the seven metrics](docs/metrics.md#the-seven-metrics).
+4. **Export** — versioned output directory with Parquet, CSV/XLSX, plots (PNG/SVG/PDF/
+   HTML), summary plots, and `run_settings.json`, plus a plot gallery and run history.
+   See [Export → directory layout and versioning](docs/export.md#directory-layout-and-versioning).
+
+**Reference substring.** A filename substring marking reference mzMLs (e.g. `Synpep`)
+enables mirror plots + metrics. Leave it empty for single-spectrum mode (annotate
+only, no comparison). When no experimental reference exists and Koina is enabled, an
+AI-predicted reference is generated as a fallback. Full matching rules:
+[CLI → reference substring and single-spectrum mode](docs/cli.md#reference-substring-and-single-spectrum-mode).
 
 ## Documentation
 
-- **Quickstart Guide**: [docs/QUICKSTART.md](docs/QUICKSTART.md) - Get started quickly
-- **Full Documentation**: [docs/DOCUMENTATION.md](docs/DOCUMENTATION.md) - Comprehensive guide
+Topic references — structure and rationale, pointing at the code
+(`core/defaults.py`, the schema constants) for anything that would otherwise drift.
 
-## Project Structure
+- [Architecture](docs/architecture.md) — three layers, pipeline flow, house rules, the `core/` map
+- [Settings](docs/settings.md) — sources, precedence, `settings.json`, workspaces, session-state contract
+- [CLI](docs/cli.md) — invocation, YAML config, recipes, debugging
+- [Export](docs/export.md) — versioned dirs, Parquet/CSV formats, plots, gallery & history
+- [Metrics](docs/metrics.md) — the 7 comparison metrics with formulas + how to choose
 
+## Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| No files in the browser | Check the path exists and `data_directories.default` in `settings.json`. |
+| "No matches" after lookup | Verify the sequences exist via the Preview button; match the base (unmodified) sequence. |
+| PSMs not resolved to mzML | The mzML files referenced in the idXML must be among your selection (filenames must match). |
+| openms_insight components blank | Confirm `openms_insight 0.1.13` is installed; restart the server. |
+| Koina returns nothing | Check connectivity; some models only support specific lengths/charges. |
+| Workers crash silently | Re-run with `workers: 1` (YAML) or the slider at 1 to surface the traceback. |
+| Stale results after a bug fix | Delete `<workspace>/.mspecviz_cache/` — the app never invalidates its own Parquet cache. |
+
+## Running tests
+
+```bash
+conda run -n mspecviz python -m pytest tests/ -v
+pytest tests/ -m "not integration"    # skip the slower end-to-end tests
 ```
-specviz/
-├── .github/                        # GitHub workflows and templates
-│   ├── ISSUE_TEMPLATE/                 # Issue templates
-│   └── workflows/                      # CI/CD workflows
-├── .streamlit/
-│   └── config.toml                 # Streamlit configuration
-├── app.py                          # Main application entry point
-├── assets/                         # Static assets
-├── core/                           # Core processing modules
-│   ├── correlation.py                  # Correlation calculations
-│   ├── mzml_processor.py               # mzML file processing
-│   ├── spectrum_engine.py              # Spectrum analysis engine
-│   └── streamlit_bridge.py             # Streamlit integration
-├── data/                           # Data files and placeholders
-├── docs/                           # Documentation
-│   ├── QUICKSTART.md                   # Quick start guide
-│   └── DOCUMENTATION.md                # Full documentation
-├── examples/                       # Example files
-│   └── peptides.txt                    # Example peptide list
-├── pages/                          # Streamlit pages
-│   ├── 1_Spectrum_Viewer.py            # Spectrum viewer page
-│   ├── 2_Batch_Viewer.py               # Batch viewer page
-│   ├── documentation.py                # Documentation page
-│   └── quickstart.py                   # Quickstart page
-├── plots/                          # Plot outputs
-├── utils/                          # Utility modules
-│   ├── file_selection_components.py    # File selection UI
-│   ├── helpers.py                      # Helper functions
-│   ├── shared_imports.py               # Shared imports
-│   └── workspace_utils.py              # Workspace utilities
-├── workspaces/                     # Analysis workspaces
-│   ├── dataset_filter.py               # Dataset filtering
-│   ├── settings.py                     # Settings workspace
-│   └── spectrum_analysis.py            # Spectrum analysis
-├── environment.yml                 # Conda environment
-├── docker-compose.yml              # Docker configuration
-└── README.md                       # This file
-```
-
-
-## References
-
-[1] Müller, T. D., Siraj, A., et al. OpenMS WebApps: Building User-Friendly Solutions for MS Analysis. Journal of Proteome Research (2025). [https://doi.org/10.1021/acs.jproteome.4c00872](https://doi.org/10.1021/acs.jproteome.4c00872)

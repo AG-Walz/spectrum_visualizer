@@ -1,0 +1,15 @@
+[browser]
+gatherUsageStats = false
+
+[global]
+developmentMode = false
+
+[server]
+maxUploadSize = 3000
+maxMessageSize = 500
+
+[theme]
+primaryColor = "#0066CC"
+
+[runner]
+fastReruns = true

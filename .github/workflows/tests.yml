@@ -1,0 +1,47 @@
+name: Tests
+
+# Run the full test suite on every push (to any branch) and on every pull request.
+# This catches regressions early without requiring a manual trigger.
+on:
+  push:
+  pull_request:
+
+# If a new commit is pushed while a run is already in progress for the same
+# branch/PR, cancel the older run to avoid wasting CI minutes on stale code.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Ubuntu latest is the cheapest hosted runner and matches the target
+    # deployment platform closely enough for these unit/integration tests.
+    runs-on: ubuntu-latest
+
+    steps:
+      # Check out the repository so subsequent steps have access to source files.
+      - uses: actions/checkout@v6
+
+      # Recreate the exact conda environment declared in environment.yml using
+      # micromamba (a fast, self-contained conda replacement).
+      # `cache-environment: true` stores the solved environment across runs so
+      # cold starts only happen when environment.yml changes.
+      - name: Set up micromamba
+        uses: mamba-org/setup-micromamba@v3
+        with:
+          environment-file: environment.yml
+          environment-name: mspecviz
+          cache-environment: true
+
+      # NOTE: pytest is already declared as a conda dependency in environment.yml
+      # (line 19), so this pip install is redundant. It can be removed safely,
+      # but is left here for now to avoid an unreviewed functional change.
+      - name: Install test dependencies
+        shell: micromamba-shell {0}
+        run: pip install pytest
+
+      # Run the full test suite with verbose output (-v) and short tracebacks
+      # (--tb=short) so failures are easy to read in the CI log.
+      - name: Run tests
+        shell: micromamba-shell {0}
+        run: python -m pytest tests/ -v --tb=short

@@ -1,49 +1,61 @@
+# Claude Code
+.claude/
+
+# Project instructions (tracked separately)
+CLAUDE.md
+
+# Activity log (per-developer; written by Claude Code hooks)
+LOG.md
+
 # Python
 __pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
+*.pyc
+*.pyo
 *.egg-info/
-.installed.cfg
-*.egg
+dist/
+build/
+.pytest_cache/
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv
+# Runtime data
+exports/
+results/
+workspaces/
+workspaces-*/
+plots/
+cache/
 
-# IDEs
+# Test/example data (keep locally, not in repo)
+test_output/
+examples/*
+# keep the small showcase peptide list referenced by config_example.yaml
+!examples/peptides.txt
+example-data/
+
+# Removed standalone scripts/tools
+scripts/
+tools/
+
+# Profiling
+*.prof
+
+# User-specific configs (contain local paths)
+config/
+# …but keep the CLI example config committed so the README can reference it
+!cli/config/
+cli/config/*
+!cli/config/config_example.yaml
+
+# IDE
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Jupyter
-.ipynb_checkpoints/
-*.ipynb_checkpoints
+# Jupyter notebooks (may contain local paths and real data references)
+*.ipynb
 
-# Streamlit
-.streamlit/secrets.toml
+# Standalone scripts (not part of the application)
+main.py
 
-# Project specific
-*.log
-.cache/
