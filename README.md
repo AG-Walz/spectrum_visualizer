@@ -18,36 +18,16 @@ metrics, export). Pick the interface that fits your workflow; neither is require
 
 ### Reading guides (in `docs/`)
 
-Start with the **Quick Start** for an end-to-end walkthrough; the other
-guides are reference material organised by topic, with each file kept under
-~200 lines for easy skimming.
+Start with the **Quick Start**; the rest are topic references. They describe
+structure and rationale, pointing at the code (`core/defaults.py`, the schema
+constants) for anything that would otherwise drift.
 
-**Getting started**
-- [Quick Start](docs/quickstart.md) — 4-tab Streamlit walkthrough + the `python -m cli` equivalent
-
-**Architecture**
-- [Overview](docs/architecture/overview.md) — 3-layer layout, pipeline flow, house rules
-- [Core package](docs/architecture/core.md) — tour of every `core/` subpackage
-- [Front-ends](docs/architecture/frontends.md) — `streamlit_app/`, `cli/`, `tests/`
-
-**Settings**
-- [Overview](docs/settings/overview.md) — precedence rules + quick-lookup table
-- [`settings.json`](docs/settings/app.md) — every app-wide key explained
-- [Workspace + session state](docs/settings/workspace.md) — `params.json`, `peptide_mirror.*` keys, `DEFAULTS` fallbacks
-- [CLI YAML + flags](docs/settings/cli.md) — every CLI field and command-line flag
-
-**CLI**
-- [Usage](docs/cli/usage.md) — invocation, minimum config, exit codes, output
-- [Recipes & debugging](docs/cli/recipes.md) — peptide spec, common recipes, troubleshooting
-
-**Metrics**
-- [7 comparison metrics](docs/metrics/comparison.md) — R2m, R2b, Cos, Ent, Dice, Jacc, ShR with formulas
-- [Choosing and interpreting](docs/metrics/interpretation.md) — decision guide + common patterns
-
-**Export**
-- [Directory layout](docs/export/layout.md) — versioned dirs + `run_settings.json`
-- [Data file formats](docs/export/formats.md) — Parquet schemas + CSV/XLSX columns
-- [Plots, gallery, history](docs/export/plots.md) — mirror + summary plots, Streamlit browsers
+- [Quick Start](docs/quickstart.md) — end-to-end run with test data + the CLI equivalent
+- [Architecture](docs/architecture.md) — three layers, pipeline flow, house rules, the `core/` map, front ends, tests
+- [Settings](docs/settings.md) — sources, precedence, `settings.json`, workspaces, session-state contract
+- [CLI](docs/cli.md) — invocation, YAML config, recipes, debugging
+- [Export](docs/export.md) — versioned dirs, Parquet/CSV formats, plots, gallery & history
+- [Metrics](docs/metrics.md) — the 7 comparison metrics with formulas + how to choose
 
 ### Jump to a README section
 
@@ -71,7 +51,7 @@ guides are reference material organised by topic, with each file kept under
   comparing query spectra against experimental or AI-predicted references.
 - **7 Comparison Metrics** — R² matching, R² binned, cosine similarity,
   spectral entropy similarity, Dice coefficient, Jaccard index, and shared
-  peak ratio. See [docs/metrics/comparison.md](docs/metrics/comparison.md).
+  peak ratio. See [docs/metrics.md](docs/metrics.md).
 - **Koina AI Prediction** — 14 deep-learning models (MS2PIP, Prosit,
   AlphaPept, UniSpec, PredFull) for generating predicted reference spectra
   when no experimental reference is available.
@@ -168,64 +148,31 @@ reshuffling data directories.
 The CLI is YAML-only — there are no command-line flag overrides. For
 per-run tweaks (different workers, tighter `mz_tolerance`, etc.), copy
 the YAML and edit it. Quiet runs: `MSPECVIZ_LOG_LEVEL=ERROR python -m
-cli …`. See [docs/cli/usage.md](docs/cli/usage.md) for the full CLI
-reference, or [docs/quickstart.md](docs/quickstart.md) for a walkthrough
-with the bundled test data.
+cli …`. See [docs/cli.md](docs/cli.md) for the full CLI reference, or
+[docs/quickstart.md](docs/quickstart.md) for a walkthrough with the bundled
+test data.
 
 ---
 
 ## Project Structure
 
 Three top-level packages keep core logic separable from the UI runners:
-
-```
-MSpecViz/
-├── core/                        # Core package — pure Python, no Streamlit imports
-│   ├── peptide_lookup/          # idXML parsing + peptide lookup
-│   ├── spectra/                 # mzML streaming + Koina AI prediction
-│   ├── annotation/              # Theoretical fragments + 7 comparison metrics
-│   ├── dataframes/              # Polars LazyFrames for openms_insight
-│   ├── plotting/                # Plotly + Matplotlib mirror/summary plots
-│   ├── pipeline/                # Shared CLI/Streamlit orchestration
-│   ├── export/                  # Shared export orchestrator + versioned dirs
-│   ├── defaults.py              # Single source of truth for tunable defaults
-│   └── helpers.py               # Text helpers, parallel runner, path disambiguation
-├── streamlit_app/               # Streamlit UI (imports core.*)
-│   ├── app.py                   # st.navigation entry point
-│   ├── .streamlit/config.toml   # Streamlit server config (CWD-relative)
-│   ├── config/
-│   │   └── settings.json        # App-wide env config & enumerations
-│   ├── utils/
-│   │   ├── state/               # page_setup, workspaces, param I/O
-│   │   └── page_state.py        # Session-state namespace helpers
-│   └── views/
-│       ├── setup_page.py        # Tab 1 — Setup
-│       ├── load_annotate/       # Tab 2 — Load & Annotate
-│       ├── explore/             # Tab 3 — Explore (3 sub-views)
-│       ├── export/              # Tab 4 — Export
-│       └── widgets/             # File browser, peptide input widget
-├── cli/                         # Headless runner (imports core.*)
-│   ├── main.py                  # Entry point: YAML load → lookup → load → export
-│   └── config/                  # Example YAML configs
-├── tests/                       # Unit + integration + GUI tests (pytest)
-│   ├── cli/                     # CLI integration tests
-│   ├── core/                    # Core package tests (grouped by subpackage)
-│   └── streamlit/               # GUI + export-pipeline tests
-└── docs/                        # Reading guides (this README points into them)
-```
+`core/` (pure Python — pipeline, helpers, every tunable default), and two
+sibling front ends that both import it, `streamlit_app/` (the 4-tab UI) and
+`cli/` (the headless YAML-driven runner). `tests/` mirrors `core/` and covers
+all three.
 
 **Rules the codebase follows:**
 
-- `core/` must never import from `streamlit_app/` or `cli/` — the core
-  stays testable and reusable.
-- Both `streamlit_app/` and `cli/` depend on `core/`; anything shared
-  between the two goes into `core/` (usually `core/pipeline/` for
-  orchestration or `core/helpers.py` for pure helpers).
-- No `.py` file exceeds 250 lines; no folder contains more than 10 scripts.
-  When a module grows past either cap, split it into a subpackage with a
-  re-exporting `__init__.py`.
+- `core/` must never import from `streamlit_app/` or `cli/` — the core stays
+  testable and reusable.
+- Both front ends depend on `core/`; anything shared goes there (usually
+  `core/pipeline/` for orchestration or `core/helpers.py` for pure helpers).
+- No `.py` file exceeds 250 lines; no folder holds more than 10 scripts —
+  past either cap, split into a subpackage with a re-exporting `__init__.py`.
 
-A per-subpackage tour lives in [docs/architecture/core.md](docs/architecture/core.md).
+The layered design, pipeline flow, and a tour of the `core/` subpackages and
+front ends live in [docs/architecture.md](docs/architecture.md).
 
 ---
 
@@ -233,7 +180,7 @@ A per-subpackage tour lives in [docs/architecture/core.md](docs/architecture/cor
 
 MSpecViz reads configuration from a small set of sources. Full reference
 with every key documented is in
-[docs/settings/overview.md](docs/settings/overview.md); here is the map:
+[docs/settings.md](docs/settings.md); here is the map:
 
 | File | Scope | What it controls |
 |---|---|---|
@@ -263,7 +210,7 @@ conda run -n mspecviz python -m pytest tests/ -v
 Test groups, mirroring the source layout:
 
 - `tests/core/` — unit + integration tests for the core (grouped into
-  `loading/`, `annotation/`, `dataframes/`, `plotting/` subfolders)
+  subfolders mirroring the `core/` subpackages)
 - `tests/cli/` — CLI integration tests (invoke `python -m cli` as a
   subprocess)
 - `tests/streamlit/` — GUI smoke tests (via `streamlit.testing.v1.AppTest`)

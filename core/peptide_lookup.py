@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 # idXML loading (parallel file I/O — each file is parsed exactly once)
 # ============================================================================
 
-def _load_single_idxml(idxml_path: str, idxml_name: str) -> Tuple[str, list, list]:
-    """Worker dispatched per idXML by load_idxmls: read every PSM once and stamp
+def _load_idxml_worker(idxml_path: str, idxml_name: str) -> Tuple[str, list, list]:
+    """Per-file worker that load_idxmls maps over via run_tasks (one call per idXML,
+    dispatched sequentially or across processes). Reads every PSM once and stamps
     idXML provenance onto it. Returns (name, psms, errors); on a parse error the
     PSMs read before the failure are still returned as a partial result.
+    Not a public single-file loader — load_idxmls is the entry point for any file count.
     """
     # Open psm_utils' idxml-reader, which yields PSMs one at a time
     try:
@@ -83,14 +85,14 @@ def load_idxmls(
     progress = progress_callback or (lambda *_: None)
     on_error = error_callback or (lambda *_: None)
 
-    # Build tasks: pack each idXML into the (path, name) tuple _load_single_idxml expects
+    # Build tasks: pack each idXML into the (path, name) tuple _load_idxml_worker expects
     tasks = [(path, Path(path).name) for path in idxml_paths]
     total = len(idxml_paths)
     psms: list = []
 
     # Dispatch the loader worker across idXML paths, collecting PSMs and surfacing errors
     for completed, (task, ok, result) in enumerate(
-        run_tasks(tasks=tasks, worker=_load_single_idxml, workers=workers), start=1,
+        run_tasks(tasks=tasks, worker=_load_idxml_worker, workers=workers), start=1,
     ):
         # On success, accumulate this file's PSMs into the shared list
         if ok:
