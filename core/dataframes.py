@@ -41,6 +41,7 @@ PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
     "source_file": pl.String,   # mzML run the spectrum came from
     "spectrum_id": pl.String,   # Native spectrum identifier within the run
     "idxml_file": pl.String,    # idXML file the PSM was read from
+    "source": pl.String,        # Source folder of the idXML — disambiguates same-basename files
 }
 
 # LazyFrame schema for the per-peak frame consumed by the openms_insight LinePlot.
@@ -106,6 +107,7 @@ def build_psm_table(
                 "source_file": psm.run or "",
                 "spectrum_id": psm.spectrum_id,
                 "idxml_file": psm.metadata.get("idxml_file", ""),
+                "source": psm.metadata.get("idxml_source", ""),
             })
 
     df = pl.DataFrame(rows, schema=PSM_TABLE_SCHEMA).lazy()
