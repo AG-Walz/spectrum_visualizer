@@ -199,6 +199,12 @@ def export_controls_fragment():
     # Summary-plot scope: which measures and which plot types feed the summary plots.
     # Keys match run_settings fields, so build_run_settings() picks the selections up directly.
     if export_summary:
+        # Drop any stale plot type (e.g. a removed "dual_axis" restored from an old run)
+        # so the multiselect's stored value never falls outside its current options.
+        if "summary_plot_types" in st.session_state:
+            st.session_state["summary_plot_types"] = [
+                t for t in st.session_state["summary_plot_types"] if t in SUMMARY_PLOT_LABELS
+            ]
         summary_col1, summary_col2 = st.columns(2)
         with summary_col1:
             st.multiselect(

@@ -37,8 +37,8 @@ intensity_mode: Relative              # Relative (base-peak normalised) or Raw
 
 workers: 4                            # 1 = sequential (easier debugging)
 
-# summary_metrics: [R² binned]                            # one set of summary plots per listed measure
-# summary_plot_types: [dual_axis, ridgeline, multi_boxplot]  # any subset of {dual_axis, ridgeline, multi_boxplot}
+# summary_metrics: [R² binned]                   # one set of summary plots per listed measure
+# summary_plot_types: [ridgeline, multi_boxplot]  # any subset of {ridgeline, multi_boxplot}
 
 # --- 3. Advanced / optional parameters ---
 

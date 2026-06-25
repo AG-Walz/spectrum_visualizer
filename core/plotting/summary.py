@@ -1,12 +1,11 @@
-"""Summary-plot layer: aggregate the comparison table and render the dual-axis,
-ridgeline, and multi-boxplot summaries.
+"""Summary-plot layer: aggregate the comparison table and render the ridgeline
+and multi-boxplot summaries.
 
 `prepare_summary_data` turns a comparison table into a per-peptidoform aggregate
 frame (count, median, mean, std, 95 % confidence interval, dominant charge).
 `generate_all_summary_plots` runs that aggregation once and writes the requested
 figure types to <output_dir>/summary/ in each requested file format, dispatching
-to `plot_classic_dual_axis` (peptide-count bars twinned with metric boxplots),
-`plot_ridgeline` (stacked KDE density per peptidoform with count sidebar), and
+to `plot_ridgeline` (stacked KDE density per peptidoform with count sidebar) and
 `plot_multi_boxplot` (one horizontal boxplot per peptidoform with all data points).
 
 generate_all_summary_plots is called by core.export.run_export (and indirectly
@@ -22,10 +21,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
-import seaborn as sns  # noqa: E402
 from matplotlib.figure import Figure  # noqa: E402
-from matplotlib.lines import Line2D  # noqa: E402
-from matplotlib.patches import Patch  # noqa: E402
 from scipy.stats import gaussian_kde  # noqa: E402
 
 from core.defaults import DEFAULTS  # noqa: E402
@@ -113,7 +109,7 @@ def _draw_count_sidebar(bar_ax, counts: np.ndarray) -> None:
     """Fill the sidebar with one horizontal count bar per row (top row = highest count)."""
     bar_ax.barh(range(len(counts)), counts[::-1], height=0.6,
                 color=_COUNT_BAR_COLOR, alpha=0.8, edgecolor=_COUNT_BAR_EDGE, linewidth=0.5)
-    bar_ax.set_xlabel("Count", fontsize=10, fontweight="bold")
+    bar_ax.set_xlabel("Peptide Count", fontsize=10, fontweight="bold")
     bar_ax.tick_params(axis="y", left=False, labelleft=False)
     for side in ("top", "right", "left"):
         bar_ax.spines[side].set_visible(False)
@@ -128,90 +124,6 @@ def _draw_median_colorbar(fig: Figure, metric: str) -> None:
     fig.colorbar(scalar_mappable, cax=cbar_ax, orientation="horizontal").set_label(
         f"Median {_metric_label(metric)}", fontsize=9,
     )
-
-
-# ============================================================================
-# Dual-axis renderer: peptide-count bars twinned with metric boxplots
-# ============================================================================
-
-# Palette for the two overlaid series — warm orange for the count bars, slate
-# grey for the metric boxplots — chosen so the twinned axes read distinctly.
-_DUAL_BAR_COLOR = "#E8945A"  # Count-bar fill
-_DUAL_BAR_EDGE = "#D07030"   # Count-bar outline
-_DUAL_BOX_COLOR = "#2C3E50"  # Boxplot lines (median, whiskers, caps, outliers)
-_DUAL_BOX_FILL = "#BDC3C7"   # Boxplot box fill
-
-
-def plot_classic_dual_axis(
-    raw_frame: pd.DataFrame,
-    aggregated_frame: pd.DataFrame,
-    metric: str = DEFAULTS.summary_metric,
-    figure_size: tuple[float, float] | None = None,
-    export_resolution: int = 300,
-    title: str | None = None,
-) -> Figure:
-    """Render the dual-axis summary figure: count bars twinned with metric boxplots.
-    Draws one horizontal row per peptidoform — a count bar on the bottom x axis overlaid
-    with a boxplot of the chosen metric on a twinned top axis, ordered most-prevalent first.
-    raw_frame supplies the per-psm metric values the boxplots summarise; aggregated_frame
-    the per-peptidoform counts. Returns the Matplotlib Figure for the caller to save and close.
-    """
-    # Order rows so the most-counted peptidoform sits at the top of the chart.
-    aggregated_frame = aggregated_frame.sort_values("count", ascending=False).reset_index(drop=True)
-    peptidoform_count = len(aggregated_frame)
-    # Auto-size height to the row count when the caller gave no explicit size.
-    if figure_size is None:
-        figure_size = (14, _auto_height(peptidoform_count))
-
-    fig, ax = plt.subplots(figsize=figure_size, dpi=export_resolution)
-    y_pos = np.arange(peptidoform_count)
-    labels = aggregated_frame["peptidoform"].tolist()
-
-    # Count bars on the bottom axis (one bar per peptidoform)
-    ax.barh(y_pos, aggregated_frame["count"].values, height=0.65,
-            color=_DUAL_BAR_COLOR, alpha=0.55, edgecolor=_DUAL_BAR_EDGE, linewidth=0.5, zorder=1)
-    ax.set_xlabel("Peptide count", fontsize=11, fontweight="bold")
-    ax.invert_yaxis()
-    ax.spines["right"].set_visible(False)
-
-    # Metric boxplots on the twinned top axis (seaborn draws IQR / whiskers / outliers)
-    ax2 = ax.twiny()
-    sns.boxplot(
-        data=raw_frame, y="peptidoform", x=metric, order=labels, ax=ax2,
-        color=_DUAL_BOX_FILL, width=0.35, linewidth=0.8, fliersize=3,
-        boxprops=dict(facecolor=_DUAL_BOX_FILL, edgecolor=_DUAL_BOX_COLOR, alpha=0.85),
-        medianprops=dict(color=_DUAL_BOX_COLOR, linewidth=1.5),
-        whiskerprops=dict(color=_DUAL_BOX_COLOR, linewidth=0.8),
-        capprops=dict(color=_DUAL_BOX_COLOR, linewidth=0.8),
-        flierprops=dict(marker=".", markerfacecolor=_DUAL_BOX_COLOR,
-                        markeredgecolor="none", alpha=0.4),
-    )
-    # Without an explicit title, label the metric axis here; an explicit title suppresses
-    # this label and is added as a figure suptitle below instead.
-    if not title:
-        ax2.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    ax2.set_xlim(-0.05, 1.05)
-    ax2.set_ylabel("")
-    ax2.spines["bottom"].set_visible(False)
-    ax2.spines["right"].set_visible(False)
-
-    # Y-axis ticks label every row with its peptidoform; the legend is built from
-    # hand-made proxy handles (a Patch + a Line2D) since the two series live on
-    # separate twinned axes and have no shared auto-legend.
-    ax.set_yticks(y_pos)
-    ax.set_yticklabels(labels, fontsize=8)
-    ax.legend(handles=[
-        Patch(facecolor=_DUAL_BAR_COLOR, alpha=0.55, edgecolor=_DUAL_BAR_EDGE, label="Peptide Count"),
-        Line2D([0], [0], color=_DUAL_BOX_COLOR, marker="s", markersize=6,
-               markerfacecolor=_DUAL_BOX_FILL, linestyle="-", linewidth=0.8,
-               label=_metric_label(metric)),
-    ], loc="upper left", bbox_to_anchor=(0.0, -0.04), fontsize=9, framealpha=0.9, ncol=2)
-
-    # Reserve top margin for a suptitle when one is given, else keep it tight.
-    if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.98)
-    fig.subplots_adjust(left=0.22, top=0.92 if title else 0.96)
-    return fig
 
 
 # ============================================================================
@@ -443,7 +355,6 @@ def prepare_summary_data(
 
 # Maps each summary plot-type key to its renderer function.
 _SUMMARY_RENDERERS = {
-    "dual_axis": plot_classic_dual_axis,
     "ridgeline": plot_ridgeline,
     "multi_boxplot": plot_multi_boxplot,
 }
@@ -459,7 +370,7 @@ def generate_all_summary_plots(
 ) -> dict[str, dict[str, str]]:
     """Render every requested plot type for every requested metric into <output_dir>/summary/.
     For each metric, aggregates once via prepare_summary_data, then renders each recognised type
-    (dual_axis, ridgeline, multi_boxplot) and saves it as <plot_type>_<metric_slug>.<format>.
+    (ridgeline, multi_boxplot) and saves it as <plot_type>_<metric_slug>.<format>.
     Unknown types, metrics absent from the table, renderer ValueErrors, and per-file OSErrors are
     logged and skipped, never raised. Returns {plot_type: {"<metric_slug>.<format>": path}}.
     """

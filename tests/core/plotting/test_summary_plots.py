@@ -1,4 +1,4 @@
-"""Unit tests for core.plotting.summary (dual-axis + ridgeline + multi-boxplot renderers)."""
+"""Unit tests for core.plotting.summary (ridgeline + multi-boxplot renderers)."""
 from pathlib import Path
 
 import numpy as np
@@ -81,7 +81,7 @@ class TestSummaryPlotsFromCsv:
             source=str(summary_csv),
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis"],
+            plot_types=["ridgeline"],
         )
         assert len(results) > 0
         for plot_type, paths in results.items():
@@ -94,9 +94,8 @@ class TestSummaryPlotsFromCsv:
             source=frame,
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis", "ridgeline", "multi_boxplot"],
+            plot_types=["ridgeline", "multi_boxplot"],
         )
-        assert "dual_axis" in results
         assert "ridgeline" in results
         assert "multi_boxplot" in results
 
@@ -132,6 +131,6 @@ class TestSummaryPlotsFromCsv:
             source=frame,
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis"],
+            plot_types=["ridgeline"],
         )
         assert (tmp_path / "summary").exists()

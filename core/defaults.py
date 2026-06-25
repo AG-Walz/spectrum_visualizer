@@ -73,7 +73,7 @@ class Defaults:
 
     # --- Summary plots ------------------------------------------------------
     summary_metric: str = "R² binned"
-    summary_plot_types: tuple[str, ...] = ("dual_axis", "ridgeline", "multi_boxplot")
+    summary_plot_types: tuple[str, ...] = ("ridgeline", "multi_boxplot")
 
 
 DEFAULTS = Defaults()

@@ -18,7 +18,7 @@ MSpecViz_analysis_001_20260327/
     run_settings.json
     comparison_summary.csv          # + .xlsx when openpyxl is installed
     psm.parquet  peaks.parquet  seq.parquet  heatmap.parquet
-    summary/      dual_axis.png, ridgeline_r2_binned.png
+    summary/      ridgeline_r2_binned.png, multi_boxplot_r2_binned.png
     png/ svg/ pdf/ html/            # only the formats you selected
         <peptidoform>/              # one subdir per base sequence + modification
             <query>_vs_<ref>_z<charge>.<ext>
@@ -80,9 +80,10 @@ name. Filenames pass through `sanitize_filename`.
 
 **Summary plots** — run-wide aggregations in `{run}/summary/`, by
 `core/plotting/summary.py:generate_all_summary_plots`. Only two types exist
-(`_PLOT_REGISTRY`): `dual_axis` (count bars + metric boxplots per peptidoform) and
-`ridgeline` (per-peptidoform KDE of the chosen metric). The ridgeline filename gets
-the `_r2_binned` suffix **only** when the metric equals `DEFAULTS.summary_metric`.
+(`_SUMMARY_RENDERERS`): `ridgeline` (per-peptidoform KDE of the chosen metric) and
+`multi_boxplot` (one horizontal boxplot per peptidoform with every data point). One
+set is rendered per measure in `summary_metrics`, each saved as
+`<plot_type>_<metric_slug>.<format>` (e.g. `multi_boxplot_cosine.png`).
 There is no "heatmap" summary plot — the Explore-tab Heatmap is interactive-only and
 never written to disk.
 
