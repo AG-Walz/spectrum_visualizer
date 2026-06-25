@@ -54,6 +54,37 @@ class TestSourceAwareMzmlResolution:
         psm = next(iter(grouped.values()))[0]
         assert "mzml_resolved_path" not in psm.metadata
 
+    def test_stale_missing_copy_ignored_so_real_file_resolves(self, tmp_path):
+        # Bug #85: the same basename is selected from two folders but one path points
+        # at a now-deleted directory. The phantom must not make the run look ambiguous
+        # — the real file resolves instead of every PSM being dropped.
+        real = tmp_path / "examples" / "sample.mzML"
+        real.parent.mkdir()
+        real.write_bytes(b"")
+        psms = PSMList(psm_list=[_psm_with_source("sample", "/idx/sample.idXML")])
+        grouped = lookup_peptides(
+            psms, ["PEPTIDEK"],
+            mzml_paths=["/deleted/sample.mzML", str(real)],
+        )
+        psm = next(iter(grouped.values()))[0]
+        assert psm.metadata["mzml_resolved_path"] == str(real)
+
+    def test_same_size_duplicate_upload_resolves_to_one_copy(self, tmp_path):
+        # Bug #85: the same dataset selected from two folders. Both copies exist and
+        # share a size (a content proxy), so they collapse to one instead of looking
+        # ambiguous and dropping every PSM.
+        first = tmp_path / "first" / "sample.mzML"
+        second = tmp_path / "second" / "sample.mzML"
+        for copy in (first, second):
+            copy.parent.mkdir()
+            copy.write_bytes(b"identical-spectrum-bytes")
+        psms = PSMList(psm_list=[_psm_with_source("sample", "/idx/sample.idXML")])
+        grouped = lookup_peptides(
+            psms, ["PEPTIDEK"], mzml_paths=[str(first), str(second)],
+        )
+        psm = next(iter(grouped.values()))[0]
+        assert psm.metadata["mzml_resolved_path"] in {str(first), str(second)}
+
 
 class TestSummarizeLookupResults:
     """Pure-data tests for summarize_lookup_results (LazyFrame columns, counts, empties)."""
