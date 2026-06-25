@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest an idea or improvement for MSpecViz
+title: "[Enhancement]: "
+labels: enhancement
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of feature
+      description: Describe your suggestion — the problem or use case it addresses, plus any alternatives considered.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Session snapshot
+      description: Auto-filled by the in-app button — the workspace and page you were on.

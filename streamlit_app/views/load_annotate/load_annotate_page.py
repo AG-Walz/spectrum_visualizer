@@ -16,7 +16,7 @@ from streamlit_app.views.load_annotate.load_annotate_actions import (
     run_load_and_annotate,
 )
 
-params = page_setup()
+params = page_setup("Load & Annotate")
 
 
 def display_lookup_results(peptidoform_psms: dict) -> None:

@@ -1,0 +1,28 @@
+name: Bug report
+description: Report something that is broken or incorrect in MSpecViz
+title: "[Bug]: "
+labels: bug
+
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the bug
+      description: What went wrong, and what you expected to happen instead.
+      placeholder: When I clicked '...', I expected '...' but instead '...' happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Session snapshot
+      description: |
+        Auto-filled by the in-app "Report a bug" button — the workspace, page, and last error.
+        Please keep it; maintainers use the workspace to look up your exact settings on the server.
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files
+      description: Drag any relevant files here (idXML, mzML, screenshots). Zip them if the extension is blocked.

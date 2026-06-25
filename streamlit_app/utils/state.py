@@ -11,16 +11,19 @@ Combines four layers in one file:
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
 from core import __version__
+from core.bug_report import build_issue_url, build_snapshot
 from core.defaults import DEFAULTS
 
 
@@ -337,6 +340,44 @@ def page_setup(page: str = "") -> dict[str, Any]:
     return render_sidebar(page)
 
 
+def capture_last_error(func):
+    """Decorator: stash an exception's traceback for the bug report, then re-raise
+    (Streamlit's RerunException is a BaseException, so it slips through)."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            st.session_state[get_state_key("last_error")] = traceback.format_exc()
+            raise
+    return wrapper
+
+
+def _render_bug_report(page: str) -> None:
+    """Render the 'Report a bug / request a feature' expander, pre-filling a GitHub
+    issue with a tiny snapshot: workspace (a pointer to the server-side params.json),
+    page, and the last captured error."""
+    repo = st.session_state.settings.get("bug_report_repo", "AG-Walz/spectrum_visualizer")
+    workspace = st.session_state.workspace.name
+    error = st.session_state.get(get_state_key("last_error"))
+
+    bug_url, inlined = build_issue_url(
+        repo, "bug_report.yml",
+        json.dumps(build_snapshot(workspace, page, error), indent=2, default=str),
+    )
+    feature_url, _ = build_issue_url(
+        repo, "feature_request.yml",
+        json.dumps(build_snapshot(workspace, page), indent=2, default=str),
+    )
+
+    with st.expander("🐞 **Report a bug / request a feature**"):
+        st.caption("Opens a pre-filled GitHub issue — use a desktop browser (the mobile app drops pre-filled fields).")
+        st.link_button("🐞 Report a bug", bug_url, use_container_width=True)
+        st.link_button("💡 Request a feature", feature_url, use_container_width=True)
+        if not inlined:
+            st.warning("The captured error is too large to embed — please paste it into the issue instead.")
+
+
 def render_sidebar(page: str = "") -> dict[str, Any]:
     """Render the workspace switcher, Settings expander, and version footer; return the active workspace's params."""
     # Load params for the active workspace
@@ -368,6 +409,9 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             st.session_state[persisted] = selected_format
             params["image_format"] = selected_format
             save_params(params)
+
+        # Bug report: inline a compact snapshot into a pre-filled GitHub issue
+        _render_bug_report(page)
 
         # Version footer: branded app name + version chip (version from core, the
         # single source of truth — see core.__version__)

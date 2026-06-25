@@ -1,5 +1,6 @@
 {
   "app_name": "MSpecViz",
+  "bug_report_repo": "AG-Walz/spectrum_visualizer",
   "enable_workspaces": true,
   "workspaces_dir": "workspaces",
   "data_directories": {

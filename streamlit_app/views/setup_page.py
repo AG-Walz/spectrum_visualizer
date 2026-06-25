@@ -31,7 +31,7 @@ def _get_nested_value(source: dict, *keys, default=None):
     return current if current is not None else default
 
 
-params = page_setup()
+params = page_setup("Setup")
 
 
 def render_file_selection():
