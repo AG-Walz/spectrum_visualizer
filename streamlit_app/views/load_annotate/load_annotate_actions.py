@@ -11,7 +11,8 @@ import streamlit as st
 
 from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.utils.state import (
-    cache_idxml_psmlist, cached_idxml_psmlist, get_param, get_state_key, save_params,
+    cache_idxml_psmlist, cached_idxml_psmlist, capture_last_error,
+    get_param, get_state_key, save_params,
 )
 from streamlit_app.utils.page_state import clear_analysis_cache, save_analysis_cache
 from core.defaults import DEFAULTS
@@ -55,6 +56,7 @@ def _show_lookup_results_summary(peptidoform_psms, error_messages, tracker, para
                 st.caption(message)
 
 
+@capture_last_error
 def run_peptide_lookup(params: dict, idxmls: list, peptides: list) -> None:
     """Load idxmls once (reusing the Setup picker's cached PSMList when the selection
     matches), scan it in memory for peptides, stash peptidoform_psms in session state,
@@ -177,6 +179,7 @@ def _finalize_load(
     )
 
 
+@capture_last_error
 def run_load_and_annotate(params: dict) -> None:
     """Stream spectra, annotate against the theoretical fragments, compute metrics, and build visualization frames."""
     # Reset stale cache + abort if Setup/Lookup prerequisites are missing

@@ -11,23 +11,19 @@ Combines four layers in one file:
 """
 from __future__ import annotations
 
+import functools
 import json
 import os
 import shutil
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
 
 from core import __version__
-from core.bug_report import (
-    SNAPSHOT_SETTING_KEYS,
-    build_bug_report_url,
-    build_compact_snapshot,
-    collect_environment,
-    format_system_info,
-)
+from core.bug_report import build_issue_url, build_snapshot
 from core.defaults import DEFAULTS
 
 
@@ -344,49 +340,42 @@ def page_setup(page: str = "") -> dict[str, Any]:
     return render_sidebar(page)
 
 
-def _render_bug_report(params: dict[str, Any]) -> None:
-    """Render the compact 'Report a bug' expander.
+def capture_last_error(func):
+    """Decorator: stash an exception's traceback for the bug report, then re-raise
+    (Streamlit's RerunException is a BaseException, so it slips through)."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            return func(*args, **kwargs)
+        except Exception:
+            st.session_state[get_state_key("last_error")] = traceback.format_exc()
+            raise
+    return wrapper
 
-    Inlines a small, privacy-scrubbed session snapshot into a pre-filled AG-Walz
-    issue (so the report is never empty and needs no file upload). The same
-    snapshot is offered as a download; if it is too big for the URL, the user is
-    asked to attach the download instead.
-    """
-    app_name = st.session_state.settings.get("app_name", "MSpecViz")
+
+def _render_bug_report(page: str) -> None:
+    """Render the 'Report a bug / request a feature' expander, pre-filling a GitHub
+    issue with a tiny snapshot: workspace (a pointer to the server-side params.json),
+    page, and the last captured error."""
     repo = st.session_state.settings.get("bug_report_repo", "AG-Walz/spectrum_visualizer")
+    workspace = st.session_state.workspace.name
+    error = st.session_state.get(get_state_key("last_error"))
 
-    environment = collect_environment(app_name, __version__)
-    settings = {key: get_param(params, key) for key in SNAPSHOT_SETTING_KEYS}
-    status = {
-        "data_ready": st.session_state.get(get_state_key("data_ready"), False),
-        "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
-    }
-    snapshot_json = json.dumps(
-        build_compact_snapshot(environment, settings, status),
-        indent=2, ensure_ascii=False, default=str,
+    bug_url, inlined = build_issue_url(
+        repo, "bug_report.yml",
+        json.dumps(build_snapshot(workspace, page, error), indent=2, default=str),
     )
-    issue_url, inlined = build_bug_report_url(
-        repo, format_system_info(environment), snapshot_json
+    feature_url, _ = build_issue_url(
+        repo, "feature_request.yml",
+        json.dumps(build_snapshot(workspace, page), indent=2, default=str),
     )
 
-    with st.expander("🐞 **Report a bug**"):
-        st.caption(
-            "Opens a pre-filled GitHub issue with a snapshot of your current "
-            "settings filled into the form — just describe what went wrong."
-        )
-        st.link_button("Open bug report", issue_url, use_container_width=True)
-        st.download_button(
-            "⬇️ Download snapshot",
-            snapshot_json,
-            file_name="mspecviz_bug_report.json",
-            mime="application/json",
-            use_container_width=True,
-        )
+    with st.expander("🐞 **Report a bug / request a feature**"):
+        st.caption("Opens a pre-filled GitHub issue — use a desktop browser (the mobile app drops pre-filled fields).")
+        st.link_button("🐞 Report a bug", bug_url, use_container_width=True)
+        st.link_button("💡 Request a feature", feature_url, use_container_width=True)
         if not inlined:
-            st.warning(
-                "Your snapshot is too large to embed in the issue. Please download "
-                "it above and drag it into the **Relevant files** field of the report."
-            )
+            st.warning("The captured error is too large to embed — please paste it into the issue instead.")
 
 
 def render_sidebar(page: str = "") -> dict[str, Any]:
@@ -422,7 +411,7 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             save_params(params)
 
         # Bug report: inline a compact snapshot into a pre-filled GitHub issue
-        _render_bug_report(params)
+        _render_bug_report(page)
 
         # Version footer: branded app name + version chip (version from core, the
         # single source of truth — see core.__version__)

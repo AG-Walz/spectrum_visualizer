@@ -8,6 +8,12 @@ body:
     id: description
     attributes:
       label: Description of feature
-      description: Please describe your suggestion for a new feature. It might help to describe a problem or use case, plus any alternatives that you have considered.
+      description: Describe your suggestion — the problem or use case it addresses, plus any alternatives considered.
     validations:
       required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Session snapshot
+      description: Auto-filled by the in-app button — the workspace and page you were on.

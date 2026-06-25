@@ -22,7 +22,7 @@ from core.plotting import (
 from streamlit_app.views.explore.explorer import render_explorer
 from streamlit_app.views.explore.mirror_plots import mirror_plots_fragment
 
-params = page_setup()
+params = page_setup("Explore")
 logger = logging.getLogger(__name__)
 
 
