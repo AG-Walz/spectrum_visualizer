@@ -25,9 +25,7 @@ from core.bug_report import (
     SNAPSHOT_SETTING_KEYS,
     build_bug_report_url,
     build_compact_snapshot,
-    build_session_snapshot,
     collect_environment,
-    create_snapshot_gist,
     format_system_info,
 )
 from core.defaults import DEFAULTS
@@ -346,25 +344,13 @@ def page_setup(page: str = "") -> dict[str, Any]:
     return render_sidebar(page)
 
 
-def _get_gist_token() -> str | None:
-    """Return the gist-scoped GitHub token, from env var or Streamlit secrets, if set."""
-    token = os.environ.get("MSPECVIZ_GIST_TOKEN")
-    if token:
-        return token
-    try:
-        return st.secrets.get("gist_token")
-    except Exception:
-        # No secrets.toml configured — that's fine, gist upload is optional.
-        return None
-
-
 def _render_bug_report(params: dict[str, Any]) -> None:
     """Render the compact 'Report a bug' expander.
 
-    Inlines a small session snapshot into a pre-filled AG-Walz issue (so the
-    report is never empty and needs no file upload). If the snapshot is too big
-    for the URL and a gist token is set, it auto-uploads and links it instead;
-    the full-snapshot download is always offered as a backstop.
+    Inlines a small, privacy-scrubbed session snapshot into a pre-filled AG-Walz
+    issue (so the report is never empty and needs no file upload). The same
+    snapshot is offered as a download; if it is too big for the URL, the user is
+    asked to attach the download instead.
     """
     app_name = st.session_state.settings.get("app_name", "MSpecViz")
     repo = st.session_state.settings.get("bug_report_repo", "AG-Walz/spectrum_visualizer")
@@ -375,65 +361,32 @@ def _render_bug_report(params: dict[str, Any]) -> None:
         "data_ready": st.session_state.get(get_state_key("data_ready"), False),
         "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
     }
-    error = st.session_state.get(get_state_key("last_error"))
-    system_info = format_system_info(environment)
-
-    compact_json = json.dumps(
-        build_compact_snapshot(environment, settings, status, error),
+    snapshot_json = json.dumps(
+        build_compact_snapshot(environment, settings, status),
         indent=2, ensure_ascii=False, default=str,
     )
-    full_json = json.dumps(
-        build_session_snapshot(dict(st.session_state), environment),
-        indent=2, ensure_ascii=False, default=str,
+    issue_url, inlined = build_bug_report_url(
+        repo, format_system_info(environment), snapshot_json
     )
-
-    # Decide how the snapshot reaches the issue: inlined in the form, linked via
-    # an auto-uploaded gist, or (fallback) only available through the download
-    # button. Each state drives a different, honest message below — we never
-    # silently drop the snapshot the way the old `except: pass` did.
-    issue_url, inlined = build_bug_report_url(repo, system_info, compact_json)
-    snapshot_delivery = "inlined"
-    gist_error: Exception | None = None
-    if not inlined:
-        token = _get_gist_token()
-        if token:
-            try:
-                gist_url = create_snapshot_gist(full_json, token)
-                issue_url, _ = build_bug_report_url(repo, system_info, gist_url=gist_url)
-                snapshot_delivery = "gist"
-            except Exception as exc:  # bad/expired token, network, GitHub down
-                gist_error = exc
-                snapshot_delivery = "download_only"
-        else:
-            snapshot_delivery = "download_only"
 
     with st.expander("🐞 **Report a bug**"):
         st.caption(
             "Opens a pre-filled GitHub issue with a snapshot of your current "
             "settings filled into the form — just describe what went wrong."
         )
-        st.link_button(
-            "Open bug report", issue_url, use_container_width=True
-        )
+        st.link_button("Open bug report", issue_url, use_container_width=True)
         st.download_button(
-            "⬇️ Download full snapshot",
-            full_json,
+            "⬇️ Download snapshot",
+            snapshot_json,
             file_name="mspecviz_bug_report.json",
             mime="application/json",
             use_container_width=True,
         )
-        if snapshot_delivery == "gist":
-            st.caption(
-                "Your snapshot was too large to embed, so it was uploaded as a "
-                "private gist and linked in the issue."
-            )
-        elif snapshot_delivery == "download_only":
+        if not inlined:
             st.warning(
                 "Your snapshot is too large to embed in the issue. Please download "
                 "it above and drag it into the **Relevant files** field of the report."
             )
-            if gist_error is not None:
-                st.caption(f"(Automatic gist upload failed: {gist_error})")
 
 
 def render_sidebar(page: str = "") -> dict[str, Any]:

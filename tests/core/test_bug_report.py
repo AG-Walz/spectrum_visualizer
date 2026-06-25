@@ -3,65 +3,16 @@ import json
 import urllib.parse
 from pathlib import Path
 
-import pandas as pd
 import yaml
 
 import core.bug_report as bug_report
 from core.bug_report import (
-    MAX_CONTAINER_ITEMS,
     SNAPSHOT_SCHEMA,
     build_bug_report_url,
     build_compact_snapshot,
-    build_session_snapshot,
     collect_environment,
-    create_snapshot_gist,
     format_system_info,
-    sanitize_for_json,
 )
-
-
-def test_sanitize_passes_through_json_natives():
-    value = {"a": 1, "b": 1.5, "c": "text", "d": True, "e": None, "f": [1, 2]}
-    assert sanitize_for_json(value) == value
-
-
-def test_sanitize_coerces_paths_and_sets():
-    result = sanitize_for_json({"p": Path("/tmp/ws"), "s": {3, 1, 2}})
-    assert result == {"p": "/tmp/ws", "s": [1, 2, 3]}
-
-
-def test_sanitize_summarizes_dataframe_with_shape():
-    assert sanitize_for_json(pd.DataFrame({"x": [1, 2, 3]})) == "<DataFrame shape=(3, 1)>"
-
-
-def test_sanitize_summarizes_large_container():
-    big = list(range(MAX_CONTAINER_ITEMS + 1))
-    assert sanitize_for_json(big) == f"<list len={MAX_CONTAINER_ITEMS + 1}>"
-
-
-def test_sanitize_summarizes_opaque_object():
-    class Opaque:
-        pass
-
-    assert sanitize_for_json(Opaque()) == "<Opaque>"
-
-
-def test_snapshot_is_json_serializable_with_mixed_state():
-    state = {
-        "idxml_paths": ["/a/b.idXML"],
-        "workspace": Path("/tmp/ws"),
-        "mz_tolerance": 0.02,
-        "mapping_df": pd.DataFrame({"x": [1, 2, 3]}),
-        "nested": {"inner_path": Path("/x"), "values": (1, 2)},
-    }
-    environment = collect_environment("MSpecViz", "1.0.0")
-    snapshot = build_session_snapshot(state, environment)
-
-    dumped = json.loads(json.dumps(snapshot))  # must not raise
-    assert dumped["environment"]["app_name"] == "MSpecViz"
-    assert dumped["session_state"]["workspace"] == "/tmp/ws"
-    assert dumped["session_state"]["mapping_df"] == "<DataFrame shape=(3, 1)>"
-    assert dumped["session_state"]["nested"]["inner_path"] == "/x"
 
 
 def test_collect_environment_reports_known_packages():
@@ -119,13 +70,6 @@ def test_build_url_drops_snapshot_when_over_budget():
     assert len(url.encode("utf-8")) <= bug_report.MAX_PREFILL_URL_BYTES
 
 
-def test_build_url_embeds_gist_link_when_provided():
-    gist = "https://gist.github.com/octocat/abc123"
-    url, inlined = build_bug_report_url("o/r", "- sys", gist_url=gist)
-    assert inlined is False
-    assert gist in _parse_query(url)["files"]
-
-
 def test_compact_snapshot_collapses_paths_and_peptides():
     environment = collect_environment("MSpecViz", "1.0.0")
     settings = {
@@ -149,19 +93,18 @@ def test_compact_snapshot_collapses_paths_and_peptides():
         "sample": ["PEPTIDEK", "ELVISLIVES"],
     }
     assert snapshot["settings"]["mz_tolerance"] == 0.02
-    assert "status" not in snapshot and "error" not in snapshot  # omitted when absent
+    assert "status" not in snapshot  # omitted when absent
 
 
-def test_compact_snapshot_includes_status_and_error_when_present():
+def test_compact_snapshot_includes_status_when_present():
     environment = collect_environment("MSpecViz", "1.0.0")
     snapshot = build_compact_snapshot(
         environment,
         settings={"workers": 4},
         status={"data_ready": True, "cache_version": 3},
-        error={"type": "KeyError", "message": "peptide_mirror.psm_lf"},
     )
     assert snapshot["status"]["data_ready"] is True
-    assert snapshot["error"]["type"] == "KeyError"
+    assert snapshot["settings"]["workers"] == 4
 
 
 def test_compact_snapshot_is_small_and_json_serializable():
@@ -201,48 +144,3 @@ def test_snapshot_target_field_is_not_rendered():
     # snapshot must land in a plain textarea or it silently disappears.
     command_used = _template_fields()["command_used"]
     assert "render" not in command_used["attributes"]
-
-
-def test_create_snapshot_gist_posts_secret_gist(monkeypatch):
-    captured = {}
-
-    class FakeResponse:
-        def raise_for_status(self):
-            pass
-
-        def json(self):
-            return {"html_url": "https://gist.github.com/octocat/deadbeef"}
-
-    def fake_post(url, headers=None, json=None, timeout=None):
-        captured["url"] = url
-        captured["headers"] = headers
-        captured["json"] = json
-        return FakeResponse()
-
-    monkeypatch.setattr(bug_report.requests, "post", fake_post)
-
-    result = create_snapshot_gist('{"a": 1}', token="tok123")
-
-    assert result == "https://gist.github.com/octocat/deadbeef"
-    assert captured["url"] == bug_report.GIST_API_URL
-    assert captured["headers"]["Authorization"] == "Bearer tok123"
-    assert captured["json"]["public"] is False  # secret gist
-    assert "mspecviz_bug_report.json" in captured["json"]["files"]
-
-
-def test_create_snapshot_gist_raises_on_http_error(monkeypatch):
-    class FakeResponse:
-        def raise_for_status(self):
-            raise RuntimeError("401 Unauthorized")
-
-        def json(self):
-            return {}
-
-    monkeypatch.setattr(bug_report.requests, "post", lambda *a, **k: FakeResponse())
-
-    try:
-        create_snapshot_gist("{}", token="bad")
-    except RuntimeError as exc:
-        assert "401" in str(exc)
-    else:
-        raise AssertionError("expected RuntimeError on HTTP error")
