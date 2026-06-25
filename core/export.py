@@ -60,7 +60,7 @@ RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
     ("export_formats",         list(DEFAULTS.export_formats)),
     ("export_resolution",      DEFAULTS.export_resolution),
     ("figure_size",            list(DEFAULTS.figure_size)),
-    ("summary_metric",         DEFAULTS.summary_metric),
+    ("summary_metrics",        [DEFAULTS.summary_metric]),
     ("summary_plot_types",     list(DEFAULTS.summary_plot_types)),
 ]
 
@@ -363,8 +363,10 @@ def _run_summary_plots(
     root_dir: Path,
     export_formats: list[str],
     saved_files: list[str],
+    metrics: list[str],
+    plot_types: list[str],
 ) -> int:
-    """Render dual-axis / ridgeline / heatmap summaries from the comparison table.
+    """Render the selected summary plot types for the selected metrics from the comparison table.
     Summaries are picture-only — html is filtered out, and an empty format set falls
     back to ["png"]. Appends every written path to saved_files and returns the
     count; returns 0 when there is no comparison frame or it is empty.
@@ -375,6 +377,8 @@ def _run_summary_plots(
     results = generate_all_summary_plots(
         source=comparison_frame,
         output_dir=str(root_dir),
+        metrics=metrics,
+        plot_types=plot_types,
         formats=summary_formats,
     )
     paths = [p for fmt_paths in results.values() for p in fmt_paths.values()]
@@ -461,12 +465,14 @@ def run_export(
             plot_settings, selection.html, saved_files, on_progress, on_warning,
         )
 
-    # Stage 5 — Summary plots: dual-axis / ridgeline / heatmap from the comparison frame
+    # Stage 5 — Summary plots: chosen plot types × chosen metrics from the comparison frame
     summary_plot_count = 0
     if selection.summary_plots:
         on_step("Generating summary plots...")
         summary_plot_count = _run_summary_plots(
             comparison_frame, root_dir, plot_settings.export_formats, saved_files,
+            metrics=run_settings.get("summary_metrics", [DEFAULTS.summary_metric]),
+            plot_types=run_settings.get("summary_plot_types", list(DEFAULTS.summary_plot_types)),
         )
 
     return ExportResult(

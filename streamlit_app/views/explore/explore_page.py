@@ -9,12 +9,13 @@ import streamlit as st
 from streamlit_app.utils.state import (
     STATE_PREFIX, get_state_key, page_setup, save_params,
 )
-from streamlit_app.utils.page_state import restore_analysis_if_needed
+from streamlit_app.utils.page_state import SUMMARY_PLOT_LABELS, restore_analysis_if_needed
 from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
 from core.defaults import DEFAULTS
 from core.plotting import (
     METRIC_COLUMNS,
     plot_classic_dual_axis,
+    plot_multi_boxplot,
     plot_ridgeline,
     prepare_summary_data,
 )
@@ -58,23 +59,35 @@ def comparison_metrics_fragment():
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
         st.dataframe(summary, width="stretch")
 
-    # Summary plots: dual-axis bar/line + ridgeline density for the chosen metric
+    # Summary plots: the user picks the metric and which plot types to render
     available_metrics = [m for m in METRIC_COLUMNS if m in comparison_frame.columns]
     if available_metrics:
         st.markdown("---")
         st.subheader("Summary Plots")
-        metric = st.selectbox(
-            "Metric", options=available_metrics,
-            index=available_metrics.index(DEFAULTS.summary_metric) if DEFAULTS.summary_metric in available_metrics else 0,
-            key=f"{STATE_PREFIX}_summary_metric",
-        )
+        metric_col, types_col = st.columns(2)
+        with metric_col:
+            metric = st.selectbox(
+                "Metric", options=available_metrics,
+                index=available_metrics.index(DEFAULTS.summary_metric) if DEFAULTS.summary_metric in available_metrics else 0,
+                key=f"{STATE_PREFIX}_summary_metric",
+            )
+        with types_col:
+            selected_types = st.multiselect(
+                "Plot types", options=list(SUMMARY_PLOT_LABELS),
+                default=list(DEFAULTS.summary_plot_types),
+                format_func=lambda key: SUMMARY_PLOT_LABELS.get(key, key),
+                key=f"{STATE_PREFIX}_summary_plot_types",
+            )
+        renderers = {
+            "dual_axis": plot_classic_dual_axis,
+            "ridgeline": plot_ridgeline,
+            "multi_boxplot": plot_multi_boxplot,
+        }
         raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)
-        fig_dual = plot_classic_dual_axis(raw_frame, aggregated_frame, metric=metric)
-        st.pyplot(fig_dual)
-        plt.close(fig_dual)
-        fig_ridge = plot_ridgeline(raw_frame, aggregated_frame, metric=metric)
-        st.pyplot(fig_ridge)
-        plt.close(fig_ridge)
+        for plot_type in selected_types:
+            fig = renderers[plot_type](raw_frame, aggregated_frame, metric=metric)
+            st.pyplot(fig)
+            plt.close(fig)
 
 
 def render():
