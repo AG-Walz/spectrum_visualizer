@@ -78,9 +78,15 @@ def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
 # ============================================================================
 # Shared median-coloured two-panel scaffolding (ridgeline + multi-boxplot)
 # ============================================================================
+# Both renderers draw the same frame: a wide main panel (one row per peptidoform,
+# coloured by median) beside a narrow peptide-count sidebar, under a median
+# colorbar. _summary_panels builds the frame and pulls the shared per-peptidoform
+# arrays; _finalize_summary applies the shared axis dressing, sidebar, colorbar,
+# and title once a renderer has drawn its own row content. Only the middle drawing
+# loop (KDE ridge vs boxplot + points) differs between the two.
 
 # Count-sidebar bar colours — a warm orange that stays distinct from the RdYlGn
-# median colormap. Shared by the ridgeline and multi-boxplot sidebars.
+# median colormap.
 _COUNT_BAR_COLOR = "#E8945A"
 _COUNT_BAR_EDGE = "#D07030"
 # Median colour scale: high metric = green, low = red, fixed to the [0, 1] range
@@ -95,18 +101,42 @@ def _finite_values(raw_frame: pd.DataFrame, peptidoform: str, metric: str) -> np
     return values[np.isfinite(values)]
 
 
-def _two_panel_figure(figure_size, export_resolution):
-    """Build two y-shared panels — a wide main axis (5) plus a narrow count sidebar (1)."""
+def _summary_panels(aggregated_frame, figure_size, export_resolution, per_row):
+    """Build the shared two-panel figure and pull the per-peptidoform arrays.
+    Returns (fig, main_ax, bar_ax, peptidoforms, medians, counts): a wide main axis (5)
+    beside a narrow count sidebar (1) sharing the y-axis. figure_size defaults to 14 inches
+    wide by per_row inches per peptidoform. Arrays stay in prepare_summary_data's ascending-count order.
+    """
+    if figure_size is None:
+        figure_size = (14, _auto_height(len(aggregated_frame), per_row=per_row))
     fig, (main_ax, bar_ax) = plt.subplots(
         1, 2, figsize=figure_size, sharey=True,
         gridspec_kw={"width_ratios": [5, 1], "wspace": 0.03},
     )
     fig.set_dpi(export_resolution)
-    return fig, main_ax, bar_ax
+    return (
+        fig, main_ax, bar_ax,
+        aggregated_frame["peptidoform"].tolist(),
+        aggregated_frame["median"].to_numpy(dtype=float),
+        aggregated_frame["count"].to_numpy(),
+    )
 
 
-def _draw_count_sidebar(bar_ax, counts: np.ndarray) -> None:
-    """Fill the sidebar with one horizontal count bar per row (top row = highest count)."""
+def _finalize_summary(fig, main_ax, bar_ax, peptidoforms, counts, metric, xlim, ylim, title):
+    """Dress the figure once a renderer has drawn its rows: main-axis limits/labels, the
+    peptide-count sidebar, the median colorbar, and an optional figure title.
+    """
+    # === Main axis ===
+    main_ax.set_xlim(*xlim)
+    main_ax.set_ylim(*ylim)
+    main_ax.set_yticks(range(len(peptidoforms)))
+    main_ax.set_yticklabels(peptidoforms[::-1])  # y = 0 is the last (highest-count) peptidoform
+    main_ax.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
+    main_ax.tick_params(axis="y", length=0)
+    for side in ("top", "right", "left"):
+        main_ax.spines[side].set_visible(False)
+
+    # === Count sidebar (bar i aligns with main-axis row i, top row = highest count) ===
     bar_ax.barh(range(len(counts)), counts[::-1], height=0.6,
                 color=_COUNT_BAR_COLOR, alpha=0.8, edgecolor=_COUNT_BAR_EDGE, linewidth=0.5)
     bar_ax.set_xlabel("Peptide Count", fontsize=10, fontweight="bold")
@@ -114,9 +144,7 @@ def _draw_count_sidebar(bar_ax, counts: np.ndarray) -> None:
     for side in ("top", "right", "left"):
         bar_ax.spines[side].set_visible(False)
 
-
-def _draw_median_colorbar(fig: Figure, metric: str) -> None:
-    """Add the horizontal "Median <metric>" colorbar in the reserved bottom margin."""
+    # === Median colorbar ===
     fig.subplots_adjust(bottom=0.16)
     scalar_mappable = plt.cm.ScalarMappable(cmap=_MEDIAN_CMAP, norm=_MEDIAN_NORM)
     scalar_mappable.set_array([])
@@ -124,6 +152,9 @@ def _draw_median_colorbar(fig: Figure, metric: str) -> None:
     fig.colorbar(scalar_mappable, cax=cbar_ax, orientation="horizontal").set_label(
         f"Median {_metric_label(metric)}", fontsize=9,
     )
+
+    if title:
+        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
 
 
 # ============================================================================
@@ -151,20 +182,10 @@ def plot_ridgeline(
     descending count — and controls ridge order, colour, and the sidebar. Returns the
     Matplotlib Figure (DPI export_resolution) for the caller to save or close.
     """
-    peptidoform_count = len(aggregated_frame)
-    # Auto-size the figure height so every ridge gets vertical room; width is
-    # fixed at 14 inches.
-    if figure_size is None:
-        figure_size = (14, _auto_height(peptidoform_count, per_row=0.5))
-
-    # Pull the per-peptidoform columns into plain arrays — already ordered by
-    # descending count by prepare_summary_data.
-    peptidoforms = aggregated_frame["peptidoform"].tolist()
-    medians = aggregated_frame["median"].to_numpy(dtype=float)
-    counts = aggregated_frame["count"].to_numpy()
-
-    # Two panels sharing the y-axis: ridges on the left, a count sidebar on the right.
-    fig, ridge_ax, bar_ax = _two_panel_figure(figure_size, export_resolution)
+    # Shared two-panel scaffold + per-peptidoform arrays (ridges need more row room).
+    fig, ridge_ax, bar_ax, peptidoforms, medians, counts = _summary_panels(
+        aggregated_frame, figure_size, export_resolution, per_row=0.5)
+    peptidoform_count = len(peptidoforms)
 
     # === Ridges ===
     # Drawn bottom (highest count) to top (lowest count): aggregated row i sits on
@@ -199,21 +220,10 @@ def plot_ridgeline(
                               alpha=0.85, zorder=i)
         ridge_ax.plot(_RIDGE_GRID, ridge, color="white", linewidth=0.8, zorder=i)
 
-    ridge_ax.set_xlim(0.0, 1.0)
-    ridge_ax.set_ylim(-0.4, peptidoform_count - 1 + _RIDGE_HEIGHT + 0.4)
-    ridge_ax.set_yticks(range(peptidoform_count))
-    ridge_ax.set_yticklabels(peptidoforms[::-1])  # y = 0 is the last (highest-count) peptidoform
-    ridge_ax.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    ridge_ax.tick_params(axis="y", length=0)
-    for side in ("top", "right", "left"):
-        ridge_ax.spines[side].set_visible(False)
-
-    # Count sidebar (bar i aligns with ridge i) + median colorbar.
-    _draw_count_sidebar(bar_ax, counts)
-    _draw_median_colorbar(fig, metric)
-
-    if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
+    # Ridges overlap upward by _RIDGE_HEIGHT, so the top row needs extra headroom.
+    _finalize_summary(fig, ridge_ax, bar_ax, peptidoforms, counts, metric,
+                      xlim=(0.0, 1.0), ylim=(-0.4, peptidoform_count - 1 + _RIDGE_HEIGHT + 0.4),
+                      title=title)
     return fig
 
 
@@ -242,21 +252,12 @@ def plot_multi_boxplot(
     the ridgeline layout: raw_frame supplies the per-psm values, aggregated_frame holds one row
     per peptidoform ordered by descending count. Returns the Matplotlib Figure for the caller.
     """
-    peptidoform_count = len(aggregated_frame)
-    # Auto-size the figure height so every box gets a row; width is fixed at 14
-    # inches. Boxes need less vertical room than ridges, so pack them tighter.
-    if figure_size is None:
-        figure_size = (14, _auto_height(peptidoform_count, per_row=0.4))
-
-    # Per-peptidoform columns, already ordered ascending by count by prepare_summary_data.
-    peptidoforms = aggregated_frame["peptidoform"].tolist()
-    medians = aggregated_frame["median"].to_numpy(dtype=float)
-    counts = aggregated_frame["count"].to_numpy()
+    # Shared two-panel scaffold + per-peptidoform arrays (boxes pack tighter than ridges).
+    fig, box_ax, bar_ax, peptidoforms, medians, counts = _summary_panels(
+        aggregated_frame, figure_size, export_resolution, per_row=0.4)
+    peptidoform_count = len(peptidoforms)
     # Seeded jitter so repeated renders of the same data are pixel-stable.
     rng = np.random.default_rng(0)
-
-    # Two panels sharing the y-axis: boxplots on the left, a count sidebar on the right.
-    fig, box_ax, bar_ax = _two_panel_figure(figure_size, export_resolution)
 
     # === Boxplots ===
     # Position 0 sits at the bottom; draw the highest-count peptidoform there so the
@@ -281,21 +282,10 @@ def plot_multi_boxplot(
         box_ax.scatter(values, position + jitter, s=8, color=_BOX_POINT_COLOR,
                        alpha=0.5, linewidths=0, zorder=3)
 
-    box_ax.set_xlim(-0.02, 1.02)
-    box_ax.set_ylim(-0.6, peptidoform_count - 0.4)
-    box_ax.set_yticks(range(peptidoform_count))
-    box_ax.set_yticklabels(peptidoforms[::-1])  # y = 0 is the last (highest-count) peptidoform
-    box_ax.set_xlabel(_metric_label(metric), fontsize=11, fontweight="bold")
-    box_ax.tick_params(axis="y", length=0)
-    for side in ("top", "right", "left"):
-        box_ax.spines[side].set_visible(False)
-
-    # Count sidebar (bar i aligns with box i) + median colorbar.
-    _draw_count_sidebar(bar_ax, counts)
-    _draw_median_colorbar(fig, metric)
-
-    if title:
-        fig.suptitle(title, fontsize=13, fontweight="bold", y=0.99)
+    # Slight x padding so boxes touching 0 or 1 aren't clipped at the spine.
+    _finalize_summary(fig, box_ax, bar_ax, peptidoforms, counts, metric,
+                      xlim=(-0.02, 1.02), ylim=(-0.6, peptidoform_count - 0.4),
+                      title=title)
     return fig
 
 
