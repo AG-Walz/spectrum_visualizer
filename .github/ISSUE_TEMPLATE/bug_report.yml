@@ -1,0 +1,48 @@
+name: Bug report
+description: Report something that is broken or incorrect in MSpecViz
+title: "[Bug]: "
+labels: bug
+
+body:
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description of the bug
+      description: A clear and concise description of what the bug is and what you expected to happen instead.
+      placeholder: When I clicked '...', I expected '...' but instead '...' happened.
+    validations:
+      required: true
+
+  - type: textarea
+    id: command_used
+    attributes:
+      label: Steps to reproduce, session snapshot and terminal output
+      description: |
+        How can we reproduce the problem? If you used the in-app "Report a bug" button, a JSON snapshot of your
+        settings (and the last error, if any) is filled in below — please keep it and add any terminal output.
+      placeholder: |
+        1. Go to '...'
+        2. Click on '...'
+        3. See error
+
+        <paste any terminal traceback here>
+
+  - type: textarea
+    id: files
+    attributes:
+      label: Relevant files
+      description: |
+        Drag and drop any relevant files here (idXML, mzML, the downloaded `mspecviz_bug_report.json`, screenshots).
+        Create a `.zip` archive if the extension is not allowed.
+
+  - type: textarea
+    id: system
+    attributes:
+      label: System information
+      description: |
+        Environment details. The "Report a bug" button fills this in automatically; otherwise please provide:
+        * MSpecViz version
+        * Python version _(eg. 3.11.14)_
+        * Operating system / platform
+        * Versions of key packages _(streamlit, openms_insight, pyopenms, psm_utils, polars, plotly)_

@@ -21,6 +21,7 @@ GIST_TIMEOUT_SECONDS = 15
 # equivalent of R's sessionInfo() that the AG-Walz template asks for).
 REPORTED_PACKAGES = (
     "streamlit",
+    "openms_insight",
     "pyopenms",
     "psm_utils",
     "polars",
@@ -32,6 +33,36 @@ REPORTED_PACKAGES = (
 # Lists/tuples longer than this are summarized rather than expanded element by
 # element — a bug report does not need thousands of "<PSM>" placeholders.
 MAX_CONTAINER_ITEMS = 100
+
+# Settings worth capturing in the compact snapshot — the inputs that shape a run.
+# Everything else in session_state (DataFrames, peak arrays, PSM objects, widget
+# state) is either too large or diagnostically irrelevant.
+SNAPSHOT_SETTING_KEYS = (
+    "selected_idxmls",
+    "selected_mzmls",
+    "target_peptides",
+    "reference_substring",
+    "ion_types",
+    "mz_tolerance",
+    "add_neutral_losses",
+    "intensity_mode",
+    "workers",
+    "koina_enabled",
+    "koina_model",
+    "koina_collision_energy",
+    "koina_instrument_type",
+    "image_format",
+)
+
+# Path-list settings collapse to a count + basenames (drop absolute dirs: smaller
+# and avoids leaking server paths); long peptide lists collapse to a sample.
+PATH_LIST_KEYS = ("selected_idxmls", "selected_mzmls")
+SNAPSHOT_SAMPLE_SIZE = 10
+SNAPSHOT_SCHEMA = "mspecviz-bugreport/1"
+
+# Conservative ceiling on the pre-filled issue URL. GitHub's edge rejects URLs
+# past ~8 KB with HTTP 414, so we stay well under to leave room for encoding.
+MAX_PREFILL_URL_BYTES = 7000
 
 
 def sanitize_for_json(value: Any) -> Any:
@@ -127,11 +158,63 @@ def build_session_snapshot(
     session_state: Mapping[str, Any],
     environment: Mapping[str, Any],
 ) -> dict[str, Any]:
-    """Assemble the downloadable bug-report payload (environment + state)."""
+    """Assemble the full downloadable bug-report payload (environment + state)."""
     return {
         "environment": dict(environment),
         "session_state": sanitize_for_json(dict(session_state)),
     }
+
+
+def _summarize_paths(paths: Any) -> Any:
+    """Collapse a list of file paths to a count plus basenames (capped)."""
+    if not isinstance(paths, (list, tuple)):
+        return sanitize_for_json(paths)
+    names = [Path(path).name for path in paths]
+    if len(names) > SNAPSHOT_SAMPLE_SIZE:
+        names = names[:SNAPSHOT_SAMPLE_SIZE] + [f"...+{len(paths) - SNAPSHOT_SAMPLE_SIZE} more"]
+    return {"count": len(paths), "names": names}
+
+
+def _summarize_peptides(peptides: Any) -> Any:
+    """Collapse target peptides (list or newline-separated string) to count + sample."""
+    if isinstance(peptides, str):
+        peptides = [line.strip() for line in peptides.splitlines() if line.strip()]
+    if not isinstance(peptides, (list, tuple)):
+        return sanitize_for_json(peptides)
+    return {"count": len(peptides), "sample": list(peptides[:SNAPSHOT_SAMPLE_SIZE])}
+
+
+def build_compact_snapshot(
+    environment: Mapping[str, Any],
+    settings: Mapping[str, Any],
+    status: Mapping[str, Any] | None = None,
+    error: Mapping[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Assemble a small, inline-friendly snapshot (environment + curated settings).
+
+    Path lists collapse to basenames and long peptide lists to a sample, so the
+    JSON stays a few KB — small enough to embed directly in the issue URL.
+    """
+    captured: dict[str, Any] = {}
+    for key in SNAPSHOT_SETTING_KEYS:
+        if key not in settings:
+            continue
+        if key in PATH_LIST_KEYS:
+            captured[key] = _summarize_paths(settings[key])
+        elif key == "target_peptides":
+            captured[key] = _summarize_peptides(settings[key])
+        else:
+            captured[key] = sanitize_for_json(settings[key])
+    snapshot: dict[str, Any] = {
+        "schema": SNAPSHOT_SCHEMA,
+        "environment": dict(environment),
+        "settings": captured,
+    }
+    if status:
+        snapshot["status"] = sanitize_for_json(dict(status))
+    if error:
+        snapshot["error"] = sanitize_for_json(dict(error))
+    return snapshot
 
 
 def create_snapshot_gist(
@@ -164,25 +247,36 @@ def create_snapshot_gist(
 def build_bug_report_url(
     repo: str,
     system_info: str,
+    snapshot_json: str | None = None,
     gist_url: str | None = None,
-) -> str:
-    """Build a pre-filled GitHub URL for the AG-Walz bug_report.yml issue form.
+    max_url_bytes: int = MAX_PREFILL_URL_BYTES,
+) -> tuple[str, bool]:
+    """Build a pre-filled URL for the AG-Walz bug_report.yml issue form.
 
-    Query keys match the template's field ids (`description`, `system`, `files`).
-    When gist_url is given, the `files` field links the auto-uploaded snapshot;
-    otherwise it instructs the reporter to drag in the downloaded file.
+    Query keys match the template's field ids (`command_used`, `files`,
+    `system`). The required `description` field is left empty on purpose — its
+    template `placeholder` prompts the user, and an unfilled required field
+    blocks accidental stub submissions. The compact snapshot is inlined into
+    `command_used` (fenced as a ```json block so it renders monospace) when it
+    fits; if the URL would risk GitHub's ~8 KB limit it is dropped and the
+    returned flag is False. NOTE: the form must live on the repo's DEFAULT
+    branch — GitHub resolves `?template=` only there, otherwise it shows a blank
+    form and silently drops every field. `labels` is omitted (template declares it).
     """
+    fields = {
+        "template": "bug_report.yml",
+        "system": system_info,
+    }
     if gist_url:
-        files = f"Full session snapshot (auto-uploaded): {gist_url}"
+        fields["files"] = f"Full session snapshot (auto-uploaded): {gist_url}"
     else:
-        files = "Attach the downloaded mspecviz_bug_report.json here (drag & drop)."
-    query = urllib.parse.urlencode(
-        {
-            "template": "bug_report.yml",
-            "labels": "bug",
-            "description": "Describe the bug here.\n",
-            "system": system_info,
-            "files": files,
-        }
-    )
-    return f"https://github.com/{repo}/issues/new?{query}"
+        fields["files"] = "Drag any relevant files here (e.g. the downloaded snapshot)."
+
+    base = f"https://github.com/{repo}/issues/new"
+    if snapshot_json:
+        fenced = f"```json\n{snapshot_json}\n```"
+        with_snapshot = dict(fields, command_used=fenced)
+        url = f"{base}?{urllib.parse.urlencode(with_snapshot)}"
+        if len(url.encode("utf-8")) <= max_url_bytes:
+            return url, True
+    return f"{base}?{urllib.parse.urlencode(fields)}", False
