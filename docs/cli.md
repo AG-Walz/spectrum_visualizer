@@ -47,8 +47,9 @@ peptide_source: /path/to/peptides.txt   # file (one peptide/line) or inline [PEP
 
 Notes that don't fit in inline comments:
 
-- `summary_metric` must be a key in `core/plotting/summary.py:METRIC_COLUMNS`.
-- `summary_plot_types` accepts a subset of `{dual_axis, ridgeline}` — no other type
+- `summary_metrics` entries must each be a key in `core/plotting/summary.py:METRIC_COLUMNS`;
+  one set of summary plots is generated per listed measure.
+- `summary_plot_types` accepts a subset of `{ridgeline, multi_boxplot}` — no other type
   is implemented (see [Export → plots](export.md#plots)).
 - `peptide_source` peptides are uppercased and whitespace-stripped before lookup.
 

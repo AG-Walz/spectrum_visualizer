@@ -1,4 +1,4 @@
-"""Unit tests for core.plotting.summary (dual-axis + ridgeline summary renderers)."""
+"""Unit tests for core.plotting.summary (ridgeline + multi-boxplot renderers)."""
 from pathlib import Path
 
 import numpy as np
@@ -81,7 +81,7 @@ class TestSummaryPlotsFromCsv:
             source=str(summary_csv),
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis"],
+            plot_types=["ridgeline"],
         )
         assert len(results) > 0
         for plot_type, paths in results.items():
@@ -94,10 +94,36 @@ class TestSummaryPlotsFromCsv:
             source=frame,
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis", "ridgeline"],
+            plot_types=["ridgeline", "multi_boxplot"],
         )
-        assert "dual_axis" in results
         assert "ridgeline" in results
+        assert "multi_boxplot" in results
+
+    def test_multiple_metrics_write_one_file_each(self, tmp_path):
+        # One boxplot per measure (issue #82): two metrics -> two distinct files.
+        frame = _make_summary_frame(n_peptides=3, n_reps=5)
+        results = generate_all_summary_plots(
+            source=frame,
+            output_dir=str(tmp_path),
+            formats=["png"],
+            metrics=["R² binned", "Cosine"],
+            plot_types=["multi_boxplot"],
+        )
+        boxplots = sorted((tmp_path / "summary").glob("multi_boxplot_*.png"))
+        assert {p.name for p in boxplots} == {"multi_boxplot_r2_binned.png", "multi_boxplot_cosine.png"}
+        assert len(results["multi_boxplot"]) == 2
+
+    def test_unknown_metric_skipped(self, tmp_path):
+        # A metric absent from the table is logged and skipped, not raised.
+        frame = _make_summary_frame()
+        results = generate_all_summary_plots(
+            source=frame,
+            output_dir=str(tmp_path),
+            formats=["png"],
+            metrics=["Cosine", "NopeMetric"],
+            plot_types=["ridgeline"],
+        )
+        assert len(results["ridgeline"]) == 1
 
     def test_summary_subdir_created(self, tmp_path):
         frame = _make_summary_frame()
@@ -105,6 +131,6 @@ class TestSummaryPlotsFromCsv:
             source=frame,
             output_dir=str(tmp_path),
             formats=["png"],
-            plot_types=["dual_axis"],
+            plot_types=["ridgeline"],
         )
         assert (tmp_path / "summary").exists()

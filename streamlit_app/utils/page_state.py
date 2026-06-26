@@ -30,6 +30,13 @@ logger = logging.getLogger(__name__)
 
 ANALYSIS_CACHE_DIR = "analysis_cache"
 
+# Friendly labels for the summary plot-type keys stored in run_settings —
+# shared by the Export controls and the Explore plot picker.
+SUMMARY_PLOT_LABELS = {
+    "ridgeline": "Ridgeline density",
+    "multi_boxplot": "Boxplot",
+}
+
 # Keys whose values are Polars LazyFrames (saved as Parquet)
 _LAZYFRAME_KEYS = ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame")
 

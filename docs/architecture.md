@@ -66,8 +66,8 @@ loader auto-detects the offset.
 **`core/plotting/`** — one mirror renderer (`mirror.py`, branching Matplotlib vs.
 Plotly), the picklable parallel plot worker (`plot_worker.py`), and summary plots
 (`summary.py`). Two rationale notes: pyopenms-viz' `plot_spectrum` was abandoned
-because it scrambles ion colouring when ion types interleave; and only `dual_axis`
-and `ridgeline` summary plots exist — the Explore-tab Heatmap is a separate
+because it scrambles ion colouring when ion types interleave; and only `ridgeline`
+and `multi_boxplot` summary plots exist — the Explore-tab Heatmap is a separate
 interactive widget, never exported (see [export.md → plots](export.md#plots)).
 
 **`core/pipeline/`** — the glue the CLI and Streamlit share. Any feature that must
