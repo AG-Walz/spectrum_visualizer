@@ -13,14 +13,17 @@ from __future__ import annotations
 
 import functools
 import json
+import logging
 import os
 import shutil
 import tempfile
 import traceback
+from collections import deque
 from pathlib import Path
 from typing import Any
 
 import streamlit as st
+from streamlit.runtime.scriptrunner import get_script_run_ctx
 
 from core import __version__
 from core.bug_report import build_issue_url, build_snapshot
@@ -288,6 +291,10 @@ def _render_workspace_switcher(params: dict) -> None:
 
 def page_setup(page: str = "") -> dict[str, Any]:
     """Initialise settings, page config, workspace, and sidebar — call once at the top of every view."""
+    # Terminal-error capture: attach the session log collector once per process so
+    # the bug report can surface errors logged anywhere this session.
+    _install_terminal_log_collector()
+
     # Settings: lazy-load settings.json into session_state on first call
     if "settings" not in st.session_state:
         settings_path = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
@@ -353,21 +360,60 @@ def capture_last_error(func):
     return wrapper
 
 
+# Session terminal-error log: a root-logger handler stashes ERROR+ records into the
+# active session's ring buffer, so the bug report surfaces every error logged to the
+# terminal this session — not just the last decorated-action exception.
+TERMINAL_LOG_KEY = "terminal_log"
+_TERMINAL_LOG_MAXLEN = 10        # keep the most recent errors; tracebacks are bulky
+_TERMINAL_LOG_RECORD_CHARS = 2000  # cap each record so one trace can't dominate the URL
+
+
+class _SessionLogCollector(logging.Handler):
+    """Route ERROR+ log records into the active Streamlit session's ring buffer.
+    Records logged outside a script run (startup, ProcessPool workers) have no
+    session context attached, so they are dropped rather than misfiled."""
+    def emit(self, record: logging.LogRecord) -> None:
+        if get_script_run_ctx() is None:
+            return  # no active session on this thread — nothing to attach to
+        try:
+            message = self.format(record)[:_TERMINAL_LOG_RECORD_CHARS]
+            key = get_state_key(TERMINAL_LOG_KEY)
+            buffer = st.session_state.get(key)
+            if buffer is None:
+                buffer = deque(maxlen=_TERMINAL_LOG_MAXLEN)
+                st.session_state[key] = buffer
+            buffer.append(message)
+        except Exception:
+            pass  # logging the error must never itself raise
+
+
+def _install_terminal_log_collector() -> None:
+    """Attach the session log collector to the root logger exactly once per process."""
+    root = logging.getLogger()
+    if any(isinstance(handler, _SessionLogCollector) for handler in root.handlers):
+        return
+    handler = _SessionLogCollector()
+    handler.setLevel(logging.ERROR)
+    handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s"))
+    root.addHandler(handler)
+
+
 def _render_bug_report(page: str) -> None:
     """Render the 'Report a bug / request a feature' expander, pre-filling a GitHub
     issue with a tiny snapshot: workspace (a pointer to the server-side params.json),
-    page, and the last captured error."""
+    page, the last captured error, and any errors logged to the terminal this session."""
     repo = st.session_state.settings.get("bug_report_repo", "AG-Walz/spectrum_visualizer")
     workspace = st.session_state.workspace.name
     error = st.session_state.get(get_state_key("last_error"))
+    terminal_log = list(st.session_state.get(get_state_key(TERMINAL_LOG_KEY), []))
 
     bug_url, inlined = build_issue_url(
         repo, "bug_report.yml",
-        json.dumps(build_snapshot(workspace, page, error), indent=2, default=str),
+        build_snapshot(workspace, page, error, terminal_log),
     )
     feature_url, _ = build_issue_url(
         repo, "feature_request.yml",
-        json.dumps(build_snapshot(workspace, page), indent=2, default=str),
+        build_snapshot(workspace, page),
     )
 
     with st.expander("🐞 **Report a bug / request a feature**"):
@@ -375,7 +421,7 @@ def _render_bug_report(page: str) -> None:
         st.link_button("🐞 Report a bug", bug_url, use_container_width=True)
         st.link_button("💡 Request a feature", feature_url, use_container_width=True)
         if not inlined:
-            st.warning("The captured error is too large to embed — please paste it into the issue instead.")
+            st.warning("Some captured context was too large to embed — please paste any terminal errors into the issue.")
 
 
 def render_sidebar(page: str = "") -> dict[str, Any]:

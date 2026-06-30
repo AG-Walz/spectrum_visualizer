@@ -18,11 +18,5 @@ body:
     attributes:
       label: Session snapshot
       description: |
-        Auto-filled by the in-app "Report a bug" button — the workspace, page, and last error.
+        Auto-filled by the in-app "Report a bug" button — the workspace, page, and any errors logged this session.
         Please keep it; maintainers use the workspace to look up your exact settings on the server.
-
-  - type: textarea
-    id: files
-    attributes:
-      label: Relevant files
-      description: Drag any relevant files here (idXML, mzML, screenshots). Zip them if the extension is blocked.

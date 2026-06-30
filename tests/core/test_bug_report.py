@@ -12,30 +12,46 @@ def _query(url):
     return dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
 
 
-def test_build_snapshot_carries_workspace_page_and_error():
-    snap = build_snapshot("proca_run", "Load & Annotate", error="Traceback...")
+def test_build_snapshot_carries_workspace_page_error_and_terminal_log():
+    snap = build_snapshot(
+        "proca_run", "Load & Annotate",
+        error="Traceback...", terminal_log=["ERROR core.x: boom"],
+    )
     assert snap == {
         "workspace": "proca_run",
         "page": "Load & Annotate",
         "error": "Traceback...",
+        "terminal_log": ["ERROR core.x: boom"],
     }
-    assert "error" not in build_snapshot("default", "Setup")  # omitted when absent
+    bare = build_snapshot("default", "Setup")  # both optional fields omitted when absent
+    assert "error" not in bare and "terminal_log" not in bare
 
 
 def test_build_issue_url_inlines_snapshot_fenced():
-    url, inlined = build_issue_url("o/r", "bug_report.yml", '{"a": 1}')
-    assert inlined is True
+    url, complete = build_issue_url("o/r", "bug_report.yml", {"workspace": "ws", "page": "Setup"})
+    assert complete is True
     q = _query(url)
     assert q["template"] == "bug_report.yml"
     context = q["context"]
-    assert '{"a": 1}' in context  # snapshot present, fenced as a json block
+    assert '"workspace": "ws"' in context  # snapshot present, fenced as a json block
     assert context.startswith("```json") and context.endswith("```")
 
 
-def test_build_issue_url_drops_oversized_snapshot():
-    big = '{"x": "' + "z" * 9000 + '"}'  # blows past the URL byte budget
-    url, inlined = build_issue_url("o/r", "bug_report.yml", big)
-    assert inlined is False
+def test_build_issue_url_drops_terminal_log_first_to_keep_workspace_pointer():
+    # A huge terminal_log blows the budget; it is shed first so the workspace
+    # pointer (the whole point of the report) still inlines.
+    snapshot = {"workspace": "ws", "page": "Setup", "terminal_log": ["z" * 9000]}
+    url, complete = build_issue_url("o/r", "bug_report.yml", snapshot)
+    assert complete is False
+    assert len(url.encode("utf-8")) <= bug_report.MAX_PREFILL_URL_BYTES
+    context = _query(url)["context"]
+    assert '"workspace": "ws"' in context and "terminal_log" not in context
+
+
+def test_build_issue_url_drops_snapshot_entirely_when_even_pointer_overflows():
+    huge = {"workspace": "z" * 9000, "page": "Setup"}  # not droppable, can't fit
+    url, complete = build_issue_url("o/r", "bug_report.yml", huge)
+    assert complete is False
     assert "context" not in _query(url)
     assert len(url.encode("utf-8")) <= bug_report.MAX_PREFILL_URL_BYTES
 
