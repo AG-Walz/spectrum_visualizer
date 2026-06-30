@@ -53,6 +53,34 @@ class TestBuildMzmlToMatchesMap:
         result = build_mzml_to_matches_map(grouped, available)
         assert result == {}
 
+    def test_pre_resolved_path_mismatch_falls_back_to_unique_stem(self):
+        # mzml_resolved_path is a relative/stale path that does NOT canonicalize into
+        # `available`, so the pre-resolved branch misses; the unique stem match still
+        # resolves the PSM. This is the load-bearing fallback that protects against
+        # path-canonicalization drift between the lookup and streaming stages — the
+        # invariant any future shared-resolver refactor must preserve.
+        available = {_resolved_key("/data/sample.mzML"): Path("/data/sample.mzML")}
+        grouped = {"PEPTIDEK": PSMList(psm_list=[
+            _psm("sample", mzml_resolved="sample.mzML"),  # relative -> different key
+        ])}
+        result = build_mzml_to_matches_map(grouped, available)
+        assert set(result) == set(available)
+        assert sum(len(matches) for matches in result.values()) == 1
+
+    def test_ambiguous_stem_resolves_to_colocated_mzml(self):
+        # Stem "sample" maps to two files; the idXML is co-located with the pac/ one,
+        # so the PSM resolves there rather than being dropped (the success path that
+        # complements test_ambiguous_stem_fallback_dropped_without_colocation).
+        available = {
+            _resolved_key("/illumina/sample.mzML"): Path("/illumina/sample.mzML"),
+            _resolved_key("/pac/sample.mzML"): Path("/pac/sample.mzML"),
+        }
+        grouped = {"PEPTIDEK": PSMList(psm_list=[
+            _psm("sample", idxml_path="/pac/sample.idXML"),
+        ])}
+        result = build_mzml_to_matches_map(grouped, available)
+        assert set(result) == {_resolved_key("/pac/sample.mzML")}
+
 
 @pytest.mark.integration
 class TestLoadRealSpectra:
