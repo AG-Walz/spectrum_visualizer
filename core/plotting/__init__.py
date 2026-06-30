@@ -5,6 +5,7 @@ from core.plotting.mirror import create_spectrum_plot
 from core.plotting.plot_worker import ComparisonTask, process_single_task
 from core.plotting.summary import (
     METRIC_COLUMNS,
+    SUMMARY_RENDERERS,
     generate_all_summary_plots,
     plot_multi_boxplot,
     plot_ridgeline,
@@ -19,6 +20,7 @@ __all__ = [
     "create_spectrum_plot",
     # summary — metric columns + per-renderer + end-to-end summary pipeline
     "METRIC_COLUMNS",
+    "SUMMARY_RENDERERS",
     "generate_all_summary_plots",
     "plot_multi_boxplot",
     "plot_ridgeline",

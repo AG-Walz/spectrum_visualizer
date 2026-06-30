@@ -28,7 +28,9 @@ def display_lookup_results(peptidoform_psms: dict) -> None:
             "psm_count": "PSMs", "idxml_files": "idXML Files",
             "mzml_resolved": "mzML Resolved", "unresolved": "Unresolved",
         })
-        display_frame = display_frame.drop(columns=["display_label"], errors="ignore")
+        # `sources` (distinct source-folder count) feeds the source-aware idXML
+        # counting but isn't surfaced as its own column — drop it from the view.
+        display_frame = display_frame.drop(columns=["display_label", "sources"], errors="ignore")
         st.dataframe(display_frame, width="stretch", hide_index=True)
 
 

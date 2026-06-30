@@ -343,8 +343,9 @@ def prepare_summary_data(
     return raw_frame, agg
 
 
-# Maps each summary plot-type key to its renderer function.
-_SUMMARY_RENDERERS = {
+# Maps each summary plot-type key to its renderer function. Public so the
+# Streamlit explore view dispatches through the same single source of truth.
+SUMMARY_RENDERERS = {
     "ridgeline": plot_ridgeline,
     "multi_boxplot": plot_multi_boxplot,
 }
@@ -387,7 +388,7 @@ def generate_all_summary_plots(
         logger.info(f"Summary data: {len(aggregated_frame)} peptidoforms, {len(raw_frame)} rows, metric={metric}")
 
         for plot_type in plot_types:
-            renderer = _SUMMARY_RENDERERS.get(plot_type)
+            renderer = SUMMARY_RENDERERS.get(plot_type)
             if renderer is None:
                 logger.warning("Unknown plot type: %s (skipping)", plot_type)
                 continue

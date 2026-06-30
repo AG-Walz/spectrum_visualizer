@@ -141,14 +141,30 @@ def _index_mzml_paths(
     Returns (by_dir, by_stem): by_dir maps a parent directory to its
     {stem_lower: path}; by_stem maps a stem to every path sharing it (so the
     fallback can tell a unique stem from one that's ambiguous across folders).
+
+    by_stem candidates are kept distinct by (stem, file size) so the same dataset
+    selected twice doesn't look ambiguous: a stale path to a deleted file is
+    dropped when a real copy shares its stem, and same-size duplicates collapse to
+    one — while genuinely different same-name files (different sizes) stay separate
+    and still refuse to guess (bug #85).
     """
+    existing_stems = {Path(p).stem.lower() for p in mzml_paths if Path(p).exists()}
     by_dir: Dict[str, Dict[str, str]] = {}
     by_stem: Dict[str, List[str]] = {}
+    seen: Set[Tuple[str, object]] = set()
     for path in mzml_paths:
         parsed = Path(path)
         stem = parsed.stem.lower()
+        try:
+            signature = parsed.stat().st_size  # size is a free content proxy
+        except OSError:
+            if stem in existing_stems:
+                continue                       # stale path shadowed by a real copy
+            signature = path                   # missing & unshadowed: keep as-is
         by_dir.setdefault(str(parsed.parent), {})[stem] = path
-        by_stem.setdefault(stem, []).append(path)
+        if (stem, signature) not in seen:
+            seen.add((stem, signature))
+            by_stem.setdefault(stem, []).append(path)
     return by_dir, by_stem
 
 
