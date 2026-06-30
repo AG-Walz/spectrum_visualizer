@@ -80,7 +80,7 @@ name. Filenames pass through `sanitize_filename`.
 
 **Summary plots** — run-wide aggregations in `{run}/summary/`, by
 `core/plotting/summary.py:generate_all_summary_plots`. Only two types exist
-(`_SUMMARY_RENDERERS`): `ridgeline` (per-peptidoform KDE of the chosen metric) and
+(`SUMMARY_RENDERERS`): `ridgeline` (per-peptidoform KDE of the chosen metric) and
 `multi_boxplot` (one horizontal boxplot per peptidoform with every data point). One
 set is rendered per measure in `summary_metrics`, each saved as
 `<plot_type>_<metric_slug>.<format>` (e.g. `multi_boxplot_cosine.png`).

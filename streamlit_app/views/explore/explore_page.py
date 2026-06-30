@@ -14,8 +14,7 @@ from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
 from core.defaults import DEFAULTS
 from core.plotting import (
     METRIC_COLUMNS,
-    plot_multi_boxplot,
-    plot_ridgeline,
+    SUMMARY_RENDERERS,
     prepare_summary_data,
 )
 
@@ -54,13 +53,9 @@ def comparison_metrics_fragment():
                 format_func=lambda key: SUMMARY_PLOT_LABELS.get(key, key),
                 key=f"{STATE_PREFIX}_summary_plot_types",
             )
-        renderers = {
-            "ridgeline": plot_ridgeline,
-            "multi_boxplot": plot_multi_boxplot,
-        }
         raw_frame, aggregated_frame = prepare_summary_data(comparison_frame, metric=metric)
         for plot_type in selected_types:
-            fig = renderers[plot_type](raw_frame, aggregated_frame, metric=metric)
+            fig = SUMMARY_RENDERERS[plot_type](raw_frame, aggregated_frame, metric=metric)
             st.pyplot(fig)
             plt.close(fig)
         st.markdown("---")
