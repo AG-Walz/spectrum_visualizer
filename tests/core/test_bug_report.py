@@ -5,7 +5,7 @@ from pathlib import Path
 import yaml
 
 import core.bug_report as bug_report
-from core.bug_report import SNAPSHOT_SCHEMA, build_issue_url, build_snapshot
+from core.bug_report import build_issue_url, build_snapshot
 
 
 def _query(url):
@@ -15,7 +15,6 @@ def _query(url):
 def test_build_snapshot_carries_workspace_page_and_error():
     snap = build_snapshot("proca_run", "Load & Annotate", error="Traceback...")
     assert snap == {
-        "schema": SNAPSHOT_SCHEMA,
         "workspace": "proca_run",
         "page": "Load & Annotate",
         "error": "Traceback...",
