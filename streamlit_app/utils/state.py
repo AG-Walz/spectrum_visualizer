@@ -296,15 +296,28 @@ def _render_workspace_switcher(params: dict) -> None:
 
 @st.fragment(run_every=5)
 def _render_resource_monitor() -> None:
-    """Top-right chip showing point-in-time system CPU/RAM use; self-refreshes every 5s.
+    """Point-in-time system CPU/RAM pinned into the top-right header strip; self-refreshes every 5s.
     Silent when psutil is absent (optional dependency)."""
     if psutil is None:
         return
     memory = psutil.virtual_memory()
-    _, chip = st.columns([4, 1])
-    chip.caption(
-        f"🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% · 🧠 RAM {memory.percent:.0f}% "
-        f"({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)"
+    st.markdown(
+        f"""
+        <div class="mspecviz-resource-monitor">🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% &middot; 🧠 RAM {memory.percent:.0f}% ({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)</div>
+        <style>
+        .mspecviz-resource-monitor {{
+            position: fixed;
+            top: 0.7rem;
+            right: 7.5rem;
+            z-index: 1000000;
+            font-size: 0.8rem;
+            white-space: nowrap;
+            color: rgba(128, 128, 128, 0.95);
+            pointer-events: none;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
 
 
