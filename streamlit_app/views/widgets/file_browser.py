@@ -177,6 +177,28 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
     st.session_state[state_key] = merged_selections
 
 
+def _render_selected_files(key_prefix: str, keys: dict, state_key: str) -> None:
+    """List each selected file with an individual remove (✕) button; no-op when none are selected."""
+    selected = st.session_state.get(state_key, [])
+    if not selected:
+        return
+    st.caption(f"Selected files ({len(selected)})")
+    # One row per file: name on the left, a small remove button on the right. The full
+    # path goes in the button tooltip so files that share a basename stay distinguishable.
+    for index, path in enumerate(selected):
+        name_col, remove_col = st.columns([8, 1])
+        with name_col:
+            st.write(Path(path).name)
+        with remove_col:
+            if st.button("✕", key=f"{key_prefix}_remove_{index}", help=path):
+                st.session_state[state_key] = [p for p in selected if p != path]
+                # Force the multiselect + select-all to re-initialise from the trimmed list
+                # rather than re-adding the removed file from their retained widget state.
+                st.session_state.pop(f"{key_prefix}_files", None)
+                st.session_state.pop(keys["select_all"], None)
+                st.rerun()
+
+
 def _render_clear_all(key_prefix: str, keys: dict, state_key: str) -> None:
     """Render the 'Clear all selections' button when at least one file is selected."""
     all_selected = st.session_state.get(state_key, [])
@@ -213,4 +235,5 @@ def render_directory_browser(
                             key=keys["recursive"],
                             help="Scan all subdirectories for matching files")
     _render_file_picker(key_prefix, keys, state_key, current_dir, extensions, recursive)
+    _render_selected_files(key_prefix, keys, state_key)
     _render_clear_all(key_prefix, keys, state_key)
