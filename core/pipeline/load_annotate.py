@@ -429,7 +429,14 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                 task_id += 1
                 metrics_text = format_metrics_text(compute_all_metrics(query_frame, reference_frame))
                 query_label, reference_label = format_spectrum_labels(query_psm, reference_psm)
-                safe_filename = sanitize_fn(f"{query_src}_vs_{source_label(reference_psm)}")
+                # Include both spectrum ids so every (query PSM, reference PSM) pair gets its
+                # own file. source_label is only the run name, so multiple PSMs of one peptide
+                # in the same file pair would otherwise collide onto one PNG and overwrite each
+                # other — leaving fewer PNGs than comparison rows / boxplot points.
+                safe_filename = sanitize_fn(
+                    f"{query_src}_{query_psm.spectrum_id}"
+                    f"_vs_{source_label(reference_psm)}_{reference_psm.spectrum_id}"
+                )
                 html_path = (
                     str(Path(html_dir) / folder_name / f"{safe_filename}.html")
                     if html_dir else ""
@@ -453,7 +460,7 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                 query_frame=query_frame, reference_frame=None,
                 query_label=f"{query_src} (RT: {query_psm.retention_time:.1f})", reference_label="",
                 plot_title=plot_title, folder_name=folder_name,
-                safe_filename=sanitize_fn(query_src),
+                safe_filename=sanitize_fn(f"{query_src}_{query_psm.spectrum_id}"),
                 png_dir=png_dir, svg_dir=svg_dir, pdf_dir=pdf_dir,
                 export_formats=[f for f in export_formats if f != "html"],
                 figure_size=figure_size, export_resolution=export_resolution,
