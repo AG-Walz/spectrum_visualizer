@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## v1.0.1 - [2026-06-30]
 
-### `New Features`
+### Features
 
 - Sidebar bug-report and feature-request buttons; GitHub issue forms prefilled
   with a workspace/page/error snapshot (`3e89785`, `6e303c4`, `2ed6440`).
@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Source-aware file identity so same-basename idXML/mzML files can coexist (#72)
   (`cd4d2cb`).
 
-### `Fixes`
+### Fixes
 
 - Stale/duplicate mzML paths no longer silently drop PSMs (dedupe by
   `(stem, size)`; hardened stem-fallback resolution) (`c15b61d`, `a027ff6`).
