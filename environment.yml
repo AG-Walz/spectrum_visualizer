@@ -1,8 +1,14 @@
 name: mspecviz
 channels:
-  - bioconda
+  # conda-forge MUST be highest priority (Bioconda requirement): CI's micromamba
+  # uses strict channel priority, so with bioconda first the solver locks libsvm/
+  # coinmp to bioconda (which lacks matching builds) and pyopenms 3.4.1 becomes
+  # uninstallable. `nodefaults` drops the Anaconda `defaults` channel (ToS-gated on
+  # CI, and it shadows conda-forge repodata). Local solves worked only because the
+  # dev machine uses flexible priority.
   - conda-forge
-  - defaults
+  - bioconda
+  - nodefaults
 # Every version is pinned to the known-good set the test suite runs against.
 # CI rebuilds this environment from scratch on each run, so an unpinned
 # dependency lets CI silently drift onto an untested release. Bump versions
