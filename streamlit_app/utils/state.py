@@ -25,6 +25,11 @@ from typing import Any
 import streamlit as st
 from streamlit.runtime.scriptrunner import get_script_run_ctx
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 from core import __version__
 from core.bug_report import build_issue_url, build_snapshot
 from core.defaults import DEFAULTS
@@ -289,6 +294,20 @@ def _render_workspace_switcher(params: dict) -> None:
         _render_delete_workspace(workspaces_dir, current_workspace)
 
 
+@st.fragment(run_every=5)
+def _render_resource_monitor() -> None:
+    """Top-right chip showing point-in-time system CPU/RAM use; self-refreshes every 5s.
+    Silent when psutil is absent (optional dependency)."""
+    if psutil is None:
+        return
+    memory = psutil.virtual_memory()
+    _, chip = st.columns([4, 1])
+    chip.caption(
+        f"🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% · 🧠 RAM {memory.percent:.0f}% "
+        f"({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)"
+    )
+
+
 def page_setup(page: str = "") -> dict[str, Any]:
     """Initialise settings, page config, workspace, and sidebar — call once at the top of every view."""
     # Terminal-error capture: attach the session log collector once per process so
@@ -344,6 +363,7 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
     st.session_state.workspace.mkdir(parents=True, exist_ok=True)
 
+    _render_resource_monitor()
     return render_sidebar(page)
 
 

@@ -24,6 +24,7 @@ dependencies:
   - pytest=9.0.2
   - joblib=1.5.3
   - tqdm=4.67.2
+  - psutil=7.1.3
   - pip:
     - psm-utils==1.5.1
     - koinapy==0.0.10
