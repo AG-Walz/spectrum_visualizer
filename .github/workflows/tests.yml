@@ -32,6 +32,10 @@ jobs:
           environment-file: environment.yml
           environment-name: mspecviz
           cache-environment: true
+          # Skip the post-job "shell deinit" cleanup: on v3 it fails with
+          # `ENOENT ... micromamba-shell` and marks the job errored even when the
+          # tests pass. See mamba-org/setup-micromamba#130.
+          post-cleanup: none
 
       # NOTE: pytest is already declared as a conda dependency in environment.yml
       # (line 19), so this pip install is redundant. It can be removed safely,
