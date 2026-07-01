@@ -59,6 +59,10 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
         peptides = parse_peptide_list(peptide_text)
         if peptides:
             st.success(f"{len(peptides)} peptide(s) entered")
+            # Showcase the actual sequences so a loaded/precomputed workspace reveals
+            # *which* peptides are in play, not just the count (issue #90).
+            with st.expander("Show peptides"):
+                st.code("\n".join(peptides))
 
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
