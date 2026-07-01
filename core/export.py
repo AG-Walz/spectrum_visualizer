@@ -62,6 +62,7 @@ RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
     ("figure_size",            list(DEFAULTS.figure_size)),
     ("summary_metrics",        [DEFAULTS.summary_metric]),
     ("summary_plot_types",     list(DEFAULTS.summary_plot_types)),
+    ("summary_sort",           DEFAULTS.summary_sort),
 ]
 
 
@@ -365,11 +366,13 @@ def _run_summary_plots(
     saved_files: list[str],
     metrics: list[str],
     plot_types: list[str],
+    sort_by: str,
 ) -> int:
     """Render the selected summary plot types for the selected metrics from the comparison table.
     Summaries are picture-only — html is filtered out, and an empty format set falls
-    back to ["png"]. Appends every written path to saved_files and returns the
-    count; returns 0 when there is no comparison frame or it is empty.
+    back to ["png"]. sort_by orders the peptidoforms (see SUMMARY_SORT_MODES). Appends every
+    written path to saved_files and returns the count; returns 0 when there is no
+    comparison frame or it is empty.
     """
     if comparison_frame is None or comparison_frame.empty:
         return 0
@@ -380,6 +383,7 @@ def _run_summary_plots(
         metrics=metrics,
         plot_types=plot_types,
         formats=summary_formats,
+        sort_by=sort_by,
     )
     paths = [p for fmt_paths in results.values() for p in fmt_paths.values()]
     saved_files.extend(paths)
@@ -473,6 +477,7 @@ def run_export(
             comparison_frame, root_dir, plot_settings.export_formats, saved_files,
             metrics=run_settings.get("summary_metrics", [DEFAULTS.summary_metric]),
             plot_types=run_settings.get("summary_plot_types", list(DEFAULTS.summary_plot_types)),
+            sort_by=run_settings.get("summary_sort", DEFAULTS.summary_sort),
         )
 
     return ExportResult(

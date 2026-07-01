@@ -130,6 +130,7 @@ _PARAM_KEYS: tuple[str, ...] = (
     "koina_enabled", "koina_model",
     "koina_collision_energy", "koina_instrument_type",
     "image_format",
+    "summary_metrics", "summary_plot_types", "summary_sort",
 )
 
 

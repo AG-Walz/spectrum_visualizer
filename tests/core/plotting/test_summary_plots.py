@@ -70,6 +70,44 @@ class TestPrepareSummaryData:
         with pytest.raises(ValueError, match="not found"):
             prepare_summary_data(frame, metric="NonExistentMetric")
 
+    def test_default_sort_is_count_ascending(self):
+        """Omitting sort_by keeps the historical ascending-count ordering."""
+        frame = _make_summary_frame(n_peptides=3, n_reps=4)
+        _, default = prepare_summary_data(frame, metric="R² binned")
+        _, count_asc = prepare_summary_data(frame, metric="R² binned", sort_by="count_asc")
+        assert list(default["peptidoform"]) == list(count_asc["peptidoform"])
+        assert list(count_asc["count"]) == sorted(count_asc["count"])
+
+    def test_sort_alphabetical(self):
+        frame = _make_summary_frame(n_peptides=3, n_reps=2)
+        _, asc = prepare_summary_data(frame, metric="R² binned", sort_by="alpha_asc")
+        _, desc = prepare_summary_data(frame, metric="R² binned", sort_by="alpha_desc")
+        assert list(asc["peptidoform"]) == sorted(asc["peptidoform"])
+        assert list(desc["peptidoform"]) == sorted(desc["peptidoform"], reverse=True)
+
+    def test_sort_by_count_both_directions(self):
+        """Peptidoforms with distinct replicate counts order by count each way."""
+        rows = []
+        for peptide, replicates in [("AAAAK", 1), ("BBBBK", 2), ("CCCCK", 3)]:
+            for i in range(replicates):
+                rows.append({
+                    "Peptide": peptide, "Modification": "", "Charge": 2,
+                    "Query": f"q{i}.mzML", "Reference": "r.mzML",
+                    "R² binned": 0.5 + 0.1 * i,
+                })
+        frame = pd.DataFrame(rows)
+        _, asc = prepare_summary_data(frame, metric="R² binned", sort_by="count_asc")
+        _, desc = prepare_summary_data(frame, metric="R² binned", sort_by="count_desc")
+        assert list(asc["count"]) == [1, 2, 3]
+        assert list(desc["count"]) == [3, 2, 1]
+
+    def test_sort_by_median_both_directions(self):
+        frame = _make_summary_frame(n_peptides=3, n_reps=4)
+        _, asc = prepare_summary_data(frame, metric="R² binned", sort_by="median_asc")
+        _, desc = prepare_summary_data(frame, metric="R² binned", sort_by="median_desc")
+        assert list(asc["median"]) == sorted(asc["median"])
+        assert list(desc["median"]) == sorted(desc["median"], reverse=True)
+
 
 # ---------------------------------------------------------------------------
 # TestSummaryPlotsFromCsv
