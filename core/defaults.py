@@ -74,6 +74,7 @@ class Defaults:
     # --- Summary plots ------------------------------------------------------
     summary_metric: str = "R² binned"
     summary_plot_types: tuple[str, ...] = ("ridgeline", "multi_boxplot")
+    summary_sort: str = "count_asc"  # peptidoform ordering; see SUMMARY_SORT_MODES
 
 
 DEFAULTS = Defaults()

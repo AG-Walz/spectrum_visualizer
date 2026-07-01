@@ -6,6 +6,7 @@ from core.plotting.plot_worker import ComparisonTask, process_single_task
 from core.plotting.summary import (
     METRIC_COLUMNS,
     SUMMARY_RENDERERS,
+    SUMMARY_SORT_MODES,
     generate_all_summary_plots,
     plot_multi_boxplot,
     plot_ridgeline,
@@ -21,6 +22,7 @@ __all__ = [
     # summary — metric columns + per-renderer + end-to-end summary pipeline
     "METRIC_COLUMNS",
     "SUMMARY_RENDERERS",
+    "SUMMARY_SORT_MODES",
     "generate_all_summary_plots",
     "plot_multi_boxplot",
     "plot_ridgeline",

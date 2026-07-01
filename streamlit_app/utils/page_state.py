@@ -37,6 +37,18 @@ SUMMARY_PLOT_LABELS = {
     "multi_boxplot": "Boxplot",
 }
 
+# Friendly labels for the peptidoform sort modes (keys are core.plotting.SUMMARY_SORT_MODES).
+# Insertion order is the option order shown in the picker; the first entry (count_asc)
+# is the default and reproduces the historical layout.
+SUMMARY_SORT_LABELS = {
+    "count_asc": "Peptide count (low → high)",
+    "count_desc": "Peptide count (high → low)",
+    "alpha_asc": "Alphabetical (A → Z)",
+    "alpha_desc": "Alphabetical (Z → A)",
+    "median_asc": "Median metric (low → high)",
+    "median_desc": "Median metric (high → low)",
+}
+
 # Keys whose values are Polars LazyFrames (saved as Parquet)
 _LAZYFRAME_KEYS = ("psm_frame", "peaks_frame", "sequence_frame", "heatmap_frame")
 

@@ -14,13 +14,12 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import (
-    SUMMARY_PLOT_LABELS, apply_run_settings, restore_analysis_if_needed,
+    apply_run_settings, restore_analysis_if_needed,
 )
 
 from streamlit_app.views.export.gallery import _render_plot_gallery
 from streamlit_app.views.export.export_actions import _run_export
-from core.defaults import DEFAULTS
-from core.plotting import METRIC_COLUMNS
+from streamlit_app.views.widgets.summary_options import render_summary_options
 
 params = page_setup("Export")
 logger = logging.getLogger(__name__)
@@ -196,28 +195,11 @@ def export_controls_fragment():
         export_summary = st.checkbox("Summary Analysis Plots", value=True,
                                      key=f"{STATE_PREFIX}_exp_summary")
 
-    # Summary-plot scope: which measures and which plot types feed the summary plots.
-    # Keys match run_settings fields, so build_run_settings() picks the selections up directly.
+    # Summary-plot scope: measures, plot types, and peptide sort order, via the same shared
+    # control the Explore page uses. Keys (summary_metrics / summary_plot_types / summary_sort)
+    # match run_settings fields, so build_run_settings() picks the selections up directly.
     if export_summary:
-        # Drop any stale plot type (e.g. a removed "dual_axis" restored from an old run)
-        # so the multiselect's stored value never falls outside its current options.
-        if "summary_plot_types" in st.session_state:
-            st.session_state["summary_plot_types"] = [
-                t for t in st.session_state["summary_plot_types"] if t in SUMMARY_PLOT_LABELS
-            ]
-        summary_col1, summary_col2 = st.columns(2)
-        with summary_col1:
-            st.multiselect(
-                "Similarity measures", options=METRIC_COLUMNS,
-                default=[DEFAULTS.summary_metric], key="summary_metrics",
-                help="One set of summary plots is generated per selected measure.",
-            )
-        with summary_col2:
-            st.multiselect(
-                "Summary plot types", options=list(SUMMARY_PLOT_LABELS),
-                default=list(DEFAULTS.summary_plot_types), key="summary_plot_types",
-                format_func=lambda key: SUMMARY_PLOT_LABELS.get(key, key),
-            )
+        render_summary_options()
 
     # Trigger: dispatch _run_export with the chosen flags
     if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):

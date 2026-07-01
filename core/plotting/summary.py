@@ -54,6 +54,19 @@ _METRIC_LABELS = {
 }
 
 
+# Peptidoform ordering modes for the summary plots: mode key -> (aggregate column,
+# ascending). Shared single source of truth for prepare_summary_data and the two front
+# ends. "ascending" reads top→bottom in the rendered chart (row 0 sits at the top).
+SUMMARY_SORT_MODES = {
+    "alpha_asc": ("peptidoform", True),
+    "alpha_desc": ("peptidoform", False),
+    "count_asc": ("count", True),
+    "count_desc": ("count", False),
+    "median_asc": ("median", True),
+    "median_desc": ("median", False),
+}
+
+
 def _metric_label(metric: str) -> str:
     """Return the human-readable axis label for metric.
     Falls back to the raw metric name itself when it is not a known key in
@@ -93,6 +106,9 @@ _COUNT_BAR_EDGE = "#D07030"
 # every comparison metric is normalised to.
 _MEDIAN_CMAP = plt.cm.RdYlGn
 _MEDIAN_NORM = plt.Normalize(vmin=0.0, vmax=1.0)
+# Faint horizontal rule drawn once per peptidoform row (behind the box/ridge) so the
+# eye can trace a peptide's y-label across to its own row.
+_ROW_GUIDE_COLOR = "#CCCCCC"
 
 
 def _finite_values(raw_frame: pd.DataFrame, peptidoform: str, metric: str) -> np.ndarray:
@@ -187,6 +203,11 @@ def plot_ridgeline(
         aggregated_frame, figure_size, export_resolution, per_row=0.5)
     peptidoform_count = len(peptidoforms)
 
+    # === Row guide lines ===
+    # A faint rule at each ridge baseline so every ridge ties back to its y-label.
+    for baseline in range(peptidoform_count):
+        ridge_ax.axhline(baseline, color=_ROW_GUIDE_COLOR, linewidth=0.6, zorder=0)
+
     # === Ridges ===
     # Drawn bottom (highest count) to top (lowest count): aggregated row i sits on
     # baseline y = peptidoform_count - 1 - i, and a lower ridge overdraws the one above.
@@ -259,6 +280,11 @@ def plot_multi_boxplot(
     # Seeded jitter so repeated renders of the same data are pixel-stable.
     rng = np.random.default_rng(0)
 
+    # === Row guide lines ===
+    # A faint rule through each row's centre so every box ties back to its y-label.
+    for position in range(peptidoform_count):
+        box_ax.axhline(position, color=_ROW_GUIDE_COLOR, linewidth=0.6, zorder=0)
+
     # === Boxplots ===
     # Position 0 sits at the bottom; draw the highest-count peptidoform there so the
     # ordering matches the ridgeline (most prevalent at the bottom of the chart).
@@ -296,12 +322,15 @@ def plot_multi_boxplot(
 def prepare_summary_data(
     source: str | Path | pd.DataFrame,
     metric: str = DEFAULTS.summary_metric,
+    sort_by: str = DEFAULTS.summary_sort,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Load the comparison table and aggregate per-peptidoform stats for metric.
     source is either a CSV path or an already-built comparison DataFrame (the latter is
-    copied, so callers' frames are never mutated). Returns (raw_frame, aggregated_frame):
-    the per-row table augmented with a peptidoform column, plus one row per peptidoform
-    (count, median, mean, std, quartiles, 95% CI, dominant charge). Raises ValueError when metric is absent.
+    copied, so callers' frames are never mutated). sort_by picks the peptidoform ordering
+    from SUMMARY_SORT_MODES (default: ascending count, the historical layout). Returns
+    (raw_frame, aggregated_frame): the per-row table augmented with a peptidoform column,
+    plus one row per peptidoform (count, median, mean, std, quartiles, 95% CI, dominant
+    charge). Raises ValueError when metric is absent.
     """
     # Load: accept either an on-disk CSV path or an already-built DataFrame
     if isinstance(source, (str, Path)):
@@ -338,8 +367,11 @@ def prepare_summary_data(
     agg["ci_hi"] = agg["mean"] + 1.96 * agg["std"] / np.sqrt(agg["count"])
     agg["charge"] = grouped["Charge"].agg(lambda x: x.mode().iloc[0])
 
-    # Finalise: sort ascending by count so plots draw least→most prevalent
-    agg = agg.reset_index().sort_values("count", ascending=True).reset_index(drop=True)
+    # Finalise: order peptidoforms per the requested mode. Renderers place aggregated
+    # row 0 at the top of the chart, so "ascending" reads top→bottom (the default,
+    # count_asc, keeps the historical least→most-prevalent layout).
+    sort_column, ascending = SUMMARY_SORT_MODES.get(sort_by, SUMMARY_SORT_MODES[DEFAULTS.summary_sort])
+    agg = agg.reset_index().sort_values(sort_column, ascending=ascending).reset_index(drop=True)
     return raw_frame, agg
 
 
@@ -358,12 +390,14 @@ def generate_all_summary_plots(
     plot_types: list[str] | None = None,
     formats: list[str] | None = None,
     export_resolution: int = 300,
+    sort_by: str = DEFAULTS.summary_sort,
 ) -> dict[str, dict[str, str]]:
     """Render every requested plot type for every requested metric into <output_dir>/summary/.
-    For each metric, aggregates once via prepare_summary_data, then renders each recognised type
-    (ridgeline, multi_boxplot) and saves it as <plot_type>_<metric_slug>.<format>.
-    Unknown types, metrics absent from the table, renderer ValueErrors, and per-file OSErrors are
-    logged and skipped, never raised. Returns {plot_type: {"<metric_slug>.<format>": path}}.
+    For each metric, aggregates once via prepare_summary_data (peptidoforms ordered per sort_by),
+    then renders each recognised type (ridgeline, multi_boxplot) and saves it as
+    <plot_type>_<metric_slug>.<format>. Unknown types, metrics absent from the table, renderer
+    ValueErrors, and per-file OSErrors are logged and skipped, never raised.
+    Returns {plot_type: {"<metric_slug>.<format>": path}}.
     """
     # Resolve defaults: configured metrics + plot types, PNG-only output
     if metrics is None:
@@ -381,7 +415,7 @@ def generate_all_summary_plots(
     for metric in metrics:
         # Aggregate once per metric; a metric missing from the table is skipped, not fatal.
         try:
-            raw_frame, aggregated_frame = prepare_summary_data(source, metric=metric)
+            raw_frame, aggregated_frame = prepare_summary_data(source, metric=metric, sort_by=sort_by)
         except ValueError as error:
             logger.error("Skipping metric %s: %s", metric, error)
             continue

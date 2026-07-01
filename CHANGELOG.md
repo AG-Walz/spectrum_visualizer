@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.1 - [2026-06-30]
+
+### Features
+
+- Sidebar bug-report and feature-request buttons; GitHub issue forms prefilled
+  with a workspace/page/error snapshot (`3e89785`, `6e303c4`, `2ed6440`).
+- Summary plots rendered per selected measure, with explore and export
+  dispatching through one shared `SUMMARY_RENDERERS` source (#82) (`609721e`,
+  `93bc4d0`).
+- Source-aware file identity so same-basename idXML/mzML files can coexist (#72)
+  (`cd4d2cb`).
+
+### Fixes
+
+- Stale/duplicate mzML paths no longer silently drop PSMs (dedupe by
+  `(stem, size)`; hardened stem-fallback resolution) (`c15b61d`, `a027ff6`).
+- Removed the deprecated dual-axis summary plot; deduped ridgeline/boxplot via a
+  shared `_summary_panel` and relabeled the count axis (`7f84c27`, `6041fe9`).
+- Dropped the internal sources column from the lookup results table (`cb40e0a`).
+
 ## v1.0.0 - [2026-06-17]
 
 Initial release of MSpecViz is a peptide-spectrum match (PSM) analysis and visualization toolkit.
