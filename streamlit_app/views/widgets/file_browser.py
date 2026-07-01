@@ -178,25 +178,28 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
 
 
 def _render_selected_files(key_prefix: str, keys: dict, state_key: str) -> None:
-    """List each selected file with an individual remove (✕) button; no-op when none are selected."""
+    """Show the current selection inside a collapsible expander, one row per file with an
+    individual remove (✕) button; no-op when none are selected. Collapsing keeps a long
+    selection compact, mirroring the peptide input's "Show peptides" toggle."""
     selected = st.session_state.get(state_key, [])
     if not selected:
         return
-    st.caption(f"Selected files ({len(selected)})")
-    # One row per file: name on the left, a small remove button on the right. The full
-    # path goes in the button tooltip so files that share a basename stay distinguishable.
-    for index, path in enumerate(selected):
-        name_col, remove_col = st.columns([8, 1])
-        with name_col:
-            st.write(Path(path).name)
-        with remove_col:
-            if st.button("✕", key=f"{key_prefix}_remove_{index}", help=path):
-                st.session_state[state_key] = [p for p in selected if p != path]
-                # Force the multiselect + select-all to re-initialise from the trimmed list
-                # rather than re-adding the removed file from their retained widget state.
-                st.session_state.pop(f"{key_prefix}_files", None)
-                st.session_state.pop(keys["select_all"], None)
-                st.rerun()
+    # One row per file inside the expander: name on the left, a small remove button on the
+    # right. The full path goes in the button tooltip so files that share a basename stay
+    # distinguishable.
+    with st.expander(f"Selected files ({len(selected)})"):
+        for index, path in enumerate(selected):
+            name_col, remove_col = st.columns([8, 1])
+            with name_col:
+                st.write(Path(path).name)
+            with remove_col:
+                if st.button("✕", key=f"{key_prefix}_remove_{index}", help=path):
+                    st.session_state[state_key] = [p for p in selected if p != path]
+                    # Force the multiselect + select-all to re-initialise from the trimmed
+                    # list rather than re-adding the removed file from their widget state.
+                    st.session_state.pop(f"{key_prefix}_files", None)
+                    st.session_state.pop(keys["select_all"], None)
+                    st.rerun()
 
 
 def _render_clear_all(key_prefix: str, keys: dict, state_key: str) -> None:
