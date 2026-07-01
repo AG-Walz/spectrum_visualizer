@@ -1,9 +1,23 @@
 """Shared text-parsing, time-formatting, input-validation, and parallel-dispatch utilities.
 """
+import os
 from collections import Counter
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, Iterator, List, Sequence, Tuple
 from joblib import Parallel, delayed
+
+
+def available_cpu_count() -> int:
+    """Number of CPU cores this process may actually use.
+
+    Prefers the scheduler affinity mask (respects cgroup / taskset limits on
+    Linux) and falls back to the total core count, then to 1 — so the workers
+    slider never offers more processes than the host can really run.
+    """
+    try:
+        return len(os.sched_getaffinity(0))
+    except AttributeError:
+        return os.cpu_count() or 1
 
 
 class DuplicateBasenameError(ValueError):

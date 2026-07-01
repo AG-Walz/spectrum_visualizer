@@ -14,6 +14,7 @@ from streamlit_app.views.widgets.peptide_input import render_peptide_input
 from core.defaults import DEFAULTS, INSTRUMENT_TYPES, KOINA_MODELS
 from core.helpers import (
     DuplicateBasenameError,
+    available_cpu_count,
     basenames_shared_across_dirs,
     ensure_unique_basenames,
 )
@@ -178,11 +179,21 @@ def render_settings():
              index=0 if params.get('intensity_mode', DEFAULTS.intensity_mode) == 'Relative' else 1,
              horizontal=True, key="intensity_mode", label_visibility="visible")
 
-    # Performance: ProcessPoolExecutor worker count for parallel pipeline stages
+    # Performance: ProcessPoolExecutor worker count for parallel pipeline stages.
+    # Cap the slider at the cores this host can actually use, and clamp any saved
+    # value into range so a workspace carried over from a bigger machine still loads.
     st.markdown("**Performance**")
-    st.slider("Parallel workers", min_value=1, max_value=32,
-              value=params.get('workers', DEFAULTS.workers), key="workers",
-              help="Number of parallel processes for plot generation (~30 MB per worker)")
+    max_workers = available_cpu_count()
+    if max_workers <= 1:
+        # Single-core host: a slider needs min < max, so pin workers and say why.
+        st.session_state["workers"] = 1
+        st.caption("Parallel workers: 1 (only one core available on this host)")
+    else:
+        workers_value = min(params.get('workers', DEFAULTS.workers), max_workers)
+        st.slider("Parallel workers", min_value=1, max_value=max_workers,
+                  value=workers_value, key="workers",
+                  help=f"Number of parallel processes for plot generation "
+                       f"(~30 MB per worker; {max_workers} cores available)")
 
     # Koina AI: enable toggle reveals model / collision-energy / instrument widgets
     st.markdown("---")
