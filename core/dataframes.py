@@ -18,7 +18,7 @@ import polars as pl
 from psm_utils import Peptidoform, PSM, PSMList
 from psm_utils.peptidoform import PeptidoformException
 
-from core.spectra.streaming_types import psm_lookup_key
+from core.spectra.streaming_types import psm_lookup_key, source_label
 
 logger = logging.getLogger(__name__)
 
@@ -239,17 +239,40 @@ def build_heatmap_dataframe(psms: list[PSM]) -> pl.LazyFrame:
     return combined.lazy()
 
 
-def build_visualization_frames(annotated_queries, psm_frame=None) -> dict:
+def build_visualization_frames(annotated_queries, psm_frame=None, reference_store=None) -> dict:
     """Bundle the peaks / sequence / heatmap LazyFrames into the dict openms_insight expects.
     annotated_queries is the (psm_id, query_psm, annotated_frame) list from run_streaming_annotation;
     each builder receives just the projection it needs. Returns {"peaks", "sequence", "heatmap"}
-    LazyFrames, plus a "psm" entry when a precomputed psm_frame is supplied.
+    LazyFrames, plus a "psm" entry when a precomputed psm_frame is supplied. When psm_frame and
+    reference_store are both given, reference spectra are included too so the Explorer shows
+    coverage for reference PSMs, not only queries (#94).
     """
+    # Query entries; when references are supplied, map each reference spectrum to its table
+    # row(s) and append it (queries win on overlap). Rows are keyed by (source_file, spectrum_id,
+    # peptidoform): spectrum_id is not unique across mzML files, so the file must be in the key.
+    # A spectrum identified in several idXMLs maps to all its rows; Koina references (no row) drop.
+    entries = list(annotated_queries)
+    if reference_store and psm_frame is not None:
+        rows_by_key: dict[tuple, list[int]] = {}
+        index = psm_frame.select(["id", "source_file", "spectrum_id", "peptidoform"]).collect()
+        for row in index.iter_rows(named=True):
+            rows_by_key.setdefault(
+                (row["source_file"], row["spectrum_id"], row["peptidoform"]), []).append(row["id"])
+        covered = {psm_id for psm_id, _, _ in entries}
+        for references in reference_store.values():
+            for reference_psm, reference_frame in references:
+                key = (source_label(reference_psm), reference_psm.spectrum_id,
+                       reference_psm.peptidoform.modified_sequence)
+                for psm_id in rows_by_key.get(key, []):
+                    if psm_id not in covered:
+                        covered.add(psm_id)
+                        entries.append((psm_id, reference_psm, reference_frame))
+
     # Project the tuples down to what each builder consumes.
     frames = {
-        "peaks":    build_peaks_dataframe([(psm_id, df) for psm_id, _, df in annotated_queries]),
-        "sequence": build_sequence_dataframe([(psm_id, psm) for psm_id, psm, _ in annotated_queries]),
-        "heatmap":  build_heatmap_dataframe([psm for _, psm, _ in annotated_queries]),
+        "peaks":    build_peaks_dataframe([(psm_id, df) for psm_id, _, df in entries]),
+        "sequence": build_sequence_dataframe([(psm_id, psm) for psm_id, psm, _ in entries]),
+        "heatmap":  build_heatmap_dataframe([psm for _, psm, _ in entries]),
     }
     # Pass through a precomputed PSM table when the caller already has one.
     if psm_frame is not None:
