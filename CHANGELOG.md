@@ -5,6 +5,37 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## v1.0.2 - [2026-07-01]
+
+### New Features
+
+- Summary plots sortable six ways — peptide name, PSM count, or median metric,
+  each ascending or descending — driven by one shared options control shown
+  identically on the Explore and Export tabs (#88) (`bc88e5f`).
+- Per-peptide guide line across each summary-plot row so a label traces to its
+  own box/ridge (#88) (`bc88e5f`).
+- Individual file removal in the Setup file browser, with the current selection
+  collapsed into a "Selected files" toggle so it stays compact (#88) (`aaf8b48`,
+  `43b66f5`).
+- Self-refreshing CPU/RAM usage chip pinned to the top-right header, visible on
+  every page and while scrolling (#97) (`4724188`, `89ebe7e`).
+- Entered peptide sequences revealed under the counter via a "Show peptides"
+  toggle, so a precomputed workspace shows *which* peptides are loaded, not just
+  how many (#90) (`7a0736d`).
+- Parallel-workers slider capped at the host's available core count instead of a
+  fixed maximum (#91) (`62d6c4a`).
+
+### Fixes
+
+- Mirror-plot PNG filenames are now unique per PSM (scan IDs embedded), so the
+  number of exported plots per peptide matches the boxplot point count (#88)
+  (`0f34a92`).
+- CI environment now solves under strict channel priority: `conda-forge` is
+  listed before `bioconda` and the Anaconda `defaults` channel is dropped, so
+  `pyopenms`'s `libsvm`/`coinmp` dependencies resolve (`<pending>`).
+- CI no longer errors on teardown: the `setup-micromamba` post-cleanup step
+  (which failed with `ENOENT … micromamba-shell`) is disabled (`<pending>`).
+
 ## v1.0.1 - [2026-06-30]
 
 ### Features

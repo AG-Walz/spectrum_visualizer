@@ -41,8 +41,8 @@ def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counte
     return psm_counts, errors
 
 
-def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
-    """Render the paste-list tab: textarea + live peptide count."""
+def _render_paste_tab(initial_value: str, persisted_key: str, pending_key: str) -> None:
+    """Render the paste-list tab: textarea + peptides.txt uploader + live peptide count."""
     col1, col2 = st.columns([2, 1])
     with col1:
         peptide_text = st.text_area(
@@ -50,19 +50,36 @@ def _render_paste_tab(initial_value: str, persisted_key: str) -> None:
             value=initial_value, height=150, key="target_peptides",
             placeholder="PEPTIDESEQ\nANOTHERPEPTIDE\n...",
         )
+        # Upload a peptides.txt — same parse path as the CLI; file_id dedup stops a fresh
+        # upload from re-applying on every rerun, so later manual edits stick (#64).
+        uploaded_file = st.file_uploader("...or upload a peptides.txt", type=["txt"],
+                                         key=f"{STATE_PREFIX}_peptide_upload")
+        seen_upload_key = "_peptide_upload_file_id"
+        if uploaded_file is not None and st.session_state.get(seen_upload_key) != uploaded_file.file_id:
+            st.session_state[seen_upload_key] = uploaded_file.file_id
+            try:
+                uploaded_peptides = parse_peptide_list(uploaded_file.getvalue().decode("utf-8"))
+            except UnicodeDecodeError:
+                st.error("Could not read file — please upload a UTF-8 text file.")
+            else:
+                if not uploaded_peptides:
+                    st.warning("No peptides found in the uploaded file.")
+                else:
+                    st.session_state[pending_key] = "\n".join(uploaded_peptides)
+                    st.rerun()
     # Persist in a non-widget key that survives page navigation
     st.session_state[persisted_key] = peptide_text
+    peptides = parse_peptide_list(peptide_text)
     with col2:
         st.markdown("**Tips:**\n- One peptide per line\n"
                     "- Without modifications\n"
                     "- Case insensitive")
-        peptides = parse_peptide_list(peptide_text)
         if peptides:
             st.success(f"{len(peptides)} peptide(s) entered")
-            # Showcase the actual sequences so a loaded/precomputed workspace reveals
-            # *which* peptides are in play, not just the count (issue #90).
-            with st.expander("Show peptides"):
-                st.code("\n".join(peptides))
+    # Full-width showcase so a loaded workspace reveals *which* peptides are in play (#90).
+    if peptides:
+        with st.expander(f"Show {len(peptides)} entered peptide(s)"):
+            st.code("\n".join(peptides))
 
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
@@ -188,6 +205,6 @@ def render_peptide_input(params: dict) -> None:
     # Render the two-tab UI: paste textarea + pick-from-idXML browser
     paste_tab, pick_tab = st.tabs(["Paste list", "Pick from idXML"])
     with paste_tab:
-        _render_paste_tab(initial_value, persisted_key)
+        _render_paste_tab(initial_value, persisted_key, pending_key)
     with pick_tab:
         _render_pick_tab(idxmls, params.get('workers', DEFAULTS.workers), pending_key)

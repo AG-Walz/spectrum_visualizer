@@ -201,8 +201,10 @@ def export_controls_fragment():
     if export_summary:
         render_summary_options()
 
-    # Trigger: dispatch _run_export with the chosen flags
-    if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary"):
+    # Full-width button with a download icon + divider so it stands out from the blue pills (#101).
+    st.divider()
+    if st.button("Export All", key=f"{STATE_PREFIX}_export_btn", type="primary",
+                 icon=":material/download:", use_container_width=True):
         _run_export(
             params,
             get_param(params, "export_directory", "") or export_fallback,
