@@ -154,13 +154,26 @@ def render_explorer(params: dict) -> None:
     sequence_frame = st.session_state.get(get_state_key("sequence_frame"))
     heatmap_frame = st.session_state.get(get_state_key("heatmap_frame"))
 
-    # Render: banner + table + sequence view + line plot + heatmap (top to bottom)
+    # Render: banner + table (always), then the per-PSM spectrum views, then the heatmap
     _show_selected_psm_banner(psm_frame, state_manager)
     _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager)
-    _render_sequence_view(
-        sequence_frame, peaks_frame, params, cache_path, needs_regeneration, state_manager,
+
+    # The SequenceView + LinePlot are per-PSM; a PSM with no annotated peaks (e.g. a reference
+    # whose experimental spectrum was never loaded) would render as empty plots. Skip them and
+    # their headers for such a PSM, showing a note instead — the RT x m/z Heatmap is global, so
+    # it stays (#94). Always render on a regeneration pass so the disk cache is built first.
+    selected_psm = state_manager.get_state_for_vue().get("selected_psm")
+    selected_has_peaks = peaks_frame is not None and selected_psm is not None and (
+        peaks_frame.filter(pl.col("psm_id") == selected_psm).head(1).collect().height > 0
     )
-    _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
+    if needs_regeneration or selected_psm is None or selected_has_peaks:
+        _render_sequence_view(
+            sequence_frame, peaks_frame, params, cache_path, needs_regeneration, state_manager,
+        )
+        _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
+    else:
+        st.info("This spectrum has no annotated fragment peaks — only the RT x m/z heatmap below is available.")
+
     _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager)
 
     # Mark rendered: subsequent reruns reuse the parquet caches instead of rebuilding
