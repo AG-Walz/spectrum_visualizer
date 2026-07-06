@@ -298,31 +298,17 @@ def _render_workspace_switcher(params: dict) -> None:
 
 @st.fragment(run_every=5)
 def _render_resource_monitor() -> None:
-    """Point-in-time system CPU/RAM pinned into the top-right header strip; self-refreshes every 5s.
+    """Point-in-time system CPU/RAM as a live caption at the foot of the sidebar; self-refreshes
+    every 5s. Lives in the sidebar (not a fixed header overlay) so it never clashes with the page
+    content or Streamlit's "Running" status widget — see issue #103. Called inside a `with
+    st.sidebar` block so both the initial render and the 5s auto-reruns land in the sidebar.
     Silent when psutil is absent (optional dependency)."""
     if psutil is None:
         return
     memory = psutil.virtual_memory()
-    st.markdown(
-        f"""
-        <div class="mspecviz-resource-monitor">🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% &middot; 🧠 RAM {memory.percent:.0f}% ({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)</div>
-        <style>
-        .mspecviz-resource-monitor {{
-            position: fixed;
-            /* Sit just below Streamlit's 3.75rem header instead of inside it, so the chip
-               never shares the toolbar row with the "Running" status widget (whose width
-               varies with state/locale) — see issue #103. */
-            top: 3.9rem;
-            right: 1rem;
-            z-index: 1000000;
-            font-size: 0.8rem;
-            white-space: nowrap;
-            color: rgba(128, 128, 128, 0.95);
-            pointer-events: none;
-        }}
-        </style>
-        """,
-        unsafe_allow_html=True,
+    st.caption(
+        f"🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}%  ·  "
+        f"🧠 RAM {memory.percent:.0f}% ({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)"
     )
 
 
@@ -381,7 +367,6 @@ def page_setup(page: str = "") -> dict[str, Any]:
 
     st.session_state.workspace.mkdir(parents=True, exist_ok=True)
 
-    _render_resource_monitor()
     return render_sidebar(page)
 
 
@@ -511,5 +496,9 @@ def render_sidebar(page: str = "") -> dict[str, Any]:
             f'<div class="version-box">{app_name}<br>Version: {version_info}</div>',
             unsafe_allow_html=True,
         )
+
+        # Live CPU/RAM status at the foot of the sidebar (issue #103 — moved out of the
+        # header so it never overlaps the page content or the "Running" animation).
+        _render_resource_monitor()
 
     return params
