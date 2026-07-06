@@ -347,11 +347,13 @@ def prepare_single_peptide_measures(
     renderers expect, but with each measure in metrics as a "peptidoform" row (values under
     MEASURE_VALUE_COLUMN). Measures keep the given order. Raises ValueError when nothing is finite.
     """
-    records = [
-        {"peptidoform": _metric_label(metric), MEASURE_VALUE_COLUMN: value}
-        for metric in metrics if metric in frame.columns
-        for value in frame[metric].to_numpy(dtype=float)[np.isfinite(frame[metric].to_numpy(dtype=float))]
-    ]
+    records = []
+    for metric in metrics:
+        if metric not in frame.columns:
+            continue
+        values = frame[metric].to_numpy(dtype=float)
+        records.extend({"peptidoform": _metric_label(metric), MEASURE_VALUE_COLUMN: value}
+                       for value in values[np.isfinite(values)])
     if not records:
         raise ValueError("no finite values for the selected measures")
 
