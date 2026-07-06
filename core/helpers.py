@@ -108,7 +108,10 @@ def run_tasks(
             yield _carry(task, worker)
         return
 
-    # Parallel path: joblib streams results as soon as each worker finishes
-    yield from Parallel(n_jobs=workers, return_as="generator_unordered")(
-        delayed(_carry)(task, worker) for task in tasks
-    )
+    # Parallel path: joblib streams results as soon as each worker finishes. Run the executor
+    # under its context manager so that if the consumer stops early — e.g. a Streamlit rerun
+    # (navigation, a widget click) aborts the loop draining these results — the loky pool is
+    # terminated cleanly instead of being left with pending jobs, which otherwise surfaces as
+    # loky's "A worker stopped while some jobs were given to the executor" warning.
+    with Parallel(n_jobs=workers, return_as="generator_unordered") as parallel:
+        yield from parallel(delayed(_carry)(task, worker) for task in tasks)

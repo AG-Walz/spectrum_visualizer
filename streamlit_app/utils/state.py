@@ -296,12 +296,14 @@ def _render_workspace_switcher(params: dict) -> None:
         _render_delete_workspace(workspaces_dir, current_workspace)
 
 
-@st.fragment(run_every=5)
+@st.fragment
 def _render_resource_monitor() -> None:
-    """Point-in-time system CPU/RAM as a live caption at the foot of the sidebar; self-refreshes
-    every 5s. Lives in the sidebar (not a fixed header overlay) so it never clashes with the page
-    content or Streamlit's "Running" status widget — see issue #103. Called inside a `with
-    st.sidebar` block so both the initial render and the 5s auto-reruns land in the sidebar.
+    """Point-in-time system CPU/RAM as a caption at the foot of the sidebar, refreshed on each
+    natural rerun (navigation, widget interaction, run completion). Lives in the sidebar (not a
+    fixed header overlay) so it never clashes with the page content or Streamlit's "Running" status
+    widget — see issue #103. Not on a timed `run_every`: a periodic auto-rerun preempts the
+    long-running parallel pipeline every interval (aborting it via RerunException and leaving the
+    loky pool with pending jobs), which froze the monitor and spammed "worker stopped" warnings.
     Silent when psutil is absent (optional dependency)."""
     if psutil is None:
         return
