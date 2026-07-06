@@ -306,9 +306,16 @@ def _render_resource_monitor() -> None:
     if psutil is None:
         return
     memory = psutil.virtual_memory()
-    st.caption(
-        f"🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}%  ·  "
-        f"🧠 RAM {memory.percent:.0f}% ({memory.used / 1e9:.1f}/{memory.total / 1e9:.1f} GB)"
+    # Centered, slightly larger, full-contrast text (not st.caption's muted grey) so it's easy to
+    # read; the GB sub-line is dimmed via opacity, which stays legible in light and dark themes.
+    st.markdown(
+        f"""
+        <div style="text-align:center; font-size:0.95rem; line-height:1.6; padding:0.4rem 0;">
+            🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% &nbsp;·&nbsp; 🧠 RAM {memory.percent:.0f}%<br>
+            <span style="font-size:0.85rem; opacity:0.7;">{memory.used / 1e9:.1f} / {memory.total / 1e9:.1f} GB</span>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
