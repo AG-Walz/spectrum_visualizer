@@ -207,23 +207,38 @@ class TestQueryChargesAndBestPair:
         assert _query_charges("PEP", annotated_queries, psm_id_to_peptidoform) == [2, 3]
 
     def test_best_pair_picks_highest_r2(self):
-        # Reads precomputed R² from comparison_frame and resolves ref_spectrum_id -> store index.
+        # Reads precomputed R² from comparison_frame and resolves the row back to a store index.
         reference_a = _spec("rA.mzML", "scan=1", is_ref=True)
         reference_b = _spec("rB.mzML", "scan=2", is_ref=True)
         reference_store = {"PEP": [(reference_a, None), (reference_b, None)]}
         comparison_frame = pd.DataFrame([
-            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference_a.spectrum_id, "R² match": 0.99},
-            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference_b.spectrum_id, "R² match": 0.40},
+            {"psm_id": 9, "Charge": 2, "Reference": "rA", "ref_spectrum_id": reference_a.spectrum_id, "R² match": 0.99},
+            {"psm_id": 9, "Charge": 2, "Reference": "rB", "ref_spectrum_id": reference_b.spectrum_id, "R² match": 0.40},
         ])
         r2_value, psm_id, reference_index = _best_pair_by_r2(
             comparison_frame, {9}, reference_store, "PEP", [], "R² match",
         )
         assert psm_id == 9 and reference_index == 0 and r2_value > 0.98
 
+    def test_best_pair_disambiguates_colliding_spectrum_ids_by_source(self):
+        # spectrum_id is not unique across files: two references share "scan=1" but different mzML.
+        # The winning row must resolve to the reference from its own source file, not the last one.
+        reference_a = _spec("rA.mzML", "scan=1", is_ref=True)
+        reference_b = _spec("rB.mzML", "scan=1", is_ref=True)
+        reference_store = {"PEP": [(reference_a, None), (reference_b, None)]}
+        comparison_frame = pd.DataFrame([
+            {"psm_id": 9, "Charge": 2, "Reference": "rA", "ref_spectrum_id": "scan=1", "R² match": 0.95},
+            {"psm_id": 9, "Charge": 2, "Reference": "rB", "ref_spectrum_id": "scan=1", "R² match": 0.10},
+        ])
+        _, _, reference_index = _best_pair_by_r2(
+            comparison_frame, {9}, reference_store, "PEP", [], "R² match",
+        )
+        assert reference_index == 0  # rA, not the last-written rB
+
     def test_best_pair_none_when_charge_filter_excludes_all(self):
         reference = _spec("r.mzML", "scan=1", is_ref=True)
         reference_store = {"PEP": [(reference, None)]}
         comparison_frame = pd.DataFrame([
-            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference.spectrum_id, "R² match": 0.9},
+            {"psm_id": 9, "Charge": 2, "Reference": "r", "ref_spectrum_id": reference.spectrum_id, "R² match": 0.9},
         ])
         assert _best_pair_by_r2(comparison_frame, {9}, reference_store, "PEP", [3], "R² match") is None

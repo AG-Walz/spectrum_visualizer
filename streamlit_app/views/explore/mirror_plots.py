@@ -104,9 +104,11 @@ def _best_pair_by_r2(
     if rows.empty:
         return None
     best = rows.loc[rows[r2_column].idxmax()]
-    reference_index = {reference_psm.spectrum_id: index
+    # Resolve on (source label, spectrum_id): spectrum_id alone is not unique across mzML files,
+    # so a bare-id map would collapse colliding native IDs to the wrong reference.
+    reference_index = {(source_label(reference_psm), reference_psm.spectrum_id): index
                        for index, (reference_psm, _frame) in enumerate(reference_store.get(peptidoform, []))
-                       }.get(best["ref_spectrum_id"])
+                       }.get((best["Reference"], best["ref_spectrum_id"]))
     if reference_index is None:
         return None
     return float(best[r2_column]), int(best["psm_id"]), reference_index
