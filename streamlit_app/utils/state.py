@@ -308,8 +308,11 @@ def _render_resource_monitor() -> None:
         <style>
         .mspecviz-resource-monitor {{
             position: fixed;
-            top: 0.7rem;
-            right: 7.5rem;
+            /* Sit just below Streamlit's 3.75rem header instead of inside it, so the chip
+               never shares the toolbar row with the "Running" status widget (whose width
+               varies with state/locale) — see issue #103. */
+            top: 3.9rem;
+            right: 1rem;
             z-index: 1000000;
             font-size: 0.8rem;
             white-space: nowrap;
