@@ -37,8 +37,9 @@ def _eligible_peptidoforms(peptidoform_psms: dict, reference_store: dict, psm_id
             if peptidoform in peptidoforms_with_query and reference_store.get(peptidoform)]
 
 
-# Best-R² auto-pick measures — these labels are also the comparison_frame column names.
-_R2_MEASURES = ["R² match", "R² binned"]
+# Similarity metrics the best-spectrum auto-pick can rank by — these labels are the
+# comparison_frame column names, all normalised so higher = more similar.
+_SIMILARITY_METRICS = list(METRIC_KEY_TO_COLUMN_NAME.values())
 
 
 def _modification_name(modification) -> str:
@@ -85,25 +86,25 @@ def _query_charges(peptidoform: str, annotated_queries: dict, psm_id_to_peptidof
     })
 
 
-def _best_pair_by_r2(
+def _best_pair_by_metric(
     comparison_frame, peptidoform_psm_ids: set, reference_store: dict,
-    peptidoform: str, charges: list[int], r2_column: str,
+    peptidoform: str, charges: list[int], metric_column: str,
 ) -> tuple[float, int, int] | None:
-    """Find the (query, reference) pair with the highest R² for one peptidoform.
-    Reads the already-computed R² straight from comparison_frame (no metric recompute) and resolves
-    the winning row's ref_spectrum_id back to a reference_store index. Returns
-    (r2_value, query_psm_id, reference_index), or None when nothing scores. r2_column is a
-    comparison_frame column ("R² match" / "R² binned").
+    """Find the (query, reference) pair with the highest similarity for one peptidoform.
+    Reads the already-computed metric straight from comparison_frame (no recompute) and resolves the
+    winning row's ref_spectrum_id back to a reference_store index. Returns
+    (metric_value, query_psm_id, reference_index), or None when nothing scores. metric_column is any
+    comparison_frame similarity column (e.g. "R² match", "Cosine"); all are normalised higher = better.
     """
-    if comparison_frame is None or comparison_frame.empty:
+    if comparison_frame is None or comparison_frame.empty or metric_column not in comparison_frame.columns:
         return None
     rows = comparison_frame[comparison_frame["psm_id"].isin(peptidoform_psm_ids)]
     if charges:
         rows = rows[rows["Charge"].isin(charges)]
-    rows = rows.dropna(subset=[r2_column])
+    rows = rows.dropna(subset=[metric_column])
     if rows.empty:
         return None
-    best = rows.loc[rows[r2_column].idxmax()]
+    best = rows.loc[rows[metric_column].idxmax()]
     # Resolve on (source label, spectrum_id): spectrum_id alone is not unique across mzML files,
     # so a bare-id map would collapse colliding native IDs to the wrong reference.
     reference_index = {(source_label(reference_psm), reference_psm.spectrum_id): index
@@ -111,7 +112,7 @@ def _best_pair_by_r2(
                        }.get((best["Reference"], best["ref_spectrum_id"]))
     if reference_index is None:
         return None
-    return float(best[r2_column]), int(best["psm_id"]), reference_index
+    return float(best[metric_column]), int(best["psm_id"]), reference_index
 
 
 def _ref_row_id(peptidoform: str, position: int) -> int:
@@ -336,10 +337,11 @@ def mirror_plots_fragment(params: dict):
         )
         return
 
-    # Two-stage peptide picker (#62/#106): sequence (alphabetical) then modification.
     sequence_to_keys, descriptor_of = _build_peptidoform_index(eligible)
     sequences = sorted(sequence_to_keys)
-    sequence_col, modification_col = st.columns(2)
+
+    # Row 1 — WHICH SPECTRA: pick the peptide (sequence + modification, #62/#106) and charge.
+    sequence_col, modification_col, charge_col = st.columns([3, 3, 2])
     with sequence_col:
         sequence_key = f"{STATE_PREFIX}_mirror_sequence"
         if st.session_state.get(sequence_key) not in sequences:
@@ -361,41 +363,45 @@ def mirror_plots_fragment(params: dict):
         st.session_state[last_peptidoform] = chosen
         st.session_state.pop(f"{STATE_PREFIX}_mirror_charges", None)
 
-    # Filters row: charge, best-R² auto-pick, live label density.
     available_charges = _query_charges(chosen, annotated_queries, psm_id_to_peptidoform)
     charges_key = f"{STATE_PREFIX}_mirror_charges"
     st.session_state[charges_key] = [c for c in st.session_state.get(charges_key, available_charges)
                                      if c in available_charges]  # drop charges stale after a reload
-    charge_col, auto_col, labels_col = st.columns([2, 2, 1])
     with charge_col:
         selected_charges = st.multiselect(
-            "Charge (empty = all)", options=available_charges,
-            format_func=lambda charge: f"+{charge}", key=charges_key,
+            "Charge", options=available_charges, format_func=lambda charge: f"+{charge}",
+            key=charges_key, help="Filter the experimental spectra by precursor charge (empty = all).",
         )
-    with auto_col:
-        auto_best = st.checkbox("Auto-pick best spectrum by R²", key=f"{STATE_PREFIX}_mirror_auto_best")
-        r2_measure = st.selectbox("R² measure", options=_R2_MEASURES,
-                                  disabled=not auto_best, key=f"{STATE_PREFIX}_mirror_r2_measure")
+
+    # Row 2 — HOW TO PLOT: label density, then the best-spectrum auto-pick and the metric it ranks by.
+    # bottom-aligned so the checkbox lines up with the labelled widgets beside it.
+    labels_col, auto_col, measure_col = st.columns([2, 3, 2], vertical_alignment="bottom")
     with labels_col:
         # Namespaced key keeps this an independent live override of the persisted export setting.
         max_peak_labels = st.number_input(
-            "Max peak labels (0 = all)", min_value=0, max_value=200, step=5,
+            "Max peak labels", min_value=0, max_value=200, step=5,
             value=int(get_param(params, "max_peak_labels", DEFAULTS.max_peak_labels)),
-            help="Label only the N most intense annotated peaks per spectrum.",
+            help="Label only the N most intense annotated peaks per spectrum (0 = all).",
             key=f"{STATE_PREFIX}_mirror_max_peak_labels",
         )
+    with auto_col:
+        auto_best = st.checkbox("Show only the best spectrum by similarity metric",
+                                key=f"{STATE_PREFIX}_mirror_auto_best")
+    with measure_col:
+        best_metric = st.selectbox("Similarity metric", options=_SIMILARITY_METRICS,
+                                   disabled=not auto_best, key=f"{STATE_PREFIX}_mirror_best_metric")
 
-    # Auto-pick mode: skip the tables and render the highest-R² pair directly.
+    # Auto-pick mode: skip the tables and render the highest-scoring pair directly.
     if auto_best:
         peptidoform_psm_ids = {psm_id for psm_id, peptidoform in psm_id_to_peptidoform.items()
                                if peptidoform == chosen}
-        best = _best_pair_by_r2(comparison_frame, peptidoform_psm_ids, reference_store,
-                                chosen, selected_charges, r2_measure)
+        best = _best_pair_by_metric(comparison_frame, peptidoform_psm_ids, reference_store,
+                                    chosen, selected_charges, best_metric)
         if best is None:
-            st.info("No query/reference pair has a computable R² for this selection.")
+            st.info(f"No query/reference pair has a computable {best_metric} for this selection.")
             return
-        r2_value, best_psm_id, best_reference_index = best
-        st.caption(f"Best pair by {r2_measure}: {r2_value:.4f}")
+        metric_value, best_psm_id, best_reference_index = best
+        st.caption(f"Best pair by {best_metric}: {metric_value:.4f}")
         query_psm, query_frame = annotated_queries[best_psm_id]
         reference_psm, reference_frame = reference_store[chosen][best_reference_index]
         _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame, max_peak_labels)

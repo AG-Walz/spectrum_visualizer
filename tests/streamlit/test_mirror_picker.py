@@ -7,7 +7,7 @@ import pandas as pd
 from psm_utils import PSMList
 
 from streamlit_app.views.explore.mirror_plots import (
-    _best_pair_by_r2,
+    _best_pair_by_metric,
     _build_peptidoform_index,
     _build_picker_frames,
     _eligible_peptidoforms,
@@ -206,8 +206,8 @@ class TestQueryChargesAndBestPair:
         psm_id_to_peptidoform = {1: "PEP", 2: "PEP", 3: "OTHER"}
         assert _query_charges("PEP", annotated_queries, psm_id_to_peptidoform) == [2, 3]
 
-    def test_best_pair_picks_highest_r2(self):
-        # Reads precomputed R² from comparison_frame and resolves the row back to a store index.
+    def test_best_pair_picks_highest_metric(self):
+        # Reads precomputed metric from comparison_frame and resolves the row back to a store index.
         reference_a = _spec("rA.mzML", "scan=1", is_ref=True)
         reference_b = _spec("rB.mzML", "scan=2", is_ref=True)
         reference_store = {"PEP": [(reference_a, None), (reference_b, None)]}
@@ -215,10 +215,26 @@ class TestQueryChargesAndBestPair:
             {"psm_id": 9, "Charge": 2, "Reference": "rA", "ref_spectrum_id": reference_a.spectrum_id, "R² match": 0.99},
             {"psm_id": 9, "Charge": 2, "Reference": "rB", "ref_spectrum_id": reference_b.spectrum_id, "R² match": 0.40},
         ])
-        r2_value, psm_id, reference_index = _best_pair_by_r2(
+        r2_value, psm_id, reference_index = _best_pair_by_metric(
             comparison_frame, {9}, reference_store, "PEP", [], "R² match",
         )
         assert psm_id == 9 and reference_index == 0 and r2_value > 0.98
+
+    def test_best_pair_ranks_by_any_similarity_metric(self):
+        # The auto-pick generalises beyond R²: ranking by Cosine picks a different winner here.
+        reference_a = _spec("rA.mzML", "scan=1", is_ref=True)
+        reference_b = _spec("rB.mzML", "scan=2", is_ref=True)
+        reference_store = {"PEP": [(reference_a, None), (reference_b, None)]}
+        comparison_frame = pd.DataFrame([
+            {"psm_id": 9, "Charge": 2, "Reference": "rA", "ref_spectrum_id": reference_a.spectrum_id,
+             "R² match": 0.99, "Cosine": 0.20},
+            {"psm_id": 9, "Charge": 2, "Reference": "rB", "ref_spectrum_id": reference_b.spectrum_id,
+             "R² match": 0.40, "Cosine": 0.95},
+        ])
+        _, _, reference_index = _best_pair_by_metric(
+            comparison_frame, {9}, reference_store, "PEP", [], "Cosine",
+        )
+        assert reference_index == 1  # rB wins on Cosine, though rA wins on R²
 
     def test_best_pair_disambiguates_colliding_spectrum_ids_by_source(self):
         # spectrum_id is not unique across files: two references share "scan=1" but different mzML.
@@ -230,7 +246,7 @@ class TestQueryChargesAndBestPair:
             {"psm_id": 9, "Charge": 2, "Reference": "rA", "ref_spectrum_id": "scan=1", "R² match": 0.95},
             {"psm_id": 9, "Charge": 2, "Reference": "rB", "ref_spectrum_id": "scan=1", "R² match": 0.10},
         ])
-        _, _, reference_index = _best_pair_by_r2(
+        _, _, reference_index = _best_pair_by_metric(
             comparison_frame, {9}, reference_store, "PEP", [], "R² match",
         )
         assert reference_index == 0  # rA, not the last-written rB
@@ -241,4 +257,4 @@ class TestQueryChargesAndBestPair:
         comparison_frame = pd.DataFrame([
             {"psm_id": 9, "Charge": 2, "Reference": "r", "ref_spectrum_id": reference.spectrum_id, "R² match": 0.9},
         ])
-        assert _best_pair_by_r2(comparison_frame, {9}, reference_store, "PEP", [3], "R² match") is None
+        assert _best_pair_by_metric(comparison_frame, {9}, reference_store, "PEP", [3], "R² match") is None
