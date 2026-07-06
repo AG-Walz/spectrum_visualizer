@@ -18,6 +18,8 @@ for metric computation and formatting, and core.plotting.mirror.create_spectrum_
 for both the Matplotlib and Plotly figures.
 """
 import logging
+import os
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -208,7 +210,14 @@ def _save_task_figure(fig, task: ComparisonTask) -> tuple[str, str, str]:
         # DPI only meaningfully applies to the raster PNG; SVG/PDF are vector.
         if output_format == "png":
             save_kwargs["dpi"] = task.export_resolution
-        fig.savefig(str(output_path), **save_kwargs)
+        # Atomic write: render to a unique temp file in the same directory, then os.replace
+        # into place. Two parallel workers that resolve to the same output_path can otherwise
+        # interleave their bytes and leave a valid-header/garbled-body file (corrupt PNG IDAT);
+        # os.replace is atomic within one filesystem, so every file on disk stays complete.
+        tmp_fd, tmp_name = tempfile.mkstemp(dir=peptidoform_dir, suffix=f".{output_format}.tmp")
+        os.close(tmp_fd)
+        fig.savefig(tmp_name, **save_kwargs)
+        os.replace(tmp_name, output_path)
         paths[output_format] = str(output_path)
 
     return paths["png"], paths["svg"], paths["pdf"]

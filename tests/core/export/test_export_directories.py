@@ -28,6 +28,21 @@ class TestSanitizeFilename:
     def test_sanitize_rules(self, input_name, check):
         assert check(sanitize_filename(input_name))
 
+    def test_long_names_differing_past_cap_stay_unique(self):
+        # Mirror-plot names end in the query/reference spectrum ids that distinguish
+        # multiple scans of one peptide; those ids sit past the 100-char cap, so a bare
+        # truncation would collapse distinct scans onto one file and overwrite each other.
+        run = "250909_IE_sHLA-Maus_tumor_RIL-175_2_Y3B22-249_14perc_LCV005-2_MSV035_HT_Rep2_Slot1-51_1"
+        ref = "260619_IE_Synpep_PE_Maus-260001-Maus-260040_LCV005-2_MSV035_HT_Rep2_Slot1-14_1"
+        names = [
+            f"{run}_8375_index=4_vs_{ref}_11164_index=1",
+            f"{run}_8375_index=4_vs_{ref}_20480_index=7",
+            f"{run}_9001_index=9_vs_{ref}_11164_index=1",
+        ]
+        sanitized = [sanitize_filename(n) for n in names]
+        assert all(len(s) <= 100 for s in sanitized)
+        assert len(set(sanitized)) == len(names)
+
 
 # ---------------------------------------------------------------------------
 # TestFindOrCreateExportDirectory

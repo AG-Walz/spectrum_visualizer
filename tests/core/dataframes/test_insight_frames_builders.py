@@ -12,6 +12,7 @@ from core.dataframes import (
     build_peaks_dataframe,
     build_psm_table,
     build_sequence_dataframe,
+    build_visualization_frames,
 )
 from psm_utils import PSMList
 
@@ -155,3 +156,39 @@ class TestBuildHeatmapDataframe:
             _make_psm(rt=200.0, n_peaks=4),
         ]
         assert len(build_heatmap_dataframe(spectra).collect()) == 7
+
+
+class TestBuildVisualizationFramesReferenceCoverage:
+    """build_visualization_frames should cover reference PSMs too, mapped file-qualified (#94)."""
+
+    def _setup(self, reference_spectrum_id="index=2"):
+        """Table with a query (id 0, query.mzML) + a reference (id 1, ref.mzML), same peptidoform.
+        annotated_queries covers only the query; reference_store holds the reference spectrum."""
+        query = _make_psm(spectrum_id="index=1")
+        query.run = "query"
+        reference = _make_psm(spectrum_id=reference_spectrum_id)
+        reference.run = "ref"
+        psm_frame, _ = build_psm_table({"PEPTIDEK": PSMList(psm_list=[query, reference])})
+        annotated_queries = [(0, query, _make_annotated_frame())]
+        reference_store = {"PEPTIDEK": [(reference, _make_annotated_frame())]}
+        return psm_frame, annotated_queries, reference_store
+
+    def test_queries_only_when_no_reference_store(self):
+        _, annotated_queries, _ = self._setup()
+        sequence = build_visualization_frames(annotated_queries)["sequence"].collect()
+        assert set(sequence["psm_id"].to_list()) == {0}
+
+    def test_reference_psm_gains_coverage(self):
+        psm_frame, annotated_queries, reference_store = self._setup()
+        frames = build_visualization_frames(
+            annotated_queries, psm_frame=psm_frame, reference_store=reference_store)
+        assert set(frames["sequence"].collect()["psm_id"].to_list()) == {0, 1}
+
+    def test_mapping_is_file_qualified_across_same_scan(self):
+        """Query and reference share spectrum_id 'index=1' but live in different files;
+        the reference must map to its own row (id 1), not merge into the query row (id 0)."""
+        psm_frame, annotated_queries, reference_store = self._setup(reference_spectrum_id="index=1")
+        sequence = build_visualization_frames(
+            annotated_queries, psm_frame=psm_frame, reference_store=reference_store)["sequence"].collect()
+        assert set(sequence["psm_id"].to_list()) == {0, 1}
+        assert sequence.height == 2  # no duplicated/merged row

@@ -94,8 +94,10 @@ def _store_analysis_results(psm_frame, psm_lookup, annotated_queries,
                             reference_store, comparison_rows) -> None:
     """Persist every analysis output (PSM table, visualization frames, annotations, metrics) to session state + disk cache.
     """
-    # Build visualization frames (peaks / sequence / heatmap) from annotations
-    frames = build_visualization_frames(annotated_queries)
+    # Build visualization frames (peaks / sequence / heatmap) from query AND reference spectra,
+    # so the Explorer shows coverage for reference PSMs too, not only queries (#94).
+    frames = build_visualization_frames(
+        annotated_queries, psm_frame=psm_frame, reference_store=reference_store)
 
     # Stash PSM table + visualization frames in session state
     st.session_state[get_state_key("psm_frame")] = psm_frame
