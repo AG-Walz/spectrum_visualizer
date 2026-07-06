@@ -5,12 +5,50 @@ import matplotlib
 matplotlib.use("Agg")  # MUST come before importing plotting modules (headless backend).
 
 import numpy as np
+import pandas as pd
 import plotly.graph_objects as go
 import pytest
 from matplotlib.figure import Figure
 
 from core.peak_annotation import prepare_spectrum_for_plot
 from core.plotting import create_spectrum_plot
+from core.plotting.mirror import _prep
+
+
+class TestMaxPeakLabels:
+    """The max_peak_labels cap keeps only the N most intense annotated peaks labelled (issue #93)."""
+
+    def _annotated_frame(self, n: int) -> pd.DataFrame:
+        # Ascending intensity so the top-N by intensity are the last N rows.
+        return pd.DataFrame({
+            "mz": np.linspace(100, 1000, n),
+            "intensity": np.arange(1, n + 1, dtype=float),
+            "annotation": [f"b{i}" for i in range(n)],
+            "ion_type": ["b"] * n,
+        })
+
+    def test_zero_keeps_all_labels(self):
+        prepped = _prep(self._annotated_frame(10), max_peak_labels=0)
+        assert (prepped["_label"] != "").sum() == 10
+
+    def test_cap_keeps_only_top_n_by_intensity(self):
+        prepped = _prep(self._annotated_frame(10), max_peak_labels=3)
+        kept = set(prepped.loc[prepped["_label"] != "", "annotation"])
+        # Highest three intensities are the last three rows (b7, b8, b9).
+        assert kept == {"b7", "b8", "b9"}
+
+    def test_cap_larger_than_labelled_keeps_all(self):
+        prepped = _prep(self._annotated_frame(4), max_peak_labels=99)
+        assert (prepped["_label"] != "").sum() == 4
+
+    def test_cap_never_drops_peaks_only_labels(self):
+        # Every peak stem must survive; only the text labels are thinned.
+        prepped = _prep(self._annotated_frame(10), max_peak_labels=2)
+        assert len(prepped) == 10
+
+    def test_empty_frame_is_safe(self):
+        prepped = _prep(pd.DataFrame({"mz": [], "intensity": []}), max_peak_labels=5)
+        assert prepped.empty
 
 
 class TestPlotCreation:

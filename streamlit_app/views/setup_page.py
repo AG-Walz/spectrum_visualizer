@@ -178,6 +178,12 @@ def render_settings():
              captions=["Relative to the highest intensity", "Raw intensity"],
              index=0 if params.get('intensity_mode', DEFAULTS.intensity_mode) == 'Relative' else 1,
              horizontal=True, key="intensity_mode", label_visibility="visible")
+    st.number_input("Max peak labels per spectrum (0 = all)",
+                    min_value=0, max_value=200, step=5,
+                    value=int(params.get('max_peak_labels', DEFAULTS.max_peak_labels)),
+                    help="Only the N most intense annotated peaks get a text label — keeps dense "
+                         "spectra readable. Applies to mirror plots in Explore and export.",
+                    key="max_peak_labels")
 
     # Performance: ProcessPoolExecutor worker count for parallel pipeline stages.
     # Cap the slider at the cores this host can actually use, and clamp any saved

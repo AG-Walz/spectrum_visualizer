@@ -127,6 +127,7 @@ _PARAM_KEYS: tuple[str, ...] = (
     "ion_types", "mz_tolerance",
     "add_neutral_losses",
     "intensity_mode", "workers",
+    "max_peak_labels",
     "koina_enabled", "koina_model",
     "koina_collision_energy", "koina_instrument_type",
     "image_format",

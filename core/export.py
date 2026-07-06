@@ -60,6 +60,7 @@ RUN_SETTINGS_FIELDS: list[tuple[str, object]] = [
     ("export_formats",         list(DEFAULTS.export_formats)),
     ("export_resolution",      DEFAULTS.export_resolution),
     ("figure_size",            list(DEFAULTS.figure_size)),
+    ("max_peak_labels",        DEFAULTS.max_peak_labels),
     ("summary_metrics",        [DEFAULTS.summary_metric]),
     ("summary_plot_types",     list(DEFAULTS.summary_plot_types)),
     ("summary_sort",           DEFAULTS.summary_sort),
@@ -275,6 +276,7 @@ class PlotSettings:
     figure_size: tuple[int, int] = (12, 8)
     export_resolution: int = 300
     plot_unpaired_queries: bool = False
+    max_peak_labels: int = 0
     workers: int = 1
 
 
@@ -342,6 +344,7 @@ def _run_plot_tasks(
         export_resolution=plot_settings.export_resolution,
         html_dir=html_dir,
         plot_unpaired_queries=plot_settings.plot_unpaired_queries,
+        max_peak_labels=plot_settings.max_peak_labels,
     )
     if not tasks:
         return 0

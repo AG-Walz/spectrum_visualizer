@@ -27,6 +27,7 @@ export_formats: [png]                 # png, svg, pdf, html
 export_resolution: 300                       # raster resolution
 figure_size: [12, 8]                  # [width, height] in inches
 plot_unpaired_queries: false          # also render queries with no reference
+max_peak_labels: 20                   # label only the N most intense peaks per panel; 0 = all
 
 # --- 2. Sensible defaults ---
 

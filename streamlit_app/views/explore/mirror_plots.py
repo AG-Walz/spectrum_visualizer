@@ -162,7 +162,8 @@ def _render_metrics_expander(metrics: dict) -> None:
 
 
 def _render_mirror_pair(query_psm, query_frame,
-                        reference_psm, reference_frame) -> None:
+                        reference_psm, reference_frame,
+                        max_peak_labels: int = 0) -> None:
     """Compute metrics, draw the Plotly mirror plot, and show the metrics expander below it.
     """
     metrics = compute_all_metrics(query_frame, reference_frame)
@@ -173,6 +174,7 @@ def _render_mirror_pair(query_psm, query_frame,
         backend="ms_plotly",
         title=title, query_label=query_label, reference_label=ref_label,
         metrics_text=format_metrics_text(metrics),
+        max_peak_labels=max_peak_labels,
     )
     st.plotly_chart(fig, width="stretch")
     _render_metrics_expander(metrics)
@@ -260,6 +262,16 @@ def mirror_plots_fragment(params: dict):
         key=selectbox_key,
     )
 
+    # Live label-density control: cap text labels to the N most intense peaks so dense
+    # spectra stay readable. Seeded from the persisted setting (also used at export); a
+    # namespaced key keeps this an independent live override for interactive viewing.
+    max_peak_labels = st.number_input(
+        "Max peak labels (0 = all)", min_value=0, max_value=200, step=5,
+        value=int(get_param(params, "max_peak_labels", DEFAULTS.max_peak_labels)),
+        help="Label only the N most intense annotated peaks per spectrum.",
+        key=f"{STATE_PREFIX}_mirror_max_peak_labels",
+    )
+
     # Peptidoform switch: clear Tabulator + StateManager state so stale picks don't carry over
     state_manager = _get_picker_state_manager()
     last_peptidoform = f"{STATE_PREFIX}_mirror_last_peptidoform"
@@ -301,4 +313,4 @@ def mirror_plots_fragment(params: dict):
     # Render: compute metrics and draw the mirror plot for the chosen pair
     query_psm, query_frame = annotated_queries[selected_query_psm_id]
     reference_psm, reference_frame = refs[ref_index[ref_id]]
-    _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame)
+    _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame, max_peak_labels)

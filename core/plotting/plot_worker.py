@@ -74,6 +74,7 @@ class ComparisonTask:
     export_formats: list[str] = field(default_factory=lambda: ["png"])
     figure_size: tuple[int, int] = (12, 8)  # inches (width, height)
     export_resolution: int = 300            # DPI for raster output
+    max_peak_labels: int = 0                # cap text labels to N most intense peaks (0 = all)
 
     # Output path for the interactive Plotly HTML — empty string skips HTML.
     html_plot_path: str = ""
@@ -167,6 +168,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 reference_label=task.reference_label,
                 metrics_text=(task.metrics_text or format_metrics_text(metrics)) if is_mirror else "",
                 figure_size=task.figure_size,
+                max_peak_labels=task.max_peak_labels,
             )
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             plt.close(fig)
@@ -241,6 +243,7 @@ def _save_task_html(task: ComparisonTask) -> str:
             query_label=task.query_label,
             reference_label=task.reference_label,
             metrics_text=task.metrics_text if is_mirror else "",
+            max_peak_labels=task.max_peak_labels,
         )
         # include_plotlyjs="cdn" keeps the file small — the browser pulls plotly.js from a CDN.
         fig.write_html(str(out), include_plotlyjs="cdn")

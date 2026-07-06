@@ -70,6 +70,7 @@ class Defaults:
     export_resolution: int = 300               # raster resolution (png/pdf)
     figure_size: tuple[int, int] = (12, 8)     # [width, height] in inches
     plot_unpaired_queries: bool = False        # render queries without a reference
+    max_peak_labels: int = 20                  # label only the N most intense annotated peaks per panel; 0 = all
 
     # --- Summary plots ------------------------------------------------------
     summary_metric: str = "R² binned"

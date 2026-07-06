@@ -395,7 +395,8 @@ def run_streaming_annotation(
 
 def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
-                     export_resolution=300, html_dir="", plot_unpaired_queries=False):
+                     export_resolution=300, html_dir="", plot_unpaired_queries=False,
+                     max_peak_labels=0):
     """Build the list of ComparisonTask plot jobs for a set of annotated queries.
     Emits one "mirror" task per (query, reference) pair; a query with no reference yields a
     "single" task only when plot_unpaired_queries is set. The metrics overlay text is pre-computed
@@ -449,6 +450,7 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                     png_dir=png_dir, svg_dir=svg_dir, pdf_dir=pdf_dir,
                     export_formats=export_formats,
                     figure_size=figure_size, export_resolution=export_resolution,
+                    max_peak_labels=max_peak_labels,
                     html_plot_path=html_path, metrics_text=metrics_text,
                     peptide=peptidoform, charge=charge,
                 ))
@@ -464,6 +466,7 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                 png_dir=png_dir, svg_dir=svg_dir, pdf_dir=pdf_dir,
                 export_formats=[f for f in export_formats if f != "html"],
                 figure_size=figure_size, export_resolution=export_resolution,
+                max_peak_labels=max_peak_labels,
                 html_plot_path="", metrics_text="",
                 peptide=peptidoform, charge=charge,
             ))
