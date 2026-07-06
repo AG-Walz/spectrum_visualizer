@@ -10,6 +10,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from core.defaults import DEFAULTS
 from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
@@ -194,6 +195,19 @@ def export_controls_fragment():
                                     key=f"{STATE_PREFIX}_exp_mirror")
         export_summary = st.checkbox("Summary Analysis Plots", value=True,
                                      key=f"{STATE_PREFIX}_exp_summary")
+
+    # Peak-label density for the exported mirror/interactive plots: cap text labels to the
+    # N most intense peaks per panel (0 = all) so dense spectra stay readable. Shares the
+    # "max_peak_labels" key (and _PARAM_KEYS persistence) with Setup, so _build_plot_settings
+    # picks it up via get_param. Only shown when a plot format that carries labels is selected.
+    if export_mirror or export_html:
+        st.number_input(
+            "Max peak labels per spectrum (0 = all)",
+            min_value=0, max_value=200, step=5,
+            value=int(get_param(params, "max_peak_labels", DEFAULTS.max_peak_labels)),
+            help="Label only the N most intense annotated peaks — keeps dense spectra readable.",
+            key="max_peak_labels",
+        )
 
     # Summary-plot scope: measures, plot types, and peptide sort order, via the same shared
     # control the Explore page uses. Keys (summary_metrics / summary_plot_types / summary_sort)
