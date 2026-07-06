@@ -6,9 +6,14 @@ import pandas as pd
 import pytest
 
 from core.plotting import (
+    MEASURE_VALUE_COLUMN,
+    SUMMARY_RENDERERS,
     generate_all_summary_plots,
+    peptidoform_label_series,
+    prepare_single_peptide_measures,
     prepare_summary_data,
 )
+from core.plotting.summary import METRIC_COLUMNS
 
 
 # ---------------------------------------------------------------------------
@@ -46,6 +51,50 @@ def summary_csv(tmp_path):
     csv_path = tmp_path / "comparison_summary.csv"
     frame.to_csv(csv_path, index=False)
     return csv_path
+
+
+# ---------------------------------------------------------------------------
+# TestSinglePeptideMeasures (#105)
+# ---------------------------------------------------------------------------
+
+class TestSinglePeptideMeasures:
+    def test_peptidoform_label_uses_modification_then_charge(self):
+        frame = pd.DataFrame({
+            "Peptide": ["PEPTIDEK", "PEPTIDEK"],
+            "Modification": ["", "PEPTM[Oxidation]IDEK"],
+            "Charge": [2, 3],
+        })
+        assert list(peptidoform_label_series(frame)) == ["PEPTIDEK/2", "PEPTM[Oxidation]IDEK/3"]
+
+    def test_reshape_puts_measures_on_rows_in_order(self):
+        # #105: one row per measure (not per peptide), preserving the requested measure order.
+        frame = _make_summary_frame(n_peptides=1, n_reps=5)
+        raw_frame, aggregated_frame = prepare_single_peptide_measures(frame, ["Cosine", "R² match"])
+        assert list(aggregated_frame["peptidoform"]) == ["Cosine similarity", "R² (match)"]
+        assert (aggregated_frame["count"] == 5).all()
+        assert MEASURE_VALUE_COLUMN in raw_frame.columns
+
+    @pytest.mark.parametrize("kind", ["multi_boxplot", "ridgeline"])
+    def test_reshape_feeds_the_existing_renderers(self, kind):
+        frame = _make_summary_frame(n_peptides=1, n_reps=6)
+        raw_frame, aggregated_frame = prepare_single_peptide_measures(frame, METRIC_COLUMNS)
+        fig = SUMMARY_RENDERERS[kind](raw_frame, aggregated_frame, metric=MEASURE_VALUE_COLUMN)
+        assert fig.axes  # the population renderer accepted the reshaped frames
+        import matplotlib.pyplot as plt
+        plt.close(fig)
+
+    def test_single_spectrum_and_nan_measure_still_reshape(self):
+        frame = _make_summary_frame(n_peptides=1, n_reps=1)
+        frame["Cosine"] = float("nan")  # a wholly-empty measure is dropped, not fatal
+        raw_frame, aggregated_frame = prepare_single_peptide_measures(frame, METRIC_COLUMNS)
+        assert "Cosine similarity" not in list(aggregated_frame["peptidoform"])
+
+    def test_raises_when_no_finite_values(self):
+        frame = _make_summary_frame(n_peptides=1, n_reps=3)
+        for metric in METRIC_COLUMNS:
+            frame[metric] = float("nan")
+        with pytest.raises(ValueError):
+            prepare_single_peptide_measures(frame, METRIC_COLUMNS)
 
 
 # ---------------------------------------------------------------------------

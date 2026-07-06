@@ -12,8 +12,11 @@ from streamlit_app.utils.state import (
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
 from core.plotting import (
+    MEASURE_VALUE_COLUMN,
     METRIC_COLUMNS,
     SUMMARY_RENDERERS,
+    peptidoform_label_series,
+    prepare_single_peptide_measures,
     prepare_summary_data,
 )
 
@@ -41,16 +44,62 @@ def comparison_metrics_fragment():
     if available_metrics:
         st.subheader("Summary Plots")
         metrics, selected_types, sort_by = render_summary_options(available_metrics)
+
+        # Peptide subset (Explore-only): restrict the population plots to chosen peptides.
+        # Empty selection keeps the historical "all peptides" behaviour.
+        peptidoform_labels = sorted(peptidoform_label_series(comparison_frame).unique())
+        selected_peptides = st.multiselect(
+            "Peptides (empty = all)", options=peptidoform_labels,
+            key=f"{STATE_PREFIX}_summary_peptide_subset",
+            help="Restrict the summary plots below to specific peptides.",
+        )
+        plot_frame = comparison_frame
+        if selected_peptides:
+            plot_frame = comparison_frame[
+                peptidoform_label_series(comparison_frame).isin(selected_peptides)
+            ]
+
         # One set of plots per selected measure; label each set only when several are shown.
         for metric in metrics:
             raw_frame, aggregated_frame = prepare_summary_data(
-                comparison_frame, metric=metric, sort_by=sort_by)
+                plot_frame, metric=metric, sort_by=sort_by)
             if len(metrics) > 1:
                 st.markdown(f"**{metric}**")
             for plot_type in selected_types:
                 fig = SUMMARY_RENDERERS[plot_type](raw_frame, aggregated_frame, metric=metric)
                 st.pyplot(fig)
                 plt.close(fig)
+
+        # Single-peptide QC (#105): the same ridgeline / boxplot renderers, but with the
+        # selected measures on the y-axis (one row per measure) for a single chosen peptide.
+        st.markdown("---")
+        st.subheader("Single-Peptide QC")
+        st.caption("The selected measures for one peptide, as ridgeline / boxplot rows.")
+        if not peptidoform_labels:
+            st.info("No peptides available.")
+        else:
+            chosen_peptide = st.selectbox(
+                "Peptide", options=peptidoform_labels,
+                key=f"{STATE_PREFIX}_single_peptide_qc",
+            )
+            single_frame = comparison_frame[
+                peptidoform_label_series(comparison_frame) == chosen_peptide
+            ]
+            if not metrics:
+                st.info("Select at least one similarity measure above.")
+            elif not selected_types:
+                st.info("Select at least one plot type above.")
+            else:
+                try:
+                    raw_frame, aggregated_frame = prepare_single_peptide_measures(single_frame, metrics)
+                except ValueError as error:
+                    st.info(f"Cannot plot {chosen_peptide}: {error}.")
+                else:
+                    for plot_type in selected_types:
+                        fig = SUMMARY_RENDERERS[plot_type](
+                            raw_frame, aggregated_frame, metric=MEASURE_VALUE_COLUMN)
+                        st.pyplot(fig)
+                        plt.close(fig)
         st.markdown("---")
 
     # Per-PSM table: one row per query/reference pair with all 7 similarity metrics

@@ -80,6 +80,18 @@ def _metric_slug(metric: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", metric.lower().replace("²", "2")).strip("_")
 
 
+def peptidoform_label_series(frame: pd.DataFrame) -> pd.Series:
+    """Return the per-row peptidoform label ("<modified-or-base-sequence>/<charge>").
+    Single source of truth for the label prepare_summary_data groups on and the Explore
+    peptide pickers list; uses the Modification column when present, else the base Peptide.
+    """
+    modification = frame["Modification"].fillna("").astype(str)
+    inline = modification.mask(
+        modification.isin(["", "(unmodified)"]), frame["Peptide"].astype(str),
+    )
+    return inline + "/" + frame["Charge"].astype(str)
+
+
 def _auto_height(n: int, per_row: float = 0.45, minimum: float = 5.0) -> float:
     """Compute a figure height (in inches) that scales with the number of rows.
     Allocates per_row inches per peptidoform row but never returns less than
@@ -316,6 +328,42 @@ def plot_multi_boxplot(
 
 
 # ============================================================================
+# Single-peptide reshape: measures on the y-axis for ONE peptidoform
+# ============================================================================
+# The renderers above lay one peptidoform per y-row for a single measure. For the
+# single-peptide view (#105) we keep those exact renderers but swap what a "row" means:
+# reshape one peptidoform's rows so each MEASURE becomes a row and its per-spectrum values
+# fill a shared value column. Feed the result to plot_ridgeline / plot_multi_boxplot with
+# metric=MEASURE_VALUE_COLUMN — no new plotting code.
+
+# The value column the reshaped frame carries; also the x-axis label the renderers show.
+MEASURE_VALUE_COLUMN = "Metric value"
+
+
+def prepare_single_peptide_measures(
+    frame: pd.DataFrame, metrics: list[str],
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Reshape one peptidoform's comparison rows into the (raw, aggregated) pair the population
+    renderers expect, but with each measure in metrics as a "peptidoform" row (values under
+    MEASURE_VALUE_COLUMN). Measures keep the given order. Raises ValueError when nothing is finite.
+    """
+    records = [
+        {"peptidoform": _metric_label(metric), MEASURE_VALUE_COLUMN: value}
+        for metric in metrics if metric in frame.columns
+        for value in frame[metric].to_numpy(dtype=float)[np.isfinite(frame[metric].to_numpy(dtype=float))]
+    ]
+    if not records:
+        raise ValueError("no finite values for the selected measures")
+
+    raw_frame = pd.DataFrame(records)
+    aggregated_frame = (
+        raw_frame.groupby("peptidoform", sort=False)[MEASURE_VALUE_COLUMN]
+        .agg(["count", "median"]).reset_index()
+    )
+    return raw_frame, aggregated_frame
+
+
+# ============================================================================
 # Summary-plot orchestrator: aggregate + dispatch to renderers
 # ============================================================================
 
@@ -346,11 +394,7 @@ def prepare_summary_data(
         )
 
     # Build peptidoform label: modification-or-base sequence joined with charge
-    modification = raw_frame["Modification"].fillna("").astype(str)
-    inline = modification.mask(
-        modification.isin(["", "(unmodified)"]), raw_frame["Peptide"].astype(str),
-    )
-    raw_frame["peptidoform"] = inline + "/" + raw_frame["Charge"].astype(str)
+    raw_frame["peptidoform"] = peptidoform_label_series(raw_frame)
 
     # Drop rows with a missing value in metric before aggregating
     raw_frame = raw_frame.dropna(subset=[metric]).copy()
