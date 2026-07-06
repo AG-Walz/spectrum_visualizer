@@ -2,12 +2,17 @@
 from __future__ import annotations
 
 import numpy as np
+import pandas as pd
 
 from psm_utils import PSMList
 
 from streamlit_app.views.explore.mirror_plots import (
+    _best_pair_by_r2,
+    _build_peptidoform_index,
     _build_picker_frames,
     _eligible_peptidoforms,
+    _modification_descriptor,
+    _query_charges,
     _ref_row_id,
 )
 from tests.conftest import make_peptide_match
@@ -159,3 +164,66 @@ class TestBuildPickerFrames:
         # pl.Float32 cannot represent NaN-as-null distinctly without the
         # explicit conversion in _safe_score — verify it lands as null.
         assert query_lazy.collect().row(0, named=True)["score"] is None
+
+    def test_charge_filter_drops_nonmatching_query(self):
+        annotated_queries = {
+            1: (_spec("q.mzML", "scan=1", charge=2), None),
+            2: (_spec("q.mzML", "scan=2", charge=3), None),
+        }
+        reference_store = {"PEP": [(_spec("r.mzML", "scan=1", is_ref=True), None)]}
+        psm_id_to_peptidoform = {1: "PEP", 2: "PEP"}
+        _, query_lazy = _build_picker_frames(
+            "PEP", annotated_queries, reference_store, psm_id_to_peptidoform, [2],
+        )
+        rows = query_lazy.collect()
+        assert rows.height == 1 and rows.row(0, named=True)["charge"] == 2
+
+
+class TestPeptidoformIndex:
+    def test_splits_and_sorts_by_sequence_then_modification(self):
+        # #106: sequences sort alphabetically; #62: variants group under their base sequence.
+        eligible = ["VVM[Oxidation]EYENL", "AAIVGKQVL", "VVMEYENL"]
+        sequence_to_keys, descriptor_of = _build_peptidoform_index(eligible)
+        assert sorted(sequence_to_keys) == ["AAIVGKQVL", "VVMEYENL"]
+        # "(unmodified)" sorts before "M3(Oxidation)".
+        assert sequence_to_keys["VVMEYENL"] == ["VVMEYENL", "VVM[Oxidation]EYENL"]
+        assert descriptor_of["VVMEYENL"] == "(unmodified)"
+
+    def test_modification_descriptor(self):
+        from psm_utils import Peptidoform
+        assert _modification_descriptor(Peptidoform("AAIVGKQVL")) == "(unmodified)"
+        assert _modification_descriptor(Peptidoform("VVM[Oxidation]EYENL")) == "M3(Oxidation)"
+        assert _modification_descriptor(Peptidoform("[Acetyl]-PEPTIDEK")) == "N-term(Acetyl)"
+
+
+class TestQueryChargesAndBestPair:
+    def test_query_charges_sorted_distinct_for_peptidoform(self):
+        annotated_queries = {
+            1: (_spec("q", "s1", charge=3), None),
+            2: (_spec("q", "s2", charge=2), None),
+            3: (_spec("q", "s3", charge=2), None),
+        }
+        psm_id_to_peptidoform = {1: "PEP", 2: "PEP", 3: "OTHER"}
+        assert _query_charges("PEP", annotated_queries, psm_id_to_peptidoform) == [2, 3]
+
+    def test_best_pair_picks_highest_r2(self):
+        # Reads precomputed R² from comparison_frame and resolves ref_spectrum_id -> store index.
+        reference_a = _spec("rA.mzML", "scan=1", is_ref=True)
+        reference_b = _spec("rB.mzML", "scan=2", is_ref=True)
+        reference_store = {"PEP": [(reference_a, None), (reference_b, None)]}
+        comparison_frame = pd.DataFrame([
+            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference_a.spectrum_id, "R² match": 0.99},
+            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference_b.spectrum_id, "R² match": 0.40},
+        ])
+        r2_value, psm_id, reference_index = _best_pair_by_r2(
+            comparison_frame, {9}, reference_store, "PEP", [], "R² match",
+        )
+        assert psm_id == 9 and reference_index == 0 and r2_value > 0.98
+
+    def test_best_pair_none_when_charge_filter_excludes_all(self):
+        reference = _spec("r.mzML", "scan=1", is_ref=True)
+        reference_store = {"PEP": [(reference, None)]}
+        comparison_frame = pd.DataFrame([
+            {"psm_id": 9, "Charge": 2, "ref_spectrum_id": reference.spectrum_id, "R² match": 0.9},
+        ])
+        assert _best_pair_by_r2(comparison_frame, {9}, reference_store, "PEP", [3], "R² match") is None
