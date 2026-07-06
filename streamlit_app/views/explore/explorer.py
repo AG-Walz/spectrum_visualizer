@@ -158,10 +158,13 @@ def render_explorer(params: dict) -> None:
     _show_selected_psm_banner(psm_frame, state_manager)
     _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager)
 
-    # The SequenceView + LinePlot are per-PSM; a PSM with no annotated peaks (e.g. a reference
-    # whose experimental spectrum was never loaded) would render as empty plots. Skip them and
-    # their headers for such a PSM, showing a note instead — the RT x m/z Heatmap is global, so
-    # it stays (#94). Always render on a regeneration pass so the disk cache is built first.
+    # The SequenceView + LinePlot are per-PSM and need this PSM's peaks. A PSM with no peaks at
+    # all in peaks_frame (its spectrum was never loaded — the mzML wasn't selected, or the row is
+    # a Koina-only reference with no experimental peaks) would render as empty plots, so skip them
+    # and their headers and show an actionable note instead. Note "no peaks" means no spectrum was
+    # attached — a spectrum that loaded but matched nothing still has (unannotated) peaks and renders.
+    # The RT x m/z Heatmap is global, so it stays (#94). Always render on a regeneration pass so the
+    # disk cache is built first.
     selected_psm = state_manager.get_state_for_vue().get("selected_psm")
     selected_has_peaks = peaks_frame is not None and selected_psm is not None and (
         peaks_frame.filter(pl.col("psm_id") == selected_psm).head(1).collect().height > 0
@@ -172,7 +175,16 @@ def render_explorer(params: dict) -> None:
         )
         _render_line_plot(peaks_frame, cache_path, needs_regeneration, state_manager)
     else:
-        st.info("This spectrum has no annotated fragment peaks — only the RT x m/z heatmap below is available.")
+        st.info(
+            "**No spectrum is loaded for this PSM**, so the Sequence Coverage and Fragment "
+            "Spectrum can't be drawn (the RT × m/z heatmap below still works).\n\n"
+            "Why this happens — and how to fix it:\n"
+            "- **The mzML with this spectrum wasn't loaded.** Add the file that contains it on "
+            "the Setup page (for a reference, make sure your *reference substring* matches its "
+            "mzML) and re-run Load & Annotate.\n"
+            "- **This is a predicted (Koina) reference.** It has no experimental peaks by design, "
+            "so it never gets a coverage map — pick the experimental spectrum instead."
+        )
 
     _render_heatmap(heatmap_frame, cache_path, needs_regeneration, state_manager)
 
