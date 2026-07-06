@@ -38,87 +38,69 @@ def comparison_metrics_fragment():
         st.info("No comparison metrics available. Configure a reference substring and re-run.")
         return
 
-    # Summary plots first: the user picks measures, plot types, and the peptide sort order
-    # via the shared control (same widget the Export page uses).
+    # One top-of-page peptide filter scoping the whole view (plots + table + stats). Empty = all.
+    # Selecting exactly one peptide flips the summary plots to a measures-on-the-y-axis view (#105).
+    peptidoform_labels = sorted(peptidoform_label_series(comparison_frame).unique())
+    selected_peptides = st.multiselect(
+        "Peptides (empty = all)", options=peptidoform_labels,
+        key=f"{STATE_PREFIX}_metrics_peptide_filter",
+        help="Filter every plot, table, and statistic below. Select exactly one peptide to plot all "
+             "measures for it (measures on the y-axis).",
+    )
+    view_frame = comparison_frame
+    if selected_peptides:
+        view_frame = comparison_frame[peptidoform_label_series(comparison_frame).isin(selected_peptides)]
+    single_peptide = selected_peptides[0] if len(selected_peptides) == 1 else None
+
+    # Summary plots: the user picks measures, plot types, and the peptide sort order via the shared
+    # control (same widget the Export page uses).
     available_metrics = [m for m in METRIC_COLUMNS if m in comparison_frame.columns]
     if available_metrics:
         st.subheader("Summary Plots")
         metrics, selected_types, sort_by = render_summary_options(available_metrics)
-
-        # Peptide subset (Explore-only): restrict the population plots to chosen peptides.
-        # Empty selection keeps the historical "all peptides" behaviour.
-        peptidoform_labels = sorted(peptidoform_label_series(comparison_frame).unique())
-        selected_peptides = st.multiselect(
-            "Peptides (empty = all)", options=peptidoform_labels,
-            key=f"{STATE_PREFIX}_summary_peptide_subset",
-            help="Restrict the summary plots below to specific peptides.",
-        )
-        plot_frame = comparison_frame
-        if selected_peptides:
-            plot_frame = comparison_frame[
-                peptidoform_label_series(comparison_frame).isin(selected_peptides)
-            ]
-
-        # One set of plots per selected measure; label each set only when several are shown.
-        for metric in metrics:
-            raw_frame, aggregated_frame = prepare_summary_data(
-                plot_frame, metric=metric, sort_by=sort_by)
-            if len(metrics) > 1:
-                st.markdown(f"**{metric}**")
-            for plot_type in selected_types:
-                fig = SUMMARY_RENDERERS[plot_type](raw_frame, aggregated_frame, metric=metric)
-                st.pyplot(fig)
-                plt.close(fig)
-
-        # Single-peptide QC (#105): the same ridgeline / boxplot renderers, but with the
-        # selected measures on the y-axis (one row per measure) for a single chosen peptide.
-        st.markdown("---")
-        st.subheader("Single-Peptide QC")
-        st.caption("The selected measures for one peptide, as ridgeline / boxplot rows.")
-        if not peptidoform_labels:
-            st.info("No peptides available.")
-        else:
-            chosen_peptide = st.selectbox(
-                "Peptide", options=peptidoform_labels,
-                key=f"{STATE_PREFIX}_single_peptide_qc",
-            )
-            single_frame = comparison_frame[
-                peptidoform_label_series(comparison_frame) == chosen_peptide
-            ]
-            if not metrics:
-                st.info("Select at least one similarity measure above.")
-            elif not selected_types:
-                st.info("Select at least one plot type above.")
+        if not metrics or not selected_types:
+            st.info("Select at least one measure and one plot type.")
+        elif single_peptide:
+            # One peptide: the same renderers, but with the measures on the y-axis (one row each).
+            st.caption(f"All selected measures for {single_peptide}.")
+            try:
+                raw_frame, aggregated_frame = prepare_single_peptide_measures(view_frame, metrics)
+            except ValueError as error:
+                st.info(f"Cannot plot {single_peptide}: {error}.")
             else:
-                try:
-                    raw_frame, aggregated_frame = prepare_single_peptide_measures(single_frame, metrics)
-                except ValueError as error:
-                    st.info(f"Cannot plot {chosen_peptide}: {error}.")
-                else:
-                    for plot_type in selected_types:
-                        fig = SUMMARY_RENDERERS[plot_type](
-                            raw_frame, aggregated_frame, metric=MEASURE_VALUE_COLUMN)
-                        st.pyplot(fig)
-                        plt.close(fig)
+                for plot_type in selected_types:
+                    fig = SUMMARY_RENDERERS[plot_type](raw_frame, aggregated_frame, metric=MEASURE_VALUE_COLUMN)
+                    st.pyplot(fig)
+                    plt.close(fig)
+        else:
+            # Several / all peptides: one population plot per measure (peptides on the y-axis).
+            for metric in metrics:
+                raw_frame, aggregated_frame = prepare_summary_data(view_frame, metric=metric, sort_by=sort_by)
+                if len(metrics) > 1:
+                    st.markdown(f"**{metric}**")
+                for plot_type in selected_types:
+                    fig = SUMMARY_RENDERERS[plot_type](raw_frame, aggregated_frame, metric=metric)
+                    st.pyplot(fig)
+                    plt.close(fig)
         st.markdown("---")
 
     # Per-PSM table: one row per query/reference pair with all 7 similarity metrics
     st.subheader("Comparison Summary")
-    st.caption(f"{len(comparison_frame)} query/reference comparisons")
+    st.caption(f"{len(view_frame)} query/reference comparisons")
 
     display_cols = ["Peptide", "Modification", "Charge", "Query", "Reference",
                     "R\u00b2 match", "R\u00b2 binned", "Cosine", "Entropy",
                     "Dice", "Jaccard", "SharedRatio", "shared",
                     "query_annotation_count", "reference_annotation_count"]
-    available_cols = [c for c in display_cols if c in comparison_frame.columns]
-    st.dataframe(comparison_frame[available_cols], width="stretch", hide_index=True)
+    available_cols = [c for c in display_cols if c in view_frame.columns]
+    st.dataframe(view_frame[available_cols], width="stretch", hide_index=True)
 
     # Summary stats: collapse PSMs into count/median/mean/std per peptidoform+charge
     st.markdown("---")
     st.subheader("Summary Statistics")
-    metric_cols = [v for v in METRIC_KEY_TO_COLUMN_NAME.values() if v in comparison_frame.columns]
+    metric_cols = [v for v in METRIC_KEY_TO_COLUMN_NAME.values() if v in view_frame.columns]
     if metric_cols:
-        summary = comparison_frame.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
+        summary = view_frame.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
             ["count", "median", "mean", "std"]
         )
         summary.columns = [f"{m} {s}" for m, s in summary.columns]
