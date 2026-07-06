@@ -199,6 +199,7 @@ def _run_export(config, annotated_queries, reference_store, grouped_psms,
             figure_size=tuple(config.figure_size),
             export_resolution=config.export_resolution,
             plot_unpaired_queries=config.plot_unpaired_queries,
+            max_peak_labels=config.max_peak_labels,
             workers=config.workers,
         ),
         # Progress and error reporting callbacks for the export step

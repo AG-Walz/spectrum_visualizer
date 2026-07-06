@@ -29,11 +29,14 @@ _MZ_PADDING_DA = 50
 _PLOTLY_INTENSITY_SCALE = 100
 
 
-def _prep(df: pd.DataFrame) -> pd.DataFrame:
+def _prep(df: pd.DataFrame, max_peak_labels: int = 0) -> pd.DataFrame:
     """Return a copy of df ready for drawing — add a _color and _label column per peak and
     rescale intensity to [0, 1]. Missing annotation/ion_type columns are backfilled with
     "unannotated" so unannotated peaks still draw; _color maps each ion type through ION_COLORS,
     and _label blanks out the placeholder so only real annotations get a text label.
+    When max_peak_labels > 0, only the N most intense annotated peaks keep their _label (the
+    others still draw as stems) — this is the single choke point that de-clutters both backends,
+    since every label path filters on _label != "".
     """
     df = df.copy()
     # Backfill missing annotation/ion_type so unannotated peaks still draw.
@@ -47,6 +50,15 @@ def _prep(df: pd.DataFrame) -> pd.DataFrame:
         max_intensity = df["intensity"].max()
         if max_intensity and max_intensity > 0:
             df["intensity"] = df["intensity"] / max_intensity
+    # Cap the number of text labels to the N most intense annotated peaks (0 = keep all),
+    # so dense spectra don't render an unreadable pile of overlapping labels. int() guards
+    # against a float slipping in from a hand-edited CLI YAML (nlargest requires an int).
+    keep_count = int(max_peak_labels or 0)
+    if keep_count > 0:
+        labeled = df.index[df["_label"] != ""]
+        if len(labeled) > keep_count:
+            keep = df.loc[labeled, "intensity"].nlargest(keep_count).index
+            df.loc[labeled.difference(keep), "_label"] = ""
     return df
 
 
@@ -222,17 +234,19 @@ def create_spectrum_plot(
     reference_label: str = "",
     metrics_text: str = "",
     figure_size: tuple[int, int] = (12, 8),
+    max_peak_labels: int = 0,
 ):
     """Render an annotated peptide-spectrum match and return the figure.
     Draws a mirror plot when reference_frame is supplied (query up, reference down), else a single
     spectrum; query_frame/reference_frame are per-peak DataFrames with mz/intensity and optional
     annotation/ion_type columns, each panel independently max-normalised. Returns a matplotlib Figure
     for "ms_matplotlib" or a Plotly go.Figure for "ms_plotly"; labels and metrics_text become overlays.
+    max_peak_labels caps text labels to the N most intense annotated peaks per panel (0 = all).
     """
     # Prep: normalise both panels, suppress reference label for single-spectrum
     is_mirror = reference_frame is not None
-    query = _prep(query_frame)
-    reference = _prep(reference_frame) if is_mirror else None
+    query = _prep(query_frame, max_peak_labels)
+    reference = _prep(reference_frame, max_peak_labels) if is_mirror else None
     effective_reference_label = reference_label if is_mirror else ""
 
     # Matplotlib path: draw stems, axes, legend, corner overlays, then tighten

@@ -37,7 +37,15 @@ def _show_plot(plot_file: Path) -> None:
     Streamlit's HTML sanitiser, which mangles matplotlib's glyph <defs>/<use> markup and
     leaks raw path data as page text.
     """
-    st.image(str(plot_file), caption=plot_file.stem, width="stretch")
+    # For SVG, read the markup ourselves as UTF-8 and pass the string: handing st.image an
+    # .svg *path* makes Streamlit re-open it with the platform-default (ASCII) codec, which
+    # crashes on the non-ASCII bytes matplotlib emits (·, –, Å, …). A markup string skips that
+    # file read and goes straight to Streamlit's UTF-8 base64 data-URI path. PNG stays a path
+    # (Streamlit reads raster files as binary, so there's no encoding issue).
+    if plot_file.suffix.lower() == ".svg":
+        st.image(plot_file.read_text(encoding="utf-8"), caption=plot_file.stem, width="stretch")
+    else:
+        st.image(str(plot_file), caption=plot_file.stem, width="stretch")
 
 
 def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: Path) -> None:

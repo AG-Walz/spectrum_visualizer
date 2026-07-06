@@ -45,6 +45,7 @@ def _build_plot_settings(params: dict) -> PlotSettings:
         plot_unpaired_queries=get_param(
             params, "plot_unpaired_queries", DEFAULTS.plot_unpaired_queries,
         ),
+        max_peak_labels=get_param(params, "max_peak_labels", DEFAULTS.max_peak_labels),
         workers=get_param(params, "workers", DEFAULTS.workers),
     )
 
