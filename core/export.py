@@ -86,7 +86,7 @@ def build_run_settings(getter: ParamGetter, peptides: list[str]) -> dict:
 # Export-folder allocation (fingerprinted versioned dirs)
 # ============================================================================
 
-def sanitize_filename(name: str) -> str:
+def sanitize_filename(name: str, max_length: int = 100) -> str:
     """Make user provided name safe to use as a filesystem path component.
     """
     # Replace each filesystem-unsafe character with an underscore
@@ -94,8 +94,14 @@ def sanitize_filename(name: str) -> str:
     # Collapse consecutive underscores, then strip stray edge underscores/spaces
     sanitized = re.sub(r'_+', '_', sanitized)
     sanitized = sanitized.strip('_ ')
-    # Return cleaned string with a maximum length of 100 characters
-    return sanitized[:100]
+    # Cap the length, but preserve uniqueness: mirror-plot names end in the query/reference
+    # spectrum ids that distinguish multiple scans of one peptide, and a bare truncation drops
+    # them — so distinct PSMs would collide onto one file and overwrite each other. When the name
+    # is too long, keep the head and append a short hash of the full name to keep it unique.
+    if len(sanitized) > max_length:
+        digest = hashlib.sha256(sanitized.encode("utf-8")).hexdigest()[:8]
+        sanitized = sanitized[: max_length - 9].rstrip('_ ') + "_" + digest
+    return sanitized
 
 
 def _settings_fingerprint(run_settings: dict) -> str:

@@ -31,13 +31,13 @@ def _group_files_by_reference(plot_files: list[Path]) -> dict[str, list[Path]]:
     return ref_groups
 
 
-def _show_plot(plot_file: Path, browse_format: str) -> None:
-    """Render one plot inline — st.image for PNG, raw markup for SVG.
+def _show_plot(plot_file: Path) -> None:
+    """Render one plot inline — st.image handles both raster PNG and vector SVG files.
+    Routing SVG through st.image (which base64-embeds it) instead of st.markdown avoids
+    Streamlit's HTML sanitiser, which mangles matplotlib's glyph <defs>/<use> markup and
+    leaks raw path data as page text.
     """
-    if browse_format == "png":
-        st.image(str(plot_file), caption=plot_file.stem, width="stretch")
-    elif browse_format == "svg":
-        st.markdown(plot_file.read_text(encoding="utf-8"), unsafe_allow_html=True)
+    st.image(str(plot_file), caption=plot_file.stem, width="stretch")
 
 
 def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: Path) -> None:
@@ -62,7 +62,7 @@ def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: P
 
 def _render_reference_group(
     ref_stem: str, ref_files: list[Path], peptide_dir_name: str,
-    browse_format: str, root_dir: Path,
+    root_dir: Path,
 ) -> None:
     """Render the inner expander for one reference stem, capped at 20 plots.
     """
@@ -72,7 +72,7 @@ def _render_reference_group(
     )
     with st.expander(f"{sub_label} ({len(ref_files)})", expanded=False):
         for plot_file in ref_files[:20]:
-            _show_plot(plot_file, browse_format)
+            _show_plot(plot_file)
             _render_download_buttons(plot_file, peptide_dir_name, root_dir)
         if len(ref_files) > 20:
             st.caption(f"... and {len(ref_files) - 20} more")
@@ -86,7 +86,7 @@ def _render_peptide_dir(peptide_dir: Path, browse_format: str, root_dir: Path) -
         return
     with st.expander(f"{peptide_dir.name} ({len(plot_files)} plots)", expanded=False):
         for ref_stem, ref_files in sorted(_group_files_by_reference(plot_files).items()):
-            _render_reference_group(ref_stem, ref_files, peptide_dir.name, browse_format, root_dir)
+            _render_reference_group(ref_stem, ref_files, peptide_dir.name, root_dir)
 
 
 def _render_plot_gallery(root_dir: Path) -> None:
