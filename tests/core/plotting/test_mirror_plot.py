@@ -72,6 +72,47 @@ class TestPlotCreation:
         assert isinstance(fig, (Figure, go.Figure))
 
 
+class TestXAxisStartsAtZero:
+    """Every plot's m/z axis is anchored at 0 so PSMs share one origin (issue #114)."""
+
+    def _frame(self, first_mz: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "mz": [first_mz, first_mz + 300.0],
+            "intensity": [100.0, 50.0],
+            "annotation": ["b1", "y1"],
+            "ion_type": ["b", "y"],
+        })
+
+    @pytest.mark.parametrize("first_mz", [150.0, 800.0])
+    @pytest.mark.parametrize("with_reference", [True, False])
+    def test_matplotlib_xlim_starts_at_zero(self, first_mz, with_reference):
+        frame = self._frame(first_mz)
+        fig = create_spectrum_plot(
+            frame, frame.copy() if with_reference else None, backend="ms_matplotlib",
+        )
+        left, right = fig.axes[0].get_xlim()
+        assert left == 0.0
+        # The upper bound still follows the spectrum, padded so outer peaks aren't clipped.
+        assert right > first_mz + 300.0
+
+    @pytest.mark.parametrize("first_mz", [150.0, 800.0])
+    @pytest.mark.parametrize("with_reference", [True, False])
+    def test_plotly_x_range_starts_at_zero(self, first_mz, with_reference):
+        frame = self._frame(first_mz)
+        fig = create_spectrum_plot(
+            frame, frame.copy() if with_reference else None, backend="ms_plotly",
+        )
+        low, high = fig.layout.xaxis.range
+        assert low == 0.0
+        assert high > first_mz + 300.0
+
+    def test_two_spectra_share_the_same_origin(self):
+        # The regression: different first peaks used to give different axis starts.
+        low_fig = create_spectrum_plot(self._frame(150.0), backend="ms_matplotlib")
+        high_fig = create_spectrum_plot(self._frame(800.0), backend="ms_matplotlib")
+        assert low_fig.axes[0].get_xlim()[0] == high_fig.axes[0].get_xlim()[0]
+
+
 class TestMatplotlibExtras:
     def test_metrics_text_accepted(self, spectrum_frame):
         metrics_text = "R² match: 0.92\nCosine: 0.95"

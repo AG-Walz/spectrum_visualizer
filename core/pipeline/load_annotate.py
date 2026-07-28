@@ -50,8 +50,12 @@ from core.spectra.streaming_types import psm_lookup_key, source_label
 
 COMPARISON_IDENTITY_COLUMNS = (
     "psm_id", "Peptide", "Modification", "Charge", "Query", "Reference",
-    "query_spectrum_id", "ref_spectrum_id", "query_rt", "ref_rt",
+    "query_spectrum_id", "ref_spectrum_id", "query_rt", "ref_rt", "rt_delta",
 )
+# Retention-time columns surfaced in the Explore summaries (#113). Kept apart from the
+# rest of the identity block because the summary table and the summary statistics both
+# format them as seconds, unlike the string/int identity columns beside them.
+COMPARISON_RT_COLUMNS = ("query_rt", "ref_rt", "rt_delta")
 COMPARISON_COUNT_COLUMNS = (
     "query_peak_count", "reference_peak_count",
     "query_annotation_count", "reference_annotation_count", "shared",
@@ -61,6 +65,16 @@ COMPARISON_SUMMARY_COLUMNS = (
     *METRIC_KEY_TO_COLUMN_NAME.values(),
     *COMPARISON_COUNT_COLUMNS,
 )
+
+
+def _rt_delta(query_rt: float | None, reference_rt: float | None) -> float:
+    """Signed retention-time difference query - reference (seconds), NaN when meaningless.
+    Predicted (Koina) references carry retention_time 0.0 and a missing RT reads as None, so
+    both are reported as NaN rather than as a difference the size of the query's own RT.
+    """
+    if query_rt is None or reference_rt is None or not reference_rt:
+        return float("nan")
+    return float(query_rt) - float(reference_rt)
 
 
 def build_comparison_frame(comparison_rows: list[dict]) -> pd.DataFrame:
@@ -276,6 +290,7 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
             "ref_spectrum_id": reference_psm.spectrum_id,
             "query_rt": query_psm.retention_time,
             "ref_rt": reference_psm.retention_time,
+            "rt_delta": _rt_delta(query_psm.retention_time, reference_psm.retention_time),
         }
         # Metric columns: metric key -> spreadsheet column name, NaN for missing values
         for metric_key, column_name in METRIC_KEY_TO_COLUMN_NAME.items():

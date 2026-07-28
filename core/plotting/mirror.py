@@ -24,6 +24,10 @@ Backend = Literal["ms_matplotlib", "ms_plotly"]
 _LABEL_OFFSET = 0.03
 # Extra m/z padding on the x-axis (Da) so outer peaks aren't clipped.
 _MZ_PADDING_DA = 50
+# Every spectrum's x-axis starts here (#114). Padding the lower bound by the first
+# peak's m/z made each PSM start somewhere else, so plots could not be compared
+# side by side; anchoring at 0 keeps the origin identical across all of them.
+_MZ_AXIS_START = 0.0
 # pyopenms-viz forces intensities to [0, 100] when mirror_spectrum=True or
 # relative_intensity=True. We always use that path, so labels go in the same scale.
 _PLOTLY_INTENSITY_SCALE = 100
@@ -128,14 +132,14 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
                          is_mirror: bool) -> None:
     """Set x/y limits, ticks, bold m/z + intensity labels, and the mirror divider line.
     """
-    # X-axis: pad min/max m/z across both panels so outer peaks aren't clipped
+    # X-axis: always start at 0 m/z (#114), pad the top so outer peaks aren't clipped
     mz_values = []
     if not query_df.empty:
         mz_values.extend(query_df["mz"].tolist())
     if reference_df is not None and not reference_df.empty:
         mz_values.extend(reference_df["mz"].tolist())
     if mz_values:
-        ax.set_xlim(min(mz_values) - _MZ_PADDING_DA, max(mz_values) + _MZ_PADDING_DA)
+        ax.set_xlim(_MZ_AXIS_START, max(mz_values) + _MZ_PADDING_DA)
 
     # Y-axis: symmetric ticks + divider for mirror, single-panel scale otherwise
     if is_mirror:
@@ -318,8 +322,8 @@ def create_spectrum_plot(
     if is_mirror and reference is not None and not reference.empty:
         mz_values.extend(reference["mz"].tolist())
     if mz_values:
-        fig.update_xaxes(range=[min(mz_values) - _MZ_PADDING_DA,
-                                max(mz_values) + _MZ_PADDING_DA])
+        # Anchored at 0 m/z so every PSM shares the same origin (#114).
+        fig.update_xaxes(range=[_MZ_AXIS_START, max(mz_values) + _MZ_PADDING_DA])
     _add_decorations_plotly(
         fig, query_label=query_label,
         reference_label=effective_reference_label,

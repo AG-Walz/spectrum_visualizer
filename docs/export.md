@@ -53,7 +53,9 @@ identical columns in both. The column set and order are owned by
 `COMPARISON_SUMMARY_COLUMNS` in `core/pipeline/load_annotate.py` (built by
 `build_comparison_frame`); read that constant for the exact list. It runs in three
 groups: **identification** (`psm_id` — the FK to `psm.parquet` — plus the peptide,
-charge, query/reference labels, spectrum IDs and RTs), the **7 metrics** under their
+charge, query/reference labels, spectrum IDs and the RT block `query_rt` / `ref_rt` /
+`rt_delta`, the latter being query minus reference RT in seconds and `NaN` when the
+reference is predicted and so has no retention time), the **7 metrics** under their
 display names (`METRIC_KEY_TO_COLUMN_NAME` — see [metrics.md → the seven metrics](metrics.md#the-seven-metrics)), and
 **context counts** (`query`/`reference` peak and annotation tallies plus `shared`).
 
