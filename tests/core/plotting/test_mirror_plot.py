@@ -122,13 +122,10 @@ class TestGroupWideXAxis:
             "annotation": ["b1", "y1"], "ion_type": ["b", "y"],
         })
 
-    def test_group_max_pads_the_highest_peak_across_frames(self):
-        bound = group_mz_axis_max([self._frame(400.0), self._frame(1500.0), None])
-        assert bound == 1500.0 + _MZ_PADDING_DA
-
-    def test_group_max_ignores_empty_frames(self):
+    def test_group_max_pads_the_highest_peak_and_skips_empties(self):
         empty = pd.DataFrame({"mz": [], "intensity": []})
-        assert group_mz_axis_max([empty, self._frame(900.0)]) == 900.0 + _MZ_PADDING_DA
+        bound = group_mz_axis_max([self._frame(400.0), empty, self._frame(1500.0), None])
+        assert bound == 1500.0 + _MZ_PADDING_DA
 
     def test_group_max_of_nothing_is_zero(self):
         # 0.0 is the "auto" sentinel create_spectrum_plot falls back on.

@@ -247,18 +247,6 @@ def _render_metrics_expander(metrics: dict) -> None:
         st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
 
 
-def _peptidoform_axis_max(peptidoform: str, annotated_queries: dict, reference_store: dict,
-                          psm_id_to_peptidoform: dict) -> float:
-    """Shared x-axis upper bound for one peptidoform, over all its queries and references (#114).
-    Deliberately ignores the charge filter: the axis must not jump when the user narrows the
-    picker, and every plot of this peptide — whichever pair is selected — has to line up with
-    the PNGs the Export tab writes for the same group.
-    """
-    query_list = [(psm_id, psm, frame) for psm_id, (psm, frame) in annotated_queries.items()]
-    return peptidoform_mz_axis_maxima(
-        query_list, reference_store, psm_id_to_peptidoform).get(peptidoform, 0.0)
-
-
 def _static_mirror_bytes(query_frame: pd.DataFrame, reference_frame: pd.DataFrame, *,
                          title: str, query_label: str, reference_label: str,
                          metrics_text: str, max_peak_labels: int,
@@ -273,15 +261,15 @@ def _static_mirror_bytes(query_frame: pd.DataFrame, reference_frame: pd.DataFram
         metrics_text=metrics_text, max_peak_labels=max_peak_labels,
         mz_axis_max=mz_axis_max,
     )
-    rendered = []
-    for output_format in ("png", "svg"):
+
+    def rendered(output_format: str, **save_kwargs) -> bytes:
         buffer = io.BytesIO()
-        # DPI only meaningfully applies to the raster PNG; SVG is vector.
-        save_kwargs = {"dpi": export_resolution} if output_format == "png" else {}
         fig.savefig(buffer, format=output_format, bbox_inches="tight", facecolor="white",
                     **save_kwargs)
-        rendered.append(buffer.getvalue())
-    return rendered[0], rendered[1]
+        return buffer.getvalue()
+
+    # DPI only meaningfully applies to the raster PNG; SVG is vector.
+    return rendered("png", dpi=export_resolution), rendered("svg")
 
 
 # Cached view of the renderer above, so clicking PNG and then SVG for the same pair renders
@@ -318,22 +306,18 @@ def _render_download_row(fig, query_frame, reference_frame, *, basename: str,
             mz_axis_max=mz_axis_max,
         )[index]
 
+    # Same (label, data, format, mime) fan-out over three columns as the export gallery.
+    downloads = [
+        ("PNG", static_bytes(0), "png", "image/png"),
+        ("SVG", static_bytes(1), "svg", "image/svg+xml"),
+        ("Interactive HTML", lambda: fig.to_html(include_plotlyjs="cdn"), "html", "text/html"),
+    ]
     st.caption("Download this plot")
-    png_col, svg_col, html_col = st.columns(3)
-    with png_col:
-        st.download_button("PNG", data=static_bytes(0), file_name=f"{basename}.png",
-                           mime="image/png", icon=":material/download:",
-                           key=f"{STATE_PREFIX}_mirror_download_png")
-    with svg_col:
-        st.download_button("SVG", data=static_bytes(1), file_name=f"{basename}.svg",
-                           mime="image/svg+xml", icon=":material/download:",
-                           key=f"{STATE_PREFIX}_mirror_download_svg")
-    with html_col:
-        st.download_button("Interactive HTML",
-                           data=lambda: fig.to_html(include_plotlyjs="cdn"),
-                           file_name=f"{basename}.html", mime="text/html",
-                           icon=":material/download:",
-                           key=f"{STATE_PREFIX}_mirror_download_html")
+    for col, (label, data, extension, mime) in zip(st.columns(3), downloads):
+        with col:
+            st.download_button(label, data=data, file_name=f"{basename}.{extension}", mime=mime,
+                               icon=":material/download:",
+                               key=f"{STATE_PREFIX}_mirror_download_{extension}")
 
 
 def _render_mirror_pair(query_psm, query_frame,
@@ -497,11 +481,12 @@ def mirror_plots_fragment(params: dict):
                                    disabled=not auto_best, key=f"{STATE_PREFIX}_mirror_best_metric")
 
     # Plots downloaded from this view reuse the workspace's export resolution, so a PNG saved
-    # here matches one written by the Export tab (#107). The peptide group's shared x-axis
-    # bound is resolved once here and applied to whichever pair ends up being drawn (#114).
+    # here matches one written by the Export tab (#107). The x-axis bound comes from the same
+    # helper the export uses, so this peptide's plot lines up with its exported PNGs; it spans
+    # the whole group, so narrowing the charge filter never shifts the axis (#114).
     export_resolution = int(get_param(params, "export_resolution", DEFAULTS.export_resolution))
-    mz_axis_max = _peptidoform_axis_max(chosen, annotated_queries, reference_store,
-                                        psm_id_to_peptidoform)
+    mz_axis_max = peptidoform_mz_axis_maxima(
+        annotated_query_list, reference_store, psm_id_to_peptidoform).get(chosen, 0.0)
 
     # Auto-pick mode: skip the tables and render the highest-scoring pair directly.
     if auto_best:

@@ -7,6 +7,7 @@ Issue #113: each task carries both spectra's RTs so the worker's summary row rep
 import math
 
 import numpy as np
+import pytest
 from psm_utils import Peptidoform, PSM
 
 from core.peak_annotation import prepare_spectrum_for_plot
@@ -29,24 +30,20 @@ def _frame(top_mz: float, sequence: str = "PEPTIDEK"):
 
 
 class TestPeptidoformAxisMaxima:
-    def test_bound_covers_queries_and_references_of_the_group(self):
+    @pytest.mark.parametrize("reference_mz, expected", [
+        (900.0, 1200.0),   # the longest query sets the bound
+        (1400.0, 1400.0),  # a reference reaching further widens the whole group
+    ])
+    def test_bound_covers_queries_and_references_of_the_group(self, reference_mz, expected):
         short_query, long_query = _psm("scan=1"), _psm("scan=2")
         annotated_queries = [(1, short_query, _frame(500.0)), (2, long_query, _frame(1200.0))]
-        reference_store = {"PEPTIDEK": [(_psm("scan=99", run="reference_run"), _frame(900.0))]}
+        reference_store = {"PEPTIDEK": [(_psm("scan=99", run="reference_run"),
+                                         _frame(reference_mz))]}
 
         maxima = peptidoform_mz_axis_maxima(
             annotated_queries, reference_store, {1: "PEPTIDEK", 2: "PEPTIDEK"})
 
-        assert maxima["PEPTIDEK"] == 1200.0 + _MZ_PADDING_DA
-
-    def test_reference_can_set_the_bound_alone(self):
-        # A reference reaching further than any query still widens the whole group's axis.
-        annotated_queries = [(1, _psm("scan=1"), _frame(500.0))]
-        reference_store = {"PEPTIDEK": [(_psm("scan=99", run="reference_run"), _frame(1400.0))]}
-
-        maxima = peptidoform_mz_axis_maxima(annotated_queries, reference_store, {1: "PEPTIDEK"})
-
-        assert maxima["PEPTIDEK"] == 1400.0 + _MZ_PADDING_DA
+        assert maxima["PEPTIDEK"] == expected + _MZ_PADDING_DA
 
     def test_groups_are_scoped_per_peptidoform(self):
         annotated_queries = [
@@ -93,23 +90,21 @@ class TestExportedTasksShareTheGroupAxis:
 
 
 class TestWorkerSummaryRowRts:
-    """The export worker's summary row reports the RTs it was handed (#113)."""
+    """The export worker's summary row reports the RTs it was handed (#113).
+    2.0 for a real reference; NaN for a predicted one, which carries RT 0.0.
+    """
 
-    def _task(self, **kwargs):
-        tasks = build_plot_tasks(
+    @pytest.mark.parametrize("reference_rt, expected_delta", [(8.0, 2.0), (0.0, math.nan)])
+    def test_row_reports_both_rts_and_their_difference(self, reference_rt, expected_delta):
+        task = build_plot_tasks(
             [(1, _psm("scan=1"), _frame(500.0))],
-            {"PEPTIDEK": [(_psm("scan=99", run="reference_run", **kwargs), _frame(900.0))]},
+            {"PEPTIDEK": [(_psm("scan=99", run="reference_run", retention_time=reference_rt),
+                           _frame(900.0))]},
             {"PEPTIDEK": [_psm("scan=1")]},
             sanitize_fn=lambda name: name, format_dirs={"png": "/tmp/png"},
-        )
-        return tasks[0]
+        )[0]
 
-    def test_row_reports_rts_and_their_difference(self):
-        row = _build_summary_row(self._task(retention_time=8.0), {"Cos": 0.9})
-        assert row["query_rt"] == 10.0
-        assert row["ref_rt"] == 8.0
-        assert row["rt_delta"] == 2.0
+        row = _build_summary_row(task, {"Cos": 0.9})
 
-    def test_predicted_reference_leaves_the_delta_blank(self):
-        row = _build_summary_row(self._task(retention_time=0.0), {"Cos": 0.9})
-        assert math.isnan(row["rt_delta"])
+        assert (row["query_rt"], row["ref_rt"]) == (10.0, reference_rt)
+        assert row["rt_delta"] == pytest.approx(expected_delta, nan_ok=True)

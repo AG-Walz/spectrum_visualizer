@@ -28,6 +28,9 @@ _MZ_PADDING_DA = 50
 # peak's m/z made each PSM start somewhere else, so plots could not be compared
 # side by side; anchoring at 0 keeps the origin identical across all of them.
 _MZ_AXIS_START = 0.0
+# pyopenms-viz forces intensities to [0, 100] when mirror_spectrum=True or
+# relative_intensity=True. We always use that path, so labels go in the same scale.
+_PLOTLY_INTENSITY_SCALE = 100
 
 
 def group_mz_axis_max(frames: Iterable[Optional[pd.DataFrame]]) -> float:
@@ -40,16 +43,6 @@ def group_mz_axis_max(frames: Iterable[Optional[pd.DataFrame]]) -> float:
     maxima = [float(frame["mz"].max()) for frame in frames
               if frame is not None and not frame.empty]
     return max(maxima) + _MZ_PADDING_DA if maxima else 0.0
-
-
-def _mz_axis_upper(frames: Iterable[Optional[pd.DataFrame]], mz_axis_max: float) -> float:
-    """Resolve the x-axis upper bound: the caller's group-wide value, else this plot's own peaks.
-    Returns 0.0 when neither is available, meaning "leave the backend's own range alone".
-    """
-    return float(mz_axis_max) if mz_axis_max else group_mz_axis_max(frames)
-# pyopenms-viz forces intensities to [0, 100] when mirror_spectrum=True or
-# relative_intensity=True. We always use that path, so labels go in the same scale.
-_PLOTLY_INTENSITY_SCALE = 100
 
 
 def _prep(df: pd.DataFrame, max_peak_labels: int = 0) -> pd.DataFrame:
@@ -152,7 +145,7 @@ def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
     """Set x/y limits, ticks, bold m/z + intensity labels, and the mirror divider line.
     """
     # X-axis: 0 to the group-wide bound when the caller supplies one, else this plot's own peaks
-    upper = _mz_axis_upper([query_df, reference_df], mz_axis_max)
+    upper = mz_axis_max or group_mz_axis_max([query_df, reference_df])
     if upper:
         ax.set_xlim(_MZ_AXIS_START, upper)
 
@@ -336,7 +329,7 @@ def create_spectrum_plot(
         fig.update_yaxes(range=[0, _PLOTLY_INTENSITY_SCALE * 1.15])
     # Anchored at 0 m/z, ending at the group-wide bound when given, so every PSM of a
     # peptide is drawn on the same x-axis (#114).
-    upper = _mz_axis_upper([query, reference if is_mirror else None], mz_axis_max)
+    upper = mz_axis_max or group_mz_axis_max([query, reference if is_mirror else None])
     if upper:
         fig.update_xaxes(range=[_MZ_AXIS_START, upper])
     _add_decorations_plotly(
