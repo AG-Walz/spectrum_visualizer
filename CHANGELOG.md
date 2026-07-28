@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## Unreleased
+
+### New Features
+
+- Retention times of every match surfaced wherever matches are tabulated (#113):
+  `query_rt`, `ref_rt` and the new `rt_delta` (query minus reference, blank for
+  predicted references) in the Explore comparison summary and its per-peptide
+  statistics and in `comparison_summary.{csv,xlsx}`; an RT column in the
+  Explorer's PSM table and in the exported `psm.parquet`.
+- Download buttons under the Explore mirror plot: PNG and SVG rendered by the
+  same static backend the Export tab uses, plus the interactive plot as
+  standalone HTML (#107).
+
+### Fixes
+
+- Mirror plots now span 0 m/z to the highest peak of the whole peptide group
+  instead of just their own first and last peak, in the Explore view and in every
+  exported PNG/SVG/PDF/HTML alike — so a peptide's plots can be flipped through,
+  and compared against each other, without the axis rescaling underneath (#114).
+
 ## v1.0.2 - [2026-07-01]
 
 ### New Features

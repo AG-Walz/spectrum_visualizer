@@ -11,8 +11,8 @@ import pytest
 from matplotlib.figure import Figure
 
 from core.peak_annotation import prepare_spectrum_for_plot
-from core.plotting import create_spectrum_plot
-from core.plotting.mirror import _prep
+from core.plotting import create_spectrum_plot, group_mz_axis_max
+from core.plotting.mirror import _MZ_PADDING_DA, _prep
 
 
 class TestMaxPeakLabels:
@@ -70,6 +70,82 @@ class TestPlotCreation:
         reference = empty_spectrum_frame.copy() if with_reference else None
         fig = create_spectrum_plot(empty_spectrum_frame, reference, backend=backend)
         assert isinstance(fig, (Figure, go.Figure))
+
+
+class TestXAxisStartsAtZero:
+    """Every plot's m/z axis is anchored at 0 so PSMs share one origin (issue #114)."""
+
+    def _frame(self, first_mz: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "mz": [first_mz, first_mz + 300.0],
+            "intensity": [100.0, 50.0],
+            "annotation": ["b1", "y1"],
+            "ion_type": ["b", "y"],
+        })
+
+    @pytest.mark.parametrize("first_mz", [150.0, 800.0])
+    @pytest.mark.parametrize("with_reference", [True, False])
+    def test_matplotlib_xlim_starts_at_zero(self, first_mz, with_reference):
+        frame = self._frame(first_mz)
+        fig = create_spectrum_plot(
+            frame, frame.copy() if with_reference else None, backend="ms_matplotlib",
+        )
+        left, right = fig.axes[0].get_xlim()
+        assert left == 0.0
+        # The upper bound still follows the spectrum, padded so outer peaks aren't clipped.
+        assert right > first_mz + 300.0
+
+    @pytest.mark.parametrize("first_mz", [150.0, 800.0])
+    @pytest.mark.parametrize("with_reference", [True, False])
+    def test_plotly_x_range_starts_at_zero(self, first_mz, with_reference):
+        frame = self._frame(first_mz)
+        fig = create_spectrum_plot(
+            frame, frame.copy() if with_reference else None, backend="ms_plotly",
+        )
+        low, high = fig.layout.xaxis.range
+        assert low == 0.0
+        assert high > first_mz + 300.0
+
+    def test_two_spectra_share_the_same_origin(self):
+        # The regression: different first peaks used to give different axis starts.
+        low_fig = create_spectrum_plot(self._frame(150.0), backend="ms_matplotlib")
+        high_fig = create_spectrum_plot(self._frame(800.0), backend="ms_matplotlib")
+        assert low_fig.axes[0].get_xlim()[0] == high_fig.axes[0].get_xlim()[0]
+
+
+class TestGroupWideXAxis:
+    """A peptide group's plots all end at the group's highest peak (issue #114)."""
+
+    def _frame(self, last_mz: float) -> pd.DataFrame:
+        return pd.DataFrame({
+            "mz": [120.0, last_mz], "intensity": [100.0, 50.0],
+            "annotation": ["b1", "y1"], "ion_type": ["b", "y"],
+        })
+
+    def test_group_max_pads_the_highest_peak_and_skips_empties(self):
+        empty = pd.DataFrame({"mz": [], "intensity": []})
+        bound = group_mz_axis_max([self._frame(400.0), empty, self._frame(1500.0), None])
+        assert bound == 1500.0 + _MZ_PADDING_DA
+
+    def test_group_max_of_nothing_is_zero(self):
+        # 0.0 is the "auto" sentinel create_spectrum_plot falls back on.
+        assert group_mz_axis_max([]) == 0.0
+
+    @pytest.mark.parametrize("backend", ["ms_matplotlib", "ms_plotly"])
+    def test_every_plot_in_a_group_gets_the_same_axis(self, backend):
+        # The short spectrum must be drawn on the long one's axis, not its own.
+        frames = [self._frame(400.0), self._frame(1500.0)]
+        bound = group_mz_axis_max(frames)
+        ranges = []
+        for frame in frames:
+            fig = create_spectrum_plot(frame, backend=backend, mz_axis_max=bound)
+            ranges.append(tuple(fig.axes[0].get_xlim()) if backend == "ms_matplotlib"
+                          else tuple(fig.layout.xaxis.range))
+        assert ranges[0] == ranges[1] == (0.0, bound)
+
+    def test_zero_falls_back_to_the_plots_own_peaks(self):
+        fig = create_spectrum_plot(self._frame(400.0), backend="ms_matplotlib", mz_axis_max=0.0)
+        assert fig.axes[0].get_xlim() == (0.0, 400.0 + _MZ_PADDING_DA)
 
 
 class TestMatplotlibExtras:

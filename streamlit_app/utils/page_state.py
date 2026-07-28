@@ -60,7 +60,8 @@ _PICKLE_KEYS = ("annotated_queries", "reference_store", "peptidoform_psms")
 # written by an older code version are cleared and regenerated from inputs rather
 # than hydrating semantically-stale objects. Distinct from the runtime
 # "cache_version" re-render counter in session state.
-CACHE_SCHEMA_VERSION = 1
+# 2: PSM frame gained retention_time and the comparison frame gained rt_delta (#113).
+CACHE_SCHEMA_VERSION = 2
 
 
 def _analysis_cache_path() -> Path:

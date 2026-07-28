@@ -170,6 +170,18 @@ def compute_all_metrics(
     }
 
 
+def rt_delta(query_rt: float | None, reference_rt: float | None) -> float:
+    """Signed retention-time difference query - reference (seconds), NaN when meaningless (#113).
+    Predicted (Koina) references carry retention_time 0.0 and a missing RT reads as None, so
+    both are reported as NaN rather than as a difference the size of the query's own RT.
+    Shared by the load-stage comparison rows and the export workers' summary rows so a
+    peptide's ΔRT reads the same in every table.
+    """
+    if query_rt is None or reference_rt is None or not reference_rt:
+        return float("nan")
+    return float(query_rt) - float(reference_rt)
+
+
 def format_metrics_text(metrics: dict[str, float | int]) -> str:
     """Format the 7 metrics as a multi-line string for the mirror-plot corner overlay.
     """

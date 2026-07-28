@@ -10,10 +10,12 @@ from streamlit_app.views.explore.mirror_plots import (
     _best_pair_by_metric,
     _build_peptidoform_index,
     _build_picker_frames,
+    _download_basename,
     _eligible_peptidoforms,
     _modification_descriptor,
     _query_charges,
     _ref_row_id,
+    _static_mirror_bytes,
 )
 from tests.conftest import make_peptide_match
 
@@ -258,3 +260,32 @@ class TestQueryChargesAndBestPair:
             {"psm_id": 9, "Charge": 2, "Reference": "r", "ref_spectrum_id": reference.spectrum_id, "R² match": 0.9},
         ])
         assert _best_pair_by_metric(comparison_frame, {9}, reference_store, "PEP", [3], "R² match") is None
+
+
+class TestMirrorDownloads:
+    """The Explore mirror plot can be saved straight from the page (issue #107)."""
+
+    def _frame(self) -> pd.DataFrame:
+        return pd.DataFrame({
+            "mz": [100.0, 200.0], "intensity": [1000.0, 2000.0],
+            "annotation": ["b1", "y1"], "ion_type": ["b", "y"],
+        })
+
+    def test_renders_png_and_svg_payloads(self):
+        # The undecorated renderer — the module caches it separately for the download buttons.
+        png_bytes, svg_bytes = _static_mirror_bytes(
+            self._frame(), self._frame(), title="PEPTIDEK +2",
+            query_label="Query", reference_label="Ref", metrics_text="",
+            max_peak_labels=0, export_resolution=100,
+        )
+        assert png_bytes[:4] == b"\x89PNG"
+        assert b"<svg" in svg_bytes[:1000]
+
+    def test_basename_identifies_both_spectra(self):
+        query = _spec("query.mzML", "scan=7")
+        reference = _spec("ref.mzML", "scan=9", is_ref=True)
+        basename = _download_basename(query, reference)
+        assert "PEPTIDEK" in basename and "z2" in basename
+        assert "query" in basename and "ref" in basename
+        # sanitize_filename strips the characters an OS would reject in a filename.
+        assert not set(basename) & set('<>:"/\\|?*[]')

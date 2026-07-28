@@ -4,6 +4,7 @@ Rendered by explore_page.py: peptide selectbox + two Tables (query left, referen
 from __future__ import annotations
 
 import hashlib
+import io
 import os
 from pathlib import Path
 
@@ -20,9 +21,11 @@ from core.comparison_metrics import (
     format_metrics_text,
 )
 from core.defaults import DEFAULTS
+from core.export import sanitize_filename
 from core.pipeline import (
     build_psm_to_peptidoform_mapping,
     format_spectrum_labels,
+    peptidoform_mz_axis_maxima,
 )
 from core.plotting import create_spectrum_plot
 from core.spectra.streaming_types import source_label
@@ -244,22 +247,108 @@ def _render_metrics_expander(metrics: dict) -> None:
         st.dataframe(pd.DataFrame([metric_data]), width="stretch", hide_index=True)
 
 
+def _static_mirror_bytes(query_frame: pd.DataFrame, reference_frame: pd.DataFrame, *,
+                         title: str, query_label: str, reference_label: str,
+                         metrics_text: str, max_peak_labels: int,
+                         export_resolution: int, mz_axis_max: float = 0.0) -> tuple[bytes, bytes]:
+    """Render the static (matplotlib) twin of the on-screen plot and return its (PNG, SVG) bytes.
+    create_spectrum_plot builds a bare Figure (no pyplot registry), so it needs no explicit close.
+    """
+    fig = create_spectrum_plot(
+        query_frame, reference_frame,
+        backend="ms_matplotlib",
+        title=title, query_label=query_label, reference_label=reference_label,
+        metrics_text=metrics_text, max_peak_labels=max_peak_labels,
+        mz_axis_max=mz_axis_max,
+    )
+
+    def rendered(output_format: str, **save_kwargs) -> bytes:
+        buffer = io.BytesIO()
+        fig.savefig(buffer, format=output_format, bbox_inches="tight", facecolor="white",
+                    **save_kwargs)
+        return buffer.getvalue()
+
+    # DPI only meaningfully applies to the raster PNG; SVG is vector.
+    return rendered("png", dpi=export_resolution), rendered("svg")
+
+
+# Cached view of the renderer above, so clicking PNG and then SVG for the same pair renders
+# once. The undecorated function stays importable for tests.
+_cached_static_mirror_bytes = st.cache_data(show_spinner=False, max_entries=8)(_static_mirror_bytes)
+
+
+def _download_basename(query_psm, reference_psm) -> str:
+    """Filesystem-safe stem for a downloaded mirror plot, matching the Export tab's naming.
+    """
+    charge = query_psm.get_precursor_charge() or 0
+    return sanitize_filename(
+        f"{query_psm.peptidoform.modified_sequence}_z{charge}"
+        f"_{source_label(query_psm)}_{query_psm.spectrum_id}"
+        f"_vs_{source_label(reference_psm)}_{reference_psm.spectrum_id}"
+    )
+
+
+def _render_download_row(fig, query_frame, reference_frame, *, basename: str,
+                         title: str, query_label: str, reference_label: str,
+                         metrics_text: str, max_peak_labels: int, export_resolution: int,
+                         mz_axis_max: float) -> None:
+    """Offer the plot on screen as PNG / SVG / standalone HTML downloads (#107).
+    PNG and SVG come from the matplotlib backend so a saved plot matches what the Export tab
+    writes; the HTML is the interactive Plotly figure already on screen, pulling plotly.js from
+    the CDN exactly like the exported HTML plots do. Each payload is passed as a callable so
+    nothing is rendered until the user actually clicks — same lazy idiom as the export ZIP.
+    """
+    def static_bytes(index: int):
+        return lambda: _cached_static_mirror_bytes(
+            query_frame, reference_frame, title=title, query_label=query_label,
+            reference_label=reference_label, metrics_text=metrics_text,
+            max_peak_labels=max_peak_labels, export_resolution=export_resolution,
+            mz_axis_max=mz_axis_max,
+        )[index]
+
+    # Same (label, data, format, mime) fan-out over three columns as the export gallery.
+    downloads = [
+        ("PNG", static_bytes(0), "png", "image/png"),
+        ("SVG", static_bytes(1), "svg", "image/svg+xml"),
+        ("Interactive HTML", lambda: fig.to_html(include_plotlyjs="cdn"), "html", "text/html"),
+    ]
+    st.caption("Download this plot")
+    for col, (label, data, extension, mime) in zip(st.columns(3), downloads):
+        with col:
+            st.download_button(label, data=data, file_name=f"{basename}.{extension}", mime=mime,
+                               icon=":material/download:",
+                               key=f"{STATE_PREFIX}_mirror_download_{extension}")
+
+
 def _render_mirror_pair(query_psm, query_frame,
                         reference_psm, reference_frame,
-                        max_peak_labels: int = 0) -> None:
-    """Compute metrics, draw the Plotly mirror plot, and show the metrics expander below it.
+                        max_peak_labels: int = 0,
+                        export_resolution: int = DEFAULTS.export_resolution,
+                        mz_axis_max: float = 0.0) -> None:
+    """Compute metrics, draw the Plotly mirror plot, then the download row and metrics expander.
+    mz_axis_max is the peptide group's shared x-axis bound, applied to the on-screen plot and to
+    the downloaded static twin alike so both match the group's exported plots (#114).
     """
     metrics = compute_all_metrics(query_frame, reference_frame)
     query_label, ref_label = format_spectrum_labels(query_psm, reference_psm)
     title = f"{query_psm.peptidoform.modified_sequence} +{query_psm.get_precursor_charge() or 0}"
+    metrics_text = format_metrics_text(metrics)
     fig = create_spectrum_plot(
         query_frame, reference_frame,
         backend="ms_plotly",
         title=title, query_label=query_label, reference_label=ref_label,
-        metrics_text=format_metrics_text(metrics),
+        metrics_text=metrics_text,
         max_peak_labels=max_peak_labels,
+        mz_axis_max=mz_axis_max,
     )
     st.plotly_chart(fig, width="stretch")
+    _render_download_row(
+        fig, query_frame, reference_frame,
+        basename=_download_basename(query_psm, reference_psm),
+        title=title, query_label=query_label, reference_label=ref_label,
+        metrics_text=metrics_text, max_peak_labels=max_peak_labels,
+        export_resolution=export_resolution, mz_axis_max=mz_axis_max,
+    )
     _render_metrics_expander(metrics)
 
 
@@ -391,6 +480,14 @@ def mirror_plots_fragment(params: dict):
         best_metric = st.selectbox("Similarity metric", options=_SIMILARITY_METRICS,
                                    disabled=not auto_best, key=f"{STATE_PREFIX}_mirror_best_metric")
 
+    # Plots downloaded from this view reuse the workspace's export resolution, so a PNG saved
+    # here matches one written by the Export tab (#107). The x-axis bound comes from the same
+    # helper the export uses, so this peptide's plot lines up with its exported PNGs; it spans
+    # the whole group, so narrowing the charge filter never shifts the axis (#114).
+    export_resolution = int(get_param(params, "export_resolution", DEFAULTS.export_resolution))
+    mz_axis_max = peptidoform_mz_axis_maxima(
+        annotated_query_list, reference_store, psm_id_to_peptidoform).get(chosen, 0.0)
+
     # Auto-pick mode: skip the tables and render the highest-scoring pair directly.
     if auto_best:
         peptidoform_psm_ids = {psm_id for psm_id, peptidoform in psm_id_to_peptidoform.items()
@@ -404,7 +501,8 @@ def mirror_plots_fragment(params: dict):
         st.caption(f"Best pair by {best_metric}: {metric_value:.4f}")
         query_psm, query_frame = annotated_queries[best_psm_id]
         reference_psm, reference_frame = reference_store[chosen][best_reference_index]
-        _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame, max_peak_labels)
+        _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame,
+                            max_peak_labels, export_resolution, mz_axis_max)
         return
 
     # Manual mode: two side-by-side pickers (query rows filtered by charge).
@@ -441,4 +539,5 @@ def mirror_plots_fragment(params: dict):
     # Render: compute metrics and draw the mirror plot for the chosen pair
     query_psm, query_frame = annotated_queries[selected_query_psm_id]
     reference_psm, reference_frame = refs[ref_index[ref_id]]
-    _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame, max_peak_labels)
+    _render_mirror_pair(query_psm, query_frame, reference_psm, reference_frame,
+                        max_peak_labels, export_resolution, mz_axis_max)

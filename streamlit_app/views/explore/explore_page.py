@@ -11,6 +11,7 @@ from streamlit_app.utils.state import (
 )
 from streamlit_app.utils.page_state import restore_analysis_if_needed
 from core.comparison_metrics import METRIC_KEY_TO_COLUMN_NAME
+from core.pipeline import COMPARISON_RT_COLUMNS
 from core.plotting import (
     MEASURE_VALUE_COLUMN,
     METRIC_COLUMNS,
@@ -26,6 +27,17 @@ from streamlit_app.views.widgets.summary_options import render_summary_options
 
 params = page_setup("Explore")
 logger = logging.getLogger(__name__)
+
+# Human-readable headers + one-decimal seconds for the raw RT columns of the comparison
+# frame (#113). ΔRT is blank for predicted references, which carry no real retention time.
+RT_COLUMN_CONFIG = {
+    "query_rt": st.column_config.NumberColumn("Query RT (s)", format="%.1f"),
+    "ref_rt": st.column_config.NumberColumn("Ref RT (s)", format="%.1f"),
+    "rt_delta": st.column_config.NumberColumn(
+        "ΔRT (s)", format="%.1f",
+        help="Query RT minus reference RT; empty when the reference is predicted.",
+    ),
+}
 
 
 @st.fragment
@@ -89,18 +101,23 @@ def comparison_metrics_fragment():
     st.caption(f"{len(view_frame)} query/reference comparisons")
 
     display_cols = ["Peptide", "Modification", "Charge", "Query", "Reference",
+                    *COMPARISON_RT_COLUMNS,
                     "R\u00b2 match", "R\u00b2 binned", "Cosine", "Entropy",
                     "Dice", "Jaccard", "SharedRatio", "shared",
                     "query_annotation_count", "reference_annotation_count"]
     available_cols = [c for c in display_cols if c in view_frame.columns]
-    st.dataframe(view_frame[available_cols], width="stretch", hide_index=True)
+    st.dataframe(view_frame[available_cols], width="stretch", hide_index=True,
+                 column_config=RT_COLUMN_CONFIG)
 
-    # Summary stats: collapse PSMs into count/median/mean/std per peptidoform+charge
+    # Summary stats: collapse PSMs into count/median/mean/std per peptidoform+charge.
+    # RT columns ride along with the metrics (#113) so each peptide's elution spread and
+    # its offset from the reference are visible next to the similarity scores.
     st.markdown("---")
     st.subheader("Summary Statistics")
     metric_cols = [v for v in METRIC_KEY_TO_COLUMN_NAME.values() if v in view_frame.columns]
+    stat_cols = metric_cols + [c for c in COMPARISON_RT_COLUMNS if c in view_frame.columns]
     if metric_cols:
-        summary = view_frame.groupby(["Peptide", "Modification", "Charge"])[metric_cols].agg(
+        summary = view_frame.groupby(["Peptide", "Modification", "Charge"])[stat_cols].agg(
             ["count", "median", "mean", "std"]
         )
         summary.columns = [f"{m} {s}" for m, s in summary.columns]

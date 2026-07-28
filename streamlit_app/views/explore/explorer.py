@@ -77,6 +77,9 @@ def _render_psm_table(psm_frame, cache_path, needs_regeneration, state_manager) 
     columns = [
         {"field": "display_label", "title": "Peptide"},
         {"field": "charge", "title": "Z"},
+        # RT in seconds, two decimals — same money-formatter idiom as the mirror picker (#113).
+        {"field": "retention_time", "title": "RT", "sorter": "number", "hozAlign": "right",
+         "formatter": "money", "formatterParams": {"precision": 2, "symbol": ""}},
         {"field": "score", "title": "Score", "formatter": "money", "formatterParams": {"precision": 4}},
         {"field": "source_file", "title": "Source File"},
     ]
