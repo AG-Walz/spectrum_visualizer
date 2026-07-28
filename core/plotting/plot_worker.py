@@ -31,7 +31,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 import pandas as pd  # noqa: E402
 
-from core.comparison_metrics import compute_all_metrics, format_metrics_text
+from core.comparison_metrics import compute_all_metrics, format_metrics_text, rt_delta
 from core.plotting.mirror import create_spectrum_plot
 
 logger = logging.getLogger(__name__)
@@ -75,6 +75,8 @@ class ComparisonTask:
     figure_size: tuple[int, int] = (12, 8)  # inches (width, height)
     export_resolution: int = 300            # DPI for raster output
     max_peak_labels: int = 0                # cap text labels to N most intense peaks (0 = all)
+    # Upper x-axis bound shared by every plot of this peptide group; 0.0 = per-plot (#114).
+    mz_axis_max: float = 0.0
 
     # Output path for the interactive Plotly HTML — empty string skips HTML.
     html_plot_path: str = ""
@@ -93,6 +95,10 @@ class ComparisonTask:
     peptide: str = ""
     modification: str = ""
     charge: int = 0
+    # Retention times of the two spectra, in seconds (#113). None when unknown; a predicted
+    # reference carries 0.0, which _build_summary_row reports as an empty rt_delta.
+    query_rt: Optional[float] = None
+    reference_rt: Optional[float] = None
 
 
 @dataclass
@@ -124,8 +130,8 @@ class ComparisonResult:
 
 def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
     """Compose one row of the comparison CSV for a single mirror task.
-    Returns a flat dict keying the identity columns (query_file,
-    ref_file, peptide, modification, charge) followed by every
+    Returns a flat dict keying the identity columns (query_file, ref_file, peptide,
+    modification, charge, both retention times and their difference) followed by every
     computed metric spread in from metrics — one record per output row.
     """
     return {
@@ -134,6 +140,9 @@ def _build_summary_row(task: ComparisonTask, metrics: dict) -> dict:
         "peptide": task.peptide,
         "modification": task.modification,
         "charge": task.charge,
+        "query_rt": task.query_rt,
+        "ref_rt": task.reference_rt,
+        "rt_delta": rt_delta(task.query_rt, task.reference_rt),
         **metrics,
     }
 
@@ -169,6 +178,7 @@ def process_single_task(task: ComparisonTask) -> ComparisonResult:
                 metrics_text=(task.metrics_text or format_metrics_text(metrics)) if is_mirror else "",
                 figure_size=task.figure_size,
                 max_peak_labels=task.max_peak_labels,
+                mz_axis_max=task.mz_axis_max,
             )
             png_path, svg_path, pdf_path = _save_task_figure(fig, task)
             plt.close(fig)
@@ -244,6 +254,7 @@ def _save_task_html(task: ComparisonTask) -> str:
             reference_label=task.reference_label,
             metrics_text=task.metrics_text if is_mirror else "",
             max_peak_labels=task.max_peak_labels,
+            mz_axis_max=task.mz_axis_max,
         )
         # include_plotlyjs="cdn" keeps the file small — the browser pulls plotly.js from a CDN.
         fig.write_html(str(out), include_plotlyjs="cdn")

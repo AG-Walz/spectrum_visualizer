@@ -37,6 +37,7 @@ PSM_TABLE_SCHEMA: dict[str, pl.DataType] = {
     "display_label": pl.String, # Human-facing label shown in the Table (mirrors peptidoform)
     "peptidoform": pl.String,   # Full modified sequence (ProForma string) — the grouping key
     "charge": pl.Int32,         # Precursor charge state
+    "retention_time": pl.Float32,  # Elution time of the spectrum in seconds (0.0 when unknown)
     "score": pl.Float32,        # Search-engine score for this PSM
     "source_file": pl.String,   # mzML run the spectrum came from
     "spectrum_id": pl.String,   # Native spectrum identifier within the run
@@ -103,6 +104,9 @@ def build_psm_table(
                 "display_label": peptidoform,
                 "peptidoform": peptidoform_str,
                 "charge": psm.get_precursor_charge() or 0,
+                # RT reaches the exported psm.parquet and the Explorer table (#113); idXML
+                # PSMs without one fall back to 0.0 like every other optional field here.
+                "retention_time": float(psm.retention_time) if psm.retention_time is not None else 0.0,
                 "score": float(psm.score) if psm.score is not None else 0.0,
                 "source_file": psm.run or "",
                 "spectrum_id": psm.spectrum_id,

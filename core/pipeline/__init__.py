@@ -11,6 +11,7 @@ from core.pipeline.load_annotate import (
     build_psm_to_peptidoform_mapping,
     format_spectrum_labels,
     make_query_ready_callback,
+    peptidoform_mz_axis_maxima,
     process_query_result,
     run_streaming_annotation,
 )
@@ -24,6 +25,7 @@ __all__ = [
     "build_psm_to_peptidoform_mapping",
     "format_spectrum_labels",
     "make_query_ready_callback",
+    "peptidoform_mz_axis_maxima",
     "process_query_result",
     "run_streaming_annotation",
 ]

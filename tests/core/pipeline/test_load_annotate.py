@@ -6,6 +6,7 @@ import pandas as pd
 
 from psm_utils import PSM
 
+from core.comparison_metrics import rt_delta
 from core.pipeline import load_annotate
 
 
@@ -37,16 +38,16 @@ class TestRetentionTimeColumns:
     """RT of each match rides along in the comparison summary (issue #113)."""
 
     def test_delta_is_query_minus_reference(self):
-        assert load_annotate._rt_delta(180.0, 150.0) == 30.0
-        assert load_annotate._rt_delta(150.0, 180.0) == -30.0
+        assert rt_delta(180.0, 150.0) == 30.0
+        assert rt_delta(150.0, 180.0) == -30.0
 
     def test_delta_is_nan_for_predicted_reference(self):
         # Koina references carry retention_time 0.0 — no real elution time to compare against.
-        assert math.isnan(load_annotate._rt_delta(180.0, 0.0))
+        assert math.isnan(rt_delta(180.0, 0.0))
 
     def test_delta_is_nan_when_either_rt_is_missing(self):
-        assert math.isnan(load_annotate._rt_delta(None, 150.0))
-        assert math.isnan(load_annotate._rt_delta(180.0, None))
+        assert math.isnan(rt_delta(None, 150.0))
+        assert math.isnan(rt_delta(180.0, None))
 
     def test_rt_columns_are_exported_in_order(self):
         # The RT block sits in the identity columns, so it reaches the CSV/XLSX export.

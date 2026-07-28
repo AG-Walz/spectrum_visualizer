@@ -2,6 +2,7 @@
 import numpy as np
 import pandas as pd
 import polars as pl
+import pytest
 
 from core.dataframes import (
     HEATMAP_SCHEMA,
@@ -62,6 +63,19 @@ class TestBuildPsmTable:
         df = frame.collect()
         assert len(df) == 2
         assert set(lookup.keys()) == {"index=1|PEPTIDEK", "index=2|PEPTIDEK"}
+
+    def test_retention_time_column_is_populated(self):
+        """RT reaches the Explorer table and the exported psm.parquet (#113)."""
+        psms = PSMList(psm_list=[_make_psm(spectrum_id="index=1", rt=305.5)])
+        frame, _ = build_psm_table({"PEPTIDEK": psms})
+        assert frame.collect()["retention_time"].to_list() == [pytest.approx(305.5)]
+
+    def test_retention_time_defaults_to_zero_when_unknown(self):
+        # An identification with no RT must not widen the Float32 column to null.
+        psm = make_peptide_match(spectrum_id="index=1")
+        psm.retention_time = None
+        frame, _ = build_psm_table({"PEPTIDEK": PSMList(psm_list=[psm])})
+        assert frame.collect()["retention_time"].to_list() == [0.0]
 
     def test_empty_peptidoform_psms(self):
         frame, lookup = build_psm_table({})

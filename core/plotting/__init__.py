@@ -1,7 +1,7 @@
 """Plotting public API: mirror plots, summary plots, parallel render worker
 (imported by core.export, cli.main, streamlit_app.views.explore).
 """
-from core.plotting.mirror import create_spectrum_plot
+from core.plotting.mirror import create_spectrum_plot, group_mz_axis_max
 from core.plotting.plot_worker import ComparisonTask, process_single_task
 from core.plotting.summary import (
     MEASURE_VALUE_COLUMN,
@@ -20,8 +20,9 @@ __all__ = [
     # plot_worker — picklable work-unit + worker that renders one ComparisonTask
     "ComparisonTask",
     "process_single_task",
-    # mirror — single/mirror spectrum figure builder
+    # mirror — single/mirror spectrum figure builder + shared per-group x-axis bound
     "create_spectrum_plot",
+    "group_mz_axis_max",
     # summary — metric columns + per-renderer + end-to-end summary pipeline
     "METRIC_COLUMNS",
     "SUMMARY_RENDERERS",

@@ -27,12 +27,14 @@ from core.comparison_metrics import (
     METRIC_KEY_TO_COLUMN_NAME,
     compute_all_metrics,
     format_metrics_text,
+    rt_delta,
 )
 from core.peak_annotation import (
     prepare_koina_spectrum_for_plot,
     prepare_spectrum_for_plot,
 )
 from core.defaults import DEFAULTS
+from core.plotting.mirror import group_mz_axis_max
 from core.plotting.plot_worker import ComparisonTask
 from core.spectra import load_spectra_streaming
 from core.spectra.koina_prediction import predict_koina_spectrum
@@ -65,16 +67,6 @@ COMPARISON_SUMMARY_COLUMNS = (
     *METRIC_KEY_TO_COLUMN_NAME.values(),
     *COMPARISON_COUNT_COLUMNS,
 )
-
-
-def _rt_delta(query_rt: float | None, reference_rt: float | None) -> float:
-    """Signed retention-time difference query - reference (seconds), NaN when meaningless.
-    Predicted (Koina) references carry retention_time 0.0 and a missing RT reads as None, so
-    both are reported as NaN rather than as a difference the size of the query's own RT.
-    """
-    if query_rt is None or reference_rt is None or not reference_rt:
-        return float("nan")
-    return float(query_rt) - float(reference_rt)
 
 
 def build_comparison_frame(comparison_rows: list[dict]) -> pd.DataFrame:
@@ -290,7 +282,7 @@ def process_query_result(streaming_result, psm_lookup, annotation_kwargs,
             "ref_spectrum_id": reference_psm.spectrum_id,
             "query_rt": query_psm.retention_time,
             "ref_rt": reference_psm.retention_time,
-            "rt_delta": _rt_delta(query_psm.retention_time, reference_psm.retention_time),
+            "rt_delta": rt_delta(query_psm.retention_time, reference_psm.retention_time),
         }
         # Metric columns: metric key -> spreadsheet column name, NaN for missing values
         for metric_key, column_name in METRIC_KEY_TO_COLUMN_NAME.items():
@@ -408,6 +400,26 @@ def run_streaming_annotation(
 # Plot-task builder (export stage)
 # ============================================================================
 
+def peptidoform_mz_axis_maxima(annotated_queries, reference_store,
+                               psm_id_to_peptidoform) -> dict[str, float]:
+    """Map each peptidoform to the one x-axis upper bound all its plots share (#114).
+    A group's bound covers every spectrum it can be plotted from — all of its query panels at
+    any charge plus all of its references — so the axis stays put whichever pair is drawn, and
+    the peptide's plots can be read side by side (in the Explore view or the export gallery)
+    without silently rescaling. annotated_queries is the canonical [(psm_id, psm, frame)] list.
+    """
+    frames_by_peptidoform: dict[str, list] = {}
+    for psm_id, _query_psm, query_frame in annotated_queries:
+        peptidoform = psm_id_to_peptidoform.get(psm_id)
+        if peptidoform:
+            frames_by_peptidoform.setdefault(peptidoform, []).append(query_frame)
+    for peptidoform, references in reference_store.items():
+        frames_by_peptidoform.setdefault(peptidoform, []).extend(
+            reference_frame for _reference_psm, reference_frame in references)
+    return {peptidoform: group_mz_axis_max(frames)
+            for peptidoform, frames in frames_by_peptidoform.items()}
+
+
 def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                      sanitize_fn, format_dirs=None, figure_size=(12, 8),
                      export_resolution=300, html_dir="", plot_unpaired_queries=False,
@@ -415,7 +427,8 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
     """Build the list of ComparisonTask plot jobs for a set of annotated queries.
     Emits one "mirror" task per (query, reference) pair; a query with no reference yields a
     "single" task only when plot_unpaired_queries is set. The metrics overlay text is pre-computed
-    here so the parallel plot workers never recompute it. Returns [ComparisonTask, ...] ordered by psm_id.
+    here so the parallel plot workers never recompute it. Every task of one peptidoform also carries
+    that group's shared x-axis bound. Returns [ComparisonTask, ...] ordered by psm_id.
     """
     # Setup: normalise format_dirs, derive export_formats, build PSM->peptidoform lookup
     if format_dirs is None:
@@ -425,6 +438,8 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
     png_dir = format_dirs.get("png", "")
     svg_dir = format_dirs.get("svg", "")
     pdf_dir = format_dirs.get("pdf", "")
+    axis_max_by_peptidoform = peptidoform_mz_axis_maxima(
+        annotated_queries, reference_store, psm_id_to_peptidoform)
 
     # Build tasks: iterate PSMs in stable order, mirror when refs exist else single
     tasks: list[ComparisonTask] = []
@@ -466,8 +481,10 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                     export_formats=export_formats,
                     figure_size=figure_size, export_resolution=export_resolution,
                     max_peak_labels=max_peak_labels,
+                    mz_axis_max=axis_max_by_peptidoform.get(peptidoform, 0.0),
                     html_plot_path=html_path, metrics_text=metrics_text,
                     peptide=peptidoform, charge=charge,
+                    query_rt=query_psm.retention_time, reference_rt=reference_psm.retention_time,
                 ))
         elif plot_unpaired_queries:
             # Single task: unpaired query, no metrics overlay, no HTML
@@ -482,7 +499,9 @@ def build_plot_tasks(annotated_queries, reference_store, peptidoform_psms,
                 export_formats=[f for f in export_formats if f != "html"],
                 figure_size=figure_size, export_resolution=export_resolution,
                 max_peak_labels=max_peak_labels,
+                mz_axis_max=axis_max_by_peptidoform.get(peptidoform, 0.0),
                 html_plot_path="", metrics_text="",
                 peptide=peptidoform, charge=charge,
+                query_rt=query_psm.retention_time,
             ))
     return tasks

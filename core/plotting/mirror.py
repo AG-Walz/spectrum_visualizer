@@ -4,7 +4,7 @@ overriding the pyopenms_viz functions to customize the plots.
 create_spectrum_plot is called by plotting.plot_worker (export) and
 streamlit_app.views.explore.mirror_plots (Explore view).
 """
-from typing import Literal, Optional
+from typing import Iterable, Literal, Optional
 
 import matplotlib
 import pandas as pd
@@ -28,6 +28,25 @@ _MZ_PADDING_DA = 50
 # peak's m/z made each PSM start somewhere else, so plots could not be compared
 # side by side; anchoring at 0 keeps the origin identical across all of them.
 _MZ_AXIS_START = 0.0
+
+
+def group_mz_axis_max(frames: Iterable[Optional[pd.DataFrame]]) -> float:
+    """Return one padded upper m/z bound covering every frame of a peptide group (#114).
+    Callers pass all the spectra a group is plotted from — its query panels and every
+    reference — and hand the result to create_spectrum_plot for each plot in that group, so
+    the whole group shares one x-axis instead of each plot ending at its own last peak.
+    Returns 0.0 when no frame carries a peak, which create_spectrum_plot reads as "auto".
+    """
+    maxima = [float(frame["mz"].max()) for frame in frames
+              if frame is not None and not frame.empty]
+    return max(maxima) + _MZ_PADDING_DA if maxima else 0.0
+
+
+def _mz_axis_upper(frames: Iterable[Optional[pd.DataFrame]], mz_axis_max: float) -> float:
+    """Resolve the x-axis upper bound: the caller's group-wide value, else this plot's own peaks.
+    Returns 0.0 when neither is available, meaning "leave the backend's own range alone".
+    """
+    return float(mz_axis_max) if mz_axis_max else group_mz_axis_max(frames)
 # pyopenms-viz forces intensities to [0, 100] when mirror_spectrum=True or
 # relative_intensity=True. We always use that path, so labels go in the same scale.
 _PLOTLY_INTENSITY_SCALE = 100
@@ -129,17 +148,13 @@ def _add_peak_labels_plotly(fig: go.Figure, df: pd.DataFrame,
 
 def _set_axes_matplotlib(ax, query_df: pd.DataFrame,
                          reference_df: Optional[pd.DataFrame],
-                         is_mirror: bool) -> None:
+                         is_mirror: bool, mz_axis_max: float = 0.0) -> None:
     """Set x/y limits, ticks, bold m/z + intensity labels, and the mirror divider line.
     """
-    # X-axis: always start at 0 m/z (#114), pad the top so outer peaks aren't clipped
-    mz_values = []
-    if not query_df.empty:
-        mz_values.extend(query_df["mz"].tolist())
-    if reference_df is not None and not reference_df.empty:
-        mz_values.extend(reference_df["mz"].tolist())
-    if mz_values:
-        ax.set_xlim(_MZ_AXIS_START, max(mz_values) + _MZ_PADDING_DA)
+    # X-axis: 0 to the group-wide bound when the caller supplies one, else this plot's own peaks
+    upper = _mz_axis_upper([query_df, reference_df], mz_axis_max)
+    if upper:
+        ax.set_xlim(_MZ_AXIS_START, upper)
 
     # Y-axis: symmetric ticks + divider for mirror, single-panel scale otherwise
     if is_mirror:
@@ -239,6 +254,7 @@ def create_spectrum_plot(
     metrics_text: str = "",
     figure_size: tuple[int, int] = (12, 8),
     max_peak_labels: int = 0,
+    mz_axis_max: float = 0.0,
 ):
     """Render an annotated peptide-spectrum match and return the figure.
     Draws a mirror plot when reference_frame is supplied (query up, reference down), else a single
@@ -246,6 +262,8 @@ def create_spectrum_plot(
     annotation/ion_type columns, each panel independently max-normalised. Returns a matplotlib Figure
     for "ms_matplotlib" or a Plotly go.Figure for "ms_plotly"; labels and metrics_text become overlays.
     max_peak_labels caps text labels to the N most intense annotated peaks per panel (0 = all).
+    The x-axis always starts at 0 m/z; mz_axis_max pins its upper end to a bound shared by a whole
+    peptide group (see group_mz_axis_max), 0.0 falling back to this plot's own highest peak (#114).
     """
     # Prep: normalise both panels, suppress reference label for single-spectrum
     is_mirror = reference_frame is not None
@@ -260,7 +278,7 @@ def create_spectrum_plot(
         _draw_matplotlib(ax, query, y_multiplier=1.0)
         if reference is not None:
             _draw_matplotlib(ax, reference, y_multiplier=-1.0)
-        _set_axes_matplotlib(ax, query, reference, is_mirror)
+        _set_axes_matplotlib(ax, query, reference, is_mirror, mz_axis_max)
         ax.set_title(title, fontsize=14, fontweight="bold")
         _add_legend_matplotlib(ax)
         _add_decorations_matplotlib(
@@ -316,14 +334,11 @@ def create_spectrum_plot(
         )
     else:
         fig.update_yaxes(range=[0, _PLOTLY_INTENSITY_SCALE * 1.15])
-    mz_values = []
-    if not query.empty:
-        mz_values.extend(query["mz"].tolist())
-    if is_mirror and reference is not None and not reference.empty:
-        mz_values.extend(reference["mz"].tolist())
-    if mz_values:
-        # Anchored at 0 m/z so every PSM shares the same origin (#114).
-        fig.update_xaxes(range=[_MZ_AXIS_START, max(mz_values) + _MZ_PADDING_DA])
+    # Anchored at 0 m/z, ending at the group-wide bound when given, so every PSM of a
+    # peptide is drawn on the same x-axis (#114).
+    upper = _mz_axis_upper([query, reference if is_mirror else None], mz_axis_max)
+    if upper:
+        fig.update_xaxes(range=[_MZ_AXIS_START, upper])
     _add_decorations_plotly(
         fig, query_label=query_label,
         reference_label=effective_reference_label,

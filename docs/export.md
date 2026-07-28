@@ -43,7 +43,8 @@ the fingerprint match, so the next run allocates a fresh directory.
 ## Data files
 
 **Parquet** — the four LazyFrames openms_insight consumes, built by
-`core/dataframes.py`: `psm.parquet` (one row per PSM), `peaks.parquet` (one row per
+`core/dataframes.py`: `psm.parquet` (one row per PSM, including its `retention_time`
+in seconds — `0.0` when the identification carried none), `peaks.parquet` (one row per
 peak, with ion annotations), `seq.parquet` (one row per PSM, OpenMS parenthesis
 notation for SequenceView), `heatmap.parquet` (one row per peak: RT, m/z, intensity).
 Schemas: the `*_SCHEMA` constants in that module.
@@ -72,6 +73,13 @@ picklable `core/plotting/plot_worker.py:process_single_task`. Query on top (posi
 intensity), reference mirrored below, peaks coloured by ion series, metrics in the
 lower-left. Single-spectrum tasks (no reference) drop the `_vs_<ref>` part of the
 name. Filenames pass through `sanitize_filename`.
+
+Every plot spans `0 -> max(m/z)` of its **peptide group**, not of its own peaks:
+`build_plot_tasks` resolves one bound per peptidoform via `peptidoform_mz_axis_maxima`
+(over all of that peptide's queries and references) and stamps it on each task as
+`mz_axis_max`. So the PNGs inside one peptide folder — and the same peptide's plot in
+the Explore tab, which resolves the identical bound — can be flipped through without
+the x-axis rescaling underneath (#114).
 
 | Format | Renderer | Use |
 |---|---|---|
