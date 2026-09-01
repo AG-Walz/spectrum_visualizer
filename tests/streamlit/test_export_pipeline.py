@@ -124,11 +124,15 @@ class TestRunExport:
              patch("streamlit_app.views.export.export_actions.get_state_key",
                    side_effect=lambda k: f"peptide_mirror.{k}"), \
              patch("streamlit_app.views.export.export_actions.get_param") as mock_gp, \
-             patch("streamlit_app.views.export.gallery.st", mock_st):
+             patch("streamlit_app.views.export.gallery.st", mock_st), \
+             patch("streamlit_app.utils.progress_tracker.st", mock_st):
 
             mock_st.session_state = state
+            # progress_status() opens st.status then builds the bar/caption widgets inside it
             mock_st.status.return_value.__enter__ = MagicMock(return_value=MagicMock())
             mock_st.status.return_value.__exit__ = MagicMock(return_value=False)
+            mock_st.progress = MagicMock(return_value=MagicMock())
+            mock_st.empty = MagicMock(return_value=MagicMock())
             mock_st.caption = MagicMock()
             mock_st.expander.return_value.__enter__ = MagicMock()
             mock_st.expander.return_value.__exit__ = MagicMock(return_value=False)
@@ -181,6 +185,21 @@ class TestRunExport:
         frame = pd.read_csv(export_root / "comparison_summary.csv")
         assert len(frame) == 2
         assert "Peptide" in frame.columns
+
+    def test_mirror_export_advances_the_progress_bar(self, mock_st):
+        """Mirror plots tick on_plot_progress, so the bar advances and finalize() fills it to 1.0."""
+        mock, tmp_path = mock_st
+        self._invoke_export(tmp_path, export_mirror=True)
+
+        bar = mock.progress.return_value
+        fractions = [call.args[0] for call in bar.progress.call_args_list]
+        # One tick per finished plot task (fraction reaches 1.0), plus finalize()'s fill
+        assert fractions, "export never ticked the progress bar"
+        assert max(fractions) == 1.0
+        assert fractions[-1] == 1.0
+        # The st.status label is rewritten on completion by tracker.finalize()
+        status = mock.status.return_value.__enter__.return_value
+        assert status.update.call_args.kwargs["state"] == "complete"
 
     def test_export_creates_versioned_directory(self, mock_st):
         """Streamlit reuses the CLI's {project}_{NNN}_{YYYYMMDD} versioned layout."""

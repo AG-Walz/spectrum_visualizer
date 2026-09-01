@@ -12,6 +12,7 @@ import streamlit as st
 
 from streamlit_app.utils.state import get_param, get_state_key
 from streamlit_app.utils.page_state import build_run_settings
+from streamlit_app.utils.progress_tracker import progress_status
 from streamlit_app.views.export.gallery import _render_plot_gallery
 from core.defaults import DEFAULTS
 from core.export import (
@@ -50,16 +51,15 @@ def _build_plot_settings(params: dict) -> PlotSettings:
     )
 
 
-def _show_export_summary(export_result, status) -> None:
-    """Stamp mirror/summary plot counts into the status block and mark it complete.
+def _show_export_summary(export_result, tracker) -> None:
+    """Stamp mirror/summary plot counts into the status block, fill the bar, and mark it complete.
     """
     if export_result.mirror_plot_count:
         st.caption(f"  Generated {export_result.mirror_plot_count} mirror plot file(s)")
     if export_result.summary_plot_count:
         st.caption(f"  Generated {export_result.summary_plot_count} summary plot(s)")
-    status.update(
-        label=f"Exported {len(export_result.saved_files)} files to {export_result.export_root}",
-        state="complete",
+    tracker.finalize(
+        f"Exported {len(export_result.saved_files)} files to {export_result.export_root}"
     )
 
 
@@ -90,8 +90,8 @@ def _run_export(params: dict, export_dir: str, export_parquet: bool, export_csv:
     )
     plot_settings = _build_plot_settings(params)
 
-    # Dispatch: run shared export pipeline inside a live st.status block
-    with st.status("Exporting...", expanded=True) as status:
+    # Dispatch: run shared export pipeline inside a live status block with a plot progress bar
+    with progress_status("Exporting...") as tracker:
         export_result = run_export(
             export_directory=export_dir,
             project_name=DEFAULTS.project_name,
@@ -103,9 +103,13 @@ def _run_export(params: dict, export_dir: str, export_parquet: bool, export_csv:
             comparison_frame=st.session_state.get(get_state_key("comparison_frame")),
             selection=selection,
             plot_settings=plot_settings,
-            callbacks=ExportCallbacks(on_step=st.caption, on_warning=st.warning),
+            callbacks=ExportCallbacks(
+                on_step=st.caption,
+                on_plot_progress=lambda done, total: tracker.update(done, total, units="plots"),
+                on_warning=st.warning,
+            ),
         )
-        _show_export_summary(export_result, status)
+        _show_export_summary(export_result, tracker)
 
     # Post-export: list saved files and open the plot gallery below
     _show_saved_files_expander(export_result)
