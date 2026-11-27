@@ -33,6 +33,8 @@ dependencies:
   - psutil=7.1.3
   - pip:
     - psm-utils==1.5.1
+    # Imported directly by core/spectra (per-spectrum mzML metadata); also a psm-utils dependency.
+    - pyteomics==4.7.5
     - koinapy==0.0.10
     - ms-entropy==1.4.0
     - spectrum-utils==0.5.0

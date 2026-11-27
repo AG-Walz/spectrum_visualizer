@@ -15,6 +15,7 @@ from openms_insight import StateManager, Table
 from psm_utils import Peptidoform
 
 from streamlit_app.utils.state import STATE_PREFIX, get_param, get_state_key
+from streamlit_app.utils.page_state import COMPONENT_CACHE_DIR
 from core.comparison_metrics import (
     METRIC_KEY_TO_COLUMN_NAME,
     compute_all_metrics,
@@ -200,11 +201,10 @@ def _picker_column_definitions() -> list[dict]:
     ]
 
 
-def _resolve_picker_cache_path(params: dict) -> str:
+def _resolve_picker_cache_path() -> str:
     """Return the picker's component-cache directory (same dir as Explorer, distinct cache_ids).
     """
-    export_dir = get_param(params, "export_directory", "")
-    cache_path = export_dir or str(Path(st.session_state.workspace) / "exports")
+    cache_path = str(Path(st.session_state.workspace) / COMPONENT_CACHE_DIR)
     os.makedirs(cache_path, exist_ok=True)
     return cache_path
 
@@ -510,7 +510,7 @@ def mirror_plots_fragment(params: dict):
         chosen, annotated_queries, reference_store, psm_id_to_peptidoform, selected_charges,
     )
     _render_picker_tables(
-        reference_picker_frame, query_picker_frame, _resolve_picker_cache_path(params), state_manager,
+        reference_picker_frame, query_picker_frame, _resolve_picker_cache_path(), state_manager,
     )
 
     # Read selections from the StateManager. openms_insight's bridge auto-fills

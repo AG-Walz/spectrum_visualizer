@@ -32,7 +32,7 @@ except ImportError:
 
 from core import __version__
 from core.bug_report import build_issue_url, build_snapshot
-from core.defaults import DEFAULTS
+from streamlit_app.utils.job_registry import get_job, job_key_for
 
 
 # ============================================================================
@@ -68,30 +68,12 @@ def get_param(params: dict, key: str, default: Any = None) -> Any:
 
 
 # ============================================================================
-# Loaded-idXML PSMList cache
+# Shared idXML index
 # ============================================================================
-# The Setup picker (peptide counts) and Load & Annotate (target lookup) both
-# consume a PSMList loaded from the selected idXML files. Caching that PSMList
-# keyed on the file selection lets the second stage reuse the first stage's load
-# instead of re-parsing the same files (see core.peptide_lookup.load_idxmls).
-
-_LOADED_IDXML_PSMLIST_KEY = "_loaded_idxml_psmlist"
-_LOADED_IDXML_FILES_KEY = "_loaded_idxml_files"
-
-
-def cached_idxml_psmlist(idxml_files: list[str]):
-    """Return the PSMList previously loaded from exactly idxml_files, or None when
-    the cache is empty or was loaded from a different idXML selection.
-    """
-    if st.session_state.get(_LOADED_IDXML_FILES_KEY) == idxml_files:
-        return st.session_state.get(_LOADED_IDXML_PSMLIST_KEY)
-    return None
-
-
-def cache_idxml_psmlist(idxml_files: list[str], psm_list) -> None:
-    """Stash a freshly loaded PSMList keyed on the idXML file selection it came from."""
-    st.session_state[_LOADED_IDXML_PSMLIST_KEY] = psm_list
-    st.session_state[_LOADED_IDXML_FILES_KEY] = list(idxml_files)
+# The Setup picker (peptide counts) and Load & Annotate (target lookup) both read the
+# on-disk idXML index (core.idxml_index). It is shared by all workspaces and sessions,
+# so an idXML is parsed once and stays indexed across reloads until the file changes.
+IDXML_INDEX_DIR = PROJECT_ROOT / "cache" / "idxml_index"
 
 
 # ============================================================================
@@ -130,10 +112,14 @@ _PARAM_KEYS: tuple[str, ...] = (
     "max_peak_labels",
     "koina_enabled", "koina_model",
     "koina_collision_energy", "koina_instrument_type",
-    "image_format",
     "summary_metrics", "summary_plot_types", "summary_sort",
 )
 
+
+# Keys outside _PARAM_KEYS that the app still reads (kept when present, never added).
+_EXTRA_PARAM_KEYS: tuple[str, ...] = (
+    "export_directory", "export_resolution", "plot_unpaired_queries",
+)
 
 def load_params(default: bool = False) -> dict[str, Any]:
     """Load the current workspace's params.json — empty dict if workspaces disabled or no file yet."""
@@ -155,7 +141,12 @@ def load_params(default: bool = False) -> dict[str, Any]:
     for key, value in raw_params.items():
         if "-" in key:
             migrated.setdefault(key.replace("-", "_"), value)
-    return migrated
+
+    # Prune keys the app no longer reads (koina_ce, add_losses, old settings.json copies, ...).
+    # save_params writes back only what is returned here, so they leave params.json on the
+    # next save instead of travelling along forever.
+    return {key: value for key, value in migrated.items()
+            if key in _PARAM_KEYS or key in _EXTRA_PARAM_KEYS}
 
 
 def save_params(params: dict[str, Any]) -> None:
@@ -176,10 +167,21 @@ def save_params(params: dict[str, Any]) -> None:
             if persisted in st.session_state:
                 params[key] = st.session_state[persisted]
 
+    # Skip unchanged writes: one Setup rerun calls save_params five times, and each write
+    # is ~130 kB when hundreds of files are selected. Compared with the file on disk (not
+    # this session's last write), so a change made in another tab is still overwritten by
+    # this tab's values, as before: the last writer wins.
+    params_path = Path(st.session_state.workspace, "params.json")
+    payload = json.dumps(params, indent=4)
+    try:
+        if params_path.read_text(encoding="utf-8") == payload:
+            return
+    except OSError:
+        pass  # no file yet (or unreadable): write it
+
     # Atomic write via unique staging file. A single rerun can call save_params from the sidebar
     # plus several setup fragments; sharing one params.json.tmp path between them — or between
     # browser tabs on the same workspace — made the second mover's os.replace fail.
-    params_path = Path(st.session_state.workspace, "params.json")
     params_path.parent.mkdir(parents=True, exist_ok=True)
     file_descriptor, staging_name = tempfile.mkstemp(
         prefix=".params-", suffix=".json.tmp", dir=params_path.parent,
@@ -187,7 +189,7 @@ def save_params(params: dict[str, Any]) -> None:
     staging_path = Path(staging_name)
     try:
         with os.fdopen(file_descriptor, "w", encoding="utf-8") as outfile:
-            json.dump(params, outfile, indent=4)
+            outfile.write(payload)
         os.replace(staging_path, params_path)
     except Exception:
         if staging_path.exists():
@@ -313,7 +315,7 @@ def _render_resource_monitor() -> None:
     st.markdown(
         f"""
         <div style="text-align:center; font-size:0.95rem; line-height:1.6; padding:0.4rem 0;">
-            🖥️ CPU {psutil.cpu_percent(interval=0.1):.0f}% &nbsp;·&nbsp; 🧠 RAM {memory.percent:.0f}%<br>
+            🖥️ CPU {psutil.cpu_percent(interval=None):.0f}% &nbsp;·&nbsp; 🧠 RAM {memory.percent:.0f}%<br>
             <span style="font-size:0.85rem; opacity:0.7;">{memory.used / 1e9:.1f} / {memory.total / 1e9:.1f} GB</span>
         </div>
         """,
@@ -343,13 +345,14 @@ def page_setup(page: str = "") -> dict[str, Any]:
         menu_items=None,
     )
 
-    # Workspace resolution: honour ?workspace=… query param, else fall back to "default"
+    # Workspace resolution: honour ?workspace=… query param, else fall back to "default".
+    # No st.cache_*.clear() here: those caches are process-wide, so clearing them on every new
+    # session wiped every other user's caches. Each cached function is already keyed on its
+    # path (and file mtime where it matters), so a workspace switch cannot read stale data.
     if "workspace" not in st.session_state or (
         "workspace" in st.query_params
         and st.query_params.workspace != st.session_state.workspace.name
     ):
-        st.cache_data.clear()
-        st.cache_resource.clear()
         st.session_state.location = "local"
 
         workspaces_dir = _get_workspaces_dir()
@@ -456,37 +459,33 @@ def _render_bug_report(page: str) -> None:
             st.warning("Some captured context was too large to embed — please paste any terminal errors into the issue.")
 
 
+def _render_job_indicator() -> None:
+    """Sidebar status of the running analysis (a fragment rerun every 2 s while it runs).
+    When the run ends, one full rerun lets the page load the new results from disk."""
+    job = get_job(job_key_for(st.session_state.workspace))
+    if job is None or not job.is_running:
+        st.rerun()
+    counts = f" {job.current}/{job.total}" if job.total else ""
+    st.progress(min(job.current / job.total, 1.0) if job.total else 0.0,
+                text=f"Analysis running: {job.phase}{counts}")
+    st.caption("Details and Cancel on the Load & Annotate page.")
+
+
 def render_sidebar(page: str = "") -> dict[str, Any]:
-    """Render the workspace switcher, Settings expander, and version footer; return the active workspace's params."""
+    """Render the workspace switcher, bug-report links, and version footer; return the active workspace's params."""
     # Load params for the active workspace
     params = load_params()
 
     with st.sidebar:
+        # Background analysis: compact live status on every page but Load & Annotate,
+        # which shows the full panel. Polls only while a run is active.
+        job = get_job(job_key_for(st.session_state.workspace))
+        if page != "Load & Annotate" and job is not None and job.is_running:
+            st.fragment(run_every=2.0)(_render_job_indicator)()
+
         # Workspace switcher: only when workspaces are enabled
         if st.session_state.settings.get("enable_workspaces", False):
             _render_workspace_switcher(params)
-
-        # Settings expander: image export format selector, persisted across pages
-        with st.expander("**Settings**"):
-            image_formats = ["svg", "png", "jpeg", "webp"]
-            persisted = _persisted_key("image_format")
-            # Seed session_state from the _persisted backup BEFORE creating the widget — otherwise
-            # Streamlit's default ("svg") wins over the user's saved choice after page navigation.
-            if "image_format" not in st.session_state:
-                restored = st.session_state.get(
-                    persisted, params.get("image_format", DEFAULTS.image_format)
-                )
-                if restored not in image_formats:
-                    restored = DEFAULTS.image_format
-                st.session_state["image_format"] = restored
-            selected_format = st.selectbox(
-                "image export format",
-                image_formats,
-                key="image_format",
-            )
-            st.session_state[persisted] = selected_format
-            params["image_format"] = selected_format
-            save_params(params)
 
         # Bug report: inline a compact snapshot into a pre-filled GitHub issue
         _render_bug_report(page)

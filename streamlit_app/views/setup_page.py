@@ -178,28 +178,24 @@ def render_settings():
              captions=["Relative to the highest intensity", "Raw intensity"],
              index=0 if params.get('intensity_mode', DEFAULTS.intensity_mode) == 'Relative' else 1,
              horizontal=True, key="intensity_mode", label_visibility="visible")
-    st.number_input("Max peak labels per spectrum (0 = all)",
-                    min_value=0, max_value=200, step=5,
-                    value=int(params.get('max_peak_labels', DEFAULTS.max_peak_labels)),
-                    help="Only the N most intense annotated peaks get a text label — keeps dense "
-                         "spectra readable. Applies to mirror plots in Explore and export.",
-                    key="max_peak_labels")
+    # Peak-label density is a display setting: it lives on the Explore and Export pages.
 
     # Performance: ProcessPoolExecutor worker count for parallel pipeline stages.
     # Cap the slider at the cores this host can actually use, and clamp any saved
     # value into range so a workspace carried over from a bigger machine still loads.
-    st.markdown("**Performance**")
-    max_workers = available_cpu_count()
-    if max_workers <= 1:
-        # Single-core host: a slider needs min < max, so pin workers and say why.
-        st.session_state["workers"] = 1
-        st.caption("Parallel workers: 1 (only one core available on this host)")
-    else:
-        workers_value = min(params.get('workers', DEFAULTS.workers), max_workers)
-        st.slider("Parallel workers", min_value=1, max_value=max_workers,
-                  value=workers_value, key="workers",
-                  help=f"Number of parallel processes for plot generation "
-                       f"(~30 MB per worker; {max_workers} cores available)")
+    # Collapsed by default: the default suits most runs.
+    with st.expander("Advanced: parallel workers"):
+        max_workers = available_cpu_count()
+        if max_workers <= 1:
+            # Single-core host: a slider needs min < max, so pin workers and say why.
+            st.session_state["workers"] = 1
+            st.caption("Parallel workers: 1 (only one core available on this host)")
+        else:
+            workers_value = min(params.get('workers', DEFAULTS.workers), max_workers)
+            st.slider("Parallel workers", min_value=1, max_value=max_workers,
+                      value=workers_value, key="workers",
+                      help=f"Parallel processes for idXML indexing, mzML reading and plot "
+                           f"export (~30 MB per worker; {max_workers} cores available)")
 
     # Koina AI: enable toggle reveals model / collision-energy / instrument widgets
     st.markdown("---")

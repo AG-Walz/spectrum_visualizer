@@ -11,6 +11,7 @@ import streamlit as st
 from openms_insight import Heatmap, LinePlot, SequenceView, StateManager, Table
 
 from streamlit_app.utils.state import get_param, get_state_key
+from streamlit_app.utils.page_state import COMPONENT_CACHE_DIR
 from core.defaults import DEFAULTS
 
 
@@ -36,11 +37,11 @@ def _needs_cache_regen():
     return needs_regeneration, mark_rendered
 
 
-def _resolve_cache_path(params: dict) -> str:
+def _resolve_cache_path() -> str:
     """Return the openms_insight component-cache directory, creating it if missing.
+    Kept apart from the exports folder so the export ZIP and history hold only real exports.
     """
-    export_dir = get_param(params, "export_directory", "")
-    cache_path = export_dir if export_dir else str(Path(st.session_state.workspace) / "exports")
+    cache_path = str(Path(st.session_state.workspace) / COMPONENT_CACHE_DIR)
     os.makedirs(cache_path, exist_ok=True)
     return cache_path
 
@@ -147,7 +148,7 @@ def render_explorer(params: dict) -> None:
     """Render the full Interactive Explorer — banner + Table + SequenceView + LinePlot + Heatmap.
     """
     # Prepare: cache directory, regen flag, and the shared StateManager
-    cache_path = _resolve_cache_path(params)
+    cache_path = _resolve_cache_path()
     needs_regeneration, mark_rendered = _needs_cache_regen()
     state_manager = _get_state_manager()
 

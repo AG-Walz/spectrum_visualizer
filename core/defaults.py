@@ -66,7 +66,6 @@ class Defaults:
     export_directory: str = "./exports"
     project_name: str = "MSpecViz_analysis"
     export_formats: tuple[str, ...] = ("png",)  # CLI batch list: any of png/svg/pdf/html
-    image_format: str = "png"                  # Streamlit single-image picker default
     export_resolution: int = 300               # raster resolution (png/pdf)
     figure_size: tuple[int, int] = (12, 8)     # [width, height] in inches
     plot_unpaired_queries: bool = False        # render queries without a reference

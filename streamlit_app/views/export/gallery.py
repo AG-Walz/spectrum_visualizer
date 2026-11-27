@@ -61,8 +61,9 @@ def _render_download_buttons(plot_file: Path, peptide_dir_name: str, root_dir: P
         path = base / peptide_dir_name / f"{plot_file.stem}.{ext}"
         if path.exists():
             with col:
+                # Bound method, not bytes: the file is read only when the button is clicked
                 st.download_button(
-                    label, data=path.read_bytes(),
+                    label, data=path.read_bytes,
                     file_name=f"{plot_file.stem}.{ext}", mime=mime,
                     key=f"dl_{ext}_{run_id}_{peptide_dir_name}_{plot_file.stem}",
                 )

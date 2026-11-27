@@ -3,8 +3,10 @@
 """
 import json
 import logging
+import os
 import pickle
 import shutil
+import uuid
 
 import pandas as pd
 import streamlit as st
@@ -19,6 +21,7 @@ from streamlit_app.utils.state import (
     get_state_key,
     load_params,
 )
+from core.defaults import DEFAULTS
 from core.helpers import parse_peptide_list
 from core.export import (
     RUN_SETTINGS_FIELDS,
@@ -29,6 +32,10 @@ logger = logging.getLogger(__name__)
 
 
 ANALYSIS_CACHE_DIR = "analysis_cache"
+
+# openms_insight component caches (Explorer + mirror pickers), per workspace. Not under
+# exports/, so the export ZIP and the export history hold only real exports.
+COMPONENT_CACHE_DIR = "component_cache"
 
 # Friendly labels for the summary plot-type keys stored in run_settings —
 # shared by the Export controls and the Explore plot picker.
@@ -70,54 +77,87 @@ def _analysis_cache_path() -> Path:
     return Path(st.session_state.workspace) / ANALYSIS_CACHE_DIR
 
 
-def save_analysis_cache() -> None:
-    """Write every Load-&-Annotate result to analysis_cache/ so the Explore and Export views survive a reload.
+def write_analysis_cache(workspace: Path, values: dict, settings: dict | None) -> int:
+    """Write one run's results as the workspace's analysis cache; return its cache_version.
+    values holds the session-state keys (psm_frame, peaks_frame, ..., comparison_frame,
+    psm_lookup, annotated_queries, reference_store, peptidoform_psms). No session state is
+    read, so the background job thread can call it. Files go to a staging folder that then
+    replaces analysis_cache/, so a reader never sees a half-written cache.
     """
-    cache_dir = _analysis_cache_path()
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_dir = Path(workspace) / ANALYSIS_CACHE_DIR
+    try:
+        previous_version = json.loads((cache_dir / "meta.json").read_text()).get("cache_version", 0)
+    except (OSError, ValueError):
+        previous_version = 0
+    run_id = uuid.uuid4().hex
+    staging = cache_dir.with_name(f"{ANALYSIS_CACHE_DIR}.staging-{run_id[:8]}")
+    # No parents=True: if the workspace was deleted during the run, fail instead of
+    # bringing the deleted workspace back with only an analysis cache in it.
+    staging.mkdir()
+    cache_version = previous_version + 1
+    # "settings" and "run_id" are additive (readers that do not know them ignore them), so
+    # no schema bump. run_id is unique per run, unlike cache_version, which restarts at 1
+    # in every new workspace.
+    metadata = {
+        "saved_at": datetime.now().isoformat(),
+        "cache_version": cache_version,
+        "schema_version": CACHE_SCHEMA_VERSION,
+        "settings": settings,
+        "run_id": run_id,
+    }
+    try:
+        _write_cache_files(staging, values, metadata)
+    except BaseException:
+        shutil.rmtree(staging, ignore_errors=True)
+        raise
 
+    # Swap: retire the previous cache, move the new one in, then delete the retired one
+    retired = cache_dir.with_name(f"{ANALYSIS_CACHE_DIR}.old-{run_id[:8]}")
+    if cache_dir.exists():
+        os.replace(cache_dir, retired)
+    os.replace(staging, cache_dir)
+    shutil.rmtree(retired, ignore_errors=True)
+    logger.info("Analysis cache saved to %s (version %d)", cache_dir, cache_version)
+    return cache_version
+
+
+def _write_cache_files(staging: Path, values: dict, metadata: dict) -> None:
+    """Write every cache file of one run into staging; meta.json last."""
     # Polars LazyFrames -> Parquet (collect each frame to materialise it for write)
     for key in _LAZYFRAME_KEYS:
-        frame = st.session_state.get(get_state_key(key))
+        frame = values.get(key)
         if frame is not None:
-            frame.collect().write_parquet(cache_dir / f"{key}.parquet")
+            frame.collect().write_parquet(staging / f"{key}.parquet")
 
     # comparison_frame (pandas) -> Parquet; write an empty frame as a placeholder for "no metrics"
-    comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
+    comparison_frame = values.get("comparison_frame")
     if comparison_frame is not None and not comparison_frame.empty:
-        comparison_frame.to_parquet(cache_dir / "comparison_frame.parquet")
+        comparison_frame.to_parquet(staging / "comparison_frame.parquet")
     elif comparison_frame is not None:
-        pd.DataFrame().to_parquet(cache_dir / "comparison_frame.parquet")
+        pd.DataFrame().to_parquet(staging / "comparison_frame.parquet")
 
     # psm_lookup dict (spectrum-id -> PSM metadata) -> JSON
-    psm_lookup = st.session_state.get(get_state_key("psm_lookup"))
-    if psm_lookup is not None:
-        with open(cache_dir / "psm_lookup.json", "w") as handle:
-            json.dump(psm_lookup, handle)
+    if values.get("psm_lookup") is not None:
+        with open(staging / "psm_lookup.json", "w") as handle:
+            json.dump(values["psm_lookup"], handle)
 
     # Complex Python objects (annotated_queries, reference_store, peptidoform_psms) -> pickle
     for key in _PICKLE_KEYS:
-        cached_value = st.session_state.get(get_state_key(key))
-        if cached_value is not None:
-            with open(cache_dir / f"{key}.pkl", "wb") as handle:
-                pickle.dump(cached_value, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        if values.get(key) is not None:
+            with open(staging / f"{key}.pkl", "wb") as handle:
+                pickle.dump(values[key], handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    # Metadata marker — its mtime drives @st.cache_resource invalidation in _read_analysis_cache
-    metadata = {
-        "saved_at": datetime.now().isoformat(),
-        "cache_version": st.session_state.get(get_state_key("cache_version"), 0),
-        "schema_version": CACHE_SCHEMA_VERSION,
-    }
-    with open(cache_dir / "meta.json", "w") as handle:
+    # Metadata marker, written last. Its mtime keys _read_analysis_cache and tells every
+    # session that a new version exists.
+    with open(staging / "meta.json", "w") as handle:
         json.dump(metadata, handle)
 
-    logger.info("Analysis cache saved to %s", cache_dir)
 
-
-@st.cache_resource(show_spinner="Restoring analysis from cache...")
-def _read_analysis_cache(cache_dir_str: str, _cache_modification_time: float):
-    """Read every analysis-cache file from disk; _cache_modification_time 
-    busts @st.cache_resource when files change.
+@st.cache_resource(show_spinner="Restoring analysis from cache...", max_entries=4)
+def _read_analysis_cache(cache_dir_str: str, cache_modification_time: int):
+    """Read every analysis-cache file from disk. cache_modification_time (meta.json's
+    st_mtime_ns) is part of the cache key, so a rewritten cache is read again. It must not
+    start with "_": Streamlit leaves such parameters out of the key.
     """
     cache_dir = Path(cache_dir_str)
     cached_data: dict = {}
@@ -182,16 +222,21 @@ def load_analysis_cache() -> bool:
 
     try:
         # Read & restore: hydrate every cached frame/object back into session_state
-        modification_time = meta_path.stat().st_mtime
+        modification_time = meta_path.stat().st_mtime_ns
         cached_data = _read_analysis_cache(str(cache_dir), modification_time)
 
         for key in (*_LAZYFRAME_KEYS, "comparison_frame", "psm_lookup", *_PICKLE_KEYS):
             if key in cached_data:
                 st.session_state[get_state_key(key)] = cached_data[key]
 
-        # Flags: mark data ready and propagate cache version
+        # Flags: mark data ready, record the settings that produced the results, and set
+        # cache_version to a token unique to this run. The Explorer component caches and the
+        # summary-plot caches key on it, and the integer cache_version restarts at 1 in every
+        # workspace. Caches written before run_id existed fall back to saved_at.
         metadata = cached_data.get("_meta", {})
-        st.session_state[get_state_key("cache_version")] = metadata.get("cache_version", 1)
+        st.session_state[get_state_key("analysis_settings")] = metadata.get("settings")
+        st.session_state[get_state_key("cache_version")] = (
+            metadata.get("run_id") or metadata.get("saved_at") or metadata.get("cache_version", 1))
         st.session_state[get_state_key("data_ready")] = True
 
         logger.info("Analysis cache restored from %s", cache_dir)
@@ -223,11 +268,107 @@ def clear_analysis_cache() -> None:
         logger.info("Analysis cache cleared: %s", cache_dir)
 
 
-def restore_analysis_if_needed():
-    """Hydrate the analysis cache when a view loads on a fresh rerun without data_ready set.
+# Params that change what the analysis computes, with the label shown when one changed.
+ANALYSIS_SETTING_LABELS: dict[str, str] = {
+    "selected_idxmls": "idXML files",
+    "selected_mzmls": "mzML files",
+    "target_peptides": "target peptides",
+    "reference_substring": "reference identifier",
+    "ion_types": "ion types",
+    "mz_tolerance": "m/z tolerance",
+    "add_neutral_losses": "neutral losses",
+    "intensity_mode": "intensity mode",
+    "koina_enabled": "Koina prediction",
+    "koina_model": "Koina model",
+    "koina_collision_energy": "Koina collision energy",
+    "koina_instrument_type": "Koina instrument",
+}
+# Koina details only matter while Koina is enabled
+_KOINA_DETAIL_KEYS = ("koina_model", "koina_collision_energy", "koina_instrument_type")
+
+
+def analysis_settings(params: dict) -> dict:
+    """Snapshot the params that shape the analysis, normalised so that order, case and
+    whitespace changes do not count as changes, and JSON-safe for meta.json.
     """
-    if not st.session_state.get(get_state_key('data_ready'), False):
-        load_analysis_cache()
+    defaults = {
+        "selected_idxmls": [], "selected_mzmls": [], "target_peptides": "",
+        "reference_substring": "",
+        "ion_types": list(DEFAULTS.ion_types), "mz_tolerance": DEFAULTS.mz_tolerance,
+        "add_neutral_losses": DEFAULTS.add_neutral_losses,
+        "intensity_mode": DEFAULTS.intensity_mode,
+        "koina_enabled": DEFAULTS.koina_enabled, "koina_model": DEFAULTS.koina_model,
+        "koina_collision_energy": DEFAULTS.koina_collision_energy,
+        "koina_instrument_type": DEFAULTS.koina_instrument_type,
+    }
+    snapshot = {key: get_param(params, key, default) for key, default in defaults.items()}
+    for key in ("selected_idxmls", "selected_mzmls", "ion_types"):
+        snapshot[key] = sorted(snapshot[key])
+    snapshot["target_peptides"] = sorted(set(parse_peptide_list(snapshot["target_peptides"])))
+    snapshot["mz_tolerance"] = float(snapshot["mz_tolerance"])
+    if not snapshot["koina_enabled"]:
+        for key in _KOINA_DETAIL_KEYS:
+            snapshot.pop(key)
+    return snapshot
+
+
+def changed_analysis_settings(params: dict) -> list[str]:
+    """Labels of the analysis settings that differ from those of the loaded results.
+    Empty when nothing is loaded or the results predate the settings snapshot.
+    """
+    stored = st.session_state.get(get_state_key("analysis_settings"))
+    if not stored or not st.session_state.get(get_state_key("data_ready")):
+        return []
+    current = analysis_settings(params)
+    # A Koina detail counts only when Koina is on in both snapshots; the on/off switch
+    # itself is reported as "Koina prediction".
+    comparable = [
+        key for key in ANALYSIS_SETTING_LABELS
+        if key not in _KOINA_DETAIL_KEYS or (key in stored and key in current)
+    ]
+    return [ANALYSIS_SETTING_LABELS[key] for key in comparable if stored.get(key) != current.get(key)]
+
+
+def show_stale_results_warning(params: dict, rerun_hint: str) -> None:
+    """Warn when the loaded results were made with other settings than the current ones."""
+    changed = changed_analysis_settings(params)
+    if changed:
+        st.warning(
+            f"Settings changed since the last run: {', '.join(changed)}. "
+            f"The results shown still use the previous settings. {rerun_hint}",
+            icon=":material/history:",
+        )
+
+
+# Session keys that hold loaded analysis results (cleared when they belong to another workspace)
+_ANALYSIS_SESSION_KEYS = (
+    *_LAZYFRAME_KEYS, "comparison_frame", "psm_lookup", *_PICKLE_KEYS,
+    "analysis_settings", "cache_version", "data_ready", "analysis_cache_loaded",
+)
+
+
+def restore_analysis_if_needed():
+    """Load the workspace's analysis cache into session state unless this session already
+    holds the version on disk. A new version appears when a background run finishes (in this
+    or another session), so every page picks it up on its next rerun. Costs one stat call.
+    Results loaded for another workspace (after creating a workspace or editing the
+    ?workspace= URL) are dropped when the current workspace has no cache of its own.
+    """
+    workspace = str(st.session_state.workspace)
+    loaded_key = get_state_key("analysis_cache_loaded")
+    loaded = st.session_state.get(loaded_key)
+    try:
+        on_disk = (workspace, (_analysis_cache_path() / "meta.json").stat().st_mtime_ns)
+    except OSError:
+        # No cache on disk: keep this workspace's results, drop another workspace's
+        if loaded is not None and loaded[0] != workspace:
+            for key in _ANALYSIS_SESSION_KEYS:
+                st.session_state.pop(get_state_key(key), None)
+        return
+    if st.session_state.get(get_state_key("data_ready")) and loaded == on_disk:
+        return
+    if load_analysis_cache():
+        st.session_state[loaded_key] = on_disk
 
 
 @st.cache_data(ttl=10)

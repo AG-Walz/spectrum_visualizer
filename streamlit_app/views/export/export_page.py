@@ -15,7 +15,7 @@ from streamlit_app.utils.state import (
     STATE_PREFIX, get_param, get_state_key, page_setup, save_params,
 )
 from streamlit_app.utils.page_state import (
-    apply_run_settings, restore_analysis_if_needed,
+    apply_run_settings, restore_analysis_if_needed, show_stale_results_warning,
 )
 
 from streamlit_app.views.export.gallery import _render_plot_gallery
@@ -114,7 +114,10 @@ def _render_history_run(run_dir: Path, run_settings: dict) -> None:
             _render_run_metadata(run_settings)
         with col_actions:
             _render_run_action_buttons(run_dir, run_settings)
-        _render_plot_gallery(run_dir)
+        # Plots on request only: Streamlit renders collapsed expanders too, so an always-on
+        # gallery loaded every plot of every past run on each rerun of this page.
+        if st.toggle("Show plots", key=f"show_plots_{run_dir.name}"):
+            _render_plot_gallery(run_dir)
 
 
 @st.fragment
@@ -170,6 +173,8 @@ def export_controls_fragment():
     if not st.session_state.get(get_state_key("data_ready")):
         st.info("Load data first (Load & Annotate page).")
         return
+    show_stale_results_warning(
+        params, "Press **Run analysis** on the Load & Annotate page before you export.")
 
     # Export directory: default to <workspace>/exports when unset
     workspace = st.session_state.get("workspace", None)
@@ -197,9 +202,10 @@ def export_controls_fragment():
                                      key=f"{STATE_PREFIX}_exp_summary")
 
     # Peak-label density for the exported mirror/interactive plots: cap text labels to the
-    # N most intense peaks per panel (0 = all) so dense spectra stay readable. Shares the
-    # "max_peak_labels" key (and _PARAM_KEYS persistence) with Setup, so _build_plot_settings
-    # picks it up via get_param. Only shown when a plot format that carries labels is selected.
+    # N most intense peaks per panel (0 = all) so dense spectra stay readable. The
+    # "max_peak_labels" key is in _PARAM_KEYS (persisted) and seeds the Explore mirror view;
+    # _build_plot_settings reads it via get_param. Only shown when a plot format that carries
+    # labels is selected.
     if export_mirror or export_html:
         st.number_input(
             "Max peak labels per spectrum (0 = all)",

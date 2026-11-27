@@ -5,9 +5,10 @@ Loading is separated from scanning so the same files are never parsed twice.
 (called by cli.main and streamlit_app.views.load_annotate / widgets.peptide_input).
 """
 import logging
+import os
 from collections import Counter
 from pathlib import Path
-from typing import Callable, Dict, List, Optional, Set, Tuple
+from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 import numpy as np
 import polars as pl
@@ -197,6 +198,39 @@ def _resolve_mzml_path(
             psm.run, len(candidates), psm.metadata.get("idxml_file", ""),
         )
     return ""
+
+
+def find_mzml_files(
+    run_names: Iterable[str],
+    search_dirs: Iterable[str],
+    max_dirs: int = 5000,
+) -> Tuple[Dict[str, List[str]], bool]:
+    """Search search_dirs recursively for mzML files named after each run.
+    Uses the same rule as lookup_peptides: file stem == run name, case-insensitive. Returns
+    ({run: [paths]}, complete); complete is False when the walk stopped after max_dirs
+    folders (a guard against walking a whole volume). A file reached through overlapping
+    search dirs or symlinks is listed once.
+    """
+    wanted = {run.lower(): run for run in run_names if run}
+    found: Dict[str, List[str]] = {run: [] for run in wanted.values()}
+    seen: Set[str] = set()
+    visited = 0
+    for root in dict.fromkeys(search_dirs):
+        for dirpath, dirnames, filenames in os.walk(root):
+            visited += 1
+            if visited > max_dirs:
+                return found, False
+            dirnames.sort()
+            for filename in sorted(filenames):
+                stem, extension = os.path.splitext(filename)
+                if extension.lower() != ".mzml" or stem.lower() not in wanted:
+                    continue
+                path = os.path.join(dirpath, filename)
+                real_path = os.path.realpath(path)
+                if real_path not in seen:
+                    seen.add(real_path)
+                    found[wanted[stem.lower()]].append(path)
+    return found, True
 
 
 def lookup_peptides(
