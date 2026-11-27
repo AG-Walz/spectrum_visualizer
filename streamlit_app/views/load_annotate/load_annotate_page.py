@@ -98,9 +98,9 @@ def _render_lookup_preview(idxmls: list[str], peptides: list[str], mzmls: list[s
     missing = missing_from_index(idxmls, IDXML_INDEX_DIR)
     if missing:
         st.info(
-            f"{len(missing)} of {len(idxmls)} idXML file(s) are not indexed yet. Index them now "
-            f"to see the peptides before the run, or just run: the run indexes them first. "
-            f"Indexing reads each file once; later runs skip it."
+            f"{len(missing)} of {len(idxmls)} idXML file(s) are new to the app. Index them now to "
+            f"preview the peptides, or press **Run analysis**, which indexes them first. "
+            f"Each file is indexed only once."
         )
         if st.button(f"Index {len(missing)} file(s) now", key=f"{STATE_PREFIX}_index_btn",
                      disabled=_job_running()):

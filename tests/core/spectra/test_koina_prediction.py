@@ -47,13 +47,15 @@ class TestConvertPeptideToUnimod:
 class TestGetKoinaSettings:
     def test_defaults_from_app_settings(self, app_settings):
         result = get_koina_settings(app_settings)
-        assert result["enabled"] is True
+        # Off unless switched on: Koina calls a web service (DEFAULTS.koina_enabled)
+        assert result["enabled"] is False
         assert result["model"] == "ms2pip_timsTOF2024"
         assert result["collision_energy"] == 35
         assert result["instrument_type"] == "TIMSTOF"
 
     def test_empty_settings_returns_defaults(self):
         result = get_koina_settings({})
+        assert result["enabled"] == DEFAULTS.koina_enabled
         assert result["model"] == DEFAULTS.koina_model
         assert result["collision_energy"] == DEFAULTS.koina_collision_energy
         assert result["instrument_type"] == DEFAULTS.koina_instrument_type

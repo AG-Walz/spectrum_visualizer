@@ -129,12 +129,12 @@ def export_history_fragment(export_dir: str):
     # Empty states: directory missing or no completed runs inside
     export_path = Path(export_dir)
     if not export_path.exists():
-        st.caption(f"No exports directory found at `{export_dir}`.")
+        st.caption("No exports yet. They appear here after you press **Export All**.")
         return
 
     runs = _list_export_runs(export_path)
     if not runs:
-        st.caption(f"No completed export runs found in `{export_dir}`.")
+        st.caption("No exports yet. They appear here after you press **Export All**.")
         return
 
     # Render: one expander per run, newest first
@@ -171,7 +171,7 @@ def export_controls_fragment():
     """
     # Guard: Load & Annotate must have populated session state first
     if not st.session_state.get(get_state_key("data_ready")):
-        st.info("Load data first (Load & Annotate page).")
+        st.info("No results yet. Open **Load & Annotate** and press **Run analysis**.")
         return
     show_stale_results_warning(
         params, "Press **Run analysis** on the Load & Annotate page before you export.")

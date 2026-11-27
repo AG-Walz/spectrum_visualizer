@@ -57,6 +57,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `<workspace>/component_cache/`, so the export ZIP holds only real exports.
 - The Streamlit page smoke tests run again on Streamlit 1.6x (absolute
   `AppTest` paths).
+- Switching workspace no longer shows "Calling st.rerun() within a callback is a
+  no-op." (Streamlit 1.5x printed it on every switch).
+- Koina prediction is off in new workspaces, as `core/defaults.py` intends (it
+  calls a web service). The Setup page fell back to "on", so runs called Koina
+  without the user choosing it. Workspaces that saved a choice keep it.
+
+### Usability
+
+- The Setup file browsers list every sub-folder in one searchable dropdown,
+  instead of 16 buttons with the rest reachable only by typing a path; hidden
+  folders are left out, and the Up button is labelled.
+- An empty folder explains how to find files (open a sub-folder, or include
+  subdirectories).
+- The sidebar names the active workspace ("Workspace: demo").
+- Setup ends with what is still missing, or with the next step once all is set.
+- Plain-language messages for empty Explore and Export pages, for peptides
+  without a reference in Mirror Plots, and for not-yet-indexed idXML files.
 
 ### Removed
 

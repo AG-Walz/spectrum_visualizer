@@ -222,10 +222,10 @@ def _flush_and_switch_workspace(params: dict) -> None:
     for key in stale_keys:
         st.session_state.pop(key, None)
 
-    # Switch & rerun. Halt this rerun immediately so the script doesn't continue with
-    # session_state.workspace still pointing at the OLD workspace.
+    # Switch: Streamlit reruns the script right after a callback, and page_setup then
+    # follows the new ?workspace= value. No st.rerun() here: inside a callback it does
+    # nothing, and Streamlit 1.5x shows "Calling st.rerun() within a callback is a no-op."
     st.query_params.workspace = st.session_state["chosen-workspace"]
-    st.rerun()
 
 
 def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
@@ -238,7 +238,7 @@ def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
     current_workspace = str(st.session_state.workspace.stem)
     index = options.index(current_workspace) if current_workspace in options else 0
     st.selectbox(
-        "choose existing workspace",
+        "Switch workspace",
         options, index=index,
         on_change=_flush_and_switch_workspace, args=(params,),
         key="chosen-workspace",
@@ -249,7 +249,7 @@ def _render_workspace_select(workspaces_dir: Path, params: dict) -> str:
 def _render_create_workspace(workspaces_dir: Path) -> None:
     """Render the "New workspace name" input and the Create button."""
     new_workspace_name = st.text_input("New workspace name", "", key="new-workspace-name").strip()
-    if not st.button("**Create Workspace**"):
+    if not st.button("Create workspace"):
         return
     if new_workspace_name and is_safe_workspace_name(new_workspace_name):
         new_path = Path(workspaces_dir, new_workspace_name)
@@ -258,7 +258,7 @@ def _render_create_workspace(workspaces_dir: Path) -> None:
         st.query_params.workspace = new_workspace_name
         st.rerun()
     else:
-        st.warning("Please enter a valid workspace name.")
+        st.warning("Enter a workspace name that contains no / or \\.")
 
 
 def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> None:
@@ -292,7 +292,8 @@ def _render_delete_workspace(workspaces_dir: Path, current_workspace: str) -> No
 def _render_workspace_switcher(params: dict) -> None:
     """Render the Workspaces expander: selector, create, and delete controls."""
     workspaces_dir = _get_workspaces_dir()
-    with st.expander("**Workspaces**"):
+    # The label names the active workspace, so it is visible without opening the expander
+    with st.expander(f"**Workspace:** {st.session_state.workspace.name}"):
         current_workspace = _render_workspace_select(workspaces_dir, params)
         _render_create_workspace(workspaces_dir)
         _render_delete_workspace(workspaces_dir, current_workspace)

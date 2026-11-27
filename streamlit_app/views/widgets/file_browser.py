@@ -1,4 +1,4 @@
-"""Directory-browser + file-picker widget for the Setup page: breadcrumbs, sub-folder grid, glob-filtered multiselect — selections persist in st.session_state[state_key]."""
+"""Directory-browser + file-picker widget for the Setup page: path bar, sub-folder dropdown, glob-filtered multiselect — selections persist in st.session_state[state_key]."""
 from pathlib import Path
 
 import pandas as pd
@@ -15,6 +15,7 @@ def _browser_keys(key_prefix: str) -> dict:
         "select_all": f"{key_prefix}_select_all",
         "recursive": f"{key_prefix}_recursive",
         "path_input": f"{key_prefix}_path_input",
+        "subfolder": f"{key_prefix}_subfolder",
     }
 
 
@@ -29,7 +30,7 @@ def _init_browser_state(keys: dict, state_key: str, default_dir: str, params: di
 
 
 def _apply_deferred_navigation(keys: dict) -> None:
-    """Consume any pending Up/folder-button navigation request before widgets render this run."""
+    """Consume any pending Up/sub-folder navigation request before widgets render this run."""
     # Guard: bail when no navigation was requested this run
     nav_key = keys["nav"]
     if not st.session_state.get(nav_key):
@@ -41,15 +42,16 @@ def _apply_deferred_navigation(keys: dict) -> None:
     # (Up/folder buttons) — not on every rerun — so in-progress typing in the
     # path input is preserved.
     st.session_state[keys["path_input"]] = new_dir
-    # Cleanup: clear nav slot + stale select-all/recursive widget state
+    # Cleanup: clear nav slot + stale select-all/recursive/sub-folder widget state
     st.session_state[nav_key] = None
-    for k in (keys["select_all"], keys["recursive"]):
+    for k in (keys["select_all"], keys["recursive"], keys["subfolder"]):
         st.session_state.pop(k, None)
 
 
 def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
     """Render the editable path input + the Up (parent directory) button."""
-    col1, col2 = st.columns([6, 1])
+    # 4:1 leaves the "Up" button room for its icon and label on one line
+    col1, col2 = st.columns([4, 1])
     with col1:
         new_path = st.text_input(
             "Path", key=keys["path_input"],
@@ -67,43 +69,28 @@ def _render_path_bar(key_prefix: str, keys: dict, current_dir: str) -> None:
 
     with col2:
         parent = str(Path(current_dir).parent)
-        if st.button("up", key=f"{key_prefix}_up_btn", help="Parent directory",
-                     disabled=(parent == current_dir)):
+        if st.button("Up", key=f"{key_prefix}_up_btn", icon=":material/arrow_upward:",
+                     help=f"Go to {parent}", disabled=(parent == current_dir)):
             st.session_state[keys["nav"]] = parent
             st.rerun()
 
 
-def _render_subfolder_grid(key_prefix: str, keys: dict, current_dir: str) -> None:
-    """Render up to 16 sub-folders as a 4-column grid of navigation buttons."""
-    # List sub-folders; bail early when the directory has none
-    subdirs = [Path(path) for path in list_subdirectories(current_dir)]
+def _render_subfolder_picker(keys: dict, current_dir: str) -> None:
+    """Offer every sub-folder in one searchable dropdown; choosing one opens it.
+    Replaces a grid capped at 16 buttons, which left the other folders reachable only by
+    typing their path. Hidden folders (".name") are left out.
+    """
+    subdirs = [Path(path) for path in list_subdirectories(current_dir)
+               if not Path(path).name.startswith(".")]
     if not subdirs:
         return
-
-    # Inject compact-button styling for the folder grid
-    st.markdown(
-        "<style>.folder-nav button{font-size:0.8rem !important;"
-        "padding:0.15rem 0.4rem !important;min-height:0 !important}</style>",
-        unsafe_allow_html=True,
+    chosen = st.selectbox(
+        f"Open a sub-folder ({len(subdirs)})", options=[folder.name for folder in subdirs],
+        index=None, placeholder="Type or pick a folder name...", key=keys["subfolder"],
     )
-    # Render the 4×4 button grid; each button defers navigation via the nav slot
-    cols_per_row = 4
-    max_folders = 16
-    for row_start in range(0, min(len(subdirs), max_folders), cols_per_row):
-        cols = st.columns(cols_per_row)
-        for col_offset, col in enumerate(cols):
-            folder_index = row_start + col_offset
-            if folder_index >= len(subdirs) or folder_index >= max_folders:
-                continue
-            folder = subdirs[folder_index]
-            with col:
-                if st.button(folder.name, key=f"{key_prefix}_folder_{folder_index}",
-                             help=str(folder)):
-                    st.session_state[keys["nav"]] = str(folder)
-                    st.rerun()
-    # Overflow note: indicate how many folders were truncated
-    if len(subdirs) > max_folders:
-        st.caption(f"... and {len(subdirs) - max_folders} more folders")
+    if chosen:
+        st.session_state[keys["nav"]] = str(Path(current_dir) / chosen)
+        st.rerun()
 
 
 def _list_browser_files(current_dir: str, extensions: list, recursive: bool):
@@ -143,7 +130,8 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
         if filter_text:
             st.info(f"No files match filter '{filter_text}'")
         else:
-            st.info(f"No {extensions[0]} files found")
+            st.info(f"No {extensions[0]} files in this folder. Open a sub-folder above, "
+                    f"or tick **Include subdirectories** to search all of them.")
         return
 
     # Compute defaults: preserve out-of-scope picks, mark in-scope ones as selected
@@ -240,7 +228,7 @@ def render_directory_browser(
     # Render navigation widgets: path bar + sub-folder grid
     current_dir = st.session_state[keys["dir"]]
     _render_path_bar(key_prefix, keys, current_dir)
-    _render_subfolder_grid(key_prefix, keys, current_dir)
+    _render_subfolder_picker(keys, current_dir)
 
     # Render file picker (with recursive toggle) and the clear-all action
     recursive = st.checkbox("Include subdirectories", value=False,

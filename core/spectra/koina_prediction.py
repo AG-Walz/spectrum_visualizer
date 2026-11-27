@@ -84,10 +84,11 @@ def predict_koina_spectrum(
 
 def get_koina_settings(settings: dict) -> dict:
     """Pull Koina configuration settings from the provided settings, defaulting any missing keys.
+    Every default comes from DEFAULTS, so Koina is off unless enabled: it calls a web service.
     """
     koina_cfg = settings.get("koina", {})
     return {
-        "enabled": koina_cfg.get("enabled", True),
+        "enabled": koina_cfg.get("enabled", DEFAULTS.koina_enabled),
         "model": koina_cfg.get("model", DEFAULTS.koina_model),
         "collision_energy": koina_cfg.get("collision_energy", DEFAULTS.koina_collision_energy),
         "instrument_type": koina_cfg.get("instrument_type", DEFAULTS.koina_instrument_type),
