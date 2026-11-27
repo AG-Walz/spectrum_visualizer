@@ -17,6 +17,7 @@ from core.helpers import (
     available_cpu_count,
     basenames_shared_across_dirs,
     ensure_unique_basenames,
+    parse_peptide_list,
 )
 from core.spectra import get_koina_settings
 
@@ -242,8 +243,27 @@ def render_settings():
     save_params(params)
 
 
+def render_next_step():
+    """Close the page with what is still missing, or with the next step once all is set."""
+    idxmls = st.session_state.get('selected_idxmls', params.get('selected_idxmls', []))
+    mzmls = st.session_state.get('selected_mzmls', params.get('selected_mzmls', []))
+    peptides = parse_peptide_list(st.session_state.get('target_peptides', params.get('target_peptides', '')))
+    missing = [label for label, value in (("idXML files", idxmls), ("target peptides", peptides)) if not value]
+    st.markdown("---")
+    if missing:
+        st.info(f"Still needed before you can run: {' and '.join(missing)}.", icon=":material/checklist:")
+        return
+    mzml_note = (f"{len(mzmls)} mzML file(s)" if mzmls
+                 else "no mzML files yet (Load & Annotate can find them for you)")
+    st.success(
+        f"Ready: {len(idxmls)} idXML file(s), {mzml_note}, {len(peptides)} target peptide(s). "
+        f"Next: open **Load & Annotate** in the sidebar and press **Run analysis**.",
+        icon=":material/arrow_forward:",
+    )
+
+
 def render():
-    """Render the four Setup sections top-to-bottom — files, peptides, reference, settings."""
+    """Render the Setup sections top-to-bottom — files, peptides, reference, settings, next step."""
     # Restore analysis: rehydrate workspace state if Load & Annotate was already run
     restore_analysis_if_needed()
     st.title("Setup")
@@ -260,6 +280,8 @@ def render():
     st.markdown("---")
     # Settings: annotation, performance, Koina
     render_settings()
+    # Next step: what is missing, or where to go now
+    render_next_step()
 
     save_params(params)
 

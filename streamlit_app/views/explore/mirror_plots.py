@@ -415,7 +415,8 @@ def mirror_plots_fragment(params: dict):
     hidden_peptidoform_count = peptidoforms_with_query_count - len(eligible)
     if hidden_peptidoform_count:
         st.caption(
-            f"{hidden_peptidoform_count} peptide(s) hidden — no reference / experimental pair available."
+            f"{hidden_peptidoform_count} peptide(s) not listed: they have no reference spectrum to "
+            f"compare with."
         )
     if not eligible:
         query_count = len(annotated_queries)

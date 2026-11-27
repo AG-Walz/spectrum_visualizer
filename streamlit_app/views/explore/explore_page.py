@@ -85,7 +85,8 @@ def comparison_metrics_fragment():
     # Guard: bail when Load & Annotate hasn't produced a comparison frame
     comparison_frame = st.session_state.get(get_state_key("comparison_frame"))
     if comparison_frame is None or comparison_frame.empty:
-        st.info("No comparison metrics available. Configure a reference substring and re-run.")
+        st.info("No comparisons to show: the last run had no reference spectra. Set a reference "
+                "identifier on Setup (or enable Koina), then run the analysis again.")
         return
 
     # One top-of-page peptide filter scoping the whole view (plots + table + stats). Empty = all.
@@ -172,7 +173,7 @@ def render():
 
     # Gate: Load & Annotate must have populated session state before anything renders
     if not st.session_state.get(get_state_key("data_ready")):
-        st.info("Run 'Load & Annotate' first to populate the explorer.")
+        st.info("No results yet. Open **Load & Annotate** and press **Run analysis**.")
         return
     show_stale_results_warning(
         params, "Press **Run analysis** on the Load & Annotate page to update them.")

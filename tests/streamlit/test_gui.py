@@ -45,6 +45,28 @@ def test_launch(launch):
     assert not launch.exception
 
 
+@pytest.mark.slow
+def test_workspace_switch_loads_the_new_workspace_without_a_warning(tmp_path):
+    """Switching workspace loads its params, and shows no Streamlit warning: st.rerun() in the
+    selector's callback made Streamlit 1.5x print "Calling st.rerun() within a callback is a
+    no-op." on every switch."""
+    for name, tolerance in (("alpha", 0.01), ("beta", 0.05)):
+        (tmp_path / name).mkdir()
+        (tmp_path / name / "params.json").write_text(json.dumps({"mz_tolerance": tolerance}))
+    at = AppTest.from_file(str(PROJECT_ROOT / "streamlit_app/views/setup_page.py"), default_timeout=60)
+    with open(SETTINGS_PATH, "r") as f:
+        at.session_state.settings = {**json.load(f), "workspaces_dir": str(tmp_path)}
+    at.query_params["workspace"] = "alpha"
+    at.run()
+
+    at.selectbox(key="chosen-workspace").set_value("beta").run()
+
+    assert not at.exception
+    assert at.session_state.workspace.name == "beta"
+    assert at.number_input(key="mz_tolerance").value == 0.05
+    assert not [warning.value for warning in at.warning if "st.rerun()" in warning.value]
+
+
 def _seed_mirror_picker_state(at: AppTest) -> None:
     """Inject one peptidoform + one query + one experimental ref so the picker fragment renders end-to-end.
 
@@ -88,3 +110,32 @@ def test_mirror_picker_renders_when_state_seeded():
 
     at.run(timeout=30)
     assert not at.exception
+
+
+@pytest.mark.slow
+def test_folder_dropdown_lists_every_folder_and_opens_it(tmp_path):
+    """The Setup file browser lists all sub-folders (no cap, hidden ones left out) in one
+    dropdown; choosing a folder opens it and shows its files, and Up goes back."""
+    data = tmp_path / "data"
+    for index in range(20):  # more than the 16 buttons the old grid could show
+        (data / f"run_{index:02d}").mkdir(parents=True)
+    (data / ".hidden").mkdir()
+    (data / "run_07" / "sample.idXML").write_text("")
+    (tmp_path / "ws" / "default").mkdir(parents=True)
+    (tmp_path / "ws" / "default" / "params.json").write_text(json.dumps(
+        {"idxml_browser_dir": str(data), "mzml_browser_dir": str(data)}))
+    at = AppTest.from_file(str(PROJECT_ROOT / "streamlit_app/views/setup_page.py"), default_timeout=60)
+    with open(SETTINGS_PATH, "r") as f:
+        at.session_state.settings = {**json.load(f), "workspaces_dir": str(tmp_path / "ws")}
+    at.run()
+
+    picker = at.selectbox(key=f"{STATE_PREFIX}_idxml_subfolder")
+    assert len(picker.options) == 20 and ".hidden" not in picker.options
+
+    picker.set_value("run_07").run()
+    assert at.session_state[f"{STATE_PREFIX}_idxml_dir"] == str(data / "run_07")
+    assert at.checkbox(key=f"{STATE_PREFIX}_idxml_select_all").label.startswith("Select all 1 files")
+
+    at.button(key=f"{STATE_PREFIX}_idxml_up_btn").click().run()
+    assert not at.exception
+    assert at.session_state[f"{STATE_PREFIX}_idxml_dir"] == str(data)
