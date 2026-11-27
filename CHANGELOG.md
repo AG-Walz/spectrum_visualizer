@@ -17,6 +17,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Download buttons under the Explore mirror plot: PNG and SVG rendered by the
   same static backend the Export tab uses, plus the interactive plot as
   standalone HTML (#107).
+- Load & Annotate is one page with one *Run analysis* button: it shows the inputs,
+  a live preview of the target peptides found (and those not found), then indexes,
+  looks up, loads and annotates in one run. The run continues in the background
+  when you change pages (progress in the sidebar), can be cancelled, and each page
+  reloads the new results by itself when it ends.
+- *Find the mzML files* button: when PSMs have no matching selected mzML, the app
+  searches the Setup mzML folder and the folders next to the idXML files and adds
+  the files it finds.
+- A warning on Load & Annotate, Explore and Export names the settings that changed
+  after the last run, so outdated results are never shown silently.
+
+### Performance
+
+- idXML files are indexed once into `cache/idxml_index/` (shared by all
+  workspaces, rebuilt only when a file changes). Peptide counts and lookups read
+  the index instead of parsing every file again, also after a page reload.
+- mzML spectra load without the whole-file metadata pass: 62 spectra from four
+  2 GB example files load in 9 s instead of 90 s, with identical peaks,
+  annotations and metrics. The CLI benefits too.
+- The Setup page stays fast with hundreds of selected files (one click: 2.6 s to
+  0.5 s with 767 files); `params.json` is written only when it changes.
+- Explore summary plots are drawn at screen resolution and cached: unchanged
+  reruns of the Comparison Metrics view drop from 12 s (one measure) or 86 s
+  (seven measures) to under 0.1 s.
+- Export history shows a run's plots only on request, and download buttons read
+  their file only when clicked.
 
 ### Fixes
 
@@ -24,6 +50,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   instead of just their own first and last peak, in the Explore view and in every
   exported PNG/SVG/PDF/HTML alike — so a peptide's plots can be flipped through,
   and compared against each other, without the axis rescaling underneath (#114).
+- A failed or cancelled Load & Annotate run keeps the previous results instead of
+  deleting them first.
+- Opening the app in a new tab no longer clears the caches of every other user.
+- openms_insight component caches moved from `exports/` to
+  `<workspace>/component_cache/`, so the export ZIP holds only real exports.
+- The Streamlit page smoke tests run again on Streamlit 1.6x (absolute
+  `AppTest` paths).
+
+### Removed
+
+- The sidebar "image export format" setting, which no code read.
+- The duplicate "Max peak labels" field on Setup (it stays on Explore and Export).
+- Keys the app no longer reads are pruned from each workspace's `params.json`.
 
 ## v1.0.2 - [2026-07-01]
 

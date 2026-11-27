@@ -1,44 +1,24 @@
 """Peptide-input widget for the Setup page: paste-list tab + pick-from-idXML tab (PSM counts
-via core.peptide_lookup.load_idxmls + count_psms_per_peptide; the loaded PSMList is cached for Load & Annotate)."""
-from collections import Counter
+read from the shared on-disk idXML index, core.idxml_index, which Load & Annotate reuses)."""
+from pathlib import Path
 
 import streamlit as st
 
 from core.defaults import DEFAULTS
 from core.helpers import parse_peptide_list
-from core.peptide_lookup import count_psms_per_peptide, load_idxmls
-from streamlit_app.utils.progress_tracker import progress_status
+from core.idxml_index import count_indexed_peptides, ensure_idxml_index, missing_from_index
 from streamlit_app.utils.state import (
-    STATE_PREFIX, cache_idxml_psmlist, get_state_key,
+    IDXML_INDEX_DIR, STATE_PREFIX, get_state_key,
 )
+from streamlit_app.views.load_annotate.load_annotate_actions import index_idxmls
 
 
-def _scan_idxmls_for_psm_counts(idxmls: list[str], workers: int) -> tuple[Counter, list[str]]:
-    """Load idxmls once into a PSMList (cached for reuse by Load & Annotate) with a live
-    progress bar, then count PSMs per peptide from memory. Returns (counts, errors).
+@st.cache_data(show_spinner=False, max_entries=8)
+def _indexed_peptide_counts(index_files: tuple[str, ...]) -> dict:
+    """PSM count per peptide, sorted by sequence, read from the idXML index.
+    Safe to cache on the file names: an index file name changes whenever its idXML changes.
     """
-    # Setup: error accumulator + progress-status context
-    errors: list[str] = []
-    n = len(idxmls)
-    with progress_status(f"Scanning {n} idXML files ({workers} workers)...") as tracker:
-        # Parse every idXML once; cache the PSMList so target lookup can reuse it
-        psm_list = load_idxmls(
-            idxmls,
-            workers=min(workers, n),
-            progress_callback=lambda done, total, _msg: tracker.update(done, total, units="files"),
-            error_callback=errors.append,
-        )
-        cache_idxml_psmlist(idxmls, psm_list)
-        # Derive peptide counts from the loaded PSMList (no file re-read)
-        psm_counts = count_psms_per_peptide(psm_list)
-        # Finalise: surface error summary or success count
-        if errors:
-            tracker.finalize(f"Completed with {len(errors)} errors", state="error")
-            for error in errors[:5]:
-                st.caption(error)
-        else:
-            tracker.finalize(f"{len(psm_counts)} peptides from {n} files")
-    return psm_counts, errors
+    return dict(sorted(count_indexed_peptides([Path(path) for path in index_files]).items()))
 
 
 def _render_paste_tab(initial_value: str, persisted_key: str, pending_key: str) -> None:
@@ -83,27 +63,26 @@ def _render_paste_tab(initial_value: str, persisted_key: str, pending_key: str) 
 
 
 def _ensure_psm_counts_for(idxmls: list[str], workers: int) -> dict:
-    """Return cached PSM counts for idxmls; render a Scan button when no cache exists."""
-    # Cache lookup: keys for the counts dict and the list of files last scanned
-    scan_key = '_idxml_psm_counts'
-    scan_files_key = '_idxml_scan_files'
-    psm_counts = st.session_state.get(scan_key, {})
-    scanned_files = st.session_state.get(scan_files_key)
-
-    # Fast path: return cached counts when the file list is unchanged
-    if psm_counts and scanned_files == idxmls:
-        return psm_counts
-
-    # Render scan trigger: button kicks off the parallel scan + caches results
-    n = len(idxmls)
-    st.info(f"{n} idXML file{'s' if n != 1 else ''} selected")
-    if st.button(f"Scan {n} files for peptides",
-                 key=f"{STATE_PREFIX}_scan_idxmls", type="secondary"):
-        scanned_psm_counts, _errors = _scan_idxmls_for_psm_counts(idxmls, workers)
-        st.session_state[scan_key] = dict(sorted(scanned_psm_counts.items()))
-        st.session_state[scan_files_key] = idxmls
-        st.rerun()
-    return psm_counts
+    """Return PSM counts for idxmls from the idXML index; offer an Index button for files
+    that are not indexed yet (each file is parsed once and stays indexed across sessions).
+    """
+    missing = missing_from_index(idxmls, IDXML_INDEX_DIR)
+    if missing:
+        st.info(
+            f"{len(missing)} of {len(idxmls)} idXML file(s) are not indexed yet. "
+            "Indexing reads each file once; after that, peptide counts and lookups are instant."
+        )
+        if st.button(f"Index {len(missing)} file(s)", key=f"{STATE_PREFIX}_scan_idxmls",
+                     type="secondary"):
+            _index_files, errors = index_idxmls(idxmls, workers)
+            if errors:
+                for error in errors[:5]:
+                    st.caption(error)
+            else:
+                st.rerun()
+        return {}
+    index_files = ensure_idxml_index(idxmls, IDXML_INDEX_DIR)
+    return _indexed_peptide_counts(tuple(str(path) for path in index_files))
 
 
 def _render_pick_filters(psm_counts: dict) -> tuple[str, int]:

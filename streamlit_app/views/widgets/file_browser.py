@@ -1,6 +1,7 @@
 """Directory-browser + file-picker widget for the Setup page: breadcrumbs, sub-folder grid, glob-filtered multiselect — selections persist in st.session_state[state_key]."""
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 from streamlit_app.utils.page_state import list_files, list_subdirectories
@@ -178,28 +179,36 @@ def _render_file_picker(key_prefix: str, keys: dict, state_key: str,
 
 
 def _render_selected_files(key_prefix: str, keys: dict, state_key: str) -> None:
-    """Show the current selection inside a collapsible expander, one row per file with an
-    individual remove (✕) button; no-op when none are selected. Collapsing keeps a long
-    selection compact, mirroring the peptide input's "Show peptides" toggle."""
+    """Show the current selection as one table inside a collapsible expander; tick rows and
+    press Remove to drop them. No-op when nothing is selected.
+    One table, not one row of widgets per file: Streamlit renders expander content even when
+    collapsed, and per-file buttons made every click on the Setup page redraw hundreds of
+    widgets (2.6 s per click with 767 selected files)."""
     selected = st.session_state.get(state_key, [])
     if not selected:
         return
-    # One row per file inside the expander: name on the left, a small remove button on the
-    # right. The full path goes in the button tooltip so files that share a basename stay
-    # distinguishable.
+    table_key = f"{key_prefix}_selected_table"
     with st.expander(f"Selected files ({len(selected)})"):
-        for index, path in enumerate(selected):
-            name_col, remove_col = st.columns([8, 1])
-            with name_col:
-                st.write(Path(path).name)
-            with remove_col:
-                if st.button("✕", key=f"{key_prefix}_remove_{index}", help=path):
-                    st.session_state[state_key] = [p for p in selected if p != path]
-                    # Force the multiselect + select-all to re-initialise from the trimmed
-                    # list rather than re-adding the removed file from their widget state.
-                    st.session_state.pop(f"{key_prefix}_files", None)
-                    st.session_state.pop(keys["select_all"], None)
-                    st.rerun()
+        # Folder column keeps files that share a basename distinguishable
+        table = pd.DataFrame({
+            "File": [Path(path).name for path in selected],
+            "Folder": [str(Path(path).parent) for path in selected],
+        })
+        event = st.dataframe(
+            table, hide_index=True, width="stretch", key=table_key,
+            on_select="rerun", selection_mode="multi-row",
+            height=min(400, 35 * (len(selected) + 1) + 3),
+        )
+        picked_rows = event.selection.rows
+        if st.button(f"Remove {len(picked_rows)} ticked file(s)", disabled=not picked_rows,
+                     key=f"{key_prefix}_remove_ticked"):
+            removed = {selected[row] for row in picked_rows}
+            st.session_state[state_key] = [path for path in selected if path not in removed]
+            # Force the multiselect, select-all and table to re-initialise from the trimmed
+            # list rather than re-adding the removed files from their widget state.
+            for stale_key in (f"{key_prefix}_files", keys["select_all"], table_key):
+                st.session_state.pop(stale_key, None)
+            st.rerun()
 
 
 def _render_clear_all(key_prefix: str, keys: dict, state_key: str) -> None:

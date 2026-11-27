@@ -77,7 +77,18 @@ knowing its storage format.
 
 `load_idxmls` parses each idXML once into an in-memory `PSMList`; `lookup_peptides`
 and `count_psms_per_peptide` then scan that list — the same file is never read
-twice.
+twice. The CLI uses this path.
+
+**`core/idxml_index.py`** — the Streamlit app reads idXMLs through an on-disk index
+instead: one parquet per idXML (bare sequence + pickled PSM), keyed by path, size and
+modification time, in `cache/idxml_index/` shared by all workspaces. Peptide counts
+read only the sequence column; a lookup unpickles only the target-peptide rows. A file
+is parsed again only when it changes.
+
+The mzML loader (`core/spectra/spectrum_streaming.py`) opens only the mzML offset
+index and reads each spectrum's RT, precursor m/z and ion mobility from its own XML
+element (pyteomics), so it skips the whole-file metadata pass. Spectra it cannot
+resolve this way fall back to the full pyopenms load.
 
 ---
 

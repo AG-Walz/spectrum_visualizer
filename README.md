@@ -57,10 +57,14 @@ spectra inside the mzML by spectrum ID. Bundled test data for a verification run
    sequences (case-insensitive; modified forms are found automatically), set the
    reference substring, and the annotation / Koina / performance options. Defaults
    live in `core/defaults.py`; see [Settings → sources and precedence](docs/settings.md#sources-and-precedence).
-2. **Load & Annotate** — *Look Up Peptides* groups PSMs by peptidoform and resolves
-   their mzML; *Load & Annotate Spectra* streams the spectra, annotates fragments,
-   pairs queries with references (or a Koina prediction), computes the 7 metrics, and
-   builds the openms_insight DataFrames.
+2. **Load & Annotate** — shows the inputs and a live preview of the target peptides
+   found in the idXML files. One *Run analysis* button indexes any idXML not indexed
+   yet, groups PSMs by peptidoform, resolves their mzML, streams the spectra, annotates
+   fragments, pairs queries with references (or a Koina prediction), computes the 7
+   metrics, and builds the openms_insight DataFrames. The run continues in the
+   background when you change pages (the sidebar shows its progress) and can be
+   cancelled. A failed or cancelled run keeps the previous results, and every page
+   warns when the settings changed after the last run.
 3. **Explore** — three sub-views: the linked openms_insight Interactive Explorer
    (Table + SequenceView + LinePlot + Heatmap), Plotly Mirror Plots (query up,
    reference down), and the Comparison Metrics tables. See

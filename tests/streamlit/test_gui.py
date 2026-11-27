@@ -10,14 +10,16 @@ from psm_utils import PSMList
 
 from tests.conftest import make_peptide_match
 
-SETTINGS_PATH = Path(__file__).resolve().parents[2] / "streamlit_app" / "config" / "settings.json"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+SETTINGS_PATH = PROJECT_ROOT / "streamlit_app" / "config" / "settings.json"
 STATE_PREFIX = "peptide_mirror"
 
 
 @pytest.fixture
 def launch(request):
     """Build an AppTest for the file in request.param and seed session_state.settings."""
-    test = AppTest.from_file(request.param)
+    # Absolute path: Streamlit >= 1.6x resolves a relative path against this test file.
+    test = AppTest.from_file(str(PROJECT_ROOT / request.param))
 
     # Seed session_state.settings from the real config so page_setup() succeeds.
     with open(SETTINGS_PATH, "r") as f:
@@ -76,7 +78,7 @@ def _seed_mirror_picker_state(at: AppTest) -> None:
 @pytest.mark.slow
 def test_mirror_picker_renders_when_state_seeded():
     """Mirror-Plots picker fragment runs without exception and shows the 'pick a row' hint."""
-    at = AppTest.from_file("streamlit_app/views/explore/explore_page.py")
+    at = AppTest.from_file(str(PROJECT_ROOT / "streamlit_app/views/explore/explore_page.py"))
     with open(SETTINGS_PATH, "r") as f:
         at.session_state.settings = json.load(f)
     _seed_mirror_picker_state(at)

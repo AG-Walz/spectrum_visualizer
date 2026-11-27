@@ -4,6 +4,7 @@ import polars as pl
 from psm_utils import PSM, Peptidoform, PSMList
 
 from core.peptide_lookup import (
+    find_mzml_files,
     load_idxmls,
     lookup_peptides,
     summarize_lookup_results,
@@ -175,3 +176,31 @@ class TestLookupWithRealData:
         df = summary.collect()
         assert len(df) == 2
         assert "id" in df.columns
+
+
+class TestFindMzmlFiles:
+    """find_mzml_files locates mzMLs by run name with the lookup's matching rule."""
+
+    def test_finds_case_insensitive_stems_recursively(self, tmp_path):
+        (tmp_path / "a" / "deep").mkdir(parents=True)
+        (tmp_path / "a" / "deep" / "Run_One.MZML").write_text("")
+        (tmp_path / "a" / "run_two.mzML").write_text("")
+        (tmp_path / "a" / "run_two.idXML").write_text("")
+        found, complete = find_mzml_files(["run_one", "RUN_TWO", "run_three"], [str(tmp_path)])
+        assert complete
+        assert [p.endswith("Run_One.MZML") for p in found["run_one"]] == [True]
+        assert [p.endswith("run_two.mzML") for p in found["RUN_TWO"]] == [True]
+        assert found["run_three"] == []
+
+    def test_overlapping_search_dirs_list_a_file_once_and_duplicates_are_kept(self, tmp_path):
+        for folder in ("x", "y"):
+            (tmp_path / folder).mkdir()
+            (tmp_path / folder / "sample.mzML").write_text("")
+        found, _ = find_mzml_files(["sample"], [str(tmp_path), str(tmp_path / "x")])
+        assert len(found["sample"]) == 2  # two real files: ambiguous, the caller decides
+
+    def test_walk_stops_at_the_folder_cap(self, tmp_path):
+        for index in range(5):
+            (tmp_path / f"d{index}").mkdir()
+        _found, complete = find_mzml_files(["sample"], [str(tmp_path)], max_dirs=3)
+        assert not complete

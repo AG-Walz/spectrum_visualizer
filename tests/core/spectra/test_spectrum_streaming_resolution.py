@@ -9,7 +9,11 @@ import pyopenms as oms
 import pytest
 from psm_utils import PSM
 
-from core.spectra.spectrum_streaming import _load_spectra_from_mzml
+from core.spectra.spectrum_streaming import (
+    _load_spectra_from_mzml,
+    _prepare_loaded_psm,
+    _record_metadata,
+)
 
 
 def _write_mzml(path, native_ids):
@@ -89,3 +93,82 @@ class TestMissingSpectrum:
         assert result.loaded_count == 1
         assert result.not_found_count == 1
         assert any("index=999" in error for error in result.errors)
+
+
+def _write_ms2_mzml(path, count=4):
+    """Write an mzML of MS2 spectra with precursor m/z and ion mobility on the precursor;
+    RT i*61.5 s, precursor 500+i, drift 0.8+i/10; native IDs index=1..count."""
+    experiment = oms.MSExperiment()
+    for i in range(count):
+        spectrum = oms.MSSpectrum()
+        spectrum.setNativeID(f"index={i + 1}")
+        spectrum.setMSLevel(2)
+        spectrum.setRT(61.5 * i)
+        precursor = oms.Precursor()
+        precursor.setMZ(500.0 + i)
+        precursor.setCharge(2)
+        precursor.setDriftTime(0.8 + i / 10)
+        spectrum.setPrecursors([precursor])
+        spectrum.setDriftTime(0.8 + i / 10)
+        spectrum.set_peaks(([100.0 + i, 200.0 + i], [1.0, 2.0]))
+        experiment.addSpectrum(spectrum)
+    oms.MzMLFile().store(str(path), experiment)
+    return str(path)
+
+
+class TestFastMetadataPath:
+    """The index-only open plus per-spectrum metadata gives what the full pyopenms load gives."""
+
+    def test_fast_path_matches_full_load(self, tmp_path):
+        path = _write_ms2_mzml(tmp_path / "ms2.mzML")
+        result = _load_spectra_from_mzml(path, "ms2.mzML", _matches("index=2", "index=4"),
+                                         is_reference=False)
+        full = oms.OnDiscMSExperiment()
+        full.openFile(path)
+        for (_peptidoform, loaded), native_id in zip(result.peptidoform_psm_pairs, ("index=2", "index=4")):
+            expected = _prepare_loaded_psm(full.getSpectrumByNativeId(native_id),
+                                           _matches(native_id)[0][0])
+            assert list(loaded.spectrum["mz"]) == list(expected.spectrum["mz"])
+            assert loaded.retention_time == pytest.approx(expected.retention_time, abs=1e-9)
+            assert loaded.precursor_mz == pytest.approx(expected.precursor_mz, abs=1e-9)
+            assert loaded.ion_mobility == pytest.approx(expected.ion_mobility, abs=1e-9)
+
+    def test_fast_path_skips_the_full_metadata_load(self, tmp_path, monkeypatch):
+        # The full-metadata openFile(path) is the slow step; the fast path must never call it.
+        path = _write_ms2_mzml(tmp_path / "ms2.mzML")
+        full_opens = []
+        original_class = oms.OnDiscMSExperiment
+
+        class RecordingExperiment:
+            """Delegating wrapper (pyopenms types cannot be patched) that records full opens."""
+            def __init__(self):
+                self._inner = original_class()
+
+            def openFile(self, file_path, *skip_metadata):
+                if not skip_metadata or not skip_metadata[0]:
+                    full_opens.append(file_path)
+                return self._inner.openFile(file_path, *skip_metadata)
+
+            def __getattr__(self, name):
+                return getattr(self._inner, name)
+
+        monkeypatch.setattr(oms, "OnDiscMSExperiment", RecordingExperiment)
+        result = _load_spectra_from_mzml(path, "ms2.mzML", _matches("index=1", "index=3"),
+                                         is_reference=False)
+        assert result.loaded_count == 2
+        assert full_opens == []
+
+    def test_record_metadata_converts_minutes_and_reads_selected_ion_mobility(self):
+        class Minutes(float):
+            unit_info = "minute"
+
+        record = {
+            "scanList": {"scan": [{"scan start time": Minutes(2.0)}]},
+            "precursorList": {"precursor": [{"selectedIonList": {"selectedIon": [
+                {"selected ion m/z": 512.25, "inverse reduced ion mobility": 0.9}]}}]},
+        }
+        assert _record_metadata(record) == (120.0, 512.25, 0.9)
+
+    def test_record_metadata_without_precursor_defers_to_full_load(self):
+        record = {"scanList": {"scan": [{"scan start time": 1.0}]}}
+        assert _record_metadata(record) is None
